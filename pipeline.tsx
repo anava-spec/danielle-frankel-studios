@@ -2070,9 +2070,10 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SEARCH DROPDOWN
 // ─────────────────────────────────────────────────────────────────────────────
-function SearchDropdown({ clientsData, onSelect }: {
+function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
   clientsData: ClientData[];
   onSelect: (id: string) => void;
+  stageColorsByStage: Map<string, { bg: string; fg: string }>;
 }) {
   const [query, setQuery]       = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
@@ -2168,7 +2169,9 @@ function SearchDropdown({ clientsData, onSelect }: {
         >
           {results.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gray-400">No matches found.</div>
-          ) : results.map((c, i) => (
+          ) : results.map((c, i) => {
+            const stageColors = stageColorsByStage.get(c.stage) ?? DEFAULT_STAGE_COLORS;
+            return (
             <div
               key={c.id}
               data-active={i === activeIdx ? 'true' : 'false'}
@@ -2178,17 +2181,21 @@ function SearchDropdown({ clientsData, onSelect }: {
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="font-medium text-gray-900 text-sm truncate">{c.displayName}</span>
-                <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-600 border border-gray-200">
-                  {c.stage}
-                </span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {c.amOrderStr && <span className="text-xs text-gray-400">AM: {c.amOrderStr}</span>}
+                  <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
+                    {c.stage}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
                 {c.formattedPhone && <span>{c.formattedPhone}</span>}
                 {c.email         && <span className="truncate max-w-[160px]">{c.email}</span>}
-                {c.amOrderStr    && <span className="text-gray-400">AM: {c.amOrderStr}</span>}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -2689,7 +2696,7 @@ function Pipeline(): React.ReactElement {
     <div className="h-screen flex flex-col" style={{ backgroundColor: '#F6F4F0' }}>
       {/* Filter row */}
       <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 bg-white flex-shrink-0">
-        <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} />
+        <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
         <SingleSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
