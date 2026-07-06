@@ -1576,6 +1576,15 @@ const FullProfileModal = React.memo(function FullProfileModal({
   const currentStageIndex = STAGE_STEPS.indexOf(client.stage);
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
   const [showAllFields, setShowAllFields] = useState(false);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const handleClose = useCallback(() => {
+    setVisible(false);
+    setTimeout(onClose, 220);
+  }, [onClose]);
 
   function renderStageSection(sectionStage: string, readOnly: boolean) {
     switch (sectionStage) {
@@ -1826,10 +1835,19 @@ const FullProfileModal = React.memo(function FullProfileModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-gray-50 overflow-y-auto">
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        backgroundColor: '#f9fafb',
+        overflowY: 'auto',
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateX(0)' : 'translateX(32px)',
+        transition: 'opacity 0.22s ease, transform 0.22s ease',
+      }}
+    >
       <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-6 py-3">
         <div className="max-w-[1200px] mx-auto flex items-center gap-3">
-          <button type="button" onClick={onClose}
+          <button type="button" onClick={handleClose}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white transition-colors">
             <CaretLeftIcon size={16} />
             Go back
@@ -2050,6 +2068,134 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SEARCH DROPDOWN
+// ─────────────────────────────────────────────────────────────────────────────
+function SearchDropdown({ clientsData, onSelect }: {
+  clientsData: ClientData[];
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery]       = useState('');
+  const [activeIdx, setActiveIdx] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef     = useRef<HTMLInputElement>(null);
+  const listRef      = useRef<HTMLDivElement>(null);
+
+  const results = useMemo(() => {
+    const q = query.trim();
+    if (!q) return [] as ClientData[];
+    const lower  = q.toLowerCase();
+    const digits = lower.replace(/\D/g, '');
+    return clientsData
+      .filter(c => {
+        if (!c.isOnBoard) return false;
+        const matchName  = c.fullName.toLowerCase().includes(lower);
+        const matchPhone = !!digits && c.phone.replace(/\D/g, '').includes(digits);
+        const matchEmail = c.email.toLowerCase().includes(lower);
+        const matchAM    = c.amOrderStr?.toLowerCase().includes(lower) || c.amOrderNumber?.includes(lower);
+        return matchName || matchPhone || matchEmail || matchAM;
+      })
+      .slice(0, 10);
+  }, [query, clientsData]);
+
+  const open = query.trim().length > 0;
+
+  useEffect(() => { setActiveIdx(0); }, [results]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setQuery('');
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!listRef.current) return;
+    const active = listRef.current.querySelector<HTMLElement>('[data-active="true"]');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }, [activeIdx]);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIdx(i => Math.min(i + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const hit = results[activeIdx];
+      if (hit) { onSelect(hit.id); setQuery(''); inputRef.current?.blur(); }
+    } else if (e.key === 'Escape') {
+      setQuery('');
+      inputRef.current?.blur();
+    }
+  }
+
+  function handleSelect(id: string) {
+    onSelect(id);
+    setQuery('');
+    inputRef.current?.blur();
+  }
+
+  return (
+    <div ref={containerRef} className="relative w-72">
+      <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Search by name, phone, email, AM order…"
+        className="w-full border border-gray-300 rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+      />
+      {query && (
+        <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+          <XIcon size={14} />
+        </button>
+      )}
+      {open && (
+        <div
+          ref={listRef}
+          className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-y-auto"
+          style={{ width: 440, maxHeight: 360 }}
+        >
+          {results.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-gray-400">No matches found.</div>
+          ) : results.map((c, i) => (
+            <div
+              key={c.id}
+              data-active={i === activeIdx ? 'true' : 'false'}
+              onMouseEnter={() => setActiveIdx(i)}
+              onClick={() => handleSelect(c.id)}
+              className={`px-4 py-2.5 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${i === activeIdx ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium text-gray-900 text-sm truncate">{c.displayName}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-600 border border-gray-200">
+                  {c.stage}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
+                {c.formattedPhone && <span>{c.formattedPhone}</span>}
+                {c.email         && <span className="truncate max-w-[160px]">{c.email}</span>}
+                {c.amOrderStr    && <span className="text-gray-400">AM: {c.amOrderStr}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VIEW TOGGLE (pill-switch)
 // ─────────────────────────────────────────────────────────────────────────────
 const VIEW_OPTIONS = ['kanban', 'list'] as const;
@@ -2167,8 +2313,6 @@ function Pipeline(): React.ReactElement {
     return names;
   }, [staffRecords, staffFullNameField, staffIsActiveField]);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearch = useDebounce(searchQuery, 150);
   const [studioFilter, setStudioFilter] = useState<string[]>([]);
   const [salespersonFilter, setSalespersonFilter] = useState<string[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<string | null>('Last 7 days');
@@ -2474,25 +2618,16 @@ function Pipeline(): React.ReactElement {
   }, [clientsData, activeStaffNames]);
 
   const filteredClients = useMemo(() => {
-    const searchLower  = debouncedSearch.toLowerCase();
-    const searchDigits = searchLower.replace(/\D/g, '');
-    const studioSet    = studioFilter.length > 0 ? new Set(studioFilter) : null;
-    const salesSet     = salespersonFilter.length > 0 ? new Set(salespersonFilter) : null;
+    const studioSet = studioFilter.length > 0 ? new Set(studioFilter) : null;
+    const salesSet  = salespersonFilter.length > 0 ? new Set(salespersonFilter) : null;
     return clientsData.filter(c => {
       if (!c.isOnBoard) return false;
-      if (searchLower) {
-        const matchesName  = c.fullName.toLowerCase().includes(searchLower);
-        const matchesPhone = !!searchDigits && c.phone.replace(/\D/g, '').includes(searchDigits);
-        const matchesEmail = c.email.toLowerCase().includes(searchLower);
-        const matchesAM = c.amOrderStr?.toLowerCase().includes(searchLower) || c.amOrderNumber?.includes(searchLower);
-        if (!matchesName && !matchesPhone && !matchesEmail && !matchesAM) return false;
-      }
       if (studioSet && !studioSet.has(c.studio)) return false;
       if (salesSet && !salesSet.has(c.salesAssociateName)) return false;
       if (timelineFilter !== null && c.timelineBucket !== timelineFilter) return false;
       return true;
     });
-  }, [clientsData, debouncedSearch, studioFilter, salespersonFilter, timelineFilter]);
+  }, [clientsData, studioFilter, salespersonFilter, timelineFilter]);
 
   const clientsByStage = useMemo(() => {
     const map: Record<string, ClientData[]> = {};
@@ -2515,16 +2650,17 @@ function Pipeline(): React.ReactElement {
     if (selectedClientId && !selectedClient) { setSelectedClientId(null); setFullProfileOpen(false); }
   }, [selectedClientId, selectedClient]);
 
-  useEffect(() => { setStagePage({}); }, [debouncedSearch, studioFilter, salespersonFilter, timelineFilter]);
+  useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, timelineFilter]);
 
   const handleCardClick = useCallback((id: string) => {
     setSelectedClientId(id);
     setFullProfileOpen(true);
   }, []);
+  const handleSearchSelect  = useCallback((id: string) => { setSelectedClientId(id); setFullProfileOpen(true); }, []);
   const handleCloseFullProfile = useCallback(() => { setSelectedClientId(null); setFullProfileOpen(false); }, []);
-  const clearAllFilters        = useCallback(() => { setSearchQuery(''); setStudioFilter([]); setSalespersonFilter([]); setTimelineFilter(null); }, []);
+  const clearAllFilters        = useCallback(() => { setStudioFilter([]); setSalespersonFilter([]); setTimelineFilter(null); }, []);
 
-  const hasActiveFilters  = !!debouncedSearch || studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null;
+  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null;
   const noMatchingClients = filteredClients.length === 0 && hasActiveFilters;
 
   if (errorState) {
@@ -2553,22 +2689,7 @@ function Pipeline(): React.ReactElement {
     <div className="h-screen flex flex-col" style={{ backgroundColor: '#F6F4F0' }}>
       {/* Filter row */}
       <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 bg-white flex-shrink-0">
-        <div className="relative w-64">
-          <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by name, phone, email, or AM order #…"
-            className="w-full border border-gray-300 rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-          />
-          {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-              <XIcon size={14} />
-            </button>
-          )}
-        </div>
+        <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} />
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
         <SingleSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
