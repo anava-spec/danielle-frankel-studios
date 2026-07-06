@@ -2203,32 +2203,50 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIEW TOGGLE (pill-switch)
+// VIEW DROPDOWN
 // ─────────────────────────────────────────────────────────────────────────────
 const VIEW_OPTIONS = ['kanban', 'list'] as const;
+const VIEW_LABELS: Record<typeof VIEW_OPTIONS[number], string> = { kanban: 'Kanban', list: 'List' };
 
-function ViewToggle({ value, onChange }: { value: 'kanban'|'list'; onChange: (v: 'kanban'|'list') => void }) {
-  const btnWidth = 80;
-  const activeIdx = VIEW_OPTIONS.indexOf(value);
+function ViewDropdown({ value, onChange }: { value: 'kanban'|'list'; onChange: (v: 'kanban'|'list') => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const handleSelect = (option: typeof VIEW_OPTIONS[number]) => {
+    onChange(option);
+    setIsOpen(false);
+  };
+
   return (
-    <>
-      <style>{`
-        .pill-switch { position: relative; display: inline-flex; background: #fff; border: 1px solid #D1D5DB; border-radius: 0.5rem; overflow: hidden; }
-        .pill-switch-track { position: absolute; top: 0; left: 0; height: 100%; background: #111827; border-radius: 0.5rem; transition: transform 0.2s ease; pointer-events: none; }
-        .pill-switch-btn { position: relative; z-index: 1; cursor: pointer; padding: 0.375rem 0.75rem; font-size: 0.75rem; line-height: 1.25rem; font-weight: 500; border: none; background: transparent; transition: color 0.15s ease; white-space: nowrap; text-align: center; display: flex; align-items: center; gap: 0.25rem; }
-        .pill-switch-btn.active { color: #fff; }
-        .pill-switch-btn.inactive { color: #374151; }
-        .pill-switch-btn.inactive:hover { color: #111827; }
-      `}</style>
-      <div className="pill-switch" style={{ width: btnWidth * 2 }}>
-        <div className="pill-switch-track" style={{ width: btnWidth, transform: `translateX(${activeIdx * btnWidth}px)` }} />
-        {VIEW_OPTIONS.map(v => (
-          <button key={v} onClick={() => onChange(v)} className={`pill-switch-btn ${value === v ? 'active' : 'inactive'}`} style={{ width: btnWidth }}>
-            {v === 'kanban' ? 'Kanban' : 'List'}
-          </button>
-        ))}
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-gray-500 font-medium">View</span>
+      <div ref={containerRef} className="relative">
+        <button type="button" onClick={() => setIsOpen(!isOpen)}
+          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          <span className="truncate">{VIEW_LABELS[value]}</span>
+          <CaretDownIcon size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {isOpen && (
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[160px] py-1">
+            {VIEW_OPTIONS.map(option => (
+              <button key={option} type="button" onClick={() => handleSelect(option)}
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+                <span className="truncate">{VIEW_LABELS[option]}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -2703,7 +2721,7 @@ function Pipeline(): React.ReactElement {
 
         {/* View mode toggle */}
         <div className="ml-auto">
-          <ViewToggle value={viewMode} onChange={setViewMode} />
+          <ViewDropdown value={viewMode} onChange={setViewMode} />
         </div>
       </div>
 
