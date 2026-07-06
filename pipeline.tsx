@@ -2180,14 +2180,14 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
               className={`px-4 py-2.5 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${i === activeIdx ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="font-medium text-gray-900 text-sm truncate">{c.displayName}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {c.amOrderStr && <span className="text-xs text-gray-400">AM: {c.amOrderStr}</span>}
-                  <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
-                    {c.stage}
-                  </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-gray-900 text-sm truncate">{c.displayName}</span>
+                  {c.amOrderStr && <span className="text-xs text-gray-400 flex-shrink-0">AM: {c.amOrderStr}</span>}
                 </div>
+                <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
+                  {c.stage}
+                </span>
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
                 {c.formattedPhone && <span>{c.formattedPhone}</span>}
