@@ -1,4 +1,3 @@
-import './style.css';
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   initializeBlock,
