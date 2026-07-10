@@ -2738,6 +2738,10 @@ function Pipeline(): React.ReactElement {
 
   useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, stageFilter, timelineFilter]);
 
+  // The Stage filter is only exposed in the List layout — clear it when
+  // switching away so it can't silently keep affecting Kanban with no visible control.
+  useEffect(() => { if (viewMode !== 'list' && stageFilter.length > 0) setStageFilter([]); }, [viewMode]);
+
   const handleCardClick = useCallback((id: string) => {
     setSelectedClientId(id);
     setFullProfileOpen(true);
@@ -2778,8 +2782,10 @@ function Pipeline(): React.ReactElement {
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
-        <MultiSelectDropdown label="Stage"       options={stageOptions}       selected={stageFilter}       onChange={setStageFilter} />
         <SingleSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
+        {viewMode === 'list' && (
+          <MultiSelectDropdown label="Stage" options={stageOptions} selected={stageFilter} onChange={setStageFilter} />
+        )}
 
         {/* View mode toggle */}
         <div className="ml-auto">
