@@ -1396,9 +1396,12 @@ function FieldRow4({ children }: { children: React.ReactNode }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // PIPELINE LIST VIEW (Change #3)
 // ─────────────────────────────────────────────────────────────────────────────
-function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void }) {
-  const [sortCol, setSortCol] = useState<'name'|'stage'|'lastAppt'|'nextAppt'|'studio'|'sa'|'am'|'flags'>('nextAppt');
+const LIST_PAGE_SIZE = 50;
+
+function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void; suppressEmptyMessage?: boolean }) {
+  const [sortCol, setSortCol] = useState<'name'|'stage'|'lastAppt'|'nextAppt'|'weddingDate'|'studio'|'sa'|'am'|'flags'>('weddingDate');
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
+  const [page, setPage] = useState(0);
 
   function toggleSort(col: typeof sortCol) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -1407,24 +1410,33 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
 
   const sorted = [...clients].sort((a, b) => {
     let va: string|number = '', vb: string|number = '';
-    if (sortCol === 'name')     { va = a.fullName; vb = b.fullName; }
-    if (sortCol === 'stage')    { va = a.stage; vb = b.stage; }
-    if (sortCol === 'lastAppt') { va = a.lastAppointment ?? '9999'; vb = b.lastAppointment ?? '9999'; }
-    if (sortCol === 'nextAppt') { va = a.nextAppointment ?? '9999'; vb = b.nextAppointment ?? '9999'; }
-    if (sortCol === 'studio')   { va = a.studio; vb = b.studio; }
-    if (sortCol === 'sa')       { va = a.salesAssociateName; vb = b.salesAssociateName; }
-    if (sortCol === 'am')       { va = a.amOrderStr ?? ''; vb = b.amOrderStr ?? ''; }
-    if (sortCol === 'flags')    { va = a.flagCount; vb = b.flagCount; }
+    if (sortCol === 'name')        { va = a.fullName; vb = b.fullName; }
+    if (sortCol === 'stage')       { va = a.stage; vb = b.stage; }
+    if (sortCol === 'lastAppt')    { va = a.lastAppointment ?? '9999'; vb = b.lastAppointment ?? '9999'; }
+    if (sortCol === 'nextAppt')    { va = a.nextAppointment ?? '9999'; vb = b.nextAppointment ?? '9999'; }
+    if (sortCol === 'weddingDate') { va = a.weddingDate ?? '9999'; vb = b.weddingDate ?? '9999'; }
+    if (sortCol === 'studio')      { va = a.studio; vb = b.studio; }
+    if (sortCol === 'sa')          { va = a.salesAssociateName; vb = b.salesAssociateName; }
+    if (sortCol === 'am')          { va = a.amOrderStr ?? ''; vb = b.amOrderStr ?? ''; }
+    if (sortCol === 'flags')       { va = a.flagCount; vb = b.flagCount; }
     if (va < vb) return sortDir === 'asc' ? -1 : 1;
     if (va > vb) return sortDir === 'asc' ? 1 : -1;
     return 0;
   });
+
+  useEffect(() => { setPage(0); }, [clients]);
+
+  const totalPages   = Math.max(1, Math.ceil(sorted.length / LIST_PAGE_SIZE));
+  const pagedClients = sorted.slice(page * LIST_PAGE_SIZE, (page + 1) * LIST_PAGE_SIZE);
+  const canPrev = page > 0;
+  const canNext = page < totalPages - 1;
 
   const SortIcon = ({ col }: { col: typeof sortCol }) => (
     <span className="ml-1 opacity-50">{sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
   );
 
   return (
+    <div className="flex-1 min-h-0 flex flex-col">
     <div className="overflow-auto flex-1 px-4 pb-4">
       <table className="w-full text-sm border-collapse">
         <thead className="sticky top-0 bg-white dark:bg-[#1A1917] border-b border-gray-200 dark:border-white/10 z-10">
@@ -1432,6 +1444,7 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
             {[
               { col: 'name', label: 'Client' },
               { col: 'stage', label: 'Stage' },
+              { col: 'weddingDate', label: 'Wedding Date' },
               { col: 'lastAppt', label: 'Last Appt' },
               { col: 'nextAppt', label: 'Next Appt' },
               { col: 'studio', label: 'Studio' },
@@ -1450,7 +1463,7 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
           </tr>
         </thead>
         <tbody>
-          {sorted.map(client => (
+          {pagedClients.map(client => (
             <tr key={client.id} onClick={() => onSelectClient(client)}
               className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer">
               <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-[#F5F3EF]">{client.displayName}</td>
@@ -1459,6 +1472,7 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
                   {client.stage}
                 </span>
               </td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.weddingDisplay || '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment) : '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment) : '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.studio || '—'}</td>
@@ -1475,11 +1489,29 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
               </td>
             </tr>
           ))}
-          {sorted.length === 0 && (
-            <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No clients match the current filters.</td></tr>
+          {sorted.length === 0 && !suppressEmptyMessage && (
+            <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No clients match the current filters.</td></tr>
           )}
         </tbody>
       </table>
+    </div>
+    {sorted.length > LIST_PAGE_SIZE && (
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220]">
+        <button
+          type="button"
+          onClick={() => setPage(p => p - 1)}
+          disabled={!canPrev}
+          className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors"
+        >← Prev</button>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{page + 1} / {totalPages}</span>
+        <button
+          type="button"
+          onClick={() => setPage(p => p + 1)}
+          disabled={!canNext}
+          className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors"
+        >Next →</button>
+      </div>
+    )}
     </div>
   );
 }
@@ -2354,6 +2386,7 @@ function Pipeline(): React.ReactElement {
 
   const [studioFilter, setStudioFilter] = useState<string[]>([]);
   const [salespersonFilter, setSalespersonFilter] = useState<string[]>([]);
+  const [stageFilter, setStageFilter] = useState<string[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<string | null>('Last 7 days');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
@@ -2640,6 +2673,8 @@ function Pipeline(): React.ReactElement {
     });
   }, [clientRecords, fields]);
 
+  const stageOptions = useMemo(() => STAGE_ORDER.map(s => STAGE_DISPLAY_LABELS[s] ?? s), []);
+
   const studioOptions = useMemo(() => {
     const s = new Set<string>();
     clientsData.forEach(c => { if (c.studio) s.add(c.studio); });
@@ -2659,14 +2694,16 @@ function Pipeline(): React.ReactElement {
   const filteredClients = useMemo(() => {
     const studioSet = studioFilter.length > 0 ? new Set(studioFilter) : null;
     const salesSet  = salespersonFilter.length > 0 ? new Set(salespersonFilter) : null;
+    const stageSet  = stageFilter.length > 0 ? new Set(stageFilter) : null;
     return clientsData.filter(c => {
       if (!c.isOnBoard) return false;
       if (studioSet && !studioSet.has(c.studio)) return false;
       if (salesSet && !salesSet.has(c.salesAssociateName)) return false;
+      if (stageSet && !stageSet.has(STAGE_DISPLAY_LABELS[c.stage] ?? c.stage)) return false;
       if (timelineFilter !== null && c.timelineBucket !== timelineFilter) return false;
       return true;
     });
-  }, [clientsData, studioFilter, salespersonFilter, timelineFilter]);
+  }, [clientsData, studioFilter, salespersonFilter, stageFilter, timelineFilter]);
 
   const clientsByStage = useMemo(() => {
     const map: Record<string, ClientData[]> = {};
@@ -2689,7 +2726,7 @@ function Pipeline(): React.ReactElement {
     if (selectedClientId && !selectedClient) { setSelectedClientId(null); setFullProfileOpen(false); }
   }, [selectedClientId, selectedClient]);
 
-  useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, timelineFilter]);
+  useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, stageFilter, timelineFilter]);
 
   const handleCardClick = useCallback((id: string) => {
     setSelectedClientId(id);
@@ -2697,9 +2734,9 @@ function Pipeline(): React.ReactElement {
   }, []);
   const handleSearchSelect  = useCallback((id: string) => { setSelectedClientId(id); setFullProfileOpen(true); }, []);
   const handleCloseFullProfile = useCallback(() => { setSelectedClientId(null); setFullProfileOpen(false); }, []);
-  const clearAllFilters        = useCallback(() => { setStudioFilter([]); setSalespersonFilter([]); setTimelineFilter(null); }, []);
+  const clearAllFilters        = useCallback(() => { setStudioFilter([]); setSalespersonFilter([]); setStageFilter([]); setTimelineFilter(null); }, []);
 
-  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null;
+  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || stageFilter.length > 0 || timelineFilter !== null;
   const noMatchingClients = filteredClients.length === 0 && hasActiveFilters;
 
   if (errorState) {
@@ -2731,6 +2768,7 @@ function Pipeline(): React.ReactElement {
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
+        <MultiSelectDropdown label="Stage"       options={stageOptions}       selected={stageFilter}       onChange={setStageFilter} />
         <SingleSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
 
         {/* View mode toggle */}
@@ -2799,6 +2837,7 @@ function Pipeline(): React.ReactElement {
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-white dark:bg-[#242220] pt-3">
           <PipelineListView
             clients={filteredClients}
+            suppressEmptyMessage={noMatchingClients}
             onSelectClient={(c) => {
               setSelectedClientId(c.id);
               setFullProfileOpen(true);
