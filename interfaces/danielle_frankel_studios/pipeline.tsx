@@ -544,19 +544,31 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const displayText = selected.length === 0 ? 'All' : selected.length === 1 ? (selected[0] ?? 'All') : `${selected.length} selected`;
+  const hasSelection = selected.length > 0;
+  const displayText = selected.length === 0 ? label : selected.length === 1 ? (selected[0] ?? label) : `${label}: ${selected.length}`;
   const toggleOption = (option: string) => {
     onChange(selected.includes(option) ? selected.filter(s => s !== option) : [...selected, option]);
   };
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</span>
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors ${hasSelection ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          {hasSelection ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onChange([]); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onChange([]); } }}
+              className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              <XIcon size={14} />
+            </span>
+          ) : (
+            <CaretDownIcon size={14} className={`flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          )}
         </button>
         {isOpen && (
           <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
@@ -570,12 +582,6 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
           </div>
         )}
       </div>
-      {selected.length > 0 && (
-        <button type="button" onClick={() => onChange([])}
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline-offset-2 hover:underline cursor-pointer transition-colors">
-          Clear
-        </button>
-      )}
     </div>
   );
 });
@@ -603,7 +609,8 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const displayText = selected ?? 'All';
+  const hasSelection = selected !== null;
+  const displayText = selected ?? label;
 
   const handleSelect = (option: string) => {
     onChange(selected === option ? null : option);
@@ -612,12 +619,23 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</span>
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors ${hasSelection ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          {hasSelection ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onChange(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onChange(null); } }}
+              className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              <XIcon size={14} />
+            </span>
+          ) : (
+            <CaretDownIcon size={14} className={`flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          )}
         </button>
         {isOpen && (
           <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[200px] py-1">
@@ -631,12 +649,6 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
           </div>
         )}
       </div>
-      {selected !== null && (
-        <button type="button" onClick={() => onChange(null)}
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline-offset-2 hover:underline cursor-pointer transition-colors">
-          Clear
-        </button>
-      )}
     </div>
   );
 });
@@ -2273,12 +2285,10 @@ function ViewDropdown({ value, onChange }: { value: 'kanban'|'list'; onChange: (
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">View</span>
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
-          <span className="truncate">{VIEW_LABELS[value]}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          className="flex items-center justify-center w-[110px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          <span className="truncate text-center">{VIEW_LABELS[value]}</span>
         </button>
         {isOpen && (
           <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[160px] py-1">
