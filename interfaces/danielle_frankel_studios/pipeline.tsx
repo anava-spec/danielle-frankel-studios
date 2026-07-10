@@ -124,6 +124,24 @@ function queueWrite(fn: () => Promise<unknown>): Promise<unknown> {
   return next;
 }
 
+// ─── Dark mode ────────────────────────────────────────────────────────────────
+function useTheme(): 'light' | 'dark' {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const h = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
+  }, [theme]);
+  return theme;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
@@ -686,7 +704,7 @@ function DetailRow({ label, value, fieldId }: { label: string; value: string | n
   const source = fieldId ? getFieldSource(fieldId) : null;
   return (
     <div>
-      <div className="text-xs text-gray-400 uppercase tracking-wide font-medium flex items-center gap-1">
+      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium flex items-center gap-1">
         {label}
         {source && (
           <span
@@ -696,7 +714,7 @@ function DetailRow({ label, value, fieldId }: { label: string; value: string | n
           />
         )}
       </div>
-      <div className="text-sm text-gray-700 mt-0.5">{value || '—'}</div>
+      <div className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{value || '—'}</div>
     </div>
   );
 }
@@ -708,15 +726,15 @@ function DetailRow({ label, value, fieldId }: { label: string; value: string | n
 function FieldLabel({ children, saving, error, fieldId }: { children: React.ReactNode; saving?: boolean; error?: string | null; fieldId?: string }) {
   const source = fieldId ? getFieldSource(fieldId) : null;
   return (
-    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 mb-0.5">
+    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">
       {children}
       {source && (
         <span style={{ color: SOURCE_COLORS[source] }} className="text-xs font-medium">
           · {SOURCE_LABELS[source]}
         </span>
       )}
-      {saving && <span className="text-xs text-blue-500 animate-pulse">saving…</span>}
-      {error && <span className="text-xs text-red-500">{error}</span>}
+      {saving && <span className="text-xs text-blue-500 dark:text-blue-400 animate-pulse">saving…</span>}
+      {error && <span className="text-xs text-red-500 dark:text-red-400">{error}</span>}
     </label>
   );
 }
@@ -760,9 +778,9 @@ function EditableText({ label, value, fieldId, recordId, base, tableId = 'tblLLU
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       {multiline
         ? <textarea value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur} rows={3}
-            className="w-full text-sm text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none resize-none transition-colors" />
+            className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none resize-none transition-colors" />
         : <input type="text" value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur}
-            className="w-full text-sm text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" />
+            className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" />
       }
     </div>
   );
@@ -820,9 +838,9 @@ function EditableNumber({ label, value, fieldId, recordId, base, tableId = 'tblL
       <div className="flex items-center gap-1">
         <input type="number" value={localValue} min={min} max={max} step={step}
           onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur}
-          className="w-full text-sm text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           style={{ MozAppearance: 'textfield' } as React.CSSProperties} />
-        {suffix && <span className="text-sm text-gray-500 flex-shrink-0">{suffix}</span>}
+        {suffix && <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">{suffix}</span>}
       </div>
     </div>
   );
@@ -866,7 +884,7 @@ function EditableCheckbox({ label, value, fieldId, recordId, base, tableId = 'tb
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={handleToggle}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-          localValue ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300'
+          localValue ? 'bg-emerald-50 dark:bg-green-500/15 text-emerald-700 dark:text-green-300 border-emerald-200 dark:border-green-500/30' : 'bg-gray-50 dark:bg-white/10 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
         }`}>
         {localValue ? <CheckIcon size={12} weight="bold" /> : <XIcon size={12} />}
         {localValue ? 'Yes' : 'No'}
@@ -929,7 +947,7 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
   return (
     <div ref={popupRef} style={{ position: 'fixed', top: coords.top, bottom: coords.bottom, left: coords.left, width: coords.width, zIndex: 9999 }}>
       {noStyle ? children : (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg py-1">
           {children}
         </div>
       )}
@@ -984,21 +1002,21 @@ const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-3" onClick={e => e.stopPropagation()}>
+    <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3" onClick={e => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-3">
         <button type="button" onClick={prevMonth}
-          className="w-7 h-7 flex items-center justify-center border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+          className="w-7 h-7 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
           <CaretDownIcon size={13} className="rotate-90" />
         </button>
-        <span className="text-sm font-semibold text-gray-800">{MONTHS_EN[viewMonth]} {viewYear}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-[#F5F3EF]">{MONTHS_EN[viewMonth]} {viewYear}</span>
         <button type="button" onClick={nextMonth}
-          className="w-7 h-7 flex items-center justify-center border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+          className="w-7 h-7 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
           <CaretDownIcon size={13} className="-rotate-90" />
         </button>
       </div>
       <div className="grid grid-cols-7 mb-1">
         {DAYS_EN.map(d => (
-          <div key={d} className="text-center text-[10px] font-medium text-gray-400 py-0.5">{d}</div>
+          <div key={d} className="text-center text-[10px] font-medium text-gray-400 dark:text-gray-500 py-0.5">{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-y-0.5">
@@ -1010,20 +1028,20 @@ const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect
               className={[
                 'w-8 h-8 mx-auto flex items-center justify-center rounded-full text-xs transition-colors',
                 isSelected ? 'bg-blue-600 text-white font-semibold'
-                  : isToday ? 'border border-blue-600 text-blue-600 font-medium hover:bg-blue-50'
-                  : currentMonth ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-300 hover:bg-gray-50',
+                  : isToday ? 'border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-500/10'
+                  : currentMonth ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10'
+                  : 'text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5',
               ].join(' ')}>
               {date.getDate()}
             </button>
           );
         })}
       </div>
-      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 dark:border-white/5">
         <button type="button" onClick={() => { onSelect(null); onClose(); }}
-          className="text-xs text-gray-500 hover:text-gray-700 transition-colors">Clear</button>
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">Clear</button>
         <button type="button" onClick={() => { onSelect(new Date()); onClose(); }}
-          className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">Today</button>
+          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium transition-colors">Today</button>
       </div>
     </div>
   );
@@ -1120,9 +1138,9 @@ function EditableDate({ label, value, fieldId, recordId, base, tableId = 'tblLLU
           onChange={e => setInputText(e.target.value)}
           onBlur={handleInputBlur}
           onFocus={() => setOpen(true)}
-          className="flex-1 text-sm text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" />
+          className="flex-1 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" />
         <button type="button" onClick={() => setOpen(o => !o)}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center border border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 hover:border-gray-400 transition-colors">
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-400 dark:hover:border-white/20 transition-colors">
           <CalendarIcon size={14} />
         </button>
       </div>
@@ -1186,19 +1204,19 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full inline-flex items-center justify-between gap-2 bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
         <span className="truncate text-left">{localValue || '—'}</span>
-        <CaretDownIcon size={12} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)}>
           <button type="button" onClick={() => handleSelect('')}
-            className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${!localValue ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>
+            className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${!localValue ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
             —
           </button>
           {options.map(o => (
             <button key={o} type="button" onClick={() => handleSelect(o)}
-              className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+              className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
               {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
               {localValue !== o && <span className="w-3 flex-shrink-0" />}
               <span className="truncate">{o}</span>
@@ -1281,7 +1299,7 @@ function StylePicker({ label, currentIds, currentNames, fieldId, recordId, base,
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(!open)}
-        className="w-full text-left text-sm text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none flex items-center gap-2 transition-colors">
+        className="w-full text-left text-sm text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none flex items-center gap-2 transition-colors">
         <span className="truncate flex-1">{selectedNames}</span>
         {selectedIds.length > 0 && (
           <span
@@ -1296,28 +1314,28 @@ function StylePicker({ label, currentIds, currentNames, fieldId, recordId, base,
                 if (t) await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: [] }));
               } catch (err) { console.error(err); } finally { setSaving(false); }
             }}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
           >
             <XIcon size={12} />
           </span>
         )}
-        <CaretDownIcon size={12} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)} width={260}>
-          <div className="p-2 border-b border-gray-100">
+          <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <input type="text" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} autoFocus
-              className="w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors" />
+              className="w-full text-sm bg-white dark:bg-[#1e1d1b] text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors" />
           </div>
           <div className="overflow-y-auto" style={{ maxHeight: '168px', scrollbarWidth: 'none' }}>
             <style>{`.style-picker-list::-webkit-scrollbar{display:none}`}</style>
             <div className="style-picker-list">
               {options.length === 0 && (
-                <div className="px-3 py-2 text-sm text-gray-400">{search ? 'No match' : 'No stylists found'}</div>
+                <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">{search ? 'No match' : 'No stylists found'}</div>
               )}
               {options.map(o => (
                 <button key={o.id} type="button" onClick={() => toggleId(o.id)}
-                  className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${selectedIds.includes(o.id) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+                  className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${selectedIds.includes(o.id) ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                   {selectedIds.includes(o.id) && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
                   {!selectedIds.includes(o.id) && <span className="w-3 flex-shrink-0" />}
                   <span className="truncate">{o.name}</span>
@@ -1353,7 +1371,7 @@ function MeasurementInputs({ measBust, measWaist, measHips, measHeight, recordId
   ];
   return (
     <div>
-      <div className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">Measurements</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1">Measurements</div>
       <div className="grid grid-cols-4 gap-2">
         {measurements.map(m => (
           <EditableNumber key={m.label} label={m.label} value={m.value} fieldId={m.fieldId} recordId={recordId} base={base} />
@@ -1461,15 +1479,13 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SUMMARY PROFILE MODAL
-// ─────────────────────────────────────────────────────────────────────────────
 function BooleanDropdown({
   label, value, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c',
 }: { label: string; value: boolean; fieldId: string; recordId: string; base: Base; tableId?: string }) {
   const [open, setOpen] = useState(false);
   const [localValue, setLocalValue] = useState<boolean | null>(value ?? null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setLocalValue(value ?? null); }, [value]);
@@ -1495,10 +1511,14 @@ function BooleanDropdown({
     setOpen(false);
     setLocalValue(newVal);
     setSaving(true);
+    setError(null);
     try {
       const t = base.getTableByIdIfExists(tableId);
-      if (t) await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: newVal === true }));
-    } catch (e) { console.error(e); } finally { setSaving(false); }
+      if (!t) throw new Error('Table not found');
+      await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: newVal === true }));
+    } catch (e) {
+      setError('Save failed'); console.error(`BooleanDropdown [${fieldId}]:`, e); setLocalValue(value ?? null);
+    } finally { setSaving(false); }
   };
 
   const isReadOnly = isFieldReadOnlyBySource(fieldId);
@@ -1506,14 +1526,14 @@ function BooleanDropdown({
 
   return (
     <div ref={containerRef} className="relative">
-      <FieldLabel saving={saving} fieldId={fieldId}>{label}</FieldLabel>
+      <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full text-left text-sm text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none flex items-center justify-between gap-2 transition-colors"
+        className="w-full text-left text-sm text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none flex items-center justify-between gap-2 transition-colors"
       >
         <span>{displayLabel}</span>
-        <CaretDownIcon size={12} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)} width={160}>
@@ -1524,7 +1544,7 @@ function BooleanDropdown({
                 type="button"
                 onClick={() => handleSelect(opt.value)}
                 className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${
-                  localValue === opt.value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                  localValue === opt.value ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'
                 }`}
               >
                 {localValue === opt.value && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
@@ -1645,6 +1665,9 @@ const FullProfileModal = React.memo(function FullProfileModal({
               <DetailRow label="Appt Photos" value={client.flagNoPhotos ? 'Missing' : 'Present'} />
               <div />
             </FieldRow>
+            {/* Alts/M2M are also directly editable, unconditionally, from the always-visible Interests card above —
+                this in-section copy still follows the section's own read-only state since it sits inside the
+                pointer-events-none wrapper when this stage card is future/unknown. */}
             <div className="grid grid-cols-2 gap-3">
               {readOnly ? (
                 <>
@@ -1816,8 +1839,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
               }
             </FieldRow>
             {client.holdShipmentDate && new Date(client.holdShipmentDate) > new Date() && (
-              <div className="px-3 py-2 rounded-md bg-red-50 border border-red-200">
-                <span className="text-sm font-semibold text-red-700">
+              <div className="px-3 py-2 rounded-md bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30">
+                <span className="text-sm font-semibold text-red-700 dark:text-red-300">
                   🚨 Do not ship until {formatFullDate(client.holdShipmentDate)}
                 </span>
               </div>
@@ -1836,55 +1859,54 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
   return (
     <div
+      className="bg-gray-50 dark:bg-[#1A1917]"
       style={{
         position: 'fixed', inset: 0, zIndex: 60,
-        backgroundColor: '#f9fafb',
         overflowY: 'auto',
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateX(0)' : 'translateX(32px)',
         transition: 'opacity 0.22s ease, transform 0.22s ease',
       }}
     >
-      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-6 py-3">
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1A1917] border-b border-gray-200 dark:border-white/10 px-6 py-3">
         <div className="max-w-[1200px] mx-auto flex items-center gap-3">
           <button type="button" onClick={handleClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors">
             <CaretLeftIcon size={16} />
             Go back
           </button>
           <button
             onClick={() => setShowAllFields(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
           >
-            {showAllFields ? '← Stage view' : 'View all fields'}
+            {showAllFields ? 'Current Stage' : 'All Stages'}
           </button>
         </div>
       </div>
       <div className="max-w-[1200px] mx-auto p-6 space-y-4">
 
         {/* Header card */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
           <div className="flex items-start gap-6 flex-wrap">
             <div className="flex items-start gap-3">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-semibold flex-shrink-0"
-                style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-semibold flex-shrink-0 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300">
                 {client.initials}
               </div>
               <div className="min-w-0">
-                <div className="text-2xl font-semibold text-gray-900">{client.displayName}</div>
+                <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF]">{client.displayName}</div>
                 <div className="flex items-center gap-3 mt-2">
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-lg font-medium"
                     style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
                     {client.stage}
                   </span>
-                  <span className="text-lg text-gray-500">{client.studio || '—'}</span>
+                  <span className="text-lg text-gray-500 dark:text-gray-400">{client.studio || '—'}</span>
                 </div>
               </div>
             </div>
             {client.flagCount > 0 && (
               <div className="flex flex-wrap gap-2">
                 {client.activeFlagLabels.map(label => (
-                  <span key={label} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-red-50 text-red-600 border border-red-200">
+                  <span key={label} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" />
                     {label}
                   </span>
@@ -1894,34 +1916,34 @@ const FullProfileModal = React.memo(function FullProfileModal({
           </div>
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="text-base text-gray-400 uppercase tracking-wide">Wedding Date</div>
-              <div className="text-lg text-gray-900 font-medium mt-1">{client.weddingDisplay}</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Wedding Date</div>
+              <div className="text-lg text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.weddingDisplay}</div>
             </div>
             <div>
-              <div className="text-base text-gray-400 uppercase tracking-wide">Sales Associate</div>
-              <div className="text-lg text-gray-900 font-medium mt-1">{client.salesAssociateName || '—'}</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Sales Associate</div>
+              <div className="text-lg text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.salesAssociateName || '—'}</div>
               {client.formattedSAPhone && (
-                <a href={`tel:${client.salesAssociatePhone}`} className="text-lg text-blue-600 block">{client.formattedSAPhone}</a>
+                <a href={`tel:${client.salesAssociatePhone}`} className="text-lg text-blue-600 dark:text-blue-400 block">{client.formattedSAPhone}</a>
               )}
             </div>
             <div>
-              <div className="text-base text-gray-400 uppercase tracking-wide">Email</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Email</div>
               {client.email
-                ? <a href={`mailto:${client.email}`} className="text-lg text-blue-600 font-medium mt-1 block truncate">{client.email}</a>
-                : <div className="text-lg text-gray-400 mt-1">—</div>}
+                ? <a href={`mailto:${client.email}`} className="text-lg text-blue-600 dark:text-blue-400 font-medium mt-1 block truncate">{client.email}</a>
+                : <div className="text-lg text-gray-400 dark:text-gray-500 mt-1">—</div>}
             </div>
             <div>
-              <div className="text-base text-gray-400 uppercase tracking-wide">Phone</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Phone</div>
               {client.formattedPhone
-                ? <a href={`tel:${client.phone}`} className="text-lg text-blue-600 font-medium mt-1 block">{client.formattedPhone}</a>
-                : <div className="text-lg text-gray-400 mt-1">—</div>}
+                ? <a href={`tel:${client.phone}`} className="text-lg text-blue-600 dark:text-blue-400 font-medium mt-1 block">{client.formattedPhone}</a>
+                : <div className="text-lg text-gray-400 dark:text-gray-500 mt-1">—</div>}
             </div>
           </div>
         </div>
 
         {/* Stage progress */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
-          <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">STAGE IN PIPELINE</div>
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">STAGE IN PIPELINE</div>
           <div className="flex items-start">
             {STAGE_STEPS.map((step, index) => {
               const isCurrent = index === currentStageIndex;
@@ -1935,19 +1957,19 @@ const FullProfileModal = React.memo(function FullProfileModal({
                       </div>
                     )}
                     {isCurrent && (
-                      <div className="w-6 h-6 rounded-full border-2 border-emerald-700 bg-white flex items-center justify-center">
+                      <div className="w-6 h-6 rounded-full border-2 border-emerald-700 bg-white dark:bg-[#242220] flex items-center justify-center">
                         <div className="w-2.5 h-2.5 rounded-full bg-emerald-700" />
                       </div>
                     )}
                     {!isPast && !isCurrent && (
-                      <div className="w-6 h-6 rounded-full border-2 border-gray-300 bg-white" />
+                      <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-white/10 bg-white dark:bg-[#242220]" />
                     )}
-                    <span className={`text-sm mt-2 text-center ${isCurrent ? 'text-emerald-700 font-semibold' : 'text-gray-500'}`}>
+                    <span className={`text-sm mt-2 text-center ${isCurrent ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
                       {STAGE_LABELS[step] ?? step}
                     </span>
                   </div>
                   {index < STAGE_STEPS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mt-3 mx-1 ${index < currentStageIndex ? 'bg-emerald-700' : 'bg-gray-300'}`} />
+                    <div className={`flex-1 h-0.5 mt-3 mx-1 ${index < currentStageIndex ? 'bg-emerald-700' : 'bg-gray-300 dark:bg-white/10'}`} />
                   )}
                 </React.Fragment>
               );
@@ -1956,24 +1978,24 @@ const FullProfileModal = React.memo(function FullProfileModal({
         </div>
 
         {/* Appointment details — always shown */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
-          <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">APPOINTMENT DETAILS</div>
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">APPOINTMENT DETAILS</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="text-sm text-gray-400 uppercase tracking-wide">Next Appointment</div>
-              <div className="text-base text-gray-900 font-medium mt-1">{client.nextAppointment ? formatShortDate(client.nextAppointment) : '—'}</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Next Appointment</div>
+              <div className="text-base text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.nextAppointment ? formatShortDate(client.nextAppointment) : '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-400 uppercase tracking-wide">Last Appointment</div>
-              <div className="text-base text-gray-900 font-medium mt-1">{client.lastAppointment ? formatShortDate(client.lastAppointment) : '—'}</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Last Appointment</div>
+              <div className="text-base text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.lastAppointment ? formatShortDate(client.lastAppointment) : '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-400 uppercase tracking-wide">Room</div>
-              <div className="text-base text-gray-900 font-medium mt-1">{client.nextAppointmentRoom || '—'}</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Room</div>
+              <div className="text-base text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.nextAppointmentRoom || '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-400 uppercase tracking-wide">Total Appointments</div>
-              <div className="text-base text-blue-600 font-medium mt-1">{client.appointmentCount}</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Total Appointments</div>
+              <div className="text-base text-blue-600 dark:text-blue-400 font-medium mt-1">{client.appointmentCount}</div>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -1983,9 +2005,9 @@ const FullProfileModal = React.memo(function FullProfileModal({
               { label: 'Follow-Up',    flag: client.flagFollowUp,         yes: 'Pending',  no: 'Sent' },
             ].map(({ label, flag, yes, no }) => (
               <div key={label}>
-                <div className="text-sm text-gray-400 uppercase tracking-wide">{label}</div>
+                <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</div>
                 <div className="mt-1">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${flag ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${flag ? 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30' : 'bg-emerald-50 dark:bg-green-500/15 text-emerald-700 dark:text-green-300 border border-emerald-200 dark:border-green-500/30'}`}>
                     {flag ? yes : no}
                   </span>
                 </div>
@@ -1996,27 +2018,27 @@ const FullProfileModal = React.memo(function FullProfileModal({
         </div>
 
         {/* Interests — always shown */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
           <div className="flex gap-8">
-            {[
-              { label: 'Interest in Custom', value: client.interestCustom },
-              { label: 'Interest in Alts',   value: client.interestAlts },
-              { label: 'Interest in M2M',    value: client.interestM2M },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <div className="text-sm text-gray-400 uppercase tracking-wide">{label}</div>
-                <div className={`text-base font-medium ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value ? 'Yes' : 'No'}</div>
-              </div>
-            ))}
+            <div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Interest in Custom</div>
+              <div className={`text-base font-medium ${client.interestCustom ? 'text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-400 dark:text-gray-500'}`}>{client.interestCustom ? 'Yes' : 'No'}</div>
+            </div>
+            <div className="w-40">
+              <BooleanDropdown label="Interest in Alts" value={client.interestAlts} fieldId={FIELD_IDS.CLIENT_INTEREST_ALTS} recordId={client.id} base={base} />
+            </div>
+            <div className="w-40">
+              <BooleanDropdown label="Interest in M2M" value={client.interestM2M} fieldId={FIELD_IDS.CLIENT_INTEREST_M2M} recordId={client.id} base={base} />
+            </div>
           </div>
         </div>
 
         {/* Notes — always shown */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
-          <div className="text-sm text-gray-400 uppercase tracking-wide mb-2">POST-APPOINTMENT NOTES</div>
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">POST-APPOINTMENT NOTES</div>
           {client.apptNotes
-            ? <p className="text-base text-gray-700 whitespace-pre-wrap">{client.apptNotes}</p>
-            : <p className="text-base text-gray-400">No notes yet.</p>}
+            ? <p className="text-base text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{client.apptNotes}</p>
+            : <p className="text-base text-gray-400 dark:text-gray-500">No notes yet.</p>}
         </div>
 
         {/* Stage-specific section(s) */}
@@ -2027,10 +2049,10 @@ const FullProfileModal = React.memo(function FullProfileModal({
               const forceReadOnly = !stageIsKnown;
               const readOnly = forceReadOnly || isFutureStage(client.stage, sectionStage);
               return (
-                <div key={sectionStage} className={`bg-white border border-gray-200 rounded-lg p-5 ${readOnly ? 'opacity-60' : ''}`}>
+                <div key={sectionStage} className={`bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 ${readOnly ? 'opacity-60' : ''}`}>
                   <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{STAGE_DISPLAY_LABELS[sectionStage] ?? sectionStage}</h3>
-                    {readOnly && <span className="text-sm text-gray-400 italic">{forceReadOnly ? 'read only' : 'future stage — read only'}</span>}
+                    <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{STAGE_DISPLAY_LABELS[sectionStage] ?? sectionStage}</h3>
+                    {readOnly && <span className="text-sm text-gray-400 dark:text-gray-500 italic">{forceReadOnly ? 'read only' : 'future stage — read only'}</span>}
                   </div>
                   <div className={readOnly ? 'pointer-events-none' : ''}>
                     {renderStageSection(sectionStage, readOnly)}
@@ -2041,13 +2063,19 @@ const FullProfileModal = React.memo(function FullProfileModal({
           </div>
         ) : (
           stageIsKnown ? (
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
               <div className="flex items-center gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{STAGE_DISPLAY_LABELS[client.stage] ?? client.stage}</h3>
+                <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{STAGE_DISPLAY_LABELS[client.stage] ?? client.stage}</h3>
               </div>
               {renderStageSection(client.stage, false)}
             </div>
-          ) : null
+          ) : (
+            <div className="bg-yellow-50 dark:bg-yellow-500/15 border border-yellow-200 dark:border-yellow-500/30 rounded-lg p-5 flex items-center gap-2">
+              <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+                Unrecognized stage "{client.stage || '—'}" — no stage details to show. Switch to All Stages to view everything read-only.
+              </span>
+            </div>
+          )
         )}
 
       </div>
@@ -2256,6 +2284,7 @@ const KANBAN_PAGE_SIZE = 12;
 // MAIN PIPELINE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 function Pipeline(): React.ReactElement {
+  useTheme();
   const base = useBase();
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = customPropertyValueByKey?.clientsTable as Table | undefined;
