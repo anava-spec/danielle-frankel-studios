@@ -2291,7 +2291,7 @@ function ViewDropdown({ value, onChange }: { value: 'kanban'|'list'; onChange: (
           <span className="truncate text-center">{VIEW_LABELS[value]}</span>
         </button>
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[160px] py-1">
+          <div className="absolute top-full right-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[110px] py-1">
             {VIEW_OPTIONS.map(option => (
               <button key={option} type="button" onClick={() => handleSelect(option)}
                 className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
