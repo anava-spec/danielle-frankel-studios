@@ -2731,19 +2731,25 @@ function Pipeline(): React.ReactElement {
     return Array.from(inPipeline).sort();
   }, [clientsData, activeStaffNames]);
 
+  // Stage filter only applies to List view (Kanban already groups by stage via its
+  // own columns), but the selection itself persists across view switches.
   const filteredClients = useMemo(() => {
     const studioSet = studioFilter.length > 0 ? new Set(studioFilter) : null;
     const salesSet  = salespersonFilter.length > 0 ? new Set(salespersonFilter) : null;
-    const stageSet  = stageFilter.length > 0 ? new Set(stageFilter) : null;
     return clientsData.filter(c => {
       if (!c.isOnBoard) return false;
       if (studioSet && !studioSet.has(c.studio)) return false;
       if (salesSet && !salesSet.has(c.salesAssociateName)) return false;
-      if (stageSet && !stageSet.has(STAGE_DISPLAY_LABELS[c.stage] ?? c.stage)) return false;
       if (timelineFilter !== null && c.timelineBucket !== timelineFilter) return false;
       return true;
     });
-  }, [clientsData, studioFilter, salespersonFilter, stageFilter, timelineFilter]);
+  }, [clientsData, studioFilter, salespersonFilter, timelineFilter]);
+
+  const listFilteredClients = useMemo(() => {
+    const stageSet = stageFilter.length > 0 ? new Set(stageFilter) : null;
+    if (!stageSet) return filteredClients;
+    return filteredClients.filter(c => stageSet.has(STAGE_DISPLAY_LABELS[c.stage] ?? c.stage));
+  }, [filteredClients, stageFilter]);
 
   const clientsByStage = useMemo(() => {
     const map: Record<string, ClientData[]> = {};
@@ -2776,8 +2782,10 @@ function Pipeline(): React.ReactElement {
   const handleCloseFullProfile = useCallback(() => { setSelectedClientId(null); setFullProfileOpen(false); }, []);
   const clearAllFilters        = useCallback(() => { setStudioFilter([]); setSalespersonFilter([]); setStageFilter([]); setTimelineFilter(null); }, []);
 
-  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || stageFilter.length > 0 || timelineFilter !== null;
-  const noMatchingClients = filteredClients.length === 0 && hasActiveFilters;
+  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null
+    || (viewMode === 'list' && stageFilter.length > 0);
+  const visibleClients    = viewMode === 'list' ? listFilteredClients : filteredClients;
+  const noMatchingClients = visibleClients.length === 0 && hasActiveFilters;
 
   if (errorState) {
     return (
@@ -2878,7 +2886,7 @@ function Pipeline(): React.ReactElement {
       ) : (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-white dark:bg-[#242220] pt-3">
           <PipelineListView
-            clients={filteredClients}
+            clients={listFilteredClients}
             suppressEmptyMessage={noMatchingClients}
             onSelectClient={(c) => {
               setSelectedClientId(c.id);
