@@ -154,15 +154,6 @@ const STAGE_ORDER = [
 ] as const;
 type StageName = (typeof STAGE_ORDER)[number];
 
-const STAGE_LABELS: Record<string, string> = {
-  'Pre-Appointment': 'PRE-APPOINTMENT',
-  'Deliberating':    'DELIBERATING',
-  'Sold':            'SOLD',
-  'In Production':   'ORDER READY',
-  'In Alterations':  'ALTERATIONS',
-  'In Fulfillment':  'FULFILLMENT',
-};
-
 const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Pre-Appointment': 'Pre-Appointment',
   'Deliberating': 'Deliberating',
@@ -560,28 +551,28 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 font-medium">{label}</span>
+      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</span>
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
             {options.map(option => (
               <button key={option} type="button" onClick={() => toggleOption(option)}
-                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected.includes(option) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected.includes(option) ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                 <span className="truncate">{option}</span>
               </button>
             ))}
-            {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">No options</div>}
+            {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No options</div>}
           </div>
         )}
       </div>
       {selected.length > 0 && (
         <button type="button" onClick={() => onChange([])}
-          className="text-sm text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline cursor-pointer transition-colors">
+          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline-offset-2 hover:underline cursor-pointer transition-colors">
           Clear
         </button>
       )}
@@ -621,28 +612,28 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 font-medium">{label}</span>
+      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</span>
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[200px] py-1">
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[200px] py-1">
             {options.map(option => (
               <button key={option} type="button" onClick={() => handleSelect(option)}
-                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected === option ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected === option ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                 <span className="truncate">{option}</span>
               </button>
             ))}
-            {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">No options</div>}
+            {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No options</div>}
           </div>
         )}
       </div>
       {selected !== null && (
         <button type="button" onClick={() => onChange(null)}
-          className="text-sm text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline cursor-pointer transition-colors">
+          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline-offset-2 hover:underline cursor-pointer transition-colors">
           Clear
         </button>
       )}
@@ -663,31 +654,31 @@ const ClientCard = React.memo(function ClientCard({ client, stageColors, onCardC
   return (
     <div
       onClick={() => onCardClick(client.id)}
-      className="relative bg-white border rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow space-y-1"
+      className="relative bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow space-y-1"
       style={{ borderLeftColor: stageColors.bg, borderLeftWidth: '3px' }}
     >
       {/* Flag badge: absolute top-right */}
       {client.flagCount > 0 && (
         <div className="absolute top-2 right-2">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30">
             {client.flagCount} flag{client.flagCount === 1 ? '' : 's'}
           </span>
         </div>
       )}
 
       {/* Client name — add pr-10 to avoid overlap with flag badge */}
-      <div className="text-sm font-semibold text-gray-900 truncate pr-10">{client.displayName}</div>
+      <div className="text-sm font-semibold text-gray-900 dark:text-[#F5F3EF] truncate pr-10">{client.displayName}</div>
 
       {client.lastPhaseChange && (
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-gray-400 dark:text-gray-500">
           Last Phase Change: {new Date(client.lastPhaseChange).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </div>
       )}
       {client.salesAssociateName && (
-        <div className="text-xs text-gray-600">SA: {client.salesAssociateName}</div>
+        <div className="text-xs text-gray-600 dark:text-gray-400">SA: {client.salesAssociateName}</div>
       )}
       {client.nextAppointmentAltLead && (
-        <div className="text-xs text-gray-600">AL: {client.nextAppointmentAltLead}</div>
+        <div className="text-xs text-gray-600 dark:text-gray-400">AL: {client.nextAppointmentAltLead}</div>
       )}
     </div>
   );
@@ -921,10 +912,13 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
     const spaceBelow = vpH - rect.bottom;
     const spaceAbove = rect.top;
     const flipUp = spaceBelow < POPUP_HEIGHT_ESTIMATE && spaceAbove > spaceBelow;
+    // Note: position is 'fixed', so coordinates are already viewport-relative —
+    // do NOT add window.scrollX/scrollY here, that would offset the popup away
+    // from its trigger as soon as the page is scrolled.
     setCoords(
       flipUp
-        ? { bottom: vpH - rect.top + MARGIN, left: rect.left + window.scrollX, width: popupW }
-        : { top: rect.bottom + window.scrollY + MARGIN, left: rect.left + window.scrollX, width: popupW }
+        ? { bottom: vpH - rect.top + MARGIN, left: rect.left, width: popupW }
+        : { top: rect.bottom + MARGIN, left: rect.left, width: popupW }
     );
   }, []);
 
@@ -1421,7 +1415,7 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
   return (
     <div className="overflow-auto flex-1 px-4 pb-4">
       <table className="w-full text-sm border-collapse">
-        <thead className="sticky top-0 bg-white border-b border-gray-200 z-10">
+        <thead className="sticky top-0 bg-white dark:bg-[#1A1917] border-b border-gray-200 dark:border-white/10 z-10">
           <tr>
             {[
               { col: 'name', label: 'Client' },
@@ -1436,7 +1430,7 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
               <th
                 key={col}
                 onClick={() => toggleSort(col as typeof sortCol)}
-                className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-900 select-none"
+                className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide cursor-pointer hover:text-gray-900 dark:hover:text-[#F5F3EF] select-none"
               >
                 {label}<SortIcon col={col as typeof sortCol} />
               </th>
@@ -1446,31 +1440,31 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
         <tbody>
           {sorted.map(client => (
             <tr key={client.id} onClick={() => onSelectClient(client)}
-              className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
-              <td className="px-3 py-2.5 font-medium text-gray-900">{client.displayName}</td>
+              className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer">
+              <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-[#F5F3EF]">{client.displayName}</td>
               <td className="px-3 py-2.5">
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300">
                   {client.stage}
                 </span>
               </td>
-              <td className="px-3 py-2.5 text-gray-600">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment) : '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment) : '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600">{client.studio || '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600">{client.salesAssociateName || '—'}</td>
-              <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{client.amOrderStr || client.amOrderNumber || '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment) : '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment) : '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.studio || '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.salesAssociateName || '—'}</td>
+              <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 font-mono text-xs">{client.amOrderStr || client.amOrderNumber || '—'}</td>
               <td className="px-3 py-2.5">
                 {client.flagCount > 0 ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30">
                     {client.flagCount} flag{client.flagCount === 1 ? '' : 's'}
                   </span>
                 ) : (
-                  <span className="text-gray-300 text-xs">—</span>
+                  <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                 )}
               </td>
             </tr>
           ))}
           {sorted.length === 0 && (
-            <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400 text-sm">No clients match the current filters.</td></tr>
+            <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No clients match the current filters.</td></tr>
           )}
         </tbody>
       </table>
@@ -1664,22 +1658,6 @@ const FullProfileModal = React.memo(function FullProfileModal({
               <DetailRow label="Appt Photos" value={client.flagNoPhotos ? 'Missing' : 'Present'} />
               <div />
             </FieldRow>
-            {/* Alts/M2M are also directly editable, unconditionally, from the always-visible Interests card above —
-                this in-section copy still follows the section's own read-only state since it sits inside the
-                pointer-events-none wrapper when this stage card is future/unknown. */}
-            <div className="grid grid-cols-2 gap-3">
-              {readOnly ? (
-                <>
-                  <DetailRow label="Interest in Alts" value={client.interestAlts ? 'Yes' : 'No'} />
-                  <DetailRow label="Interest in M2M" value={client.interestM2M ? 'Yes' : 'No'} />
-                </>
-              ) : (
-                <>
-                  <BooleanDropdown label="Interest in Alts" value={client.interestAlts} fieldId={FIELD_IDS.CLIENT_INTEREST_ALTS} recordId={client.id} base={base} />
-                  <BooleanDropdown label="Interest in M2M" value={client.interestM2M} fieldId={FIELD_IDS.CLIENT_INTEREST_M2M} recordId={client.id} base={base} />
-                </>
-              )}
-            </div>
             {readOnly
               ? <DetailRow label="Appointment Notes" value={client.apptNotes || '—'} />
               : <EditableText label="Appointment Notes" value={client.apptNotes} fieldId={FIELD_IDS.CLIENT_APPT_NOTES} recordId={client.id} base={base} multiline />
@@ -1878,7 +1856,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
             onClick={() => setShowAllFields(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
           >
-            {showAllFields ? 'Current Stage' : 'All Stages'}
+            {showAllFields ? 'Show current stage' : 'Show all stages'}
           </button>
         </div>
       </div>
@@ -1888,9 +1866,6 @@ const FullProfileModal = React.memo(function FullProfileModal({
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
           <div className="flex items-start gap-6 flex-wrap">
             <div className="flex items-start gap-3">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-semibold flex-shrink-0 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300">
-                {client.initials}
-              </div>
               <div className="min-w-0">
                 <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF]">{client.displayName}</div>
                 <div className="flex items-center gap-3 mt-2">
@@ -1942,7 +1917,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
         {/* Stage progress */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">STAGE IN PIPELINE</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">Stage in pipeline</div>
           <div className="flex items-start">
             {STAGE_STEPS.map((step, index) => {
               const isCurrent = index === currentStageIndex;
@@ -1964,7 +1939,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
                       <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-white/10 bg-white dark:bg-[#242220]" />
                     )}
                     <span className={`text-sm mt-2 text-center ${isCurrent ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
-                      {STAGE_LABELS[step] ?? step}
+                      {STAGE_DISPLAY_LABELS[step] ?? step}
                     </span>
                   </div>
                   {index < STAGE_STEPS.length - 1 && (
@@ -1978,7 +1953,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
         {/* Appointment details — always shown */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">APPOINTMENT DETAILS</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">Appointment details</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Next Appointment</div>
@@ -2034,7 +2009,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
         {/* Notes — always shown */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">POST-APPOINTMENT NOTES</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Post-appointment notes</div>
           {client.apptNotes
             ? <p className="text-base text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{client.apptNotes}</p>
             : <p className="text-base text-gray-400 dark:text-gray-500">No notes yet.</p>}
@@ -2172,7 +2147,7 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
 
   return (
     <div ref={containerRef} className="relative w-72">
-      <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
+      <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none z-10" />
       <input
         ref={inputRef}
         type="text"
@@ -2180,22 +2155,22 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
         onChange={e => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Search by name, phone, email, AM order…"
-        className="w-full border border-gray-300 rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+        className="w-full bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 dark:text-[#F5F3EF] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 placeholder:text-gray-400 dark:placeholder:text-gray-500"
       />
       {query && (
         <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
           <XIcon size={14} />
         </button>
       )}
       {open && (
         <div
           ref={listRef}
-          className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-y-auto"
+          className="absolute left-0 top-full mt-1 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg z-50 overflow-y-auto"
           style={{ width: 440, maxHeight: 360 }}
         >
           {results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-gray-400">No matches found.</div>
+            <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">No matches found.</div>
           ) : results.map((c, i) => {
             const stageColors = stageColorsByStage.get(c.stage) ?? DEFAULT_STAGE_COLORS;
             return (
@@ -2204,19 +2179,19 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
               data-active={i === activeIdx ? 'true' : 'false'}
               onMouseEnter={() => setActiveIdx(i)}
               onClick={() => handleSelect(c.id)}
-              className={`px-4 py-2.5 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${i === activeIdx ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+              className={`px-4 py-2.5 cursor-pointer border-b border-gray-100 dark:border-white/10 last:border-b-0 transition-colors ${i === activeIdx ? 'bg-blue-50 dark:bg-blue-500/15' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-gray-900 text-sm truncate">{c.displayName}</span>
-                  {c.amOrderStr && <span className="text-xs text-gray-400 flex-shrink-0">AM: {c.amOrderStr}</span>}
+                  <span className="font-medium text-gray-900 dark:text-[#F5F3EF] text-sm truncate">{c.displayName}</span>
+                  {c.amOrderStr && <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">AM: {c.amOrderStr}</span>}
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
                   style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
                   {c.stage}
                 </span>
               </div>
-              <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
                 {c.formattedPhone && <span>{c.formattedPhone}</span>}
                 {c.email         && <span className="truncate max-w-[160px]">{c.email}</span>}
               </div>
@@ -2255,18 +2230,18 @@ function ViewDropdown({ value, onChange }: { value: 'kanban'|'list'; onChange: (
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 font-medium">View</span>
+      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">View</span>
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
           <span className="truncate">{VIEW_LABELS[value]}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[160px] py-1">
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[160px] py-1">
             {VIEW_OPTIONS.map(option => (
               <button key={option} type="button" onClick={() => handleSelect(option)}
-                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}>
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                 <span className="truncate">{VIEW_LABELS[option]}</span>
               </button>
             ))}
@@ -2718,10 +2693,10 @@ function Pipeline(): React.ReactElement {
 
   if (errorState) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white dark:bg-[#1A1917] flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-lg font-semibold text-gray-900">Error loading configuration</p>
-          <p className="text-sm text-gray-500 mt-1">Please check the properties panel.</p>
+          <p className="text-lg font-semibold text-gray-900 dark:text-[#F5F3EF]">Error loading configuration</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Please check the properties panel.</p>
         </div>
       </div>
     );
@@ -2729,19 +2704,19 @@ function Pipeline(): React.ReactElement {
 
   if (!clientsTable || !fields?.stage) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white dark:bg-[#1A1917] flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-lg font-semibold text-gray-900">Configuration Required</p>
-          <p className="text-sm text-gray-500 mt-1">This Pipeline interface requires the Clients table. Configure it in the properties panel.</p>
+          <p className="text-lg font-semibold text-gray-900 dark:text-[#F5F3EF]">Configuration Required</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">This Pipeline interface requires the Clients table. Configure it in the properties panel.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col" style={{ backgroundColor: '#F6F4F0' }}>
+    <div className="h-screen flex flex-col bg-[#F6F4F0] dark:bg-[#1A1917]">
       {/* Filter row */}
-      <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 bg-white flex-shrink-0">
+      <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
@@ -2754,28 +2729,28 @@ function Pipeline(): React.ReactElement {
       </div>
 
       {noMatchingClients && (
-        <div className="px-4 py-2 text-xs text-gray-500 flex items-center gap-2 flex-shrink-0">
+        <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-shrink-0">
           <span>No clients match the current filters.</span>
-          <button type="button" onClick={clearAllFilters} className="text-blue-600 hover:underline">Clear all filters</button>
+          <button type="button" onClick={clearAllFilters} className="text-blue-600 dark:text-blue-400 hover:underline">Clear all filters</button>
         </div>
       )}
 
       {/* Main content — Kanban or List */}
       {viewMode === 'kanban' ? (
-        <div className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50">
+        <div className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
           {STAGE_ORDER.map(stage => {
             const clients     = clientsByStage[stage] ?? [];
             const stageColors = stageColorsByStage.get(stage) ?? DEFAULT_STAGE_COLORS;
-            const stageLabel  = STAGE_LABELS[stage] ?? stage;
+            const stageLabel  = STAGE_DISPLAY_LABELS[stage] ?? stage;
             const page        = stagePage[stage] ?? 0;
             const totalPages  = Math.max(1, Math.ceil(clients.length / KANBAN_PAGE_SIZE));
             const pagedClients = clients.slice(page * KANBAN_PAGE_SIZE, (page + 1) * KANBAN_PAGE_SIZE);
             const canPrev     = page > 0;
             const canNext     = page < totalPages - 1;
             return (
-              <div key={stage} className="flex-1 min-w-0 flex flex-col bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200">
-                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{stageLabel}</span>
+              <div key={stage} className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
+                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{stageLabel}</span>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
                     style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
                     {formatStageCount(clients.length)}
@@ -2783,25 +2758,25 @@ function Pipeline(): React.ReactElement {
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {clients.length === 0
-                    ? <div className="py-12 text-center text-xs text-gray-400">No clients in this stage</div>
+                    ? <div className="py-12 text-center text-xs text-gray-400 dark:text-gray-500">No clients in this stage</div>
                     : pagedClients.map(client => (
                         <ClientCard key={client.id} client={client} stageColors={stageColors} onCardClick={handleCardClick} />
                       ))}
                 </div>
                 {clients.length > KANBAN_PAGE_SIZE && (
-                  <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-gray-100 bg-gray-50">
+                  <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-gray-100 dark:border-white/10 bg-gray-50 dark:bg-[#1A1917]">
                     <button
                       type="button"
                       onClick={() => setStagePage(p => ({ ...p, [stage]: page - 1 }))}
                       disabled={!canPrev}
-                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-default transition-colors"
+                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors"
                     >← Prev</button>
-                    <span className="text-xs text-gray-400">{page + 1} / {totalPages}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{page + 1} / {totalPages}</span>
                     <button
                       type="button"
                       onClick={() => setStagePage(p => ({ ...p, [stage]: page + 1 }))}
                       disabled={!canNext}
-                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-default transition-colors"
+                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors"
                     >Next →</button>
                   </div>
                 )}
@@ -2810,7 +2785,7 @@ function Pipeline(): React.ReactElement {
           })}
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-white pt-3">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-white dark:bg-[#242220] pt-3">
           <PipelineListView
             clients={filteredClients}
             onSelectClient={(c) => {
