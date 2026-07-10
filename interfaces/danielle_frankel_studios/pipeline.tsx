@@ -1464,12 +1464,11 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
   const SortIcon = ({ col }: { col: SortCol }) => {
     const idx = sortEntries.findIndex(e => e.col === col);
     const entry = idx === -1 ? null : sortEntries[idx];
+    if (!entry) return null;
     return (
       <span className="ml-1 inline-flex items-center gap-1">
-        {entry
-          ? (entry.dir === 'asc' ? <CaretUpIcon size={12} weight="bold" /> : <CaretDownIcon size={12} weight="bold" />)
-          : <CaretDownIcon size={12} className="opacity-30" />}
-        {sortEntries.length > 1 && idx !== -1 && (
+        {entry.dir === 'asc' ? <CaretUpIcon size={12} weight="bold" /> : <CaretDownIcon size={12} weight="bold" />}
+        {sortEntries.length > 1 && (
           <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-blue-600 text-white text-[9px] font-semibold leading-none">
             {idx + 1}
           </span>
