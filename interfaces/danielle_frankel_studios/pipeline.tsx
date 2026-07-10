@@ -905,22 +905,34 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
   const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!anchorRef.current) return;
-    const rect   = anchorRef.current.getBoundingClientRect();
-    const vpH    = window.innerHeight;
-    const popupW = width ?? rect.width;
-    const spaceBelow = vpH - rect.bottom;
-    const spaceAbove = rect.top;
-    const flipUp = spaceBelow < POPUP_HEIGHT_ESTIMATE && spaceAbove > spaceBelow;
-    // Note: position is 'fixed', so coordinates are already viewport-relative —
-    // do NOT add window.scrollX/scrollY here, that would offset the popup away
-    // from its trigger as soon as the page is scrolled.
-    setCoords(
-      flipUp
-        ? { bottom: vpH - rect.top + MARGIN, left: rect.left, width: popupW }
-        : { top: rect.bottom + MARGIN, left: rect.left, width: popupW }
-    );
-  }, []);
+    const updateCoords = () => {
+      if (!anchorRef.current) return;
+      const rect   = anchorRef.current.getBoundingClientRect();
+      const vpH    = window.innerHeight;
+      const popupW = width ?? rect.width;
+      const spaceBelow = vpH - rect.bottom;
+      const spaceAbove = rect.top;
+      const flipUp = spaceBelow < POPUP_HEIGHT_ESTIMATE && spaceAbove > spaceBelow;
+      // Note: position is 'fixed', so coordinates are already viewport-relative —
+      // do NOT add window.scrollX/scrollY here, that would offset the popup away
+      // from its trigger as soon as the page is scrolled.
+      setCoords(
+        flipUp
+          ? { bottom: vpH - rect.top + MARGIN, left: rect.left, width: popupW }
+          : { top: rect.bottom + MARGIN, left: rect.left, width: popupW }
+      );
+    };
+    updateCoords();
+    // Keep the popup glued to its trigger as the page (or any scrollable
+    // ancestor, e.g. the modal body) scrolls, instead of staying fixed
+    // relative to the viewport while the field moves underneath it.
+    window.addEventListener('scroll', updateCoords, true);
+    window.addEventListener('resize', updateCoords);
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords);
+    };
+  }, [width]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
