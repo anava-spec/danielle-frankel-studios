@@ -2768,10 +2768,6 @@ function Pipeline(): React.ReactElement {
 
   useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, stageFilter, timelineFilter]);
 
-  // The Stage filter is only exposed in the List layout — clear it when
-  // switching away so it can't silently keep affecting Kanban with no visible control.
-  useEffect(() => { if (viewMode !== 'list' && stageFilter.length > 0) setStageFilter([]); }, [viewMode]);
-
   const handleCardClick = useCallback((id: string) => {
     setSelectedClientId(id);
     setFullProfileOpen(true);
