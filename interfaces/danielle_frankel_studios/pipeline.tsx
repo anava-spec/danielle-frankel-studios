@@ -694,7 +694,7 @@ function DetailRow({ label, value, fieldId }: { label: string; value: string | n
   const source = fieldId ? getFieldSource(fieldId) : null;
   return (
     <div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium flex items-center gap-1">
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide font-medium flex items-center gap-1">
         {label}
         {source && (
           <span
@@ -1364,7 +1364,7 @@ function MeasurementInputs({ measBust, measWaist, measHips, measHeight, recordId
   ];
   return (
     <div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1">Measurements</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide font-medium mb-1">Measurements</div>
       <div className="grid grid-cols-4 gap-2">
         {measurements.map(m => (
           <EditableNumber key={m.label} label={m.label} value={m.value} fieldId={m.fieldId} recordId={recordId} base={base} />
@@ -1430,7 +1430,7 @@ function PipelineListView({ clients, onSelectClient }: { clients: ClientData[]; 
               <th
                 key={col}
                 onClick={() => toggleSort(col as typeof sortCol)}
-                className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide cursor-pointer hover:text-gray-900 dark:hover:text-[#F5F3EF] select-none"
+                className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide cursor-pointer hover:text-gray-900 dark:hover:text-[#F5F3EF] select-none"
               >
                 {label}<SortIcon col={col as typeof sortCol} />
               </th>
@@ -1841,7 +1841,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
         position: 'fixed', inset: 0, zIndex: 60,
         overflowY: 'auto',
         opacity: visible ? 1 : 0,
-        transform: visible ? 'translateX(0)' : 'translateX(32px)',
+        transform: visible ? 'none' : 'translateX(32px)',
         transition: 'opacity 0.22s ease, transform 0.22s ease',
       }}
     >
@@ -1890,24 +1890,24 @@ const FullProfileModal = React.memo(function FullProfileModal({
           </div>
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Wedding Date</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Wedding Date</div>
               <div className="text-lg text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.weddingDisplay}</div>
             </div>
             <div>
-              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Sales Associate</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Sales Associate</div>
               <div className="text-lg text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.salesAssociateName || '—'}</div>
               {client.formattedSAPhone && (
                 <a href={`tel:${client.salesAssociatePhone}`} className="text-lg text-blue-600 dark:text-blue-400 block">{client.formattedSAPhone}</a>
               )}
             </div>
             <div>
-              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Email</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Email</div>
               {client.email
                 ? <a href={`mailto:${client.email}`} className="text-lg text-blue-600 dark:text-blue-400 font-medium mt-1 block truncate">{client.email}</a>
                 : <div className="text-lg text-gray-400 dark:text-gray-500 mt-1">—</div>}
             </div>
             <div>
-              <div className="text-base text-gray-400 dark:text-gray-500 uppercase tracking-wide">Phone</div>
+              <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Phone</div>
               {client.formattedPhone
                 ? <a href={`tel:${client.phone}`} className="text-lg text-blue-600 dark:text-blue-400 font-medium mt-1 block">{client.formattedPhone}</a>
                 : <div className="text-lg text-gray-400 dark:text-gray-500 mt-1">—</div>}
@@ -1917,7 +1917,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
         {/* Stage progress */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">Stage in pipeline</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-4">Stage in pipeline</div>
           <div className="flex items-start">
             {STAGE_STEPS.map((step, index) => {
               const isCurrent = index === currentStageIndex;
@@ -1953,22 +1953,22 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
         {/* Appointment details — always shown */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-4">Appointment details</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-4">Appointment details</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Next Appointment</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Next Appointment</div>
               <div className="text-base text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.nextAppointment ? formatShortDate(client.nextAppointment) : '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Last Appointment</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Last Appointment</div>
               <div className="text-base text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.lastAppointment ? formatShortDate(client.lastAppointment) : '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Room</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Room</div>
               <div className="text-base text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.nextAppointmentRoom || '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Total Appointments</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Total Appointments</div>
               <div className="text-base text-blue-600 dark:text-blue-400 font-medium mt-1">{client.appointmentCount}</div>
             </div>
           </div>
@@ -1979,7 +1979,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
               { label: 'Follow-Up',    flag: client.flagFollowUp,         yes: 'Pending',  no: 'Sent' },
             ].map(({ label, flag, yes, no }) => (
               <div key={label}>
-                <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</div>
+                <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">{label}</div>
                 <div className="mt-1">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${flag ? 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30' : 'bg-emerald-50 dark:bg-green-500/15 text-emerald-700 dark:text-green-300 border border-emerald-200 dark:border-green-500/30'}`}>
                     {flag ? yes : no}
@@ -1995,7 +1995,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
           <div className="flex gap-8">
             <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide">Interest in Custom</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Interest in Custom</div>
               <div className={`text-base font-medium ${client.interestCustom ? 'text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-400 dark:text-gray-500'}`}>{client.interestCustom ? 'Yes' : 'No'}</div>
             </div>
             <div className="w-40">
@@ -2009,7 +2009,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
 
         {/* Notes — always shown */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Post-appointment notes</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-2">Post-appointment notes</div>
           {client.apptNotes
             ? <p className="text-base text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{client.apptNotes}</p>
             : <p className="text-base text-gray-400 dark:text-gray-500">No notes yet.</p>}
@@ -2025,7 +2025,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
               return (
                 <div key={sectionStage} className={`bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 ${readOnly ? 'opacity-60' : ''}`}>
                   <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{STAGE_DISPLAY_LABELS[sectionStage] ?? sectionStage}</h3>
+                    <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-wider">{STAGE_DISPLAY_LABELS[sectionStage] ?? sectionStage}</h3>
                     {readOnly && <span className="text-sm text-gray-400 dark:text-gray-500 italic">{forceReadOnly ? 'read only' : 'future stage — read only'}</span>}
                   </div>
                   <div className={readOnly ? 'pointer-events-none' : ''}>
@@ -2039,7 +2039,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
           stageIsKnown ? (
             <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
               <div className="flex items-center gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">{STAGE_DISPLAY_LABELS[client.stage] ?? client.stage}</h3>
+                <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-wider">{STAGE_DISPLAY_LABELS[client.stage] ?? client.stage}</h3>
               </div>
               {renderStageSection(client.stage, false)}
             </div>
@@ -2750,7 +2750,7 @@ function Pipeline(): React.ReactElement {
             return (
               <div key={stage} className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
                 <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
-                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{stageLabel}</span>
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{stageLabel}</span>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
                     style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
                     {formatStageCount(clients.length)}
