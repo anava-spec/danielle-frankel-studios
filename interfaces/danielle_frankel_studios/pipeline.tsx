@@ -12,6 +12,7 @@ import {
   Phone as PhoneIcon,
   EnvelopeSimple as EnvelopeSimpleIcon,
   CaretDown as CaretDownIcon,
+  CaretUp as CaretUpIcon,
   X as XIcon,
   Check as CheckIcon,
   FloppyDisk as FloppyDiskIcon,
@@ -1410,29 +1411,46 @@ function FieldRow4({ children }: { children: React.ReactNode }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const LIST_PAGE_SIZE = 50;
 
+type SortCol = 'name'|'stage'|'lastAppt'|'nextAppt'|'weddingDate'|'studio'|'sa'|'am'|'flags';
+type SortEntry = { col: SortCol; dir: 'asc'|'desc' };
+
+function getSortValue(col: SortCol, c: ClientData): string | number {
+  switch (col) {
+    case 'name':        return c.fullName;
+    case 'stage':       return c.stage;
+    case 'lastAppt':    return c.lastAppointment ?? '9999';
+    case 'nextAppt':    return c.nextAppointment ?? '9999';
+    case 'weddingDate': return c.weddingDate ?? '9999';
+    case 'studio':      return c.studio;
+    case 'sa':          return c.salesAssociateName;
+    case 'am':          return c.amOrderStr ?? '';
+    case 'flags':       return c.flagCount;
+  }
+}
+
 function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void; suppressEmptyMessage?: boolean }) {
-  const [sortCol, setSortCol] = useState<'name'|'stage'|'lastAppt'|'nextAppt'|'weddingDate'|'studio'|'sa'|'am'|'flags'>('weddingDate');
-  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc');
+  const [sortEntries, setSortEntries] = useState<SortEntry[]>([{ col: 'weddingDate', dir: 'asc' }]);
   const [page, setPage] = useState(0);
 
-  function toggleSort(col: typeof sortCol) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(col); setSortDir('asc'); }
+  // Click cycle per column: not sorted → asc → desc → removed.
+  // Clicking a column not yet in the list appends it, so multi-sort order
+  // follows the order columns were clicked in.
+  function toggleSort(col: SortCol) {
+    setSortEntries(prev => {
+      const idx = prev.findIndex(e => e.col === col);
+      if (idx === -1) return [...prev, { col, dir: 'asc' }];
+      if (prev[idx]!.dir === 'asc') return prev.map((e, i) => i === idx ? { ...e, dir: 'desc' } : e);
+      return prev.filter((_, i) => i !== idx);
+    });
   }
 
   const sorted = [...clients].sort((a, b) => {
-    let va: string|number = '', vb: string|number = '';
-    if (sortCol === 'name')        { va = a.fullName; vb = b.fullName; }
-    if (sortCol === 'stage')       { va = a.stage; vb = b.stage; }
-    if (sortCol === 'lastAppt')    { va = a.lastAppointment ?? '9999'; vb = b.lastAppointment ?? '9999'; }
-    if (sortCol === 'nextAppt')    { va = a.nextAppointment ?? '9999'; vb = b.nextAppointment ?? '9999'; }
-    if (sortCol === 'weddingDate') { va = a.weddingDate ?? '9999'; vb = b.weddingDate ?? '9999'; }
-    if (sortCol === 'studio')      { va = a.studio; vb = b.studio; }
-    if (sortCol === 'sa')          { va = a.salesAssociateName; vb = b.salesAssociateName; }
-    if (sortCol === 'am')          { va = a.amOrderStr ?? ''; vb = b.amOrderStr ?? ''; }
-    if (sortCol === 'flags')       { va = a.flagCount; vb = b.flagCount; }
-    if (va < vb) return sortDir === 'asc' ? -1 : 1;
-    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    for (const { col, dir } of sortEntries) {
+      const va = getSortValue(col, a);
+      const vb = getSortValue(col, b);
+      if (va < vb) return dir === 'asc' ? -1 : 1;
+      if (va > vb) return dir === 'asc' ? 1 : -1;
+    }
     return 0;
   });
 
@@ -1443,9 +1461,22 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
   const canPrev = page > 0;
   const canNext = page < totalPages - 1;
 
-  const SortIcon = ({ col }: { col: typeof sortCol }) => (
-    <span className="ml-1 opacity-50">{sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
-  );
+  const SortIcon = ({ col }: { col: SortCol }) => {
+    const idx = sortEntries.findIndex(e => e.col === col);
+    const entry = idx === -1 ? null : sortEntries[idx];
+    return (
+      <span className="ml-1 inline-flex items-center gap-1">
+        {entry
+          ? (entry.dir === 'asc' ? <CaretUpIcon size={12} weight="bold" /> : <CaretDownIcon size={12} weight="bold" />)
+          : <CaretDownIcon size={12} className="opacity-30" />}
+        {sortEntries.length > 1 && idx !== -1 && (
+          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-blue-600 text-white text-[9px] font-semibold leading-none">
+            {idx + 1}
+          </span>
+        )}
+      </span>
+    );
+  };
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -1466,10 +1497,10 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
             ].map(({ col, label }) => (
               <th
                 key={col}
-                onClick={() => toggleSort(col as typeof sortCol)}
+                onClick={() => toggleSort(col as SortCol)}
                 className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide cursor-pointer hover:text-gray-900 dark:hover:text-[#F5F3EF] select-none"
               >
-                {label}<SortIcon col={col as typeof sortCol} />
+                <span className="inline-flex items-center">{label}<SortIcon col={col as SortCol} /></span>
               </th>
             ))}
           </tr>
