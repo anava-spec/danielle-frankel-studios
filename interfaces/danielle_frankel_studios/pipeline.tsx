@@ -2006,9 +2006,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
         {/* Interests — always shown */}
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
           <div className="flex gap-8">
-            <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Interest in Custom</div>
-              <div className={`text-base font-medium ${client.interestCustom ? 'text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-400 dark:text-gray-500'}`}>{client.interestCustom ? 'Yes' : 'No'}</div>
+            <div className="w-40">
+              <BooleanDropdown label="Interest in Custom" value={client.interestCustom} fieldId={FIELD_IDS.CLIENT_INTEREST_CUSTOM} recordId={client.id} base={base} />
             </div>
             <div className="w-40">
               <BooleanDropdown label="Interest in Alts" value={client.interestAlts} fieldId={FIELD_IDS.CLIENT_INTEREST_ALTS} recordId={client.id} base={base} />
