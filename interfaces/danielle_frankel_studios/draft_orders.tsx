@@ -32,10 +32,13 @@ const FIELD_IDS = {
   DRAFT_STYLE_SUBTOTAL: 'fldnENW1asIEONjHh',
   DRAFT_CUSTOMIZATION_SUBTOTAL: 'fldjXCXIQn24kpwMD',
   DRAFT_GRAND_TOTAL: 'fldpqxb0FPd5vH0tI',
+  DRAFT_WEDDING_DATE: 'fldmKmFUAqaS0FYQD',
+  DRAFT_DUE_DATE: 'fldEIrZxfSsTz3FmA',
 
   CLIENT_FULL_NAME: 'fldB3Wyam01D3wR5Q',
   CLIENT_STAGE: 'fldLcxVZvI1rigBlh',
   CLIENT_DUE_DATE: 'flddDJKkZDsOoCOzE',
+  CLIENT_WEDDING_DATE: 'fldbgknumKGS5W5WU',
   CLIENT_DRAFT_ORDERS: 'fldynmy5OIWDVcgIn',
   CLIENT_FAVORITE_STYLES_ACUITY: 'fldZzNR0g5VEJ5RmX',
   CLIENT_FAVORITE_STYLES_APPOINTMENT: 'fldVw8wCgPKvxN1jD',
@@ -617,6 +620,7 @@ function Layer2({
 
   const clientNameField = getField(clientsTable, FIELD_IDS.CLIENT_FULL_NAME);
   const clientDueDateField = getField(clientsTable, FIELD_IDS.CLIENT_DUE_DATE);
+  const clientWeddingDateField = getField(clientsTable, FIELD_IDS.CLIENT_WEDDING_DATE);
   const styleNameField = getField(stylesTable, FIELD_IDS.STYLE_NAME);
   const stylePriceField = getField(stylesTable, FIELD_IDS.STYLE_PRICE);
   const customizationIdField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_ID);
@@ -745,23 +749,36 @@ function Layer2({
     return dueDateStr ? new Date(dueDateStr) : null;
   }, [clientId, clientRecords, clientDueDateField]);
 
+  const clientWeddingDate = useMemo(() => {
+    if (!clientId) return null;
+    const client = clientRecords.find(c => c.id === clientId);
+    if (!client || !clientWeddingDateField) return null;
+    const weddingDateStr = client.getCellValueAsString(clientWeddingDateField);
+    return weddingDateStr ? new Date(weddingDateStr) : null;
+  }, [clientId, clientRecords, clientWeddingDateField]);
+
+  const weeksUntilDueDate = useMemo(() => {
+    if (!clientDueDate) return null;
+    const today = new Date();
+    return Math.floor((clientDueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  }, [clientDueDate]);
+
   const rushFee = useMemo(() => {
-    if (!clientDueDate) return 0;
-    
+    if (!clientDueDate || weeksUntilDueDate === null) return 0;
+
     const customizedStyleIds = new Set(
       selectedCustomizations.flatMap(c => {
         const linkedStyles = getLinkedRecordIds(c, customizationCustomizedStyleField);
         return linkedStyles;
       })
     );
-    
+
     const standaloneStyles = selectedStyles.filter(s => !customizedStyleIds.has(s.id));
-    
+
     if (standaloneStyles.length === 0) return 0;
-    
-    const today = new Date();
-    const weeksRemaining = Math.floor((clientDueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    
+
+    const weeksRemaining = weeksUntilDueDate;
+
     // TODO: confirm exact week-boundary matching with Julia
     const matchingRule = rushFeeRuleRecords
       .filter(rule => {
@@ -784,7 +801,7 @@ function Layer2({
       const price = stylePriceField ? (style.getCellValue(stylePriceField) as number | null) ?? 0 : 0;
       return sum + (price * rushPct);
     }, 0);
-  }, [selectedStyles, selectedCustomizations, clientDueDate, rushFeeRuleRecords, stylePriceField, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
+  }, [selectedStyles, selectedCustomizations, clientDueDate, weeksUntilDueDate, rushFeeRuleRecords, stylePriceField, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const total = useMemo(() => {
     const ship = parseCurrency(shipping);
@@ -928,26 +945,31 @@ function Layer2({
                   className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                   style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                 >
-                  {filteredStyles
-                    .filter(s => !selectedStyleIds.includes(s.id))
-                    .map(style => (
+                  {filteredStyles.map(style => {
+                    const isSelected = selectedStyleIds.includes(style.id);
+                    return (
                       <button
                         key={style.id}
                         onClick={() => {
-                          setSelectedStyleIds([...selectedStyleIds, style.id]);
+                          setSelectedStyleIds(
+                            isSelected
+                              ? selectedStyleIds.filter(id => id !== style.id)
+                              : [...selectedStyleIds, style.id]
+                          );
                           setStyleSearchQuery('');
                         }}
                         className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
-                        style={{ color: theme.text }}
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        style={{ color: theme.text, backgroundColor: isSelected ? theme.accentSoft : 'transparent' }}
+                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isSelected ? theme.accentSoft : 'transparent'; }}
                       >
-                        <span>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                        <span className={isSelected ? 'font-medium' : ''}>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
                         <span style={{ color: theme.textSecondary }}>
                           {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
                         </span>
                       </button>
-                    ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1003,76 +1025,64 @@ function Layer2({
                         className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                         style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                       >
-                        {filteredCustomizations
-                          .filter(c => !selectedCustomizationIds.includes(c.id))
-                          .map(customization => {
-                            const approvalStatus = customizationApprovalStatusField 
-                              ? customization.getCellValueAsString(customizationApprovalStatusField) 
-                              : '';
-                            const isTentative = approvalStatus !== 'Approved by Client';
-                            return (
-                              <button
-                                key={customization.id}
-                                onClick={() => {
-                                  setSelectedCustomizationIds([...selectedCustomizationIds, customization.id]);
-                                  setCustomizationSearchQuery('');
-                                  setShowCustomizationSearch(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                                style={{ color: theme.text }}
-                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                                  <div className="flex items-center gap-2">
-                                    {isTentative && <StatusPill label="Tentative" variant="tentative" />}
-                                    <span style={{ color: theme.textSecondary }}>
-                                      {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                                    </span>
-                                  </div>
+                        {filteredCustomizations.map(customization => {
+                          const isSelected = selectedCustomizationIds.includes(customization.id);
+                          const approvalStatus = customizationApprovalStatusField
+                            ? customization.getCellValueAsString(customizationApprovalStatusField)
+                            : '';
+                          const isTentative = approvalStatus !== 'Approved by Client';
+                          return (
+                            <button
+                              key={customization.id}
+                              onClick={() => {
+                                setSelectedCustomizationIds(
+                                  isSelected
+                                    ? selectedCustomizationIds.filter(id => id !== customization.id)
+                                    : [...selectedCustomizationIds, customization.id]
+                                );
+                                setCustomizationSearchQuery('');
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                              style={{ color: theme.text, backgroundColor: isSelected ? theme.accentSoft : 'transparent' }}
+                              onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isSelected ? theme.accentSoft : 'transparent'; }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className={isSelected ? 'font-medium' : ''}>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+                                <div className="flex items-center gap-2">
+                                  {isTentative && <StatusPill label="Tentative" variant="tentative" />}
+                                  <span style={{ color: theme.textSecondary }}>
+                                    {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                                  </span>
                                 </div>
-                              </button>
-                            );
-                          })}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
                   {selectedCustomizations.length > 0 && (
-                    <div className="space-y-1">
-                      {selectedCustomizations.map(customization => {
-                        const approvalStatus = customizationApprovalStatusField 
-                          ? customization.getCellValueAsString(customizationApprovalStatusField) 
-                          : '';
-                        const isTentative = approvalStatus !== 'Approved by Client';
-                        return (
-                          <div 
-                            key={customization.id}
-                            className="px-3 py-2 rounded-md"
-                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCustomizations.map(customization => (
+                        <div
+                          key={customization.id}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
+                          style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
+                        >
+                          <span className="text-sm whitespace-nowrap">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+                          <span className="text-sm whitespace-nowrap" style={{ color: theme.textSecondary }}>
+                            {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                          </span>
+                          <button
+                            onClick={() => setSelectedCustomizationIds(selectedCustomizationIds.filter(id => id !== customization.id))}
+                            className="p-0.5 rounded hover:cursor-pointer"
+                            style={{ color: theme.textMuted }}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                              <div className="flex items-center gap-2">
-                                {isTentative && <StatusPill label="Tentative" variant="tentative" />}
-                                <span className="text-sm" style={{ color: theme.textSecondary }}>
-                                  {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                                </span>
-                                <button
-                                  onClick={() => setSelectedCustomizationIds(selectedCustomizationIds.filter(id => id !== customization.id))}
-                                  className="p-0.5 rounded hover:cursor-pointer"
-                                  style={{ color: theme.textMuted }}
-                                >
-                                  <XIcon size={14} />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>
-                              {customizationDetailField ? customization.getCellValueAsString(customizationDetailField) : ''}
-                            </p>
-                          </div>
-                        );
-                      })}
+                            <XIcon size={14} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
             </div>
@@ -1088,6 +1098,11 @@ function Layer2({
               </div>
               <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
             </div>
+            {clientDueDate && clientWeddingDate && (
+              <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
+                Wedding Date: {formatDate(clientWeddingDate.toISOString())} · Due Date: {formatDate(clientDueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
+              </p>
+            )}
             {!clientDueDate && clientId && (
               <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
                 Rush fee requires a wedding date on file.
@@ -1297,6 +1312,8 @@ function Layer4({
   const customizationSubtotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATION_SUBTOTAL);
   const totalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TOTAL);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
+  const weddingDateField = getField(draftOrdersTable, FIELD_IDS.DRAFT_WEDDING_DATE);
+  const dueDateField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DUE_DATE);
 
   const styleNameField = getField(stylesTable, FIELD_IDS.STYLE_NAME);
   const stylePriceField = getField(stylesTable, FIELD_IDS.STYLE_PRICE);
@@ -1402,6 +1419,24 @@ function Layer4({
     const dueDateStr = client.getCellValueAsString(clientDueDateField);
     return dueDateStr ? new Date(dueDateStr) : null;
   }, [clientId, clientRecords, clientDueDateField]);
+
+  const weddingDate = useMemo(() => {
+    if (!draft || !weddingDateField) return null;
+    const dateStr = draft.getCellValueAsString(weddingDateField);
+    return dateStr ? new Date(dateStr) : null;
+  }, [draft, weddingDateField]);
+
+  const dueDate = useMemo(() => {
+    if (!draft || !dueDateField) return null;
+    const dateStr = draft.getCellValueAsString(dueDateField);
+    return dateStr ? new Date(dateStr) : null;
+  }, [draft, dueDateField]);
+
+  const weeksUntilDueDate = useMemo(() => {
+    if (!dueDate) return null;
+    const today = new Date();
+    return Math.floor((dueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  }, [dueDate]);
 
   const handleToggleLock = async () => {
     if (!canUpdate || !lockedField) return;
@@ -1799,6 +1834,11 @@ function Layer4({
               </div>
               <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
             </div>
+            {weddingDate && dueDate && (
+              <p className="text-xs" style={{ color: theme.textSecondary }}>
+                Wedding Date: {formatDate(weddingDate.toISOString())} · Due Date: {formatDate(dueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
+              </p>
+            )}
             {!clientDueDate && (
               <p className="text-xs" style={{ color: theme.textSecondary }}>
                 Rush fee requires a wedding date on file.
