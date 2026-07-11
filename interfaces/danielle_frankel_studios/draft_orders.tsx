@@ -863,8 +863,11 @@ function Layer2({
                 type="text"
                 placeholder="Search clients..."
                 value={clientSearchQuery}
-                onChange={e => setClientSearchQuery(e.target.value)}
-                onFocus={() => setShowClientSearch(true)}
+                onChange={e => {
+                  const value = e.target.value;
+                  setClientSearchQuery(value);
+                  setShowClientSearch(value.trim() !== '');
+                }}
                 className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
                 style={{
                   backgroundColor: theme.bg,
@@ -873,7 +876,7 @@ function Layer2({
                 }}
               />
             </div>
-            {showClientSearch && (
+            {showClientSearch && clientSearchQuery.trim() !== '' && (
               <div
                 className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                 style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
@@ -973,13 +976,9 @@ function Layer2({
             )}
           </div>
 
-          {clientId && (
+          {clientId && clientCustomizations.length > 0 && (
             <div>
               <label className="block text-sm font-medium mb-2">Customizations</label>
-              {clientCustomizations.length === 0 ? (
-                <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations for this client.</p>
-              ) : (
-                <>
                   <div ref={customizationSearchRef} className="relative mb-2">
                     <MagnifyingGlassIcon 
                       size={16} 
@@ -1076,8 +1075,6 @@ function Layer2({
                       })}
                     </div>
                   )}
-                </>
-              )}
             </div>
           )}
 
