@@ -1,4 +1,3 @@
-import './style.css';
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   initializeBlock,
@@ -18,13 +17,11 @@ import {
 } from '@phosphor-icons/react';
 
 const FIELD_IDS = {
-  DRAFT_LABEL: 'fldXiofTxlsl3NSro',
+  DRAFT_ID: 'fldXiofTxlsl3NSro',
   DRAFT_CLIENT: 'fldV0tUFndHpPYqDD',
   DRAFT_STYLE: 'fld6rRHCKAlANOviR',
   DRAFT_CUSTOMIZATIONS: 'fldN97WQmsI1M5J0g',
   DRAFT_RUSH_FEE: 'fldWXGAL7RkCbfQ5h',
-  DRAFT_ALTERATIONS: 'flddAhiVCo6EQ7cnw',
-  DRAFT_M2M: 'fldEMwAurZqENQT36',
   DRAFT_SHIPPING: 'fldcItXhwxpimLdyR',
   DRAFT_TAXES: 'fldLzzEF6NIoYdKMF',
   DRAFT_DISCOUNT: 'fldjyvFWtv5cr05nV',
@@ -40,6 +37,8 @@ const FIELD_IDS = {
   CLIENT_STAGE: 'fldLcxVZvI1rigBlh',
   CLIENT_DUE_DATE: 'flddDJKkZDsOoCOzE',
   CLIENT_DRAFT_ORDERS: 'fldynmy5OIWDVcgIn',
+  CLIENT_FAVORITE_STYLES_ACUITY: 'fldZzNR0g5VEJ5RmX',
+  CLIENT_FAVORITE_STYLES_APPOINTMENT: 'fldVw8wCgPKvxN1jD',
 
   STYLE_NAME: 'fldEs3chQAeplPc1w',
   STYLE_PRICE: 'flduZuxPxxMqXzNxD',
@@ -469,7 +468,7 @@ function Layer3({
   onDraftClick,
   onNewDraft,
 }: Layer3Props) {
-  const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LABEL);
+  const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ID);
   const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
@@ -595,11 +594,8 @@ function Layer2({
   onSave,
   onClientSelect,
 }: Layer2Props) {
-  const [draftLabel, setDraftLabel] = useState('');
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
-  const [alterations, setAlterations] = useState('');
-  const [m2m, setM2m] = useState('');
   const [shipping, setShipping] = useState('');
   const [taxes, setTaxes] = useState('');
   const [discount, setDiscount] = useState('');
@@ -631,11 +627,12 @@ function Layer2({
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
   const rushRuleWeeksField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_WEEKS);
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
+  const clientFavoriteStylesAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_ACUITY);
+  const clientFavoriteStylesAppointmentField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_APPOINTMENT);
 
-  const hasUnsavedChanges = draftLabel.trim() !== ''
-    || selectedStyleIds.length > 0
+  const hasUnsavedChanges = selectedStyleIds.length > 0
     || selectedCustomizationIds.length > 0
-    || [alterations, m2m, shipping, taxes, discount].some(v => v.trim() !== '');
+    || [shipping, taxes, discount].some(v => v.trim() !== '');
 
   const handleCloseAttempt = () => {
     if (hasUnsavedChanges) {
@@ -678,14 +675,27 @@ function Layer2({
     }).slice(0, 20);
   }, [clientRecords, clientSearchQuery, clientNameField]);
 
+  const eligibleStyleIds = useMemo(() => {
+    if (!clientId) return [];
+    const client = clientRecords.find(c => c.id === clientId);
+    if (!client) return [];
+    const idsFromAcuity = getLinkedRecordIds(client, clientFavoriteStylesAcuityField);
+    const idsFromAppointment = getLinkedRecordIds(client, clientFavoriteStylesAppointmentField);
+    return Array.from(new Set([...idsFromAcuity, ...idsFromAppointment]));
+  }, [clientId, clientRecords, clientFavoriteStylesAcuityField, clientFavoriteStylesAppointmentField, getLinkedRecordIds]);
+
+  const eligibleStyles = useMemo(() => {
+    return styleRecords.filter(s => eligibleStyleIds.includes(s.id));
+  }, [styleRecords, eligibleStyleIds]);
+
   const filteredStyles = useMemo(() => {
-    if (!styleSearchQuery.trim()) return styleRecords.slice(0, 20);
+    if (!styleSearchQuery.trim()) return eligibleStyles.slice(0, 20);
     const query = styleSearchQuery.toLowerCase();
-    return styleRecords.filter(style => {
+    return eligibleStyles.filter(style => {
       const name = styleNameField ? style.getCellValueAsString(styleNameField).toLowerCase() : '';
       return name.includes(query);
     }).slice(0, 20);
-  }, [styleRecords, styleSearchQuery, styleNameField]);
+  }, [eligibleStyles, styleSearchQuery, styleNameField]);
 
   const clientCustomizations = useMemo(() => {
     if (!clientId) return [];
@@ -777,45 +787,39 @@ function Layer2({
   }, [selectedStyles, selectedCustomizations, clientDueDate, rushFeeRuleRecords, stylePriceField, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const total = useMemo(() => {
-    const alt = parseCurrency(alterations);
-    const m = parseCurrency(m2m);
     const ship = parseCurrency(shipping);
     const tax = parseCurrency(taxes);
     const disc = parseCurrency(discount);
-    return rushFee + alt + m + ship + tax - disc;
-  }, [rushFee, alterations, m2m, shipping, taxes, discount]);
+    return rushFee + ship + tax - disc;
+  }, [rushFee, shipping, taxes, discount]);
 
   const grandTotal = useMemo(() => {
     return styleSubtotal + customizationSubtotal + total;
   }, [styleSubtotal, customizationSubtotal, total]);
 
+  const canSave = canCreate && !!clientId && selectedStyleIds.length > 0;
+
   const handleSave = async () => {
-    if (!canCreate || !clientId) return;
-    
+    if (!canSave) return;
+
     setIsSaving(true);
     setSaveError(null);
-    
+
     try {
-      const labelFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_LABEL);
       const clientFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CLIENT);
       const styleFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE);
       const customizationsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATIONS);
       const rushFeeFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
-      const alterationsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_ALTERATIONS);
-      const m2mFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_M2M);
       const shippingFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
       const taxesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
       const discountFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
 
       const fields: Record<string, unknown> = {};
-      
-      if (labelFieldObj) fields[labelFieldObj.id] = draftLabel || `Draft - ${formatDate(new Date().toISOString())}`;
+
       if (clientFieldObj) fields[clientFieldObj.id] = [{ id: clientId }];
       if (styleFieldObj) fields[styleFieldObj.id] = selectedStyleIds.map(id => ({ id }));
       if (customizationsFieldObj) fields[customizationsFieldObj.id] = selectedCustomizationIds.map(id => ({ id }));
       if (rushFeeFieldObj) fields[rushFeeFieldObj.id] = rushFee;
-      if (alterationsFieldObj) fields[alterationsFieldObj.id] = parseCurrency(alterations);
-      if (m2mFieldObj) fields[m2mFieldObj.id] = parseCurrency(m2m);
       if (shippingFieldObj) fields[shippingFieldObj.id] = parseCurrency(shipping);
       if (taxesFieldObj) fields[taxesFieldObj.id] = parseCurrency(taxes);
       if (discountFieldObj) fields[discountFieldObj.id] = parseCurrency(discount);
@@ -824,7 +828,8 @@ function Layer2({
       onSave(newDraftId);
     } catch (error) {
       console.error('Failed to save draft:', error);
-      setSaveError('Failed to save draft. Please try again.');
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveError(`Failed to save draft: ${message}`);
     } finally {
       setIsSaving(false);
     }
@@ -841,111 +846,82 @@ function Layer2({
         style={{ backgroundColor: theme.bgCard, maxWidth: '720px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: theme.border }}>
-          <div>
-            <h2 className="text-lg font-semibold">New Draft Order</h2>
-            {clientId && (
-              <p className="text-sm" style={{ color: theme.textSecondary }}>{getClientName(clientId)}</p>
-            )}
-          </div>
-          <button
-            onClick={handleCloseAttempt}
-            className="p-1 rounded-md hover:cursor-pointer"
-            style={{ color: theme.textSecondary }}
-          >
-            <XIcon size={20} />
-          </button>
+        <div className="px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+          <h2 className="text-lg font-semibold">New Draft Order</h2>
         </div>
-        
+
         <div className="flex-1 overflow-auto p-6 space-y-6">
-          {!clientId && (
-            <div ref={clientSearchRef} className="relative">
-              <label className="block text-sm font-medium mb-2">Client</label>
-              <div className="relative">
-                <MagnifyingGlassIcon 
-                  size={16} 
-                  className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: theme.textMuted }}
-                />
-                <input
-                  type="text"
-                  placeholder="Search clients..."
-                  value={clientSearchQuery}
-                  onChange={e => setClientSearchQuery(e.target.value)}
-                  onFocus={() => setShowClientSearch(true)}
-                  className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
-                  style={{ 
-                    backgroundColor: theme.bg, 
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text 
-                  }}
-                />
-              </div>
-              {showClientSearch && (
-                <div 
-                  className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-                >
-                  {filteredClients.map(client => (
-                    <button
-                      key={client.id}
-                      onClick={() => {
-                        onClientSelect(client.id);
-                        setShowClientSearch(false);
-                        setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                      style={{ color: theme.text }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >
-                      {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-2">Draft Label</label>
-            <input
-              type="text"
-              placeholder="Enter a label for this draft..."
-              value={draftLabel}
-              onChange={e => setDraftLabel(e.target.value)}
-              className="w-full px-3 py-2 rounded-md text-sm"
-              style={{ 
-                backgroundColor: theme.bg, 
-                border: `1px solid ${theme.border}`,
-                color: theme.text 
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2">Styles</label>
-            <div ref={styleSearchRef} className="relative mb-2">
-              <MagnifyingGlassIcon 
-                size={16} 
+          <div ref={clientSearchRef} className="relative">
+            <label className="block text-sm font-medium mb-2">Client</label>
+            <div className="relative">
+              <MagnifyingGlassIcon
+                size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2"
                 style={{ color: theme.textMuted }}
               />
               <input
                 type="text"
-                placeholder="Search styles..."
-                value={styleSearchQuery}
-                onChange={e => setStyleSearchQuery(e.target.value)}
-                onFocus={() => setShowStyleSearch(true)}
+                placeholder="Search clients..."
+                value={clientSearchQuery}
+                onChange={e => setClientSearchQuery(e.target.value)}
+                onFocus={() => setShowClientSearch(true)}
                 className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
-                style={{ 
-                  backgroundColor: theme.bg, 
+                style={{
+                  backgroundColor: theme.bg,
                   border: `1px solid ${theme.border}`,
-                  color: theme.text 
+                  color: theme.text
                 }}
               />
-              {showStyleSearch && (
-                <div 
+            </div>
+            {showClientSearch && (
+              <div
+                className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+              >
+                {filteredClients.map(client => (
+                  <button
+                    key={client.id}
+                    onClick={() => {
+                      onClientSelect(client.id);
+                      setShowClientSearch(false);
+                      setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                    style={{ color: theme.text }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Styles</label>
+            <div ref={styleSearchRef} className="relative mb-2">
+              <MagnifyingGlassIcon
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: theme.textMuted }}
+              />
+              <input
+                type="text"
+                placeholder={clientId ? 'Search styles...' : 'Select a client first'}
+                value={styleSearchQuery}
+                onChange={e => setStyleSearchQuery(e.target.value)}
+                onFocus={() => { if (clientId) setShowStyleSearch(true); }}
+                disabled={!clientId}
+                className="w-full pl-9 pr-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: theme.bg,
+                  border: `1px solid ${theme.border}`,
+                  color: theme.text
+                }}
+              />
+              {showStyleSearch && clientId && (
+                <div
                   className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                   style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                 >
@@ -957,7 +933,6 @@ function Layer2({
                         onClick={() => {
                           setSelectedStyleIds([...selectedStyleIds, style.id]);
                           setStyleSearchQuery('');
-                          setShowStyleSearch(false);
                         }}
                         className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
                         style={{ color: theme.text }}
@@ -974,26 +949,24 @@ function Layer2({
               )}
             </div>
             {selectedStyles.length > 0 && (
-              <div className="space-y-1">
+              <div className="flex flex-wrap gap-2">
                 {selectedStyles.map(style => (
-                  <div 
+                  <div
                     key={style.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-md"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
                     style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
                   >
-                    <span className="text-sm">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm" style={{ color: theme.textSecondary }}>
-                        {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                      </span>
-                      <button
-                        onClick={() => setSelectedStyleIds(selectedStyleIds.filter(id => id !== style.id))}
-                        className="p-0.5 rounded hover:cursor-pointer"
-                        style={{ color: theme.textMuted }}
-                      >
-                        <XIcon size={14} />
-                      </button>
-                    </div>
+                    <span className="text-sm whitespace-nowrap">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                    <span className="text-sm whitespace-nowrap" style={{ color: theme.textSecondary }}>
+                      {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
+                    </span>
+                    <button
+                      onClick={() => setSelectedStyleIds(selectedStyleIds.filter(id => id !== style.id))}
+                      className="p-0.5 rounded hover:cursor-pointer"
+                      style={{ color: theme.textMuted }}
+                    >
+                      <XIcon size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1124,37 +1097,7 @@ function Layer2({
               </p>
             )}
             
-            <div className="grid grid-cols-2 gap-3 mt-2">
-              <div>
-                <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>Alterations</label>
-                <input
-                  type="text"
-                  placeholder="$0.00"
-                  value={alterations}
-                  onChange={e => setAlterations(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md text-sm"
-                  style={{ 
-                    backgroundColor: theme.bg, 
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text 
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>M2M</label>
-                <input
-                  type="text"
-                  placeholder="$0.00"
-                  value={m2m}
-                  onChange={e => setM2m(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md text-sm"
-                  style={{ 
-                    backgroundColor: theme.bg, 
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text 
-                  }}
-                />
-              </div>
+            <div className="grid grid-cols-3 gap-3 mt-2">
               <div>
                 <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>Shipping</label>
                 <input
@@ -1162,11 +1105,12 @@ function Layer2({
                   placeholder="$0.00"
                   value={shipping}
                   onChange={e => setShipping(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md text-sm"
-                  style={{ 
-                    backgroundColor: theme.bg, 
+                  disabled={!clientId}
+                  className="w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: theme.bg,
                     border: `1px solid ${theme.border}`,
-                    color: theme.text 
+                    color: theme.text
                   }}
                 />
               </div>
@@ -1177,26 +1121,28 @@ function Layer2({
                   placeholder="$0.00"
                   value={taxes}
                   onChange={e => setTaxes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md text-sm"
-                  style={{ 
-                    backgroundColor: theme.bg, 
+                  disabled={!clientId}
+                  className="w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: theme.bg,
                     border: `1px solid ${theme.border}`,
-                    color: theme.text 
+                    color: theme.text
                   }}
                 />
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>Discount</label>
                 <input
                   type="text"
                   placeholder="$0.00"
                   value={discount}
                   onChange={e => setDiscount(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md text-sm"
-                  style={{ 
-                    backgroundColor: theme.bg, 
+                  disabled={!clientId}
+                  className="w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: theme.bg,
                     border: `1px solid ${theme.border}`,
-                    color: theme.text 
+                    color: theme.text
                   }}
                 />
               </div>
@@ -1209,22 +1155,30 @@ function Layer2({
               Saves automatically once you click Save Draft
             </p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span style={{ color: theme.textSecondary }}>Style Subtotal</span>
-                <span>{formatCurrency(styleSubtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: theme.textSecondary }}>Customization Subtotal</span>
-                <span>{formatCurrency(customizationSubtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: theme.textSecondary }}>Total (fees - discount)</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t font-semibold" style={{ borderColor: theme.borderLight }}>
-                <span>Grand Total</span>
-                <span>{formatCurrency(grandTotal)}</span>
-              </div>
+              {styleSubtotal !== 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Style Subtotal</span>
+                  <span>{formatCurrency(styleSubtotal)}</span>
+                </div>
+              )}
+              {customizationSubtotal !== 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Customization Subtotal</span>
+                  <span>{formatCurrency(customizationSubtotal)}</span>
+                </div>
+              )}
+              {total !== 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Total (fees - discount)</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+              )}
+              {grandTotal !== 0 && (
+                <div className="flex justify-between pt-2 border-t font-semibold" style={{ borderColor: theme.borderLight }}>
+                  <span>Grand Total</span>
+                  <span>{formatCurrency(grandTotal)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1233,26 +1187,20 @@ function Layer2({
           <div>
             {saveError && <p className="text-sm" style={{ color: theme.danger }}>{saveError}</p>}
             {!canCreate && <p className="text-sm" style={{ color: theme.danger }}>You don't have permission to create drafts.</p>}
+            {canCreate && (!clientId || selectedStyleIds.length === 0) && (
+              <p className="text-sm" style={{ color: theme.textSecondary }}>Client and at least one Style are required.</p>
+            )}
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleCloseAttempt}
-              className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm"
-              style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!canCreate || !clientId || isSaving}
-              className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.accentHover; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.accent; }}
-            >
-              {isSaving ? 'Saving...' : 'Save Draft'}
-            </button>
-          </div>
+          <button
+            onClick={handleSave}
+            disabled={!canSave || isSaving}
+            className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.accentHover; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.accent; }}
+          >
+            {isSaving ? 'Saving...' : 'Save Draft'}
+          </button>
         </div>
       </div>
       {showDiscardConfirm && (
@@ -1339,14 +1287,12 @@ function Layer4({
   const draft = draftRecords.find(d => d.id === draftId);
   const canUpdate = draftOrdersTable.hasPermissionToUpdateRecords();
 
-  const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LABEL);
+  const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ID);
   const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
   const styleField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE);
   const customizationsField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATIONS);
   const rushFeeField = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
-  const alterationsField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ALTERATIONS);
-  const m2mField = getField(draftOrdersTable, FIELD_IDS.DRAFT_M2M);
   const shippingField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
   const taxesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
   const discountField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
@@ -1403,8 +1349,6 @@ function Layer4({
   const linkedStyleIds = getLinkedRecordIds(draft, styleField);
   const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
   const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
-  const alterations = alterationsField ? (draft.getCellValue(alterationsField) as number | null) ?? 0 : 0;
-  const m2m = m2mField ? (draft.getCellValue(m2mField) as number | null) ?? 0 : 0;
   const shipping = shippingField ? (draft.getCellValue(shippingField) as number | null) ?? 0 : 0;
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
@@ -1865,25 +1809,7 @@ function Layer4({
             )}
 
             {isEditable ? (
-              <div className="grid grid-cols-2 gap-3">
-                <CurrencyInput
-                  label="Alterations"
-                  value={alterations}
-                  field={alterationsField}
-                  fieldKey="alterations"
-                  error={fieldErrors.alterations}
-                  theme={theme}
-                  onBlur={handleCurrencyBlur}
-                />
-                <CurrencyInput
-                  label="M2M"
-                  value={m2m}
-                  field={m2mField}
-                  fieldKey="m2m"
-                  error={fieldErrors.m2m}
-                  theme={theme}
-                  onBlur={handleCurrencyBlur}
-                />
+              <div className="grid grid-cols-3 gap-3">
                 <CurrencyInput
                   label="Shipping"
                   value={shipping}
@@ -1902,28 +1828,18 @@ function Layer4({
                   theme={theme}
                   onBlur={handleCurrencyBlur}
                 />
-                <div className="col-span-2">
-                  <CurrencyInput
-                    label="Discount"
-                    value={discount}
-                    field={discountField}
-                    fieldKey="discount"
-                    error={fieldErrors.discount}
-                    theme={theme}
-                    onBlur={handleCurrencyBlur}
-                  />
-                </div>
+                <CurrencyInput
+                  label="Discount"
+                  value={discount}
+                  field={discountField}
+                  fieldKey="discount"
+                  error={fieldErrors.discount}
+                  theme={theme}
+                  onBlur={handleCurrencyBlur}
+                />
               </div>
             ) : (
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span style={{ color: theme.textSecondary }}>Alterations</span>
-                  <span>{formatCurrency(alterations)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: theme.textSecondary }}>M2M</span>
-                  <span>{formatCurrency(m2m)}</span>
-                </div>
                 <div className="flex justify-between">
                   <span style={{ color: theme.textSecondary }}>Shipping</span>
                   <span>{formatCurrency(shipping)}</span>
