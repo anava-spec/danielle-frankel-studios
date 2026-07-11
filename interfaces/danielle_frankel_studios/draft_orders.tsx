@@ -1425,7 +1425,7 @@ function Layer2({
                   <span className="text-sm">Rush Fee</span>
                   {clientDueDate && weeksUntilDueDate !== null && (
                     <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
-                      Calculated because the due date to have the styles ready by is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(clientDueDate.toISOString())}.
+                      Due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(clientDueDate.toISOString())}.
                     </p>
                   )}
                 </div>
@@ -2291,7 +2291,7 @@ function Layer4({
                       <span className="text-sm">Rush Fee</span>
                       {dueDate && weeksUntilDueDate !== null && (
                         <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
-                          Calculated because the due date to have the styles ready by is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(dueDate.toISOString())}.
+                          Due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(dueDate.toISOString())}.
                         </p>
                       )}
                     </div>
