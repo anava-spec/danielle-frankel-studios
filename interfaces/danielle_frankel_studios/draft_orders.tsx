@@ -493,7 +493,7 @@ function Layer1({
   const draftOrdersField = getField(clientsTable, FIELD_IDS.CLIENT_DRAFT_ORDERS);
   const clientSalesAssociateField = getField(clientsTable, FIELD_IDS.CLIENT_SALES_ASSOCIATE);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
-  const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
+  const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const staffNameField = staffTable ? getField(staffTable, FIELD_IDS.STAFF_FULL_NAME) : null;
   const staffIsActiveField = staffTable ? getField(staffTable, FIELD_IDS.STAFF_IS_ACTIVE) : null;
 
@@ -583,9 +583,9 @@ function Layer1({
               const grandTotal = mostRecentDraft && grandTotalField
                 ? (mostRecentDraft.getCellValue(grandTotalField) as number | null)
                 : null;
-              const isLocked = mostRecentDraft && lockedField
-                ? !!mostRecentDraft.getCellValue(lockedField)
-                : false;
+              const createdAt = mostRecentDraft && createdAtField
+                ? (mostRecentDraft.getCellValue(createdAtField) as string | null)
+                : null;
 
               return (
                 <div
@@ -596,14 +596,18 @@ function Layer1({
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.bgCard; }}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <p className="font-medium">{clientName}</p>
-                    <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
+                    <span className="text-sm" style={{ color: theme.textSecondary }}>
+                      {draftCount} draft{draftCount !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <p className="text-sm" style={{ color: theme.textSecondary }}>
-                    {draftCount} draft{draftCount !== 1 ? 's' : ''}
-                  </p>
-                  <span className="font-medium">{formatCurrency(grandTotal)}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm" style={{ color: theme.textSecondary }}>Latest draft order:</span>
+                    <span className="text-sm font-medium">
+                      {formatCurrency(grandTotal)} · {formatDate(createdAt)}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -639,7 +643,7 @@ function Layer3({
   onDraftClick,
   onNewDraft,
 }: Layer3Props) {
-  const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ID);
+  const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
   const [isVisible, setIsVisible] = useState(false);
@@ -709,7 +713,7 @@ function Layer3({
           ) : (
             <div className="space-y-2">
               {drafts.map(draft => {
-                const label = labelField ? draft.getCellValueAsString(labelField) : 'Untitled';
+                const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
                 const grandTotal = grandTotalField ? (draft.getCellValue(grandTotalField) as number | null) : null;
                 const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
 
@@ -722,7 +726,7 @@ function Layer3({
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.bg; }}
                   >
-                    <p className="font-medium">{label || 'Untitled Draft'}</p>
+                    <p className="font-medium">{formatDate(createdAt)}</p>
                     <div className="flex items-center gap-3">
                       <span className="font-medium">{formatCurrency(grandTotal)}</span>
                       <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
