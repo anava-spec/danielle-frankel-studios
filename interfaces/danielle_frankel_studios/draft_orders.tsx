@@ -263,63 +263,12 @@ function DraftOrdersApp() {
     return drafts[0] ?? null;
   };
 
+  const showLayer3 = viewState.layer === 3 || (viewState.layer === 2 && viewState.fromLayer === 3);
+  const layer3ClientId = viewState.layer === 3 ? viewState.clientId : (viewState.layer === 2 ? viewState.clientId : null);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{ backgroundColor: theme.bg, color: theme.text, fontFamily: "'Inter', system-ui, sans-serif" }}>
-      {viewState.layer === 1 && (
-        <Layer1
-          theme={theme}
-          clientRecords={clientRecords ?? []}
-          draftRecords={draftRecords ?? []}
-          draftOrdersTable={draftOrdersTable}
-          clientsTable={clientsTable}
-          getField={getField}
-          getLinkedRecordIds={getLinkedRecordIds}
-          getMostRecentDraft={getMostRecentDraft}
-          onClientClick={(clientId) => setViewState({ layer: 3, clientId })}
-          onNewDraft={() => setViewState({ layer: 2, clientId: null, fromLayer: 1 })}
-        />
-      )}
-      {viewState.layer === 3 && (
-        <Layer3
-          theme={theme}
-          clientId={viewState.clientId}
-          clientName={getClientName(viewState.clientId)}
-          drafts={getDraftsForClient(viewState.clientId)}
-          draftOrdersTable={draftOrdersTable}
-          getField={getField}
-          onClose={() => setViewState({ layer: 1 })}
-          onDraftClick={(draftId) => setViewState({ layer: 4, draftId, clientId: viewState.clientId })}
-          onNewDraft={() => setViewState({ layer: 2, clientId: viewState.clientId, fromLayer: 3 })}
-        />
-      )}
-      {viewState.layer === 2 && (
-        <Layer2
-          theme={theme}
-          clientId={viewState.clientId}
-          clientRecords={clientRecords ?? []}
-          styleRecords={styleRecords ?? []}
-          customizationRecords={customizationRecords ?? []}
-          rushFeeRuleRecords={rushFeeRuleRecords ?? []}
-          draftOrdersTable={draftOrdersTable}
-          clientsTable={clientsTable}
-          stylesTable={stylesTable}
-          customizationsTable={customizationsTable}
-          rushFeeRulesTable={rushFeeRulesTable}
-          getField={getField}
-          getLinkedRecordIds={getLinkedRecordIds}
-          getClientName={getClientName}
-          onClose={() => setViewState(viewState.fromLayer === 3 && viewState.clientId ? { layer: 3, clientId: viewState.clientId } : { layer: 1 })}
-          onSave={(newDraftId: string) => {
-            if (viewState.clientId) {
-              setViewState({ layer: 4, draftId: newDraftId, clientId: viewState.clientId });
-            } else {
-              setViewState({ layer: 1 });
-            }
-          }}
-          onClientSelect={(clientId) => setViewState({ ...viewState, clientId })}
-        />
-      )}
-      {viewState.layer === 4 && (
+      {viewState.layer === 4 ? (
         <Layer4
           theme={theme}
           draftId={viewState.draftId}
@@ -340,6 +289,61 @@ function DraftOrdersApp() {
           getClientName={getClientName}
           onBack={() => setViewState({ layer: 3, clientId: viewState.clientId })}
         />
+      ) : (
+        <>
+          <Layer1
+            theme={theme}
+            clientRecords={clientRecords ?? []}
+            draftRecords={draftRecords ?? []}
+            draftOrdersTable={draftOrdersTable}
+            clientsTable={clientsTable}
+            getField={getField}
+            getLinkedRecordIds={getLinkedRecordIds}
+            getMostRecentDraft={getMostRecentDraft}
+            onClientClick={(clientId) => setViewState({ layer: 3, clientId })}
+            onNewDraft={() => setViewState({ layer: 2, clientId: null, fromLayer: 1 })}
+          />
+          {showLayer3 && layer3ClientId && (
+            <Layer3
+              theme={theme}
+              clientId={layer3ClientId}
+              clientName={getClientName(layer3ClientId)}
+              drafts={getDraftsForClient(layer3ClientId)}
+              draftOrdersTable={draftOrdersTable}
+              getField={getField}
+              onClose={() => setViewState({ layer: 1 })}
+              onDraftClick={(draftId) => setViewState({ layer: 4, draftId, clientId: layer3ClientId })}
+              onNewDraft={() => setViewState({ layer: 2, clientId: layer3ClientId, fromLayer: 3 })}
+            />
+          )}
+          {viewState.layer === 2 && (
+            <Layer2
+              theme={theme}
+              clientId={viewState.clientId}
+              clientRecords={clientRecords ?? []}
+              styleRecords={styleRecords ?? []}
+              customizationRecords={customizationRecords ?? []}
+              rushFeeRuleRecords={rushFeeRuleRecords ?? []}
+              draftOrdersTable={draftOrdersTable}
+              clientsTable={clientsTable}
+              stylesTable={stylesTable}
+              customizationsTable={customizationsTable}
+              rushFeeRulesTable={rushFeeRulesTable}
+              getField={getField}
+              getLinkedRecordIds={getLinkedRecordIds}
+              getClientName={getClientName}
+              onClose={() => setViewState(viewState.fromLayer === 3 && viewState.clientId ? { layer: 3, clientId: viewState.clientId } : { layer: 1 })}
+              onSave={(newDraftId: string) => {
+                if (viewState.clientId) {
+                  setViewState({ layer: 4, draftId: newDraftId, clientId: viewState.clientId });
+                } else {
+                  setViewState({ layer: 1 });
+                }
+              }}
+              onClientSelect={(clientId) => setViewState({ ...viewState, clientId })}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -492,8 +496,8 @@ function Layer3({
   }, [onClose]);
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center"
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center"
       onClick={onClose}
     >
       <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} />
@@ -893,7 +897,9 @@ function Layer2({
                   setClientSearchQuery(value);
                   setShowClientSearch(value.trim() !== '');
                 }}
-                readOnly={!!clientId}
+                onFocus={() => {
+                  if (clientId) setShowClientSearch(true);
+                }}
                 className={`w-full pl-9 py-2 rounded-md text-sm ${clientId ? 'pr-9' : 'pr-3'}`}
                 style={{
                   backgroundColor: theme.bg,
@@ -914,7 +920,7 @@ function Layer2({
                 </button>
               )}
             </div>
-            {showClientSearch && !clientId && clientSearchQuery.trim() !== '' && (
+            {showClientSearch && (clientId || clientSearchQuery.trim() !== '') && (
               <div
                 className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                 style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
@@ -951,8 +957,11 @@ function Layer2({
                 type="text"
                 placeholder={clientId ? 'Search styles...' : 'Select a client first'}
                 value={styleSearchQuery}
-                onChange={e => setStyleSearchQuery(e.target.value)}
-                onFocus={() => { if (clientId) setShowStyleSearch(true); }}
+                onChange={e => {
+                  const value = e.target.value;
+                  setStyleSearchQuery(value);
+                  setShowStyleSearch(value.trim() !== '');
+                }}
                 disabled={!clientId}
                 className="w-full pl-9 pr-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
@@ -961,7 +970,7 @@ function Layer2({
                   color: theme.text
                 }}
               />
-              {showStyleSearch && clientId && (
+              {showStyleSearch && clientId && styleSearchQuery.trim() !== '' && (
                 <div
                   className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                   style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
@@ -1112,13 +1121,15 @@ function Layer2({
           <div className="pt-4 border-t" style={{ borderColor: theme.borderLight }}>
             <h3 className="text-sm font-semibold mb-3">Additional Charges</h3>
             
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <span className="text-sm">Rush Fee</span>
-                <span className="text-xs ml-2" style={{ color: theme.textMuted }}>(auto-calculated)</span>
+            {rushFee !== 0 && (
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <span className="text-sm">Rush Fee</span>
+                  <span className="text-xs ml-2" style={{ color: theme.textMuted }}>(auto-calculated)</span>
+                </div>
+                <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
               </div>
-              <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
-            </div>
+            )}
             {clientDueDate && clientWeddingDate && (
               <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
                 Wedding Date: {formatDate(clientWeddingDate.toISOString())} · Due Date: {formatDate(clientDueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
@@ -1320,7 +1331,6 @@ function Layer4({
   const draft = draftRecords.find(d => d.id === draftId);
   const canUpdate = draftOrdersTable.hasPermissionToUpdateRecords();
 
-  const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ID);
   const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
   const styleField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE);
@@ -1348,6 +1358,8 @@ function Layer4({
   const clientDueDateField = getField(clientsTable, FIELD_IDS.CLIENT_DUE_DATE);
   const rushRuleWeeksField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_WEEKS);
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
+  const clientFavoriteStylesAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_ACUITY);
+  const clientFavoriteStylesAppointmentField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_APPOINTMENT);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [styleSearchQuery, setStyleSearchQuery] = useState('');
@@ -1378,14 +1390,27 @@ function Layer4({
     });
   }, [customizationRecords, clientId, customizationClientField, getLinkedRecordIds]);
 
+  const eligibleStyleIds = useMemo(() => {
+    const client = clientRecords.find(c => c.id === clientId);
+    if (!client) return [];
+    const idsFromAcuity = getLinkedRecordIds(client, clientFavoriteStylesAcuityField);
+    const idsFromAppointment = getLinkedRecordIds(client, clientFavoriteStylesAppointmentField);
+    return Array.from(new Set([...idsFromAcuity, ...idsFromAppointment]));
+  }, [clientId, clientRecords, clientFavoriteStylesAcuityField, clientFavoriteStylesAppointmentField, getLinkedRecordIds]);
+
+  const eligibleStyles = useMemo(() => {
+    if (eligibleStyleIds.length === 0) return styleRecords;
+    return styleRecords.filter(s => eligibleStyleIds.includes(s.id));
+  }, [styleRecords, eligibleStyleIds]);
+
   const filteredStyles = useMemo(() => {
-    if (!styleSearchQuery.trim()) return styleRecords.slice(0, 20);
+    if (!styleSearchQuery.trim()) return eligibleStyles.slice(0, 20);
     const query = styleSearchQuery.toLowerCase();
-    return styleRecords.filter(style => {
+    return eligibleStyles.filter(style => {
       const name = styleNameField ? style.getCellValueAsString(styleNameField).toLowerCase() : '';
       return name.includes(query);
     }).slice(0, 20);
-  }, [styleRecords, styleSearchQuery, styleNameField]);
+  }, [eligibleStyles, styleSearchQuery, styleNameField]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -1419,15 +1444,89 @@ function Layer4({
     return Math.floor((dueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
   }, [dueDate]);
 
+  const computeRushFee = (styleIds: string[], customizationIds: string[]): number => {
+    if (!clientDueDate) return 0;
+
+    const stylesSel = styleRecords.filter(s => styleIds.includes(s.id));
+    const customizationsSel = customizationRecords.filter(c => customizationIds.includes(c.id));
+
+    const customizedStyleIds = new Set(
+      customizationsSel.flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField))
+    );
+    const standaloneStyles = stylesSel.filter(s => !customizedStyleIds.has(s.id));
+    if (standaloneStyles.length === 0) return 0;
+
+    const today = new Date();
+    const weeksRemaining = Math.floor((clientDueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+    const matchingRule = rushFeeRuleRecords
+      .filter(rule => {
+        const ruleWeeks = rushRuleWeeksField ? (rule.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+        return ruleWeeks >= weeksRemaining;
+      })
+      .sort((a, b) => {
+        const weeksA = rushRuleWeeksField ? (a.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+        const weeksB = rushRuleWeeksField ? (b.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+        return weeksA - weeksB;
+      })[0];
+
+    if (!matchingRule) return 0;
+
+    const rushPct = rushRuleNonCustomizedPctField
+      ? (matchingRule.getCellValue(rushRuleNonCustomizedPctField) as number | null) ?? 0
+      : 0;
+
+    return standaloneStyles.reduce((sum, style) => {
+      const price = stylePriceField ? (style.getCellValue(stylePriceField) as number | null) ?? 0 : 0;
+      return sum + (price * rushPct);
+    }, 0);
+  };
+
+  useEffect(() => {
+    if (!draft || !rushFeeField || !canUpdate) return;
+    const locked = lockedField ? !!draft.getCellValue(lockedField) : false;
+    if (locked) return;
+    const mostRecent = getMostRecentDraft(clientId);
+    if (mostRecent?.id !== draftId) return;
+
+    const currentStyleIds = getLinkedRecordIds(draft, styleField);
+    const currentCustomizationIds = getLinkedRecordIds(draft, customizationsField);
+    const freshRushFee = computeRushFee(currentStyleIds, currentCustomizationIds);
+    const storedRushFee = (draft.getCellValue(rushFeeField) as number | null) ?? 0;
+
+    if (Math.abs(freshRushFee - storedRushFee) > 0.005) {
+      draftOrdersTable.updateRecordAsync(draftId, { [rushFeeField.id]: freshRushFee }).catch(error => {
+        console.error('Failed to self-heal rush fee:', error);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, clientDueDate, canUpdate]);
+
+  const [showNotFound, setShowNotFound] = useState(false);
+  useEffect(() => {
+    if (draft) {
+      setShowNotFound(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowNotFound(true), 3000);
+    return () => clearTimeout(timer);
+  }, [draft]);
+
   if (!draft) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <p style={{ color: theme.textSecondary }}>Draft not found.</p>
+        {showNotFound ? (
+          <p style={{ color: theme.textSecondary }}>Draft not found.</p>
+        ) : (
+          <div
+            className="w-8 h-8 rounded-full animate-spin"
+            style={{ border: `2px solid ${theme.border}`, borderTopColor: theme.accent }}
+          />
+        )}
       </div>
     );
   }
 
-  const label = labelField ? draft.getCellValueAsString(labelField) : 'Untitled';
   const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
   const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
   const linkedStyleIds = getLinkedRecordIds(draft, styleField);
@@ -1608,24 +1707,19 @@ function Layer4({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: theme.border }}>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 text-sm hover:cursor-pointer"
-            style={{ color: theme.textSecondary }}
-          >
-            <ArrowLeftIcon size={16} />
-            Back
-          </button>
-          <div>
-            <h1 className="text-lg font-bold">{label || 'Untitled Draft'}</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</span>
-              <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
-            </div>
-          </div>
-        </div>
+      <div className="flex items-center gap-4 px-8 py-4 border-b" style={{ borderColor: theme.border }}>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-sm hover:cursor-pointer"
+          style={{ color: theme.textSecondary }}
+        >
+          <ArrowLeftIcon size={16} />
+          Back
+        </button>
+        <h1 className="text-lg font-bold">{getClientName(clientId)}</h1>
+        <span className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</span>
+        <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
+        <div className="flex-1" />
         {canUpdate && (
           <button
             onClick={handleToggleLock}
@@ -1639,190 +1733,86 @@ function Layer4({
       </div>
 
       {!isEditable && (
-        <div className="px-6 py-3" style={{ backgroundColor: theme.neutralBg }}>
+        <div className="px-8 py-3" style={{ backgroundColor: theme.neutralBg }}>
           <p className="text-sm" style={{ color: theme.textSecondary }}>
             This draft is read-only — {readOnlyReason}
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-          <h2 className="text-sm font-semibold mb-3">Client</h2>
-          <p className="text-base">{getClientName(clientId)}</p>
-        </div>
-
-        <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-          <h2 className="text-sm font-semibold mb-3">Styles</h2>
-          {isEditable && (
-            <div ref={styleSearchRef} className="relative mb-3">
-              <MagnifyingGlassIcon 
-                size={16} 
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: theme.textMuted }}
-              />
-              <input
-                type="text"
-                placeholder="Add style..."
-                value={styleSearchQuery}
-                onChange={e => setStyleSearchQuery(e.target.value)}
-                onFocus={() => setShowStyleSearch(true)}
-                className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
-                style={{ 
-                  backgroundColor: theme.bg, 
-                  border: `1px solid ${theme.border}`,
-                  color: theme.text 
-                }}
-              />
-              {showStyleSearch && (
-                <div 
-                  className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-                >
-                  {filteredStyles
-                    .filter(s => !linkedStyleIds.includes(s.id))
-                    .map(style => (
-                      <button
-                        key={style.id}
-                        onClick={() => handleAddStyle(style.id)}
-                        className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
-                        style={{ color: theme.text }}
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      >
-                        <span>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                        <span style={{ color: theme.textSecondary }}>
-                          {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                        </span>
-                      </button>
-                    ))}
+      <div className="flex-1 overflow-auto px-8 py-6">
+        <div className="flex gap-6 items-start">
+          <div className="flex-1 min-w-0 space-y-6">
+            <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <h2 className="text-sm font-semibold mb-3">Styles</h2>
+              {isEditable && (
+                <div ref={styleSearchRef} className="relative mb-3">
+                  <MagnifyingGlassIcon
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: theme.textMuted }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Add style..."
+                    value={styleSearchQuery}
+                    onChange={e => {
+                      const value = e.target.value;
+                      setStyleSearchQuery(value);
+                      setShowStyleSearch(value.trim() !== '');
+                    }}
+                    className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
+                    style={{
+                      backgroundColor: theme.bg,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.text
+                    }}
+                  />
+                  {showStyleSearch && styleSearchQuery.trim() !== '' && (
+                    <div
+                      className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                      style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+                    >
+                      {filteredStyles
+                        .filter(s => !linkedStyleIds.includes(s.id))
+                        .map(style => (
+                          <button
+                            key={style.id}
+                            onClick={() => handleAddStyle(style.id)}
+                            className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
+                            style={{ color: theme.text }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                          >
+                            <span>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                            <span style={{ color: theme.textSecondary }}>
+                              {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-          {fieldErrors.styles && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.styles}</p>}
-          {linkedStyles.length === 0 ? (
-            <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
-          ) : (
-            <div className="space-y-1">
-              {linkedStyles.map(style => (
-                <div 
-                  key={style.id}
-                  className="flex items-center justify-between px-3 py-2 rounded-md"
-                  style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
-                >
-                  <span className="text-sm">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm" style={{ color: theme.textSecondary }}>
-                      {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                    </span>
-                    {isEditable && (
-                      <button
-                        onClick={() => handleRemoveStyle(style.id)}
-                        className="p-0.5 rounded hover:cursor-pointer"
-                        style={{ color: theme.textMuted }}
-                      >
-                        <XIcon size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex justify-between mt-3 pt-3 border-t" style={{ borderColor: theme.borderLight }}>
-            <span className="text-sm font-medium">Style Subtotal</span>
-            <span className="text-sm font-medium">{formatCurrency(styleSubtotal)}</span>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-          <h2 className="text-sm font-semibold mb-3">Customizations</h2>
-          {isEditable && clientCustomizations.length > 0 && (
-            <div ref={customizationSearchRef} className="relative mb-3">
-              <MagnifyingGlassIcon 
-                size={16} 
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: theme.textMuted }}
-              />
-              <input
-                type="text"
-                placeholder="Add customization..."
-                value={customizationSearchQuery}
-                onChange={e => setCustomizationSearchQuery(e.target.value)}
-                onFocus={() => setShowCustomizationSearch(true)}
-                className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
-                style={{ 
-                  backgroundColor: theme.bg, 
-                  border: `1px solid ${theme.border}`,
-                  color: theme.text 
-                }}
-              />
-              {showCustomizationSearch && (
-                <div 
-                  className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-                >
-                  {filteredCustomizations
-                    .filter(c => !linkedCustomizationIds.includes(c.id))
-                    .map(customization => {
-                      const approvalStatus = customizationApprovalStatusField 
-                        ? customization.getCellValueAsString(customizationApprovalStatusField) 
-                        : '';
-                      const isTentative = approvalStatus !== 'Approved by Client';
-                      return (
-                        <button
-                          key={customization.id}
-                          onClick={() => handleAddCustomization(customization.id)}
-                          className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                          style={{ color: theme.text }}
-                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                            <div className="flex items-center gap-2">
-                              {isTentative && <StatusPill label="Tentative" variant="tentative" />}
-                              <span style={{ color: theme.textSecondary }}>
-                                {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-          )}
-          {fieldErrors.customizations && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.customizations}</p>}
-          {clientCustomizations.length === 0 ? (
-            <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations for this client.</p>
-          ) : linkedCustomizations.length === 0 ? (
-            <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
-          ) : (
-            <div className="space-y-1">
-              {linkedCustomizations.map(customization => {
-                const approvalStatus = customizationApprovalStatusField 
-                  ? customization.getCellValueAsString(customizationApprovalStatusField) 
-                  : '';
-                const isTentative = approvalStatus !== 'Approved by Client';
-                return (
-                  <div 
-                    key={customization.id}
-                    className="px-3 py-2 rounded-md"
-                    style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+              {fieldErrors.styles && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.styles}</p>}
+              {linkedStyles.length === 0 ? (
+                <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
+              ) : (
+                <div className="space-y-1">
+                  {linkedStyles.map(style => (
+                    <div
+                      key={style.id}
+                      className="flex items-center justify-between px-3 py-2 rounded-md"
+                      style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
+                    >
+                      <span className="text-sm">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
                       <div className="flex items-center gap-2">
-                        {isTentative && <StatusPill label="Tentative" variant="tentative" />}
                         <span className="text-sm" style={{ color: theme.textSecondary }}>
-                          {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                          {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
                         </span>
                         {isEditable && (
                           <button
-                            onClick={() => handleRemoveCustomization(customization.id)}
+                            onClick={() => handleRemoveStyle(style.id)}
                             className="p-0.5 rounded hover:cursor-pointer"
                             style={{ color: theme.textMuted }}
                           >
@@ -1831,101 +1821,243 @@ function Layer4({
                         )}
                       </div>
                     </div>
-                    <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>
-                      {customizationDetailField ? customization.getCellValueAsString(customizationDetailField) : ''}
-                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {clientCustomizations.length > 0 && (
+              <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                <h2 className="text-sm font-semibold mb-3">Customizations</h2>
+                {isEditable && (
+                  <div ref={customizationSearchRef} className="relative mb-3">
+                    <MagnifyingGlassIcon
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2"
+                      style={{ color: theme.textMuted }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Add customization..."
+                      value={customizationSearchQuery}
+                      onChange={e => setCustomizationSearchQuery(e.target.value)}
+                      onFocus={() => setShowCustomizationSearch(true)}
+                      className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
+                      style={{
+                        backgroundColor: theme.bg,
+                        border: `1px solid ${theme.border}`,
+                        color: theme.text
+                      }}
+                    />
+                    {showCustomizationSearch && (
+                      <div
+                        className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                        style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+                      >
+                        {filteredCustomizations
+                          .filter(c => !linkedCustomizationIds.includes(c.id))
+                          .map(customization => {
+                            const approvalStatus = customizationApprovalStatusField
+                              ? customization.getCellValueAsString(customizationApprovalStatusField)
+                              : '';
+                            const isTentative = approvalStatus !== 'Approved by Client';
+                            return (
+                              <button
+                                key={customization.id}
+                                onClick={() => handleAddCustomization(customization.id)}
+                                className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                                style={{ color: theme.text }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+                                  <div className="flex items-center gap-2">
+                                    {isTentative && <StatusPill label="Tentative" variant="tentative" />}
+                                    <span style={{ color: theme.textSecondary }}>
+                                      {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
-                );
-              })}
+                )}
+                {fieldErrors.customizations && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.customizations}</p>}
+                {linkedCustomizations.length === 0 ? (
+                  <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {linkedCustomizations.map(customization => {
+                      const approvalStatus = customizationApprovalStatusField
+                        ? customization.getCellValueAsString(customizationApprovalStatusField)
+                        : '';
+                      const isTentative = approvalStatus !== 'Approved by Client';
+                      return (
+                        <div
+                          key={customization.id}
+                          className="px-3 py-2 rounded-md"
+                          style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+                            <div className="flex items-center gap-2">
+                              {isTentative && <StatusPill label="Tentative" variant="tentative" />}
+                              <span className="text-sm" style={{ color: theme.textSecondary }}>
+                                {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                              </span>
+                              {isEditable && (
+                                <button
+                                  onClick={() => handleRemoveCustomization(customization.id)}
+                                  className="p-0.5 rounded hover:cursor-pointer"
+                                  style={{ color: theme.textMuted }}
+                                >
+                                  <XIcon size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>
+                            {customizationDetailField ? customization.getCellValueAsString(customizationDetailField) : ''}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <h2 className="text-sm font-semibold mb-3">Additional Charges</h2>
+
+              <div className="space-y-3">
+                {rushFee !== 0 && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm">Rush Fee</span>
+                      <span className="text-xs ml-2" style={{ color: theme.textMuted }}>(auto-calculated)</span>
+                    </div>
+                    <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
+                  </div>
+                )}
+                {weddingDate && dueDate && (
+                  <p className="text-xs" style={{ color: theme.textSecondary }}>
+                    Wedding Date: {formatDate(weddingDate.toISOString())} · Due Date: {formatDate(dueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
+                    {leadTime !== null && ` · Lead Time: ${leadTime} weeks`}
+                  </p>
+                )}
+                {!clientDueDate && (
+                  <p className="text-xs" style={{ color: theme.textSecondary }}>
+                    Rush fee requires a wedding date on file.
+                  </p>
+                )}
+
+                {isEditable ? (
+                  <div className="grid grid-cols-3 gap-3">
+                    <CurrencyInput
+                      label="Shipping"
+                      value={shipping}
+                      field={shippingField}
+                      fieldKey="shipping"
+                      error={fieldErrors.shipping}
+                      theme={theme}
+                      onBlur={handleCurrencyBlur}
+                    />
+                    <CurrencyInput
+                      label="Taxes"
+                      value={taxes}
+                      field={taxesField}
+                      fieldKey="taxes"
+                      error={fieldErrors.taxes}
+                      theme={theme}
+                      onBlur={handleCurrencyBlur}
+                    />
+                    <CurrencyInput
+                      label="Discount"
+                      value={discount}
+                      field={discountField}
+                      fieldKey="discount"
+                      error={fieldErrors.discount}
+                      theme={theme}
+                      onBlur={handleCurrencyBlur}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span style={{ color: theme.textSecondary }}>Shipping</span>
+                      <span>{formatCurrency(shipping)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: theme.textSecondary }}>Taxes</span>
+                      <span>{formatCurrency(taxes)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: theme.textSecondary }}>Discount</span>
+                      <span>-{formatCurrency(discount)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-          <div className="flex justify-between mt-3 pt-3 border-t" style={{ borderColor: theme.borderLight }}>
-            <span className="text-sm font-medium">Customization Subtotal</span>
-            <span className="text-sm font-medium">{formatCurrency(customizationSubtotal)}</span>
           </div>
-        </div>
 
-        <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-          <h2 className="text-sm font-semibold mb-3">Additional Charges</h2>
-          
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-sm">Rush Fee</span>
-                <span className="text-xs ml-2" style={{ color: theme.textMuted }}>(auto-calculated)</span>
-              </div>
-              <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
-            </div>
-            {weddingDate && dueDate && (
-              <p className="text-xs" style={{ color: theme.textSecondary }}>
-                Wedding Date: {formatDate(weddingDate.toISOString())} · Due Date: {formatDate(dueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
-                {leadTime !== null && ` · Lead Time: ${leadTime} weeks`}
-              </p>
-            )}
-            {!clientDueDate && (
-              <p className="text-xs" style={{ color: theme.textSecondary }}>
-                Rush fee requires a wedding date on file.
-              </p>
-            )}
-
-            {isEditable ? (
-              <div className="grid grid-cols-3 gap-3">
-                <CurrencyInput
-                  label="Shipping"
-                  value={shipping}
-                  field={shippingField}
-                  fieldKey="shipping"
-                  error={fieldErrors.shipping}
-                  theme={theme}
-                  onBlur={handleCurrencyBlur}
-                />
-                <CurrencyInput
-                  label="Taxes"
-                  value={taxes}
-                  field={taxesField}
-                  fieldKey="taxes"
-                  error={fieldErrors.taxes}
-                  theme={theme}
-                  onBlur={handleCurrencyBlur}
-                />
-                <CurrencyInput
-                  label="Discount"
-                  value={discount}
-                  field={discountField}
-                  fieldKey="discount"
-                  error={fieldErrors.discount}
-                  theme={theme}
-                  onBlur={handleCurrencyBlur}
-                />
-              </div>
-            ) : (
-              <div className="space-y-2 text-sm">
+          <div className="w-72 shrink-0 sticky top-0">
+            <div className="p-4 rounded-lg space-y-2 text-sm" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <h2 className="text-sm font-semibold mb-1">Summary</h2>
+              {styleSubtotal !== 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Style Subtotal</span>
+                  <span>{formatCurrency(styleSubtotal)}</span>
+                </div>
+              )}
+              {customizationSubtotal !== 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Customization Subtotal</span>
+                  <span>{formatCurrency(customizationSubtotal)}</span>
+                </div>
+              )}
+              {rushFee !== 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Rush Fee</span>
+                  <span>{formatCurrency(rushFee)}</span>
+                </div>
+              )}
+              {shipping !== 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: theme.textSecondary }}>Shipping</span>
                   <span>{formatCurrency(shipping)}</span>
                 </div>
+              )}
+              {taxes !== 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: theme.textSecondary }}>Taxes</span>
                   <span>{formatCurrency(taxes)}</span>
                 </div>
+              )}
+              {discount !== 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: theme.textSecondary }}>Discount</span>
                   <span>-{formatCurrency(discount)}</span>
                 </div>
-              </div>
-            )}
-
-            <div className="flex justify-between pt-3 border-t" style={{ borderColor: theme.borderLight }}>
-              <span className="text-sm font-medium">Total (fees − discount)</span>
-              <span className="text-sm font-medium">{formatCurrency(total)}</span>
+              )}
+              {total !== 0 && (
+                <div className="flex justify-between pt-2 border-t" style={{ borderColor: theme.borderLight }}>
+                  <span style={{ color: theme.textSecondary }}>Total (fees − discount)</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+              )}
+              {grandTotal !== 0 && (
+                <div className="flex justify-between pt-2 border-t font-semibold text-base" style={{ borderColor: theme.borderLight }}>
+                  <span>Grand Total</span>
+                  <span>{formatCurrency(grandTotal)}</span>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-lg" style={{ backgroundColor: theme.accentSoft, border: `1px solid ${theme.accent}` }}>
-          <div className="flex justify-between items-center">
-            <span className="text-base font-semibold">Grand Total</span>
-            <span className="text-xl font-bold">{formatCurrency(grandTotal)}</span>
           </div>
         </div>
       </div>
