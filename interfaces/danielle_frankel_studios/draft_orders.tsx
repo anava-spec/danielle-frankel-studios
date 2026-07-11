@@ -580,24 +580,45 @@ function Layer3({
   const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ID);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsVisible(true), 10);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const requestClose = () => {
+    setIsVisible(false);
+    setTimeout(onClose, 200);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') requestClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center"
-      onClick={onClose}
+      onClick={requestClose}
     >
-      <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} />
       <div
-        className="relative w-full max-h-[80vh] flex flex-col rounded-xl overflow-hidden"
-        style={{ backgroundColor: theme.bgCard, maxWidth: '560px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+        className="absolute inset-0 transition-opacity duration-200 ease-out"
+        style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
+      />
+      <div
+        className="relative w-full max-h-[80vh] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
+        style={{
+          backgroundColor: theme.bgCard,
+          maxWidth: '560px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          opacity: isVisible ? 1 : 0,
+          transform: isVisible ? 'scale(1)' : 'scale(0.96)'
+        }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
@@ -694,6 +715,9 @@ function Layer2({
   onSave,
   onClientSelect,
 }: Layer2Props) {
+  const isClientPresetRef = useRef(clientId !== null);
+  const isClientPreset = isClientPresetRef.current;
+
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
   const [shipping, setShipping] = useState('');
@@ -711,6 +735,26 @@ function Layer2({
   const [showCustomizationSearch, setShowCustomizationSearch] = useState(false);
   const [customizationHighlightIndex, setCustomizationHighlightIndex] = useState(-1);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [isDiscardVisible, setIsDiscardVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsVisible(true), 10);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (showDiscardConfirm) {
+      const timer = setTimeout(() => setIsDiscardVisible(true), 10);
+      return () => clearTimeout(timer);
+    }
+    setIsDiscardVisible(false);
+  }, [showDiscardConfirm]);
+
+  const requestClose = (callback: () => void) => {
+    setIsVisible(false);
+    setTimeout(callback, 200);
+  };
 
   const clientSearchRef = useRef<HTMLDivElement>(null);
   const styleSearchRef = useRef<HTMLDivElement>(null);
@@ -742,7 +786,7 @@ function Layer2({
     if (hasUnsavedChanges) {
       setShowDiscardConfirm(true);
     } else {
-      onClose();
+      requestClose(onClose);
     }
   };
 
@@ -958,17 +1002,30 @@ function Layer2({
       className="fixed inset-0 z-50 flex items-center justify-center"
       onClick={handleCloseAttempt}
     >
-      <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} />
       <div
-        className="relative w-full max-h-[90vh] flex flex-col rounded-xl overflow-hidden"
-        style={{ backgroundColor: theme.bgCard, maxWidth: '720px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+        className="absolute inset-0 transition-opacity duration-200 ease-out"
+        style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
+      />
+      <div
+        className="relative w-full max-h-[90vh] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
+        style={{
+          backgroundColor: theme.bgCard,
+          maxWidth: '720px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          opacity: isVisible ? 1 : 0,
+          transform: isVisible ? 'scale(1)' : 'scale(0.96)'
+        }}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b" style={{ borderColor: theme.border }}>
           <h2 className="text-lg font-semibold">New Draft Order</h2>
+          {isClientPreset && clientId && (
+            <p className="text-sm mt-0.5" style={{ color: theme.textSecondary }}>{getClientName(clientId)}</p>
+          )}
         </div>
 
         <div className="flex-1 overflow-auto p-6 space-y-6">
+          {!isClientPreset && (
           <div ref={clientSearchRef} className="relative">
             <label className="block text-sm font-medium mb-2">Client</label>
             <div className="relative">
@@ -1052,6 +1109,7 @@ function Layer2({
               </div>
             )}
           </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-2">Styles</label>
@@ -1304,9 +1362,11 @@ function Layer2({
                 <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
               </div>
             )}
-            {clientDueDate && clientWeddingDate && (
+            {clientDueDate && weeksUntilDueDate !== null && (
               <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
-                Wedding Date: {formatDate(clientWeddingDate.toISOString())} · Due Date: {formatDate(clientDueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
+                {rushFee !== 0 ? 'Amount calculated because the ' : 'The '}
+                due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}
+                {' '}({formatDate(clientDueDate.toISOString())}){clientWeddingDate ? ` — wedding date is ${formatDate(clientWeddingDate.toISOString())}.` : '.'}
               </p>
             )}
             {!clientDueDate && clientId && (
@@ -1424,12 +1484,22 @@ function Layer2({
       {showDiscardConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center"
-          onClick={() => setShowDiscardConfirm(false)}
+          onClick={() => { setIsDiscardVisible(false); setTimeout(() => setShowDiscardConfirm(false), 150); }}
         >
-          <div className="absolute inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} />
           <div
-            className="relative w-full rounded-xl overflow-hidden"
-            style={{ backgroundColor: theme.bgCard, maxWidth: '480px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', border: `1px solid ${theme.border}` }}
+            className="absolute inset-0 transition-opacity duration-150 ease-out"
+            style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isDiscardVisible ? 1 : 0 }}
+          />
+          <div
+            className="relative w-full rounded-xl overflow-hidden transition-all duration-150 ease-out"
+            style={{
+              backgroundColor: theme.bgCard,
+              maxWidth: '480px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              border: `1px solid ${theme.border}`,
+              opacity: isDiscardVisible ? 1 : 0,
+              transform: isDiscardVisible ? 'scale(1)' : 'scale(0.96)'
+            }}
             onClick={e => e.stopPropagation()}
           >
             <div className="p-6">
@@ -1440,14 +1510,14 @@ function Layer2({
             </div>
             <div className="px-6 py-4 border-t flex justify-end gap-3" style={{ borderColor: theme.border }}>
               <button
-                onClick={() => setShowDiscardConfirm(false)}
+                onClick={() => { setIsDiscardVisible(false); setTimeout(() => setShowDiscardConfirm(false), 150); }}
                 className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm"
                 style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
               >
                 Keep Editing
               </button>
               <button
-                onClick={onClose}
+                onClick={() => { setIsDiscardVisible(false); requestClose(onClose); }}
                 className="px-3 py-1.5 rounded-md hover:cursor-pointer text-sm font-medium"
                 style={{ backgroundColor: 'transparent', color: theme.danger }}
               >
@@ -2165,10 +2235,12 @@ function Layer4({
                     <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
                   </div>
                 )}
-                {weddingDate && dueDate && (
+                {dueDate && weeksUntilDueDate !== null && (
                   <p className="text-xs" style={{ color: theme.textSecondary }}>
-                    Wedding Date: {formatDate(weddingDate.toISOString())} · Due Date: {formatDate(dueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
-                    {leadTime !== null && ` · Lead Time: ${leadTime} weeks`}
+                    {rushFee !== 0 ? 'Amount calculated because the ' : 'The '}
+                    due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}
+                    {' '}({formatDate(dueDate.toISOString())}){weddingDate ? ` — wedding date is ${formatDate(weddingDate.toISOString())}.` : '.'}
+                    {leadTime !== null && ` Lead time: ${leadTime} week${leadTime === 1 ? '' : 's'}.`}
                   </p>
                 )}
                 {!clientDueDate && (
