@@ -452,7 +452,7 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const displayText = selected.length === 0 ? 'All' : selected.length === 1 ? (selected[0] ?? 'All') : `${selected.length} selected`;
+  const displayText = selected.length === 0 ? label : selected.length === 1 ? (selected[0] ?? label) : `${selected.length} selected`;
   const toggleOption = (option: string) => {
     onChange(selected.includes(option) ? selected.filter(s => s !== option) : [...selected, option]);
   };
@@ -460,37 +460,36 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
   const isActive = selected.length > 0;
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{label}</span>
-      <div ref={containerRef} className="relative">
-        <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
-            isActive
-              ? 'border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24] font-medium'
-              : 'border-gray-300 dark:border-[#38322A] text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600'
-          }`}>
-          <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-        {isOpen && (
-          <div
-            className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1"
-            style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
-            {options.map(option => (
-              <button key={option} type="button" onClick={() => toggleOption(option)}
-                className={`flex items-center w-full px-3 py-2 text-sm text-left cursor-pointer transition-colors ${selected.includes(option) ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:hover:bg-[#3A2E12]'}`}>
-                <span className="truncate">{option}</span>
-              </button>
-            ))}
-            {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No options</div>}
-          </div>
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setIsOpen(!isOpen)}
+        className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+          isActive
+            ? 'border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24] font-medium'
+            : 'border-gray-300 dark:border-[#38322A] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-600'
+        }`}>
+        <span className="truncate">{displayText}</span>
+        {isActive ? (
+          <XIcon
+            size={14}
+            className="text-[#D97706] dark:text-[#FBBF24] hover:opacity-70 transition-opacity flex-shrink-0"
+            onClick={(e) => { e.stopPropagation(); onChange([]); }}
+          />
+        ) : (
+          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform duration-150 flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
         )}
-      </div>
-      {selected.length > 0 && (
-        <button type="button" onClick={() => onChange([])}
-          className="text-sm text-[#D97706] dark:text-[#FBBF24] hover:underline underline-offset-2 cursor-pointer transition-colors">
-          Clear
-        </button>
+      </button>
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1"
+          style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          {options.map(option => (
+            <button key={option} type="button" onClick={() => toggleOption(option)}
+              className={`flex items-center w-full px-3 py-2 text-sm text-left cursor-pointer transition-colors ${selected.includes(option) ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:hover:bg-[#3A2E12]'}`}>
+              <span className="truncate">{option}</span>
+            </button>
+          ))}
+          {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No options</div>}
+        </div>
       )}
     </div>
   );
@@ -1581,7 +1580,7 @@ function Pipeline(): React.ReactElement {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search all clients…"
+            placeholder="Search by name, email, phone…"
             className="w-full border border-gray-300 dark:border-[#38322A] bg-white dark:bg-[#25211A] rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] transition-colors"
           />
           {searchQuery && (
@@ -1594,12 +1593,17 @@ function Pipeline(): React.ReactElement {
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
         <MultiSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
+        {hasActiveFilters && (
+          <button type="button" onClick={clearAllFilters} aria-label="Clear all filters"
+            className="inline-flex items-center justify-center p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-[#D97706] dark:hover:text-[#FBBF24] hover:bg-[#FEF3C7] dark:hover:bg-[#3A2E12] transition-colors flex-shrink-0">
+            <XIcon size={14} />
+          </button>
+        )}
       </div>
 
       {noMatchingClients && (
         <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-shrink-0">
           <span>No clients match the current filters.</span>
-          <button type="button" onClick={clearAllFilters} className="text-[#D97706] dark:text-[#FBBF24] hover:underline">Clear all filters</button>
         </div>
       )}
 

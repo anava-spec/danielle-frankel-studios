@@ -283,16 +283,27 @@ function FilterDropdown({ label, values, options, onChange, align = 'left' }: Fi
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const display = values.length === 0 ? 'All' : values.length === 1 ? (values[0] ?? 'All') : `${values.length} selected`;
+  const hasValue = values.length > 0;
+  const display = values.length === 0 ? label : values.length === 1 ? (values[0] ?? label) : `${values.length} selected`;
   const toggle = (o: string) => onChange(values.includes(o) ? values.filter(v => v !== o) : [...values, o]);
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 font-medium whitespace-nowrap dark:text-gray-400">{label}</span>
       <div ref={ref} className="relative">
         <button type="button" onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-gray-500 outline-none transition-colors">
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+            hasValue ? 'border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300'
+                     : 'border-gray-300 dark:border-[#34312C] text-gray-400 dark:text-gray-500 hover:border-gray-400 dark:hover:border-gray-500'}`}>
           <span className="truncate">{display}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <span className="flex items-center gap-1 flex-shrink-0">
+            {hasValue && (
+              <XIcon
+                size={14}
+                className="text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 transition-colors"
+                onClick={e => { e.stopPropagation(); onChange([]); }}
+              />
+            )}
+            <CaretDownIcon size={14} className={`transition-transform ${hasValue ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400'} ${open ? 'rotate-180' : ''}`} />
+          </span>
         </button>
         {open && (
           <div className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1`}>
@@ -305,7 +316,6 @@ function FilterDropdown({ label, values, options, onChange, align = 'left' }: Fi
           </div>
         )}
       </div>
-      {values.length > 0 && <button type="button" onClick={() => onChange([])} className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline underline-offset-2 transition-colors">Clear</button>}
     </div>
   );
 }
@@ -1332,7 +1342,7 @@ function FulfillmentApp(): React.ReactElement {
           <div className="relative">
             <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search clients…"
+              placeholder="Search by name, email, phone, associate…"
               className="pl-9 pr-7 py-1.5 text-sm bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-[180px]" />
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery('')}

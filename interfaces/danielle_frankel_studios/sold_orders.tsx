@@ -169,43 +169,49 @@ function MultiSelectDropdown({
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const displayText = selected.size === 0 ? 'All' : `${selected.size} selected`;
+  const hasSelection = selected.size > 0;
+  const displayText = hasSelection ? `${selected.size} selected` : label;
 
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
-      <div ref={ref} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[150px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 hover:dark:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
-        >
-          <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-        {open && (
-          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg py-1 min-w-[150px]">
-            {options.map(opt => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => onChange(opt, !selected.has(opt))}
-                className={`w-full text-left px-3 py-1.5 text-sm transition-colors whitespace-nowrap ${
-                  selected.has(opt)
-                    ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      {selected.size > 0 && (
-        <button onClick={onClear} className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-300 transition-colors">
-          Clear
-        </button>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center justify-between gap-2 min-w-[150px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+          hasSelection
+            ? 'border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24] font-medium'
+            : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 hover:dark:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]'
+        }`}
+      >
+        <span className="truncate">{displayText}</span>
+        <span className="flex items-center gap-1 flex-shrink-0">
+          {hasSelection && (
+            <XIcon
+              size={14}
+              className="text-[#D97706] dark:text-[#FBBF24] hover:opacity-70 transition-opacity"
+              onClick={e => { e.stopPropagation(); onClear(); }}
+            />
+          )}
+          <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg py-1 min-w-[150px]">
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onChange(opt, !selected.has(opt))}
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors whitespace-nowrap ${
+                selected.has(opt)
+                  ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -218,7 +224,7 @@ function SearchInput({ value, onChange }: { value: string; onChange: (v: string)
       <MagnifyingGlassIcon size={14} className="absolute left-2.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
       <input
         type="text"
-        placeholder="Search by client, Shopify #, or Apparel ID..."
+        placeholder="Search by client, Shopify #, Apparel ID…"
         value={value}
         onChange={e => onChange(e.target.value)}
         className="pl-8 pr-7 py-1.5 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 hover:border-gray-400 hover:dark:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors w-72"

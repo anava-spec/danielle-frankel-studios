@@ -105,7 +105,10 @@ Use raw `rgba` box-shadows (matches `sample_tracker.tsx`, more control than Tail
 
 Custom component, never a native `<select>`. One shared `Dropdown` pattern:
 - Trigger: same control styling as inputs (padding/radius/border per §3), `CaretDown` icon from `@phosphor-icons/react` on the right, rotates 180° when open (`transition-transform`, ~150ms).
-- When a filter is active, color the trigger's **border** as well as text/background with `accent` — not just background (this was sample_tracker.tsx's improvement over the others; keep it).
+- **Trigger label swaps based on state — no separate label sits outside the control:**
+  - **No filter applied**: trigger shows the filter's name (e.g. `Studio`, `Sales Associate`) in `text_secondary`, acting as its own placeholder/label. No filter name is ever shown as separate static text next to the control.
+  - **Filter applied**: trigger shows the **selected value** (e.g. `Los Angeles`, `Last 7 days`) in `text_primary`/`accent`-tinted per the active-state rule below, and a small `X` icon (`@phosphor-icons/react`, `14px`) appears at the trigger's right edge (replacing or sitting just before the `CaretDown`) to clear that one filter directly — no separate "Clear" text link per filter.
+  - When a filter is active, color the trigger's **border** as well as text/background with `accent` — not just background (this was sample_tracker.tsx's improvement over the others; keep it).
 - Panel: `surface` background, `1px` `border`, dropdown shadow (§4), `8px` radius, click-outside-to-close.
 - Options: `8px 12px` padding, hover state = `accent_soft` background, selected state = `accent` text + checkmark.
 
@@ -113,10 +116,19 @@ Custom component, never a native `<select>`. One shared `Dropdown` pattern:
 
 ## 6. Filters
 
-- Layout: `flex items-center gap-2`; each filter is a label + dropdown trigger.
-- Include a "Clear" text link (accent color) that appears only when at least one filter is active.
-- Search bar: text input with a `MagnifyingGlassIcon` absolutely positioned inside on the left, `~32px` left padding to clear the icon.
-- Active filter chips (if used to summarize applied filters): `accent_soft` background, `accent` text, `999px` radius, small `x` to remove.
+- Layout: `flex items-center gap-2`; each filter is a single dropdown trigger only — **no external label** (per §5, the filter's name lives inside the trigger itself as a placeholder, replaced by the value once applied).
+- **No global "Clear all" text link at the filter-bar level either** — each filter clears itself via its own inline `X` (§5). Only add a bar-level "Clear all" control if a screen has enough simultaneous filters that clearing them one by one would be genuinely tedious (4+), and even then style it as a small icon-button, not a text link.
+- Search bar: text input with a `MagnifyingGlassIcon` absolutely positioned inside on the left, `~32px` left padding to clear the icon. Placeholder text always follows the pattern **"Search by `<field>`, `<field>`, …"** — enumerate the actual fields it searches (e.g. `Search by name, phone, email, AM order…`), never a bare "Search…" or "Search clients".
+- Active filter chips (if used to summarize applied filters, separately from the dropdown triggers themselves): `accent_soft` background, `accent` text, `999px` radius, small `x` to remove.
+
+---
+
+## 5b. Layout Selector
+
+The control that switches a page's view (e.g. List / Kanban / Calendar):
+- Rendered as a `Dropdown` (per §5 pattern), not a row of toggle buttons or tabs — one trigger showing the current layout's name, opening a panel listing the other available layouts.
+- Trigger text is **centered** (not left-aligned like filter/search triggers), since there's no placeholder state to swap — a layout is always selected, so the label never needs to reserve left-aligned space for a caret-only affordance.
+- Positioned at the right end of the filter bar, per §10's established header layout (title + filters → primary action, layout selector rightmost).
 
 ---
 
@@ -222,3 +234,6 @@ When building or refactoring an interface, confirm:
 - [ ] Root shell includes `overflow-hidden`
 - [ ] Modal widths from the fixed scale in §3
 - [ ] Category toggle filters (if any) never use red — red is reserved for danger/flags (§13)
+- [ ] Filter dropdowns show the filter name as placeholder only when unapplied, the value + inline `X` when applied — no external label, no "Clear" text link (§5, §6)
+- [ ] Search bar placeholder reads "Search by `<field>`, `<field>`…" (§6)
+- [ ] Layout selector is a centered-text dropdown, not toggle buttons/tabs (§5b)

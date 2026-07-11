@@ -753,25 +753,38 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
     return () => document.removeEventListener('mousedown', handle);
   }, []);
   
-  const displayText = values.length === 0 ? 'All' : values.length === 1 ? values[0]! : `${values.length} selected`;
-  
+  const hasValue = values.length > 0;
+  const displayText = values.length === 0 ? label : values.length === 1 ? values[0]! : `${values.length} selected`;
+
   const toggleOption = (opt: string) => {
     onChange(values.includes(opt) ? values.filter(v => v !== opt) : [...values, opt]);
   };
-  
+
   const sortedOptions = [...options].sort((a, b) => a.localeCompare(b));
-  
+
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
       <div ref={containerRef} className="relative">
-        <button 
-          type="button" 
+        <button
+          type="button"
           onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-white/20 focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors ${
+            hasValue
+              ? 'border-[#D97706] dark:border-[#FBBF24] text-[#B45F04] dark:text-[#FBBF24] font-medium'
+              : 'border-gray-300 dark:border-white/15 text-gray-500 dark:text-gray-400 focus:border-[#D97706] dark:focus:border-[#FBBF24]'
+          }`}
         >
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <span className="flex items-center gap-1 flex-shrink-0">
+            {hasValue && (
+              <XIcon
+                size={14}
+                className="text-[#B45F04] dark:text-[#FBBF24] hover:opacity-70 transition-opacity"
+                onClick={(e) => { e.stopPropagation(); onChange([]); }}
+              />
+            )}
+            <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </span>
         </button>
         {open && (
           <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1 no-scrollbar" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
@@ -798,15 +811,6 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
           </div>
         )}
       </div>
-      {values.length > 0 && (
-        <button 
-          type="button" 
-          onClick={() => onChange([])}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline-offset-2 hover:underline cursor-pointer transition-colors"
-        >
-          Clear
-        </button>
-      )}
     </div>
   );
 }
@@ -1101,25 +1105,45 @@ function LayoutToggle({
   value: 'list' | 'calendar';
   onChange: (layout: 'list' | 'calendar') => void;
 }) {
-  const btnWidth = 88; // px, equal for both, sized to match dropdown height
-  const activeIdx = LAYOUT_OPTIONS.indexOf(value);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const btnWidth = 88; // px, sized to match other dropdown triggers
+
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  const layoutLabel = (layout: 'list' | 'calendar') => (layout === 'list' ? 'List' : 'Calendar');
+  const otherOptions = LAYOUT_OPTIONS.filter((layout) => layout !== value);
 
   return (
-    <div className="pill-switch" style={{ width: btnWidth * 2 }}>
-      <div
-        className="pill-switch-track"
-        style={{ width: btnWidth, transform: `translateX(${activeIdx * btnWidth}px)` }}
-      />
-      {LAYOUT_OPTIONS.map((layout) => (
-        <button
-          key={layout}
-          onClick={() => onChange(layout)}
-          className={`pill-switch-btn ${value === layout ? 'active' : 'inactive'}`}
-          style={{ width: btnWidth }}
-        >
-          {layout === 'list' ? 'List' : 'Calendar'}
-        </button>
-      ))}
+    <div ref={containerRef} className="relative" style={{ width: btnWidth }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full inline-flex items-center justify-center gap-2 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+      >
+        <span className="text-center truncate">{layoutLabel(value)}</span>
+        <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg py-1 no-scrollbar" style={{ width: btnWidth, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          {otherOptions.map((layout) => (
+            <button
+              key={layout}
+              type="button"
+              onClick={() => { onChange(layout); setOpen(false); }}
+              className="w-full text-center px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+            >
+              {layoutLabel(layout)}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

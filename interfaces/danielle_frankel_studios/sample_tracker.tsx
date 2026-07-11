@@ -9,6 +9,7 @@ import {
   CaretDown as CaretDownIcon,
   Check as CheckIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
+  X as XIcon,
 } from '@phosphor-icons/react';
 
 // ─── WRITE QUEUE (safe sequential writes) ────────────────────────────────────
@@ -217,10 +218,6 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      {/* Label outside the button */}
-      <span style={{ fontSize: '11px', fontWeight: 500, color: tok.text_muted, whiteSpace: 'nowrap' }}>
-        {label}
-      </span>
       <div ref={ref} style={{ position: 'relative' }}>
         {/* Trigger button */}
         <button
@@ -231,12 +228,24 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 
             minWidth, background: tok.surface,
             border: `1px solid ${isActive ? tok.accent : tok.border}`,
             borderRadius: '8px', padding: '5px 10px',
-            fontSize: '12px', color: isActive ? tok.accent : tok.text_primary,
+            fontSize: '12px', color: isActive ? tok.accent : tok.text_muted,
             fontWeight: isActive ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
             transition: 'border-color 0.15s',
           }}
         >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>{display}</span>
+          <span style={{
+            overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120,
+            color: isActive ? tok.accent : tok.text_muted,
+          }}>
+            {isActive ? display : label}
+          </span>
+          {isActive && (
+            <XIcon
+              size={14}
+              onClick={e => { e.stopPropagation(); onChange([]); }}
+              style={{ flexShrink: 0, cursor: 'pointer' }}
+            />
+          )}
           <Chevron open={open} />
         </button>
 
@@ -284,21 +293,6 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 
           </div>
         )}
       </div>
-
-      {/* Clear link */}
-      {isActive && (
-        <button
-          type="button"
-          onClick={() => onChange([])}
-          style={{
-            fontSize: '11px', color: tok.text_muted, cursor: 'pointer',
-            background: 'none', border: 'none', padding: 0,
-            textDecoration: 'underline', whiteSpace: 'nowrap',
-          }}
-        >
-          Clear
-        </button>
-      )}
     </div>
   );
 }
@@ -312,8 +306,9 @@ interface SingleSelectDropdownProps {
   onChange: (key: string) => void;
   tok: Tok;
   minWidth?: number;
+  baselineKey?: string; // key that represents "no filter applied" (shows label as placeholder)
 }
-function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth = 110 }: SingleSelectDropdownProps) {
+function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth = 110, baselineKey }: SingleSelectDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -325,12 +320,10 @@ function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth =
 
   const selected = options.find(o => o.key === value);
   const display = selected?.label ?? 'All';
+  const isActive = baselineKey !== undefined && value !== baselineKey;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      <span style={{ fontSize: '11px', fontWeight: 500, color: tok.text_muted, whiteSpace: 'nowrap' }}>
-        {label}
-      </span>
       <div ref={ref} style={{ position: 'relative' }}>
         <button
           type="button"
@@ -338,13 +331,23 @@ function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth =
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
             minWidth, background: tok.surface,
-            border: `1px solid ${tok.border}`,
+            border: `1px solid ${isActive ? tok.accent : tok.border}`,
             borderRadius: '8px', padding: '5px 10px',
-            fontSize: '12px', color: tok.text_primary, fontWeight: 400,
+            fontSize: '12px', color: isActive ? tok.accent : tok.text_primary,
+            fontWeight: isActive ? 600 : 400,
             cursor: 'pointer', whiteSpace: 'nowrap', transition: 'border-color 0.15s',
           }}
         >
-          <span>{display}</span>
+          <span style={{ color: isActive ? tok.accent : tok.text_muted }}>
+            {baselineKey !== undefined && !isActive ? label : display}
+          </span>
+          {isActive && baselineKey !== undefined && (
+            <XIcon
+              size={14}
+              onClick={e => { e.stopPropagation(); onChange(baselineKey); }}
+              style={{ flexShrink: 0, cursor: 'pointer' }}
+            />
+          )}
           <Chevron open={open} />
         </button>
 
@@ -1000,7 +1003,7 @@ function SampleTracker() {
               style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: tok.text_muted, pointerEvents: 'none' }}
             />
             <input
-              type="text" placeholder="Search…" value={search}
+              type="text" placeholder="Search by style, location…" value={search}
               onChange={e => setSearch(e.target.value)}
               style={inputStyle}
             />
@@ -1026,7 +1029,7 @@ function SampleTracker() {
         {/* Right 30%: alert filters — aligned with Sample Alerts panel */}
         <div style={{ width: '30%', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <FilterDropdown       label="SA"     values={saFilter}  options={saOptions}   onChange={setSaFilter}    tok={tok} minWidth={120} />
-          <SingleSelectDropdown label="Period" value={timePeriod} options={TIME_OPTIONS} onChange={v => setTimePeriod(v as TimePeriod)} tok={tok} minWidth={110} />
+          <SingleSelectDropdown label="Period" value={timePeriod} options={TIME_OPTIONS} onChange={v => setTimePeriod(v as TimePeriod)} tok={tok} minWidth={110} baselineKey="all" />
         </div>
       </div>
 

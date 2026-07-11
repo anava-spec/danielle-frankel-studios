@@ -517,16 +517,20 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
     document.addEventListener('mousedown',h);
     return ()=>document.removeEventListener('mousedown',h);
   },[]);
-  const display = values.length===0?'All':values.length===1?(values[0]??'All'):`${values.length} selected`;
+  const hasValue = values.length>0;
+  const display = hasValue ? (values.length===1?(values[0]??label):`${values.length} selected`) : label;
   const toggle = (o:string) => onChange(values.includes(o)?values.filter(v=>v!==o):[...values,o]);
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
       <div ref={ref} className="relative">
         <button type="button" onClick={()=>setOpen(o=>!o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 hover:dark:border-gray-500 outline-none transition-colors">
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${hasValue?'border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24]':'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 hover:dark:border-gray-500'}`}>
           <span className="truncate">{display}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open?'rotate-180':''}`}/>
+          {hasValue
+            ? <XIcon size={14} className="flex-shrink-0 hover:text-red-600 hover:dark:text-red-300"
+                onClick={(e)=>{ e.stopPropagation(); onChange([]); }}/>
+            : <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open?'rotate-180':''}`}/>
+          }
         </button>
         {open && (
           <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
@@ -541,7 +545,6 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
           </div>
         )}
       </div>
-      {values.length>0 && <button type="button" onClick={()=>onChange([])} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:dark:text-gray-300 hover:underline">Clear</button>}
     </div>
   );
 }
@@ -2071,7 +2074,7 @@ function AppointmentsApp(): React.ReactElement {
         {/* Search */}
         <div ref={searchRef} className="relative">
           <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 z-10 pointer-events-none"/>
-          <input type="text" placeholder="Search client…" value={clientSearch}
+          <input type="text" placeholder="Search by client name…" value={clientSearch}
             onChange={e=>setClientSearch(e.target.value)}
             onFocus={()=>{ if(searchResults.length>0) setShowSearchDrop(true); }}
             className="pl-9 pr-8 py-1.5 text-sm bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] w-[200px]"/>

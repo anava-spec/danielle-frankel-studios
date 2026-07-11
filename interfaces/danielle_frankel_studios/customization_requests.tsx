@@ -256,44 +256,49 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
     () => searchable && query ? options.filter(o => o.toLowerCase().includes(query.toLowerCase())) : options,
     [options, query, searchable]
   );
-  const displayText = values.length === 0 ? 'All' : values.length === 1 ? values[0] : `${values.length} selected`;
+  // Trigger label swaps based on state (spec §5/§6): no value selected shows
+  // the filter's own name as placeholder; a value selected shows the value
+  // itself plus an inline clear-X — no external label sits beside the trigger.
+  const hasValue = values.length > 0;
+  const displayText = !hasValue ? label : values.length === 1 ? values[0] : `${values.length} selected`;
   const toggle = useCallback((opt: string) => onChange(values.includes(opt) ? values.filter(v => v !== opt) : [...values, opt]), [values, onChange]);
   return (
-    <div className="flex items-center gap-1.5" ref={containerRef}>
-      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
-      <div className="relative">
-        <button type="button" onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center gap-1.5 min-w-[140px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-amber-400/50 outline-none transition-colors">
-          <span className="truncate flex-1 text-left">{displayText}</span>
-          {values.length > 0
-            ? <XIcon size={14} className="text-gray-400 flex-shrink-0 hover:text-gray-600" onClick={e => { e.stopPropagation(); onChange([]); }} />
-            : <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />}
-        </button>
-        {open && (
-          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg shadow-lg w-[240px] overflow-hidden">
-            {searchable && (
-              <div className="px-2 pt-1.5 pb-1 border-b border-gray-100 dark:border-white/5">
-                <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…"
-                  className="w-full rounded-md border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-[#1B1813] px-2 py-1 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-amber-400 transition-colors" />
-              </div>
-            )}
-            <button type="button" onClick={() => { onChange([]); setOpen(false); setQuery(''); }}
-              className={`w-full text-left px-3 py-2 text-sm transition-colors ${values.length === 0 ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
-            <div className="overflow-y-auto" style={{ maxHeight: Math.min(filteredOptions.length, 10) * 36 || 36, scrollbarWidth: 'none' }}>
-              {filteredOptions.map(opt => {
-                const sel = values.includes(opt);
-                return (
-                  <button key={opt} type="button" onClick={() => toggle(opt)} style={{ height: 36 }}
-                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${sel ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
-                    <span className="truncate block">{opt}</span>
-                  </button>
-                );
-              })}
-              {filteredOptions.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No results</div>}
+    <div className="relative" ref={containerRef}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1.5 min-w-[140px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+          hasValue
+            ? 'border-amber-600 dark:border-amber-400 text-amber-700 dark:text-amber-400 hover:border-amber-700 dark:hover:border-amber-300'
+            : 'border-gray-300 dark:border-[#38322A] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-amber-400/50'
+        }`}>
+        <span className="truncate flex-1 text-left font-medium">{displayText}</span>
+        {hasValue
+          ? <XIcon size={14} className="text-amber-600 dark:text-amber-400 flex-shrink-0 hover:text-amber-800 dark:hover:text-amber-200" onClick={e => { e.stopPropagation(); onChange([]); }} />
+          : <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg shadow-lg w-[240px] overflow-hidden">
+          {searchable && (
+            <div className="px-2 pt-1.5 pb-1 border-b border-gray-100 dark:border-white/5">
+              <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…"
+                className="w-full rounded-md border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-[#1B1813] px-2 py-1 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-amber-400 transition-colors" />
             </div>
+          )}
+          <button type="button" onClick={() => { onChange([]); setOpen(false); setQuery(''); }}
+            className={`w-full text-left px-3 py-2 text-sm transition-colors ${values.length === 0 ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
+          <div className="overflow-y-auto" style={{ maxHeight: Math.min(filteredOptions.length, 10) * 36 || 36, scrollbarWidth: 'none' }}>
+            {filteredOptions.map(opt => {
+              const sel = values.includes(opt);
+              return (
+                <button key={opt} type="button" onClick={() => toggle(opt)} style={{ height: 36 }}
+                  className={`w-full text-left px-3 py-2 text-sm transition-colors ${sel ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                  <span className="truncate block">{opt}</span>
+                </button>
+              );
+            })}
+            {filteredOptions.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No results</div>}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

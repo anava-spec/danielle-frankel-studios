@@ -2848,7 +2848,10 @@ function Pipeline(): React.ReactElement {
       {noMatchingClients && (
         <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-shrink-0">
           <span>No clients match the current filters.</span>
-          <button type="button" onClick={clearAllFilters} className="text-[#D97706] dark:text-[#FBBF24] hover:underline">Clear all filters</button>
+          <button type="button" onClick={clearAllFilters} aria-label="Clear all filters"
+            className="inline-flex items-center justify-center w-5 h-5 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+            <XIcon size={14} />
+          </button>
         </div>
       )}
 
