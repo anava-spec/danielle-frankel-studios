@@ -122,6 +122,7 @@ const SIZE_OPTIONS = [
   'XS', 'S', 'M', 'L', 'XXL', 'OS', 'OS 2', 'OS 8',
 ];
 const TYPE_OPTIONS = ['Garment', 'Shoes', 'Accessories'];
+const ALERT_TYPE_OPTIONS = ['Style not in studio', 'Client size missing', 'No styles on file'];
 
 type LocationStatus = 'in-studio' | 'at trunk show' | 'away';
 type TimePeriod = '7' | '14' | '30' | 'all';
@@ -172,6 +173,11 @@ function daysUntil(dateStr: string) {
   const ms = new Date(dateStr.slice(0, 10)).getTime() - new Date(todayStr()).getTime();
   return Math.round(ms / 86400000);
 }
+function alertTypeLabel(alert: RiskAlert): string {
+  if (alert.missingData === 'no-styles') return 'No styles on file';
+  if (alert.missingData === 'no-size') return 'Client size missing';
+  return 'Style not in studio';
+}
 
 // ─── CHEVRON / CHECK ICONS ────────────────────────────────────────────────────
 function Chevron({ open }: { open: boolean }) {
@@ -194,8 +200,9 @@ interface FilterDropdownProps {
   onChange: (v: string[]) => void;
   tok: Tok;
   minWidth?: number;
+  accentOnActive?: boolean; // false keeps the trigger neutral-colored even when a value is applied
 }
-function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 }: FilterDropdownProps) {
+function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130, accentOnActive = true }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -215,6 +222,7 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 
     : `${values.length} selected`;
 
   const isActive = values.length > 0;
+  const showAccent = isActive && accentOnActive;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -226,16 +234,16 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
             minWidth, background: tok.surface,
-            border: `1px solid ${isActive ? tok.accent : tok.border}`,
+            border: `1px solid ${showAccent ? tok.accent : tok.border}`,
             borderRadius: '8px', padding: '5px 10px',
-            fontSize: '12px', color: isActive ? tok.accent : tok.text_muted,
-            fontWeight: isActive ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
+            fontSize: '12px', color: showAccent ? tok.accent : tok.text_muted,
+            fontWeight: showAccent ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
             transition: 'border-color 0.15s',
           }}
         >
           <span style={{
             overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120,
-            color: isActive ? tok.accent : tok.text_muted,
+            color: showAccent ? tok.accent : tok.text_muted,
           }}>
             {isActive ? display : label}
           </span>
@@ -307,8 +315,9 @@ interface SingleSelectDropdownProps {
   tok: Tok;
   minWidth?: number;
   baselineKey?: string; // key that represents "no filter applied" (shows label as placeholder)
+  accentOnActive?: boolean; // false keeps the trigger neutral-colored even when a value is applied
 }
-function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth = 110, baselineKey }: SingleSelectDropdownProps) {
+function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth = 110, baselineKey, accentOnActive = true }: SingleSelectDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -321,6 +330,7 @@ function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth =
   const selected = options.find(o => o.key === value);
   const display = selected?.label ?? 'All';
   const isActive = baselineKey !== undefined && value !== baselineKey;
+  const showAccent = isActive && accentOnActive;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -331,14 +341,14 @@ function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth =
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
             minWidth, background: tok.surface,
-            border: `1px solid ${isActive ? tok.accent : tok.border}`,
+            border: `1px solid ${showAccent ? tok.accent : tok.border}`,
             borderRadius: '8px', padding: '5px 10px',
-            fontSize: '12px', color: isActive ? tok.accent : tok.text_primary,
-            fontWeight: isActive ? 600 : 400,
+            fontSize: '12px', color: showAccent ? tok.accent : tok.text_primary,
+            fontWeight: showAccent ? 600 : 400,
             cursor: 'pointer', whiteSpace: 'nowrap', transition: 'border-color 0.15s',
           }}
         >
-          <span style={{ color: isActive ? tok.accent : tok.text_muted }}>
+          <span style={{ color: showAccent ? tok.accent : tok.text_muted }}>
             {baselineKey !== undefined && !isActive ? label : display}
           </span>
           {isActive && baselineKey !== undefined && (
@@ -738,6 +748,7 @@ function SampleTracker() {
   const [search,         setSearch]         = useState('');
   const [timePeriod,     setTimePeriod]     = useState<TimePeriod>('7');
   const [saFilter,       setSaFilter]       = useState<string[]>([]);
+  const [alertTypeFilter, setAlertTypeFilter] = useState<string[]>([]);
   const [selectedSample, setSelectedSample] = useState<Record | null>(null);
 
   // ── Inventory filter options ──
@@ -973,8 +984,13 @@ function SampleTracker() {
       });
     }
 
+    // Alert type filter
+    if (alertTypeFilter.length > 0) {
+      filtered = filtered.filter(a => alertTypeFilter.includes(alertTypeLabel(a)));
+    }
+
     return filtered;
-  }, [allAlerts, timePeriod, saFilter]);
+  }, [allAlerts, timePeriod, saFilter, alertTypeFilter]);
 
   const inputStyle: React.CSSProperties = {
     paddingLeft: '32px', paddingRight: '10px', paddingTop: '6px', paddingBottom: '6px',
@@ -1028,8 +1044,9 @@ function SampleTracker() {
 
         {/* Right 30%: alert filters — aligned with Sample Alerts panel */}
         <div style={{ width: '30%', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <FilterDropdown       label="SA"     values={saFilter}  options={saOptions}   onChange={setSaFilter}    tok={tok} minWidth={120} />
-          <SingleSelectDropdown label="Period" value={timePeriod} options={TIME_OPTIONS} onChange={v => setTimePeriod(v as TimePeriod)} tok={tok} minWidth={110} baselineKey="all" />
+          <FilterDropdown       label="Sales Associate" values={saFilter}        options={saOptions}         onChange={setSaFilter}        tok={tok} minWidth={140} accentOnActive={false} />
+          <FilterDropdown       label="Alert Type"       values={alertTypeFilter} options={ALERT_TYPE_OPTIONS} onChange={setAlertTypeFilter} tok={tok} minWidth={140} accentOnActive={false} />
+          <SingleSelectDropdown label="Period"            value={timePeriod}      options={TIME_OPTIONS}       onChange={v => setTimePeriod(v as TimePeriod)} tok={tok} minWidth={110} baselineKey="all" accentOnActive={false} />
         </div>
       </div>
 

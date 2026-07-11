@@ -109,8 +109,10 @@ Custom component, never a native `<select>`. One shared `Dropdown` pattern:
   - **No filter applied**: trigger shows the filter's name (e.g. `Studio`, `Sales Associate`) in `text_secondary`, acting as its own placeholder/label. No filter name is ever shown as separate static text next to the control.
   - **Filter applied**: trigger shows the **selected value** (e.g. `Los Angeles`, `Last 7 days`) in `text_primary`/`accent`-tinted per the active-state rule below, and a small `X` icon (`@phosphor-icons/react`, `14px`) appears at the trigger's right edge (replacing or sitting just before the `CaretDown`) to clear that one filter directly — no separate "Clear" text link per filter.
   - When a filter is active, color the trigger's **border** as well as text/background with `accent` — not just background (this was sample_tracker.tsx's improvement over the others; keep it).
+  - **Exception — filters attached to an already color-coded panel**: when a dropdown filters a panel that itself uses semantic color (e.g. a "Sample Alerts"/danger-styled list where each card already has a red/amber border per urgency), the accent-on-active treatment can visually compete with that panel's own coloring. In that case, the trigger may opt out of the accent border/text-on-active (stay neutral `border`/`text_muted` regardless of state) while keeping every other behavior identical — value display, the inline `X`-to-clear, and the placeholder-name-when-empty state. Implement this as an explicit opt-out prop on the shared component (e.g. `accentOnActive={false}`), not a one-off inline override, so it stays traceable as a deliberate exception rather than a missed migration.
 - Panel: `surface` background, `1px` `border`, dropdown shadow (§4), `8px` radius, click-outside-to-close.
 - Options: `8px 12px` padding, hover state = `accent_soft` background, selected state = `accent` text + checkmark.
+- **Filter names are always spelled out in full** — no abbreviations (`Sales Associate`, not `SA`) — since the name is user-facing placeholder text now (per above), not an internal label a developer might be tempted to shorten.
 
 ---
 
