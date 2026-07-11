@@ -2047,11 +2047,13 @@ function Layer4({
 
       <div className="flex-1 overflow-auto px-[15%] py-6">
         <div className="flex gap-6 items-start">
-          <div className="w-[60%] min-w-0 space-y-6">
-            <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-              <h2 className="text-sm font-semibold mb-3">Styles</h2>
-              {isEditable && (
-                <div ref={styleSearchRef} className="relative mb-3">
+          <div className="w-[60%] min-w-0">
+            <div className="rounded-lg overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h2 className="text-sm font-semibold">Styles</h2>
+                {isEditable && (
+                <div ref={styleSearchRef} className="relative w-64">
                   <MagnifyingGlassIcon
                     size={16}
                     className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -2123,7 +2125,8 @@ function Layer4({
                     </div>
                   )}
                 </div>
-              )}
+                )}
+              </div>
               {fieldErrors.styles && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.styles}</p>}
               {linkedStyles.length === 0 ? (
                 <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
@@ -2157,10 +2160,11 @@ function Layer4({
             </div>
 
             {clientCustomizations.length > 0 && (
-              <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-                <h2 className="text-sm font-semibold mb-3">Customizations</h2>
-                {isEditable && (
-                  <div ref={customizationSearchRef} className="relative mb-3">
+              <div className="p-4 border-t" style={{ borderColor: theme.borderLight }}>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h2 className="text-sm font-semibold">Customizations</h2>
+                  {isEditable && (
+                  <div ref={customizationSearchRef} className="relative w-64">
                     <MagnifyingGlassIcon
                       size={16}
                       className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -2235,7 +2239,8 @@ function Layer4({
                       </div>
                     )}
                   </div>
-                )}
+                  )}
+                </div>
                 {fieldErrors.customizations && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.customizations}</p>}
                 {linkedCustomizations.length === 0 ? (
                   <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
@@ -2281,7 +2286,7 @@ function Layer4({
               </div>
             )}
 
-            <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+            <div className="p-4 border-t" style={{ borderColor: theme.borderLight }}>
               <h2 className="text-sm font-semibold mb-3">Additional Charges</h2>
 
               <div className="space-y-3">
@@ -2351,6 +2356,7 @@ function Layer4({
                   </div>
                 )}
               </div>
+            </div>
             </div>
           </div>
 
