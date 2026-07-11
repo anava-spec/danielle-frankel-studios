@@ -781,18 +781,20 @@ function Layer2({
 
     const weeksRemaining = weeksUntilDueDate;
 
-    // TODO: confirm exact week-boundary matching with Julia
+    // Tiers are buckets keyed by their upper bound: the applicable tier is the
+    // smallest "# of Weeks" threshold that is >= weeksRemaining (e.g. 17-20 weeks
+    // remaining uses the 20-week tier; <=4 weeks remaining uses the 4-week tier).
     const matchingRule = rushFeeRuleRecords
       .filter(rule => {
         const ruleWeeks = rushRuleWeeksField ? (rule.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
-        return ruleWeeks <= weeksRemaining;
+        return ruleWeeks >= weeksRemaining;
       })
       .sort((a, b) => {
         const weeksA = rushRuleWeeksField ? (a.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
         const weeksB = rushRuleWeeksField ? (b.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
-        return weeksB - weeksA;
+        return weeksA - weeksB;
       })[0];
-    
+
     if (!matchingRule) return 0;
     
     const rushPct = rushRuleNonCustomizedPctField 
@@ -1554,16 +1556,18 @@ function Layer4({
     const today = new Date();
     const weeksRemaining = Math.floor((clientDueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
 
-    // TODO: confirm exact week-boundary matching with Julia
+    // Tiers are buckets keyed by their upper bound: the applicable tier is the
+    // smallest "# of Weeks" threshold that is >= weeksRemaining (e.g. 17-20 weeks
+    // remaining uses the 20-week tier; <=4 weeks remaining uses the 4-week tier).
     const matchingRule = rushFeeRuleRecords
       .filter(rule => {
         const ruleWeeks = rushRuleWeeksField ? (rule.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
-        return ruleWeeks <= weeksRemaining;
+        return ruleWeeks >= weeksRemaining;
       })
       .sort((a, b) => {
         const weeksA = rushRuleWeeksField ? (a.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
         const weeksB = rushRuleWeeksField ? (b.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
-        return weeksB - weeksA;
+        return weeksA - weeksB;
       })[0];
 
     if (!matchingRule) {
