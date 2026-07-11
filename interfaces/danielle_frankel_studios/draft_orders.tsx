@@ -43,6 +43,10 @@ const FIELD_IDS = {
   CLIENT_DRAFT_ORDERS: 'fldynmy5OIWDVcgIn',
   CLIENT_FAVORITE_STYLES_ACUITY: 'fldZzNR0g5VEJ5RmX',
   CLIENT_FAVORITE_STYLES_APPOINTMENT: 'fldVw8wCgPKvxN1jD',
+  CLIENT_SALES_ASSOCIATE: 'fldBTKBaw8YvNAlwK',
+
+  STAFF_FULL_NAME: 'fldc8INBZmwC3xeH7',
+  STAFF_IS_ACTIVE: 'fldB6rPTjxATp7uMf',
 
   STYLE_NAME: 'fldEs3chQAeplPc1w',
   STYLE_PRICE: 'flduZuxPxxMqXzNxD',
@@ -180,6 +184,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
     { key: 'stylesTable', label: 'Styles', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl0hWIRBbcB4UkVC') },
     { key: 'customizationsTable', label: 'Customizations', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl7HUWDI7IRjWY92') },
     { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') },
+    { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') },
   ];
 }
 
@@ -193,12 +198,14 @@ function DraftOrdersApp() {
   const stylesTable = customPropertyValueByKey.stylesTable as Table | undefined;
   const customizationsTable = customPropertyValueByKey.customizationsTable as Table | undefined;
   const rushFeeRulesTable = customPropertyValueByKey.rushFeeRulesTable as Table | undefined;
+  const staffTable = customPropertyValueByKey.staffTable as Table | undefined;
 
   const draftRecords = useRecords(draftOrdersTable ?? null);
   const clientRecords = useRecords(clientsTable ?? null);
   const styleRecords = useRecords(stylesTable ?? null);
   const customizationRecords = useRecords(customizationsTable ?? null);
   const rushFeeRuleRecords = useRecords(rushFeeRulesTable ?? null);
+  const staffRecords = useRecords(staffTable ?? null);
 
   const [viewState, setViewState] = useState<ViewState>({ layer: 1 });
 
@@ -239,6 +246,14 @@ function DraftOrdersApp() {
     if (!client) return 'Unknown Client';
     const nameField = getField(clientsTable, FIELD_IDS.CLIENT_FULL_NAME);
     return nameField ? (client.getCellValueAsString(nameField) || 'Unknown Client') : 'Unknown Client';
+  };
+
+  const getClientWeddingDate = (clientId: string): Date | null => {
+    const client = clientRecords?.find(c => c.id === clientId);
+    if (!client) return null;
+    const weddingDateField = getField(clientsTable, FIELD_IDS.CLIENT_WEDDING_DATE);
+    if (!weddingDateField) return null;
+    return parseDate(client.getCellValueAsString(weddingDateField));
   };
 
   const getDraftsForClient = (clientId: string): AirtableRecord[] => {
@@ -295,8 +310,10 @@ function DraftOrdersApp() {
             theme={theme}
             clientRecords={clientRecords ?? []}
             draftRecords={draftRecords ?? []}
+            staffRecords={staffRecords ?? []}
             draftOrdersTable={draftOrdersTable}
             clientsTable={clientsTable}
+            staffTable={staffTable ?? null}
             getField={getField}
             getLinkedRecordIds={getLinkedRecordIds}
             getMostRecentDraft={getMostRecentDraft}
@@ -308,6 +325,7 @@ function DraftOrdersApp() {
               theme={theme}
               clientId={layer3ClientId}
               clientName={getClientName(layer3ClientId)}
+              clientWeddingDate={getClientWeddingDate(layer3ClientId)}
               drafts={getDraftsForClient(layer3ClientId)}
               draftOrdersTable={draftOrdersTable}
               getField={getField}
@@ -353,8 +371,10 @@ interface Layer1Props {
   theme: typeof COLORS.LIGHT;
   clientRecords: AirtableRecord[];
   draftRecords: AirtableRecord[];
+  staffRecords: AirtableRecord[];
   draftOrdersTable: Table;
   clientsTable: Table;
+  staffTable: Table | null;
   getField: (table: Table, fieldId: string) => Field | null;
   getLinkedRecordIds: (record: AirtableRecord, field: Field | null) => string[];
   getMostRecentDraft: (clientId: string) => AirtableRecord | null;
@@ -366,39 +386,71 @@ function Layer1({
   theme,
   clientRecords,
   draftRecords,
+  staffRecords,
   draftOrdersTable,
   clientsTable,
+  staffTable,
   getField,
   getLinkedRecordIds,
   getMostRecentDraft,
   onClientClick,
   onNewDraft,
 }: Layer1Props) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [salesAssociateFilter, setSalesAssociateFilter] = useState('');
+
   const activeClients = useMemo(() => {
     const draftOrdersField = getField(clientsTable, FIELD_IDS.CLIENT_DRAFT_ORDERS);
     const stageField = getField(clientsTable, FIELD_IDS.CLIENT_STAGE);
-    
+
     return clientRecords.filter(client => {
       const linkedDrafts = getLinkedRecordIds(client, draftOrdersField);
       if (linkedDrafts.length === 0) return false;
-      
+
       if (TERMINAL_STAGES.length > 0 && stageField) {
         const stage = client.getCellValueAsString(stageField);
         if (TERMINAL_STAGES.includes(stage)) return false;
       }
-      
+
       return true;
     });
   }, [clientRecords, clientsTable, getField, getLinkedRecordIds]);
 
   const nameField = getField(clientsTable, FIELD_IDS.CLIENT_FULL_NAME);
   const draftOrdersField = getField(clientsTable, FIELD_IDS.CLIENT_DRAFT_ORDERS);
+  const clientSalesAssociateField = getField(clientsTable, FIELD_IDS.CLIENT_SALES_ASSOCIATE);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
+  const staffNameField = staffTable ? getField(staffTable, FIELD_IDS.STAFF_FULL_NAME) : null;
+  const staffIsActiveField = staffTable ? getField(staffTable, FIELD_IDS.STAFF_IS_ACTIVE) : null;
+
+  const activeStaff = useMemo(() => {
+    return staffRecords
+      .filter(staff => (staffIsActiveField ? !!staff.getCellValue(staffIsActiveField) : false))
+      .sort((a, b) => {
+        const nameA = staffNameField ? a.getCellValueAsString(staffNameField) : '';
+        const nameB = staffNameField ? b.getCellValueAsString(staffNameField) : '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [staffRecords, staffIsActiveField, staffNameField]);
+
+  const filteredClients = useMemo(() => {
+    return activeClients.filter(client => {
+      if (salesAssociateFilter) {
+        const linkedSalesAssociates = getLinkedRecordIds(client, clientSalesAssociateField);
+        if (!linkedSalesAssociates.includes(salesAssociateFilter)) return false;
+      }
+      if (searchQuery.trim()) {
+        const name = nameField ? client.getCellValueAsString(nameField).toLowerCase() : '';
+        if (!name.includes(searchQuery.trim().toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [activeClients, searchQuery, salesAssociateFilter, nameField, clientSalesAssociateField, getLinkedRecordIds]);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+      <div className="flex items-center justify-between px-7 py-4 border-b" style={{ borderColor: theme.border }}>
         <h1 className="text-lg font-bold">Draft Orders</h1>
         <button
           onClick={onNewDraft}
@@ -412,14 +464,55 @@ function Layer1({
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
-        {activeClients.length === 0 ? (
+      <div className="flex items-center gap-3 px-7 py-3 border-b" style={{ borderColor: theme.border }}>
+        <div className="relative flex-1 max-w-xs">
+          <MagnifyingGlassIcon
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: theme.textMuted }}
+          />
+          <input
+            type="text"
+            placeholder="Search clients..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
+            style={{
+              backgroundColor: theme.bg,
+              border: `1px solid ${theme.border}`,
+              color: theme.text
+            }}
+          />
+        </div>
+        <select
+          value={salesAssociateFilter}
+          onChange={e => setSalesAssociateFilter(e.target.value)}
+          className="px-3 py-2 rounded-md text-sm hover:cursor-pointer"
+          style={{
+            backgroundColor: theme.bg,
+            border: `1px solid ${theme.border}`,
+            color: theme.text
+          }}
+        >
+          <option value="">All Sales Associates</option>
+          {activeStaff.map(staff => (
+            <option key={staff.id} value={staff.id}>
+              {staffNameField ? staff.getCellValueAsString(staffNameField) : 'Unknown'}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex-1 overflow-auto px-7 py-6">
+        {filteredClients.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p style={{ color: theme.textSecondary }}>No active clients with draft orders yet.</p>
+            <p style={{ color: theme.textSecondary }}>
+              {activeClients.length === 0 ? 'No active clients with draft orders yet.' : 'No clients match your search.'}
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
-            {activeClients.map(client => {
+            {filteredClients.map(client => {
               const clientName = nameField ? client.getCellValueAsString(nameField) : 'Unknown';
               const draftCount = getLinkedRecordIds(client, draftOrdersField).length;
               const mostRecentDraft = getMostRecentDraft(client.id);
@@ -463,6 +556,7 @@ interface Layer3Props {
   theme: typeof COLORS.LIGHT;
   clientId: string;
   clientName: string;
+  clientWeddingDate: Date | null;
   drafts: AirtableRecord[];
   draftOrdersTable: Table;
   getField: (table: Table, fieldId: string) => Field | null;
@@ -475,6 +569,7 @@ function Layer3({
   theme,
   clientId,
   clientName,
+  clientWeddingDate,
   drafts,
   draftOrdersTable,
   getField,
@@ -483,7 +578,6 @@ function Layer3({
   onNewDraft,
 }: Layer3Props) {
   const labelField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ID);
-  const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
 
@@ -506,25 +600,33 @@ function Layer3({
         style={{ backgroundColor: theme.bgCard, maxWidth: '560px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+        <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
           <h2 className="text-lg font-semibold">{clientName}</h2>
+          {clientWeddingDate && (
+            <span className="text-sm" style={{ color: theme.textSecondary }}>
+              Wedding Date: {formatDate(clientWeddingDate.toISOString())}
+            </span>
+          )}
+          <div className="flex-1" />
           <button
-            onClick={onClose}
-            className="p-1 rounded-md hover:cursor-pointer"
-            style={{ color: theme.textSecondary }}
+            onClick={onNewDraft}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium"
+            style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.accentHover; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.accent; }}
           >
-            <XIcon size={20} />
+            <PlusIcon size={16} weight="bold" />
+            New Draft
           </button>
         </div>
-        
-        <div className="flex-1 overflow-auto p-4">
+
+        <div className="flex-1 overflow-auto px-6 py-4">
           {drafts.length === 0 ? (
             <p className="text-center py-8" style={{ color: theme.textSecondary }}>No drafts yet.</p>
           ) : (
             <div className="space-y-2">
               {drafts.map(draft => {
                 const label = labelField ? draft.getCellValueAsString(labelField) : 'Untitled';
-                const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
                 const grandTotal = grandTotalField ? (draft.getCellValue(grandTotalField) as number | null) : null;
                 const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
 
@@ -537,10 +639,7 @@ function Layer3({
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.bg; }}
                   >
-                    <div>
-                      <p className="font-medium">{label || 'Untitled Draft'}</p>
-                      <p className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</p>
-                    </div>
+                    <p className="font-medium">{label || 'Untitled Draft'}</p>
                     <div className="flex items-center gap-3">
                       <span className="font-medium">{formatCurrency(grandTotal)}</span>
                       <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
@@ -550,19 +649,6 @@ function Layer3({
               })}
             </div>
           )}
-        </div>
-        
-        <div className="px-6 py-4 border-t" style={{ borderColor: theme.border }}>
-          <button
-            onClick={onNewDraft}
-            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium"
-            style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.accentHover; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.accent; }}
-          >
-            <PlusIcon size={16} weight="bold" />
-            New Draft
-          </button>
         </div>
       </div>
     </div>
@@ -1720,7 +1806,7 @@ function Layer4({
         <span className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</span>
         <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
         <div className="flex-1" />
-        {canUpdate && (
+        {canUpdate && isMostRecent && (
           <button
             onClick={handleToggleLock}
             className="flex items-center gap-2 px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm"
