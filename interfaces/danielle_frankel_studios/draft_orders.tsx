@@ -224,21 +224,9 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
       </button>
       {open && (
         <div
-          className="absolute z-20 mt-1 rounded-md shadow-lg overflow-hidden"
-          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, minWidth }}
+          className="absolute z-20 mt-1 rounded-md shadow-lg overflow-y-auto"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, minWidth, maxHeight: 252 }}
         >
-          <button
-            onClick={() => { onChange(''); setOpen(false); }}
-            className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-            style={{
-              backgroundColor: !isActive ? theme.accentSoft : 'transparent',
-              color: !isActive ? theme.accent : theme.text,
-              fontWeight: !isActive ? 600 : 400
-            }}
-          >
-            {label}
-          </button>
-          <div style={{ height: 1, backgroundColor: theme.borderLight }} />
           {options.map(opt => {
             const checked = value === opt.id;
             return (
@@ -535,7 +523,7 @@ function Layer1({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-10 py-4 border-b" style={{ borderColor: theme.border }}>
+      <div className="flex items-center gap-3 px-[15%] py-4 border-b" style={{ borderColor: theme.border }}>
         <div className="relative flex-1 max-w-xs">
           <MagnifyingGlassIcon
             size={16}
@@ -556,7 +544,7 @@ function Layer1({
           />
         </div>
         <FilterDropdown
-          label="All Sales Associates"
+          label="Sales Associates"
           value={salesAssociateFilter}
           onChange={setSalesAssociateFilter}
           theme={theme}
@@ -579,7 +567,7 @@ function Layer1({
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto px-7 py-6">
+      <div className="flex-1 overflow-auto px-[15%] py-6">
         {filteredClients.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p style={{ color: theme.textSecondary }}>
@@ -687,7 +675,7 @@ function Layer3({
         style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
       />
       <div
-        className="relative w-full max-h-[80vh] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
+        className="relative w-full h-[640px] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
         style={{
           backgroundColor: theme.bgCard,
           maxWidth: '560px',
@@ -1440,9 +1428,7 @@ function Layer2({
             )}
             {clientDueDate && weeksUntilDueDate !== null && (
               <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
-                {rushFee !== 0 ? 'Amount calculated because the ' : 'The '}
-                due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}
-                {' '}({formatDate(clientDueDate.toISOString())}){clientWeddingDate ? ` — wedding date is ${formatDate(clientWeddingDate.toISOString())}.` : '.'}
+                Due {formatDate(clientDueDate.toISOString())} — {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'} away.
               </p>
             )}
             {!clientDueDate && clientId && (
@@ -1863,15 +1849,11 @@ function Layer4({
   const grandTotal = grandTotalField ? (draft.getCellValue(grandTotalField) as number | null) ?? 0 : 0;
   const leadTime = leadTimeField ? (draft.getCellValue(leadTimeField) as number | null) : null;
 
-  const mostRecentDraft = getMostRecentDraft(clientId);
-  const isMostRecent = mostRecentDraft?.id === draftId;
-  const isEditable = isMostRecent && !isLocked && canUpdate;
+  const isEditable = !isLocked && canUpdate;
 
   let readOnlyReason = '';
   if (!canUpdate) {
     readOnlyReason = 'You don\'t have permission to edit.';
-  } else if (!isMostRecent) {
-    readOnlyReason = 'A newer draft exists for this client.';
   } else if (isLocked) {
     readOnlyReason = 'This draft is locked.';
   }
@@ -2029,7 +2011,7 @@ function Layer4({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-4 px-10 py-4 border-b" style={{ borderColor: theme.border }}>
+      <div className="flex items-center gap-4 px-[15%] py-4 border-b" style={{ borderColor: theme.border }}>
         <button
           onClick={onBack}
           className="flex items-center gap-1 text-sm hover:cursor-pointer"
@@ -2042,7 +2024,7 @@ function Layer4({
         <span className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</span>
         <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
         <div className="flex-1" />
-        {canUpdate && (isMostRecent || isLocked) && (
+        {canUpdate && (
           <button
             onClick={handleToggleLock}
             className="flex items-center gap-2 px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm"
@@ -2055,16 +2037,16 @@ function Layer4({
       </div>
 
       {!isEditable && (
-        <div className="px-10 py-3" style={{ backgroundColor: theme.neutralBg }}>
+        <div className="px-[15%] py-3" style={{ backgroundColor: theme.neutralBg }}>
           <p className="text-sm" style={{ color: theme.textSecondary }}>
             This draft is read-only — {readOnlyReason}
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto px-10 py-6">
+      <div className="flex-1 overflow-auto px-[15%] py-6">
         <div className="flex gap-6 items-start">
-          <div className="flex-1 min-w-0 space-y-6">
+          <div className="w-[60%] min-w-0 space-y-6">
             <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
               <h2 className="text-sm font-semibold mb-3">Styles</h2>
               {isEditable && (
@@ -2313,10 +2295,7 @@ function Layer4({
                 )}
                 {dueDate && weeksUntilDueDate !== null && (
                   <p className="text-xs" style={{ color: theme.textSecondary }}>
-                    {rushFee !== 0 ? 'Amount calculated because the ' : 'The '}
-                    due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}
-                    {' '}({formatDate(dueDate.toISOString())}){weddingDate ? ` — wedding date is ${formatDate(weddingDate.toISOString())}.` : '.'}
-                    {leadTime !== null && ` Lead time: ${leadTime} week${leadTime === 1 ? '' : 's'}.`}
+                    Due {formatDate(dueDate.toISOString())} — {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'} away.
                   </p>
                 )}
                 {!clientDueDate && (
@@ -2375,7 +2354,7 @@ function Layer4({
             </div>
           </div>
 
-          <div className="w-72 shrink-0 sticky top-0">
+          <div className="w-[40%] shrink-0 sticky top-0">
             <div className="p-4 rounded-lg space-y-2 text-sm" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
               <h2 className="text-sm font-semibold mb-1">Summary</h2>
               {styleSubtotal !== 0 && (
