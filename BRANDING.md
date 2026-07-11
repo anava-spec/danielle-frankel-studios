@@ -181,7 +181,36 @@ One shared `StatusPill` component (replacing the four near-duplicates — `Appro
 
 ---
 
-## 13. Component Checklist for New Interfaces
+## 13. Category Toggle Filters / Summary Stat Buttons
+
+Some interfaces show a row of clickable "stat" buttons above the table that both **summarize a count** and **act as a filter toggle** — e.g. Fulfillment's `Pick Up: 6` / `Ship: 28` / `On Hold: 2` (`fulfillment.tsx:1314-1328`). These are distinct from `StatusPill` (§9): a pill is read-only and reflects one record's value; a category toggle is clickable, reflects an aggregate count, and has its own on/off visual state.
+
+**Current implementation is hardcoded Tailwind (`purple`/`blue`/`red`)**, unrelated to any Airtable field color — this is fine to keep hardcoded (these are fixed business categories, not dynamic field choices), but standardize the palette and states so future interfaces don't invent new hues per category, and so the colors don't collide with §1's semantic red (danger/flags):
+
+```ts
+const CATEGORY_TOGGLE = {
+  // ordered by first-used category → color; add new categories in this order
+  slate:  { on: 'bg-slate-100  dark:bg-slate-900/40  text-slate-700  dark:text-slate-200  border-slate-600  dark:border-slate-400',
+            off:'bg-slate-50   dark:bg-slate-950/20  text-slate-600  dark:text-slate-300  border-slate-300  dark:border-slate-700' },
+  blue:   { on: 'bg-blue-100   dark:bg-blue-900/40   text-blue-700   dark:text-blue-200   border-blue-600   dark:border-blue-400',
+            off:'bg-blue-50    dark:bg-blue-950/20   text-blue-600   dark:text-blue-300   border-blue-300   dark:border-blue-700' },
+  purple: { on: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200 border-purple-600 dark:border-purple-400',
+            off:'bg-purple-50  dark:bg-purple-950/20 text-purple-600 dark:text-purple-300 border-purple-300 dark:border-purple-700' },
+  amber:  { on: 'bg-amber-100  dark:bg-amber-900/40  text-amber-700  dark:text-amber-200  border-amber-600  dark:border-amber-400',
+            off:'bg-amber-50   dark:bg-amber-950/20  text-amber-600  dark:text-amber-300  border-amber-300  dark:border-amber-700' },
+};
+```
+
+Rules:
+- **Never use `red` for a category toggle**, even one that sounds urgent (e.g. "On Hold", "Overdue", "Blocked"). Red is reserved exclusively for §1's `SEMANTIC.danger` (flags/errors/needs-attention pills). Reusing it here makes a merely-categorical count look like a system alert. Use `amber` for anything hold/pause/caution-flavored instead — e.g. Fulfillment's "On Hold" should be `amber`, not `red` (existing code should be migrated to this when that file is next touched).
+- Assign one color per category, stable across the whole interface (don't reassign colors if categories are reordered or added to).
+- Each button always shows both the label and a live count (`{label}: {count}`), plus a small icon from `@phosphor-icons/react` (§11) at `14px`.
+- Toggle state: `on` = filter currently applied (darker fill, solid border), `off` = filter available but inactive (lighter fill, muted border) — both states always keep the same text/icon, only the fill/border shift, per the values above.
+- Layout: these buttons sit left of the search bar in the filter row (§6), `gap-2` between them, same `8px` radius and padding as other controls (§3).
+
+---
+
+## 14. Component Checklist for New Interfaces
 
 When building or refactoring an interface, confirm:
 - [ ] Uses the `LIGHT`/`DARK` token object from §1, both themes fully implemented
@@ -192,3 +221,4 @@ When building or refactoring an interface, confirm:
 - [ ] Icons only from `@phosphor-icons/react`
 - [ ] Root shell includes `overflow-hidden`
 - [ ] Modal widths from the fixed scale in §3
+- [ ] Category toggle filters (if any) never use red — red is reserved for danger/flags (§13)
