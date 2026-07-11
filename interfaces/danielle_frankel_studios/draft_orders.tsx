@@ -129,9 +129,15 @@ function useTheme() {
   return isDark ? COLORS.DARK : COLORS.LIGHT;
 }
 
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '';
+function parseDate(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
   const date = new Date(dateStr);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function formatDate(dateStr: string | null | undefined): string {
+  const date = parseDate(dateStr);
+  if (!date) return '';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
 
@@ -747,16 +753,14 @@ function Layer2({
     if (!clientId) return null;
     const client = clientRecords.find(c => c.id === clientId);
     if (!client || !clientDueDateField) return null;
-    const dueDateStr = client.getCellValueAsString(clientDueDateField);
-    return dueDateStr ? new Date(dueDateStr) : null;
+    return parseDate(client.getCellValueAsString(clientDueDateField));
   }, [clientId, clientRecords, clientDueDateField]);
 
   const clientWeddingDate = useMemo(() => {
     if (!clientId) return null;
     const client = clientRecords.find(c => c.id === clientId);
     if (!client || !clientWeddingDateField) return null;
-    const weddingDateStr = client.getCellValueAsString(clientWeddingDateField);
-    return weddingDateStr ? new Date(weddingDateStr) : null;
+    return parseDate(client.getCellValueAsString(clientWeddingDateField));
   }, [clientId, clientRecords, clientWeddingDateField]);
 
   const weeksUntilDueDate = useMemo(() => {
@@ -1396,20 +1400,17 @@ function Layer4({
   const clientDueDate = useMemo(() => {
     const client = clientRecords.find(c => c.id === clientId);
     if (!client || !clientDueDateField) return null;
-    const dueDateStr = client.getCellValueAsString(clientDueDateField);
-    return dueDateStr ? new Date(dueDateStr) : null;
+    return parseDate(client.getCellValueAsString(clientDueDateField));
   }, [clientId, clientRecords, clientDueDateField]);
 
   const weddingDate = useMemo(() => {
     if (!draft || !weddingDateField) return null;
-    const dateStr = draft.getCellValueAsString(weddingDateField);
-    return dateStr ? new Date(dateStr) : null;
+    return parseDate(draft.getCellValueAsString(weddingDateField));
   }, [draft, weddingDateField]);
 
   const dueDate = useMemo(() => {
     if (!draft || !dueDateField) return null;
-    const dateStr = draft.getCellValueAsString(dueDateField);
-    return dateStr ? new Date(dateStr) : null;
+    return parseDate(draft.getCellValueAsString(dueDateField));
   }, [draft, dueDateField]);
 
   const weeksUntilDueDate = useMemo(() => {
