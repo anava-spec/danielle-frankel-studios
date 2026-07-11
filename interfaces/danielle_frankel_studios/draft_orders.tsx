@@ -14,6 +14,7 @@ import {
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
   ArrowLeft as ArrowLeftIcon,
+  CaretDown as CaretDownIcon,
 } from '@phosphor-icons/react';
 
 const FIELD_IDS = {
@@ -174,6 +175,90 @@ function StatusPill({ label, variant }: { label: string; variant: 'locked' | 'un
     >
       {label}
     </span>
+  );
+}
+
+interface FilterDropdownProps {
+  label: string;
+  value: string;
+  options: { id: string; label: string }[];
+  onChange: (value: string) => void;
+  theme: typeof COLORS.LIGHT;
+  minWidth?: number;
+}
+
+function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160 }: FilterDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const isActive = value !== '';
+  const selectedOption = options.find(o => o.id === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:cursor-pointer"
+        style={{
+          backgroundColor: theme.bg,
+          border: `1px solid ${isActive ? theme.accent : theme.border}`,
+          color: isActive ? theme.accent : theme.text,
+          fontWeight: isActive ? 600 : 400
+        }}
+      >
+        <span className="whitespace-nowrap">{isActive ? selectedOption?.label ?? label : label}</span>
+        {isActive ? (
+          <XIcon size={14} onClick={(e) => { e.stopPropagation(); onChange(''); }} />
+        ) : (
+          <CaretDownIcon size={14} style={{ opacity: 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        )}
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 mt-1 rounded-md shadow-lg overflow-hidden"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, minWidth }}
+        >
+          <button
+            onClick={() => { onChange(''); setOpen(false); }}
+            className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+            style={{
+              backgroundColor: !isActive ? theme.accentSoft : 'transparent',
+              color: !isActive ? theme.accent : theme.text,
+              fontWeight: !isActive ? 600 : 400
+            }}
+          >
+            {label}
+          </button>
+          <div style={{ height: 1, backgroundColor: theme.borderLight }} />
+          {options.map(opt => {
+            const checked = value === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => { onChange(opt.id); setOpen(false); }}
+                className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer whitespace-nowrap"
+                style={{
+                  backgroundColor: checked ? theme.accentSoft : 'transparent',
+                  color: checked ? theme.accent : theme.text,
+                  fontWeight: checked ? 600 : 400
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -450,21 +535,7 @@ function Layer1({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-7 py-4 border-b" style={{ borderColor: theme.border }}>
-        <h1 className="text-lg font-bold">Draft Orders</h1>
-        <button
-          onClick={onNewDraft}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium"
-          style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
-          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.accentHover; }}
-          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.accent; }}
-        >
-          <PlusIcon size={16} weight="bold" />
-          New Draft
-        </button>
-      </div>
-
-      <div className="flex items-center gap-3 px-7 py-3 border-b" style={{ borderColor: theme.border }}>
+      <div className="flex items-center gap-3 px-10 py-4 border-b" style={{ borderColor: theme.border }}>
         <div className="relative flex-1 max-w-xs">
           <MagnifyingGlassIcon
             size={16}
@@ -484,23 +555,28 @@ function Layer1({
             }}
           />
         </div>
-        <select
+        <FilterDropdown
+          label="All Sales Associates"
           value={salesAssociateFilter}
-          onChange={e => setSalesAssociateFilter(e.target.value)}
-          className="px-3 py-2 rounded-md text-sm hover:cursor-pointer"
-          style={{
-            backgroundColor: theme.bg,
-            border: `1px solid ${theme.border}`,
-            color: theme.text
-          }}
+          onChange={setSalesAssociateFilter}
+          theme={theme}
+          minWidth={180}
+          options={activeStaff.map(staff => ({
+            id: staff.id,
+            label: staffNameField ? staff.getCellValueAsString(staffNameField) : 'Unknown'
+          }))}
+        />
+        <div className="flex-1" />
+        <button
+          onClick={onNewDraft}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium"
+          style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.accentHover; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.accent; }}
         >
-          <option value="">All Sales Associates</option>
-          {activeStaff.map(staff => (
-            <option key={staff.id} value={staff.id}>
-              {staffNameField ? staff.getCellValueAsString(staffNameField) : 'Unknown'}
-            </option>
-          ))}
-        </select>
+          <PlusIcon size={16} weight="bold" />
+          New Draft
+        </button>
       </div>
 
       <div className="flex-1 overflow-auto px-7 py-6">
@@ -621,7 +697,7 @@ function Layer3({
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+        <div className="flex items-center gap-3 px-8 py-4 border-b" style={{ borderColor: theme.border }}>
           <h2 className="text-lg font-semibold">{clientName}</h2>
           {clientWeddingDate && (
             <span className="text-sm" style={{ color: theme.textSecondary }}>
@@ -641,7 +717,7 @@ function Layer3({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div className="flex-1 overflow-auto px-8 py-4">
           {drafts.length === 0 ? (
             <p className="text-center py-8" style={{ color: theme.textSecondary }}>No drafts yet.</p>
           ) : (
@@ -1953,7 +2029,7 @@ function Layer4({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-4 px-8 py-4 border-b" style={{ borderColor: theme.border }}>
+      <div className="flex items-center gap-4 px-10 py-4 border-b" style={{ borderColor: theme.border }}>
         <button
           onClick={onBack}
           className="flex items-center gap-1 text-sm hover:cursor-pointer"
@@ -1966,7 +2042,7 @@ function Layer4({
         <span className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</span>
         <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
         <div className="flex-1" />
-        {canUpdate && isMostRecent && (
+        {canUpdate && (isMostRecent || isLocked) && (
           <button
             onClick={handleToggleLock}
             className="flex items-center gap-2 px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm"
@@ -1979,14 +2055,14 @@ function Layer4({
       </div>
 
       {!isEditable && (
-        <div className="px-8 py-3" style={{ backgroundColor: theme.neutralBg }}>
+        <div className="px-10 py-3" style={{ backgroundColor: theme.neutralBg }}>
           <p className="text-sm" style={{ color: theme.textSecondary }}>
             This draft is read-only — {readOnlyReason}
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className="flex-1 overflow-auto px-10 py-6">
         <div className="flex gap-6 items-start">
           <div className="flex-1 min-w-0 space-y-6">
             <div className="p-4 rounded-lg" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
