@@ -187,7 +187,7 @@ function CalendarPopup({ selectedDate, onSelect, onClose, align = 'left', openUp
   const prevMonth = () => { if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); } else setViewMonth(m => m - 1); };
   const nextMonth = () => { if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); } else setViewMonth(m => m + 1); };
   return (
-    <div className={`absolute z-[100] bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 w-[272px] ${align === 'right' ? 'right-0' : 'left-0'} ${openUp ? 'bottom-full mb-1' : 'mt-1'}`}
+    <div className={`absolute z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 w-[272px] ${align === 'right' ? 'right-0' : 'left-0'} ${openUp ? 'bottom-full mb-1' : 'mt-1'}`}
       style={{ top: openUp ? undefined : '100%', bottom: openUp ? '100%' : undefined }}>
       <div className="flex items-center justify-between mb-3">
         <button type="button" onClick={prevMonth} className="p-1.5 rounded-lg border border-gray-300 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"><CaretLeftIcon size={13} /></button>
@@ -202,8 +202,8 @@ function CalendarPopup({ selectedDate, onSelect, onClose, align = 'left', openUp
           return (
             <button key={i} type="button" onClick={() => { onSelect(date); onClose(); }}
               className={['h-8 w-full flex items-center justify-center rounded-full text-xs transition-colors',
-                isSelected ? 'bg-blue-600 text-white font-semibold' :
-                isToday ? 'border border-blue-400 text-blue-600 dark:text-blue-400 font-medium' :
+                isSelected ? 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] font-semibold' :
+                isToday ? 'border border-amber-500 dark:border-amber-400 text-amber-600 dark:text-amber-400 font-medium' :
                 currentMonth ? 'text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10' :
                 'text-gray-300 dark:text-gray-600'].join(' ')}>
               {date.getDate()}
@@ -213,7 +213,7 @@ function CalendarPopup({ selectedDate, onSelect, onClose, align = 'left', openUp
       </div>
       <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 dark:border-white/5">
         <button type="button" onClick={() => { onSelect(null); onClose(); }} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:underline underline-offset-2 transition-colors">Clear</button>
-        <button type="button" onClick={() => { onSelect(new Date()); onClose(); }} className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 transition-colors">Today</button>
+        <button type="button" onClick={() => { onSelect(new Date()); onClose(); }} className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-500 transition-colors">Today</button>
       </div>
     </div>
   );
@@ -243,7 +243,7 @@ function DatePicker({ value, onChange, placeholder = 'Select date…', className
         className={['w-full inline-flex items-center justify-between gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors outline-none',
           'bg-white dark:bg-[#1e1d1b] border-gray-200 dark:border-white/10',
           'hover:border-gray-300 dark:hover:border-white/20',
-          open ? 'border-blue-400 ring-1 ring-blue-400' : ''].join(' ')}>
+          open ? 'border-amber-500 dark:border-amber-400 ring-1 ring-amber-500 dark:ring-amber-400' : ''].join(' ')}>
         <span className={displayText ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'}>{displayText || placeholder}</span>
         <div className="flex items-center gap-1 flex-shrink-0">
           {value && <span role="button" onClick={e => { e.stopPropagation(); onChange(''); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer p-0.5 rounded"><XIcon size={12} /></span>}
@@ -295,12 +295,12 @@ function FilterDropdown({ label, values, options, onChange, align = 'left' }: Fi
           <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
         {open && (
-          <div className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1`}>
+          <div className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1`}>
             <button type="button" onClick={() => { onChange([]); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length === 0 ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length === 0 ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
             {options.map(o => (
               <button key={o} type="button" onClick={() => toggle(o)}
-                className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.includes(o) ? 'bg-blue-600 text-white font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o}</button>
+                className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.includes(o) ? 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o}</button>
             ))}
           </div>
         )}
@@ -317,7 +317,7 @@ function ProgressBar({ percentage }: { percentage: number }) {
   return (
     <div className="flex items-center gap-2">
       <div className="w-16 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
-        <div className={`h-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+        <div className={`h-full ${barColor} transition-[width]`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
       <span className="text-xs text-gray-500 dark:text-gray-400 font-medium tabular-nums">{pct}%</span>
     </div>
@@ -343,7 +343,7 @@ function Pill({ children, variant }: { children: React.ReactNode; variant: PillV
 function ToggleButton({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button type="button" onClick={() => onChange(!checked)}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
         checked ? 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/40 shadow-sm'
                 : 'bg-white dark:bg-[#1e1d1b] text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 shadow-sm hover:border-gray-300 dark:hover:border-white/20'}`}>
       {checked && <CheckCircleIcon size={13} />}{label}
@@ -365,7 +365,7 @@ function SingleSelectDropdown({ value, options, onChange, placeholder = '—' }:
   return (
     <div ref={ref} className="relative w-full">
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 hover:border-gray-300 dark:hover:border-white/20 transition-colors">
+        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 hover:border-gray-300 dark:hover:border-white/20 transition-colors">
         <span className={value ? '' : 'text-gray-400 dark:text-gray-500'}>{value || placeholder}</span>
         <div className="flex items-center gap-1 flex-shrink-0">
           {value && <span role="button" onClick={e => { e.stopPropagation(); onChange(''); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer p-0.5 rounded"><XIcon size={12} /></span>}
@@ -373,10 +373,10 @@ function SingleSelectDropdown({ value, options, onChange, placeholder = '—' }:
         </div>
       </button>
       {open && options.length > 0 && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg w-full max-h-[220px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-1">
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg w-full max-h-[220px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-1">
           {options.map(o => (
             <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${o === value ? 'bg-blue-600 text-white font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o}</button>
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${o === value ? 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o}</button>
           ))}
         </div>
       )}
@@ -470,11 +470,11 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
   };
 
   const lbl = 'text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium block mb-1.5';
-  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors';
+  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
 
   return (
-    <div className="fixed inset-0 z-[65] flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}>
@@ -524,7 +524,7 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
         </div>
         <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex items-center gap-3">
           <button type="button" onClick={handleSave} disabled={saving || !changeType || !amount}
-            className="px-5 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {saving ? 'Saving…' : 'Save Adjustment'}
           </button>
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
@@ -563,15 +563,15 @@ function AdjustmentDetailModal({ record, adjTable, onClose }: {
 
   const showDirection = changeType === 'Tax Adjustment' || changeType === 'Other';
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1';
-  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors';
+  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
   const signedVariant: PillVariant = signedAmount === null ? 'gray' : signedAmount >= 0 ? 'orange' : 'green';
   const signedLabel = signedAmount === null ? '—' : signedAmount >= 0 ? `+${formatCurrency(signedAmount)}` : formatCurrency(signedAmount);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
       style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[520px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
           <div className="flex-1 min-w-0">
@@ -705,7 +705,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   }, [onClose, selectedAdj, showAddModal]);
 
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1';
-  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors';
+  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
 
   const allAdjDirs: string[] = [
     ...localAdjs.map(r => getAdjSel(r, ADJ_FIELD_IDS.DIRECTION)),
@@ -759,10 +759,10 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
           }}
         />
       )}
-      <div className="fixed inset-0 z-[55] flex items-center justify-center p-6"
-        style={{ backgroundColor: 'rgba(0,0,0,0.42)', backdropFilter: 'blur(3px)' }}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+        style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
         onClick={e => { if (e.target === e.currentTarget && !showAddModal) onClose(); }}>
-        <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[620px] max-h-[88vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
           <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
             <div className="flex-1 min-w-0">
@@ -788,9 +788,9 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                 ))}
               </div>
               {adjTotalField !== null && (
-                <div className="mt-2 rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 px-4 py-2.5 flex items-center justify-between">
-                  <span className="text-sm text-blue-700 dark:text-blue-300">Adjusted Total</span>
-                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">{formatCurrency(adjTotalField)}</span>
+                <div className="mt-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-amber-700 dark:text-amber-300">Adjusted Total</span>
+                  <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(adjTotalField)}</span>
                 </div>
               )}
             </section>
@@ -850,7 +850,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                   )}
                 </div>
                 <button type="button" onClick={() => setShowAddModal(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 px-2.5 py-1.5 rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 px-2.5 py-1.5 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors">
                   <PlusIcon size={12} />Add Adjustment
                 </button>
               </div>
@@ -947,7 +947,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     ];
     if (hasAnyAdjustedTotal) {
       row.push(adjTotal !== null
-        ? <span className="text-blue-600 dark:text-blue-400 font-medium">{formatCurrency(adjTotal)}</span>
+        ? <span className="text-amber-600 dark:text-amber-400 font-medium">{formatCurrency(adjTotal)}</span>
         : <span className="text-gray-300 dark:text-gray-600">—</span>);
     }
     return row;
@@ -971,21 +971,21 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   }
 
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1';
-  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors';
+  const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
   const readOnly = 'w-full text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5';
   const div = <div className="border-t border-gray-100 dark:border-white/5" />;
   const hasHold = !!holdDate;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)' }}
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
           <div className="flex-1 pr-4">
-            <input className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] bg-transparent border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-blue-400 outline-none w-full transition-colors pb-0.5"
+            <input className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] bg-transparent border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-amber-500 dark:focus:border-amber-400 outline-none w-full transition-colors pb-0.5"
               value={fullName} onChange={e => setFullName(e.target.value)} onBlur={() => save(FIELD_IDS.FULL_NAME, fullName)} />
             {/* Studio badge — sourced from studio_name rollup (fldIenJoxseeHmfIv) */}
             {studioName ? (
@@ -998,12 +998,12 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
             <div className="grid grid-cols-4 gap-x-4">
               <div className="min-w-0">
                 <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Phone</span>
-                <input className="text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors w-full"
+                <input className="text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-full"
                   value={phone} onChange={e => setPhone(e.target.value)} onBlur={() => save(FIELD_IDS.PHONE, phone)} placeholder="—" />
               </div>
               <div className="min-w-0">
                 <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Email</span>
-                <input className="text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors w-full"
+                <input className="text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-full"
                   value={email} onChange={e => setEmail(e.target.value)} onBlur={() => save(FIELD_IDS.EMAIL, email)} placeholder="—" />
               </div>
               <div className="min-w-0">
@@ -1060,7 +1060,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                       <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</td>
                       <td className="px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(totalSum)}</td>
                       {hasAnyAdjustedTotal && (
-                        <td className="px-3 py-2 text-sm font-semibold text-blue-600 dark:text-blue-400">{formatCurrency(adjTotalSum)}</td>
+                        <td className="px-3 py-2 text-sm font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(adjTotalSum)}</td>
                       )}
                     </tr>
                   </tfoot>
@@ -1310,21 +1310,21 @@ function FulfillmentApp(): React.ReactElement {
       <div className="px-6 pt-5 pb-4 flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button onClick={() => toggleFlagFilter('pickup')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all border-2 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors border-2 ${
               showPickUp ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200 border-purple-600 dark:border-purple-400'
                          : 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-300 border-purple-300 dark:border-purple-700'}`}>
             <PackageIcon size={14} />Pick Up: {summaryStats.pickup}
           </button>
           <button onClick={() => toggleFlagFilter('ship')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all border-2 ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors border-2 ${
               showShip ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 border-blue-600 dark:border-blue-400'
                        : 'bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-300 border-blue-300 dark:border-blue-700'}`}>
             <TruckIcon size={14} />Ship: {summaryStats.ship}
           </button>
           <button onClick={() => toggleFlagFilter('hold')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all border-2 ${
-              showOnHold ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200 border-red-600 dark:border-red-400'
-                         : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-300 border-red-300 dark:border-red-700'}`}>
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors border-2 ${
+              showOnHold ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-200 border-amber-600 dark:border-amber-400'
+                         : 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-300 border-amber-300 dark:border-amber-700'}`}>
             <WarningCircleIcon size={14} />On Hold: {summaryStats.hold}
           </button>
         </div>
@@ -1333,7 +1333,7 @@ function FulfillmentApp(): React.ReactElement {
             <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search clients…"
-              className="pl-9 pr-7 py-1.5 text-sm bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors w-[180px]" />
+              className="pl-9 pr-7 py-1.5 text-sm bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-[180px]" />
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">

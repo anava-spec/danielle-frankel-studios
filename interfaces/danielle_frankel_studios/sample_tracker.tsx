@@ -5,6 +5,11 @@ import {
 } from '@airtable/blocks/interface/ui';
 import type { Table, Record } from '@airtable/blocks/interface/models';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import {
+  CaretDown as CaretDownIcon,
+  Check as CheckIcon,
+  MagnifyingGlass as MagnifyingGlassIcon,
+} from '@phosphor-icons/react';
 
 // ─── WRITE QUEUE (safe sequential writes) ────────────────────────────────────
 let _writeQueue = Promise.resolve();
@@ -167,21 +172,17 @@ function daysUntil(dateStr: string) {
   return Math.round(ms / 86400000);
 }
 
-// ─── CHEVRON SVG ─────────────────────────────────────────────────────────────
+// ─── CHEVRON / CHECK ICONS ────────────────────────────────────────────────────
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
-      style={{ flexShrink: 0, opacity: 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
-      <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+    <CaretDownIcon
+      size={14}
+      style={{ flexShrink: 0, opacity: 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
+    />
   );
 }
 function Checkmark({ color }: { color: string }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M2 6L4.5 8.5L10 3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
+  return <CheckIcon size={14} color={color} />;
 }
 
 // ─── FILTER DROPDOWN (multi-select, matches reference interface style) ─────────
@@ -242,7 +243,7 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130 
         {/* Dropdown */}
         {open && (
           <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 300,
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20,
             background: tok.surface, border: `1px solid ${tok.border}`,
             borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
             minWidth: Math.max(minWidth, 160), padding: '4px 0',
@@ -349,7 +350,7 @@ function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth =
 
         {open && (
           <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 300,
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20,
             background: tok.surface, border: `1px solid ${tok.border}`,
             borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
             minWidth: Math.max(minWidth, 140), padding: '4px 0',
@@ -416,7 +417,7 @@ function InlineSelect({ value, options, onChange, placeholder = 'Select…', tok
         top: rect.bottom + 3,
         left: rect.left,
         width: rect.width,
-        zIndex: 2000,
+        zIndex: 60,
         maxHeight: Math.min(idealHeight, spaceBelow),
         overflowY: 'auto',
       });
@@ -426,12 +427,12 @@ function InlineSelect({ value, options, onChange, placeholder = 'Select…', tok
 
   const baseListStyle = {
     background: tok.surface, border: `1px solid ${tok.border}`,
-    borderRadius: '8px', boxShadow: '0 8px 20px rgba(0,0,0,0.15)', padding: '3px 0',
+    borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '3px 0',
   };
   const listStyle: React.CSSProperties = escapeModal
     ? { ...dropdownStyle, ...baseListStyle }
     : {
-        position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 400,
+        position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 20,
         maxHeight: `${MAX_VISIBLE * ITEM_HEIGHT + 6}px`, overflowY: 'auto',
         ...baseListStyle,
       };
@@ -493,7 +494,7 @@ function LocationBadge({ status, tok }: { status: LocationStatus; tok: Tok }) {
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '999px',
       background: s.bg, color: s.color, fontSize: '11px', fontWeight: 600,
-      border: `1px solid ${s.color}22`,
+      border: `1px solid ${s.color}20`,
     }}>
       {s.label}
     </span>
@@ -565,7 +566,7 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
 
   const FieldLabel = ({ children }: { children: React.ReactNode }) => (
     <div style={{
-      fontSize: '10px', fontWeight: 700, color: tok.text_muted,
+      fontSize: '11px', fontWeight: 700, color: tok.text_muted,
       textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '5px',
     }}>
       {children}
@@ -576,8 +577,8 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
     <div
       onClick={handleBackdrop}
       style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: tok.overlay,
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: tok.overlay, backdropFilter: 'blur(3px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
@@ -597,7 +598,7 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
           flexShrink: 0,
         }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: tok.text_muted,
+            fontSize: '11px', fontWeight: 700, color: tok.text_muted,
             textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px',
           }}>
             Sample
@@ -643,7 +644,7 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Location</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Location</div>
                 {locVal && (
                   <span style={{ fontSize: '11px', color: tok.text_muted }}>
                     {status === 'in-studio' ? '· Available' : status === 'at trunk show' ? '· Trunk Show' : '· Away'}
@@ -973,7 +974,7 @@ function SampleTracker() {
   }, [allAlerts, timePeriod, saFilter]);
 
   const inputStyle: React.CSSProperties = {
-    paddingLeft: '28px', paddingRight: '10px', paddingTop: '6px', paddingBottom: '6px',
+    paddingLeft: '32px', paddingRight: '10px', paddingTop: '6px', paddingBottom: '6px',
     borderRadius: '8px', border: `1px solid ${search ? tok.accent : tok.border}`,
     background: tok.surface, color: tok.text_primary,
     fontSize: '12px', width: '170px', outline: 'none',
@@ -994,11 +995,10 @@ function SampleTracker() {
         <div style={{ width: '70%', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Search with clear button */}
           <div style={{ position: 'relative' }}>
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"
-              style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: tok.text_muted, pointerEvents: 'none' }}>
-              <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M9 9L11.5 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
+            <MagnifyingGlassIcon
+              size={14}
+              style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: tok.text_muted, pointerEvents: 'none' }}
+            />
             <input
               type="text" placeholder="Search…" value={search}
               onChange={e => setSearch(e.target.value)}
@@ -1044,20 +1044,20 @@ function SampleTracker() {
             padding: '9px 14px 7px', borderBottom: `1px solid ${tok.border}`,
             flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
           }}>
-            <span style={{ fontSize: '10px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
               Sample Inventory
             </span>
-            <span style={{ fontSize: '10px', color: tok.text_muted }}>·</span>
-            <span style={{ fontSize: '10px', fontWeight: 600, color: tok.text_muted }}>{filteredSamples.length}</span>
+            <span style={{ fontSize: '11px', color: tok.text_muted }}>·</span>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: tok.text_muted }}>{filteredSamples.length}</span>
           </div>
 
           <div style={{ overflowY: 'auto', flex: 1 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr style={{ background: tok.surface_alt, position: 'sticky', top: 0, zIndex: 2 }}>
+                <tr style={{ background: tok.surface_alt, position: 'sticky', top: 0, zIndex: 10 }}>
                   {['Style', 'Status', 'Size', 'Type', 'Location', 'Notes'].map(col => (
                     <th key={col} style={{
-                      padding: '7px 12px', textAlign: 'left', fontWeight: 600, fontSize: '10px',
+                      padding: '7px 12px', textAlign: 'left', fontWeight: 600, fontSize: '11px',
                       color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.05em',
                       borderBottom: `1px solid ${tok.border}`, whiteSpace: 'nowrap',
                     }}>{col}</th>
@@ -1119,12 +1119,12 @@ function SampleTracker() {
             padding: '9px 12px 8px', borderBottom: `1px solid ${tok.border}`,
             flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
           }}>
-            <span style={{ fontSize: '10px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
               Sample Alerts
             </span>
-            <span style={{ fontSize: '10px', color: tok.text_muted }}>·</span>
+            <span style={{ fontSize: '11px', color: tok.text_muted }}>·</span>
             <span style={{
-              fontSize: '10px', fontWeight: 600,
+              fontSize: '11px', fontWeight: 600,
               color: visibleAlerts.length > 0 ? tok.risk_text : tok.text_muted,
             }}>
               {visibleAlerts.length}
@@ -1216,7 +1216,7 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
       {/* Expanded: style coverage */}
       {expanded && (
         <div style={{ borderTop: `1px solid ${tok.border}`, padding: '9px 11px' }}>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
             Style Coverage
           </div>
           {alert.missingData === 'no-styles' ? (
@@ -1251,11 +1251,11 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                   {m.inStudio ? (
-                    <span style={{ color: tok.badge_in_studio_text, background: tok.badge_in_studio, padding: '1px 7px', borderRadius: '999px', fontSize: '10px', fontWeight: 600 }}>
+                    <span style={{ color: tok.badge_in_studio_text, background: tok.badge_in_studio, padding: '1px 7px', borderRadius: '999px', fontSize: '11px', fontWeight: 600 }}>
                       In Studio
                     </span>
                   ) : (
-                    <span style={{ color: tok.risk_text, background: tok.risk_bg, padding: '1px 7px', borderRadius: '999px', fontSize: '10px', fontWeight: 600, border: `1px solid ${tok.risk_border}` }}>
+                    <span style={{ color: tok.risk_text, background: tok.risk_bg, padding: '1px 7px', borderRadius: '999px', fontSize: '11px', fontWeight: 600, border: `1px solid ${tok.risk_border}` }}>
                       Missing
                     </span>
                   )}

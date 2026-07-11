@@ -376,7 +376,7 @@ function getChoiceColorMap(field: unknown): Record<string, string> {
 }
 
 function ApprovalPill({ status, colorMap }: { status: string; colorMap: Record<string, string> }) {
-  if (!status) return <span className="text-xs text-gray-300">—</span>;
+  if (!status) return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>;
   const hex = colorMap[status] ?? '#9CA3AF';
   return (
     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
@@ -397,7 +397,7 @@ function FieldLabel({ label, fieldId, className }: { label: string; fieldId?: st
   const source = fieldId ? FIELD_SOURCE[fieldId] : undefined;
   return (
     <div className={`flex items-center gap-1.5 mb-1.5 ${className ?? ''}`}>
-      <span className="text-xs text-gray-400 uppercase tracking-wide font-medium">{label}</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium">{label}</span>
       {source && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${SOURCE_DOT_COLOR[source]}`} />}
     </div>
   );
@@ -406,7 +406,7 @@ function FieldLabel({ label, fieldId, className }: { label: string; fieldId?: st
 // ─── Editable field wrappers ──────────────────────────────────────────────────
 // Each wrapper checks isFieldReadOnlyBySource(fieldId) and falls back to a
 // plain read-only display whenever the field comes from an external integration.
-const _inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400';
+const _inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
 interface EditableTextProps {
   label: string; fieldId?: string; readOnly?: boolean;
@@ -419,7 +419,7 @@ function EditableText({ label, fieldId, readOnly, value, onChange, onBlur, place
     <div className={className}>
       <FieldLabel label={label} fieldId={fieldId} />
       {effectiveRO
-        ? <div className="text-sm text-gray-700 py-1.5 min-h-[38px] flex items-center">{value || '—'}</div>
+        ? <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5 min-h-[38px] flex items-center">{value || '—'}</div>
         : <input value={value} onChange={e => onChange?.(e.target.value)} onBlur={onBlur}
             placeholder={placeholder} className={_inputCls} />
       }
@@ -438,7 +438,7 @@ function EditableTextarea({ label, fieldId, readOnly, value, onChange, onBlur, p
     <div>
       <FieldLabel label={label} fieldId={fieldId} />
       {effectiveRO
-        ? <div className="text-sm text-gray-700 py-1.5 whitespace-pre-wrap">{value || '—'}</div>
+        ? <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5 whitespace-pre-wrap">{value || '—'}</div>
         : <textarea value={value} onChange={e => onChange?.(e.target.value)} onBlur={onBlur}
             placeholder={placeholder} rows={rows} className={`${_inputCls} resize-none`} />
       }
@@ -456,7 +456,7 @@ function EditableNumber({ label, fieldId, readOnly, value, onChange, onBlur, pla
     <div>
       <FieldLabel label={label} fieldId={fieldId} />
       {effectiveRO
-        ? <div className="text-sm text-gray-700 py-1.5 min-h-[38px] flex items-center">{value || '—'}</div>
+        ? <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5 min-h-[38px] flex items-center">{value || '—'}</div>
         : <input type="number" value={value} onChange={e => onChange?.(e.target.value)} onBlur={onBlur}
             placeholder={placeholder}
             className={`${_inputCls} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
@@ -477,7 +477,7 @@ function MiniCalendar({ selected, onSelect, onClose }: MiniCalProps) {
     return ()=>document.removeEventListener('mousedown', h);
   }, [onClose]);
   const y=view.getFullYear(), m=view.getMonth();
-  const start = new Date(y,m,1).getDay();
+  const start = (new Date(y,m,1).getDay() + 6) % 7;
   const total = new Date(y,m+1,0).getDate();
   const days: (number|null)[] = [];
   for (let i=0;i<start;i++) days.push(null);
@@ -485,24 +485,24 @@ function MiniCalendar({ selected, onSelect, onClose }: MiniCalProps) {
   const todayStr = fmtDateKey(new Date());
   const selStr = fmtDateKey(selected);
   return (
-    <div ref={ref} className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-64">
+    <div ref={ref} className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl p-3 w-64">
       <div className="flex items-center justify-between mb-2">
-        <button onClick={()=>setView(new Date(y,m-1,1))} className="p-1 hover:bg-gray-100 rounded"><CaretLeftIcon size={14} className="text-gray-600"/></button>
-        <span className="text-sm font-semibold text-gray-800">{new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(view)}</span>
-        <button onClick={()=>setView(new Date(y,m+1,1))} className="p-1 hover:bg-gray-100 rounded"><CaretRightIcon size={14} className="text-gray-600"/></button>
+        <button onClick={()=>setView(new Date(y,m-1,1))} className="p-1 hover:bg-gray-100 hover:dark:bg-white/10 rounded"><CaretLeftIcon size={14} className="text-gray-600 dark:text-gray-400"/></button>
+        <span className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6]">{new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(view)}</span>
+        <button onClick={()=>setView(new Date(y,m+1,1))} className="p-1 hover:bg-gray-100 hover:dark:bg-white/10 rounded"><CaretRightIcon size={14} className="text-gray-600 dark:text-gray-400"/></button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-400 mb-1">
-        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} className="py-1">{d}</div>)}
+      <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-400 dark:text-gray-500 mb-1">
+        {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=><div key={d} className="py-1">{d}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-1">
         {days.map((day,i) => {
           if (!day) return <div key={`e${i}`} className="py-1"/>;
           const ds = fmtDateKey(new Date(y,m,day));
           return <button key={day} onClick={()=>{onSelect(new Date(y,m,day));onClose();}}
-            className={`py-1 text-xs rounded-full transition-colors ${ds===selStr?'bg-blue-600 text-white':ds===todayStr?'bg-blue-100 text-blue-700':'hover:bg-gray-100 text-gray-800'}`}>{day}</button>;
+            className={`py-1 text-xs rounded-full transition-colors ${ds===selStr?'bg-[#D97706] dark:bg-[#FBBF24] text-white':ds===todayStr?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24]':'hover:bg-gray-100 hover:dark:bg-white/10 text-gray-800 dark:text-[#F3EFE6]'}`}>{day}</button>;
         })}
       </div>
-      <button onClick={()=>{onSelect(new Date());onClose();}} className="mt-2 w-full text-xs text-blue-600 hover:underline">Today</button>
+      <button onClick={()=>{onSelect(new Date());onClose();}} className="mt-2 w-full text-xs text-[#D97706] dark:text-[#FBBF24] hover:underline">Today</button>
     </div>
   );
 }
@@ -521,27 +521,27 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
   const toggle = (o:string) => onChange(values.includes(o)?values.filter(v=>v!==o):[...values,o]);
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500 font-medium whitespace-nowrap">{label}</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
       <div ref={ref} className="relative">
         <button type="button" onClick={()=>setOpen(o=>!o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 outline-none transition-colors">
+          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 hover:dark:border-gray-500 outline-none transition-colors">
           <span className="truncate">{display}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open?'rotate-180':''}`}/>
+          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open?'rotate-180':''}`}/>
         </button>
         {open && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
+          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
             <button type="button" onClick={()=>{onChange([]);setOpen(false);}}
-              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length===0?'bg-blue-50 text-blue-700 font-medium':'text-gray-700 hover:bg-gray-50'}`}>All</button>
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length===0?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>All</button>
             {options.map(o=>(
-              <label key={o} className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
-                <input type="checkbox" checked={values.includes(o)} onChange={()=>toggle(o)} className="accent-blue-600"/>
+              <label key={o} className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 cursor-pointer">
+                <input type="checkbox" checked={values.includes(o)} onChange={()=>toggle(o)} className="accent-[#D97706] dark:accent-[#FBBF24]"/>
                 <span className="truncate">{o}</span>
               </label>
             ))}
           </div>
         )}
       </div>
-      {values.length>0 && <button type="button" onClick={()=>onChange([])} className="text-xs text-gray-500 hover:text-gray-700 hover:underline">Clear</button>}
+      {values.length>0 && <button type="button" onClick={()=>onChange([])} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:dark:text-gray-300 hover:underline">Clear</button>}
     </div>
   );
 }
@@ -560,11 +560,11 @@ function StylesDropdown({ selected, available, onToggle }: StylesDropdownProps) 
   const filtered = useMemo(()=>q.trim()?available.filter(s=>s.toLowerCase().includes(q.toLowerCase())):available,[available,q]);
   return (
     <div ref={ref} className="relative">
-      <div onClick={()=>setOpen(true)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white min-h-[42px]">
-        {selected.length===0?<span className="text-gray-400">Select styles…</span>:(
+      <div onClick={()=>setOpen(true)} className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white dark:bg-[#25211A] min-h-[42px]">
+        {selected.length===0?<span className="text-gray-400 dark:text-gray-500">Select styles…</span>:(
           <div className="flex flex-wrap gap-1.5">
             {selected.map(s=>(
-              <span key={s} className="bg-indigo-100 text-indigo-700 border border-indigo-300 rounded-full text-xs font-medium px-2.5 py-0.5 flex items-center gap-1">
+              <span key={s} className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-2.5 py-0.5 flex items-center gap-1">
                 {s}<button onClick={e=>{e.stopPropagation();onToggle(s);}}><XIcon size={11}/></button>
               </span>
             ))}
@@ -572,18 +572,18 @@ function StylesDropdown({ selected, available, onToggle }: StylesDropdownProps) 
         )}
       </div>
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
-          <div className="p-2 border-b border-gray-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <input type="text" placeholder="Search styles…" value={q} onChange={e=>setQ(e.target.value)} autoFocus
-              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-400"/>
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-white/10 rounded-md focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24]"/>
           </div>
           <div className="overflow-y-auto flex-1">
             {filtered.map(s=>{
               const isSel = selected.includes(s);
               return (
                 <button key={s} type="button" onClick={()=>onToggle(s)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${isSel?'bg-indigo-50 text-indigo-700 font-medium':'text-gray-700 hover:bg-gray-50'}`}>
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSel?'bg-indigo-600 border-indigo-600':'border-gray-300 bg-white'}`}>
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${isSel?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSel?'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24]':'border-gray-300 dark:border-gray-600 bg-white dark:bg-[#25211A]'}`}>
                     {isSel && <CheckIcon size={10} weight="bold" className="text-white"/>}
                   </span>
                   {s}
@@ -618,15 +618,15 @@ function AttachmentSection({ label, type, existing, clientId }: AttachSectionPro
         <div className="flex gap-2 flex-wrap mb-3">
           {existing!.map(a=>(
             <div key={a.id} onClick={()=>window.open(a.url,'_blank','noopener,noreferrer')}
-              className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0">
+              className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0">
               <img src={a.thumbnails?.small?.url??a.url} alt={a.filename} className="w-full h-full object-cover"/>
             </div>
           ))}
         </div>
       )}
       <button type="button" onClick={openForm} disabled={!clientId}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-        <UploadIcon size={14} className="text-gray-500"/>{hasExisting?'Add More':label}
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>{hasExisting?'Add More':label}
       </button>
     </div>
   );
@@ -649,18 +649,18 @@ function TodayCard({ record, apptTable, clientRecords, onClick }: TodayCardProps
   const photosOk   = !(photosRaw===null||photosRaw===undefined||photosRaw===false||(Array.isArray(photosRaw)&&photosRaw.length===0));
   const needsData  = isConsultation(typeLabel) && (!measOk || !photosOk);
   return (
-    <div onClick={onClick} className="min-w-[200px] max-w-[220px] bg-white border border-gray-200 rounded-xl p-3 cursor-pointer flex-shrink-0 hover:shadow-md transition-shadow space-y-1">
+    <div onClick={onClick} className="min-w-[200px] max-w-[220px] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl p-3 cursor-pointer flex-shrink-0 hover:shadow-md transition-shadow space-y-1">
       <div className="flex justify-between items-start mb-2">
-        <span className="text-sm text-gray-500 font-medium">{timeVal?fmtNYTime(new Date(timeVal)):'—'}</span>
-        {needsData && <span className="bg-red-50 text-red-600 border border-red-200 rounded-full text-xs font-semibold px-2 py-0.5">Needs data</span>}
+        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{timeVal?fmtNYTime(new Date(timeVal)):'—'}</span>
+        {needsData && <span className="bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30 rounded-full text-xs font-semibold px-2 py-0.5">Needs data</span>}
       </div>
-      <div className="font-semibold text-sm text-gray-900">{clientName||'Unknown Client'}</div>
-      <div className="text-xs text-gray-400 mb-3">{shortTypeLabel(typeLabel)||'Appointment'}</div>
+      <div className="font-semibold text-sm text-gray-900 dark:text-[#F3EFE6]">{clientName||'Unknown Client'}</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 mb-3">{shortTypeLabel(typeLabel)||'Appointment'}</div>
       <div className="flex gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2.5 py-0.5 ${measOk?'bg-green-50 text-green-700 border border-green-200':'bg-red-50 text-red-600 border border-red-200'}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2.5 py-0.5 ${measOk?'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30':'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30'}`}>
           <RulerIcon size={11}/>{measOk?'Done':'Missing'}
         </span>
-        <span className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2.5 py-0.5 ${photosOk?'bg-green-50 text-green-700 border border-green-200':'bg-red-50 text-red-600 border border-red-200'}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2.5 py-0.5 ${photosOk?'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30':'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30'}`}>
           <CameraIcon size={11}/>{photosOk?'Done':'Missing'}
         </span>
       </div>
@@ -710,12 +710,12 @@ function computeAltsM2mAmount(m2m: boolean, alts: boolean): number {
 // redundant. Its only job is explaining why rush can't be priced yet.
 function RushFeeBox() {
   return (
-    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 p-4">
       <div className="flex items-center gap-1.5 mb-1">
-        <LightningIcon size={13} className="text-amber-600"/>
-        <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Rush Fee — Automated Calculation</span>
+        <LightningIcon size={13} className="text-amber-600 dark:text-amber-300"/>
+        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">Rush Fee — Automated Calculation</span>
       </div>
-      <div className="text-sm text-amber-800">
+      <div className="text-sm text-amber-800 dark:text-amber-200">
         Rush fee can't be calculated yet because the wedding date isn't filled in.
       </div>
     </div>
@@ -728,7 +728,7 @@ function CustomizationStagePipeline({ currentStatus, onChange }: CStagePipelineP
   const idx = CUSTOM_STATUS_STEPS.indexOf(currentStatus as any);
   return (
     <div className="mb-5">
-      <div className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-3">Stage</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-3">Stage</div>
       <div className="flex items-start overflow-x-auto pb-1">
         {CUSTOM_STATUS_STEPS.map((step, i) => {
           const isCurrent = i === idx;
@@ -737,24 +737,24 @@ function CustomizationStagePipeline({ currentStatus, onChange }: CStagePipelineP
             <React.Fragment key={step}>
               <div className="flex flex-col items-center cursor-pointer min-w-0" onClick={()=>onChange(step)}>
                 {isPast && (
-                  <div className="w-6 h-6 rounded-full bg-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-emerald-700 dark:bg-emerald-500 flex items-center justify-center flex-shrink-0">
                     <CheckIcon size={12} weight="bold" className="text-white"/>
                   </div>
                 )}
                 {isCurrent && (
-                  <div className="w-6 h-6 rounded-full border-2 border-emerald-700 bg-white flex items-center justify-center flex-shrink-0">
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-700"/>
+                  <div className="w-6 h-6 rounded-full border-2 border-emerald-700 dark:border-emerald-500 bg-white dark:bg-[#25211A] flex items-center justify-center flex-shrink-0">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-700 dark:bg-emerald-500"/>
                   </div>
                 )}
                 {!isPast && !isCurrent && (
-                  <div className="w-6 h-6 rounded-full border-2 border-gray-300 bg-white flex-shrink-0 hover:border-gray-400 transition-colors"/>
+                  <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-[#25211A] flex-shrink-0 hover:border-gray-400 hover:dark:border-gray-500 transition-colors"/>
                 )}
-                <span className={`text-[10px] mt-1.5 text-center leading-tight max-w-[60px] ${isCurrent?'text-emerald-700 font-semibold':'text-gray-400'}`}>
+                <span className={`text-[10px] mt-1.5 text-center leading-tight max-w-[60px] ${isCurrent?'text-emerald-700 dark:text-emerald-400 font-semibold':'text-gray-400 dark:text-gray-500'}`}>
                   {step}
                 </span>
               </div>
               {i < CUSTOM_STATUS_STEPS.length-1 && (
-                <div className={`flex-1 h-0.5 mt-3 mx-1 min-w-[8px] ${i<idx?'bg-emerald-700':'bg-gray-200'}`}/>
+                <div className={`flex-1 h-0.5 mt-3 mx-1 min-w-[8px] ${i<idx?'bg-emerald-700 dark:bg-emerald-500':'bg-gray-200 dark:bg-white/10'}`}/>
               )}
             </React.Fragment>
           );
@@ -846,56 +846,56 @@ function PricingLineItemsTable({
     <div>
       <div ref={ref} className="relative mb-2">
         <div className="relative">
-          <MagnifyingGlassIcon size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+          <MagnifyingGlassIcon size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"/>
           <input type="text" placeholder="Search customizations to add…" value={query}
             onFocus={()=>setOpen(true)} onChange={e=>{setQuery(e.target.value);setOpen(true);}}
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400 transition-colors"/>
+            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] transition-colors"/>
         </div>
         {open && (
-          <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl max-h-[260px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filteredSuggestions.map(s=>(
               <button key={s.id} type="button" onClick={()=>addAndClear(s.id)}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 transition-colors border-b border-gray-50 last:border-0">
-                <span>{s.name}{s.label && <span className="text-xs font-medium text-gray-400"> ({s.label})</span>}</span>
-                <span className="text-xs font-medium text-gray-400">{formatCurrency(s.amount)}</span>
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:bg-[#3A2E12] transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
+                <span>{s.name}{s.label && <span className="text-xs font-medium text-gray-400 dark:text-gray-500"> ({s.label})</span>}</span>
+                <span className="text-xs font-medium text-gray-400 dark:text-gray-500">{formatCurrency(s.amount)}</span>
               </button>
             ))}
-            {filteredSuggestions.length===0 && <div className="px-3 py-3 text-sm text-gray-400 text-center">No matching customizations</div>}
+            {filteredSuggestions.length===0 && <div className="px-3 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">No matching customizations</div>}
           </div>
         )}
       </div>
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
             <tr>
               <th className="px-3 py-2 w-8" />
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Customization</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Rate</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Pre-Approval</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Price</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Customization</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Rate</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Pre-Approval</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Price</th>
             </tr>
           </thead>
           <tbody>
             {selectedItems.map(item=>(
-              <tr key={item.id} className="border-b border-gray-100 last:border-0">
+              <tr key={item.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
                 <td className="px-3 py-2.5">
-                  <button type="button" onClick={()=>remove(item.id)} aria-label={`Remove ${item.name}`} className="text-gray-400 hover:text-red-500 transition-colors">
+                  <button type="button" onClick={()=>remove(item.id)} aria-label={`Remove ${item.name}`} className="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
                     <XIcon size={13}/>
                   </button>
                 </td>
-                <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
-                <td className="px-3 py-2.5 text-xs font-medium text-gray-500">{item.label ?? '—'}</td>
+                <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{item.name}</td>
+                <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
                 <td className="px-3 py-2.5"><ApprovalPill status={item.approval} colorMap={preApprovalColorMap}/></td>
-                <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
+                <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
               </tr>
             ))}
             {selectedItems.length===0 && (
-              <tr><td colSpan={5} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added yet.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-5 text-center text-gray-400 dark:text-gray-500 text-sm">No customizations added yet.</td></tr>
             )}
-            <tr className="border-t border-gray-200">
+            <tr className="border-t border-gray-200 dark:border-white/10">
               <td className="px-3 py-2.5"/>
-              <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900">Customization Total</td>
-              <td className="px-3 py-2.5 text-sm font-bold text-gray-900 text-right">{formatCurrency(totalAmount)}</td>
+              <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6]">Customization Total</td>
+              <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(totalAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -919,25 +919,25 @@ function StyleSelectSingle({ value, options, placeholder, onChange }: StyleSelec
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={()=>setOpen(o=>!o)}
-        className="w-full flex items-center justify-between gap-2 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-left outline-none hover:border-gray-400 transition-colors">
-        <span className={sel?'text-gray-900':'text-gray-400'}>{sel?.label??placeholder}</span>
-        <CaretDownIcon size={13} className={`text-gray-400 transition-transform ${open?'rotate-180':''}`}/>
+        className="w-full flex items-center justify-between gap-2 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-left outline-none hover:border-gray-400 hover:dark:border-gray-500 transition-colors">
+        <span className={sel?'text-gray-900 dark:text-[#F3EFE6]':'text-gray-400 dark:text-gray-500'}>{sel?.label??placeholder}</span>
+        <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 transition-transform ${open?'rotate-180':''}`}/>
       </button>
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-[70] bg-white border border-gray-200 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
-          <div className="p-2 border-b border-gray-100">
+        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <div className="relative">
-              <MagnifyingGlassIcon size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+              <MagnifyingGlassIcon size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"/>
               <input type="text" placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} autoFocus
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-400"/>
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-white/10 rounded-md focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24]"/>
             </div>
           </div>
           <div className="overflow-y-auto flex-1">
             <button type="button" onClick={()=>{onChange(null);setOpen(false);setQ('');}}
-              className={`w-full text-left px-4 py-2 text-sm transition-colors ${!value?'bg-blue-50 text-blue-700 font-medium':'text-gray-500 hover:bg-gray-50'}`}>{placeholder}</button>
+              className={`w-full text-left px-4 py-2 text-sm transition-colors ${!value?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:dark:bg-white/5'}`}>{placeholder}</button>
             {filtered.map(o=>(
               <button key={o.id} type="button" onClick={()=>{onChange(o.id);setOpen(false);setQ('');}}
-                className={`w-full text-left px-4 py-2 text-sm transition-colors ${o.id===value?'bg-blue-50 text-blue-700 font-medium':'text-gray-700 hover:bg-gray-50'}`}>{o.label}</button>
+                className={`w-full text-left px-4 py-2 text-sm transition-colors ${o.id===value?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>{o.label}</button>
             ))}
           </div>
         </div>
@@ -1164,22 +1164,22 @@ function CustomizationModal({
   },[stylesRecords, favoriteStyleIds, styleId]);
   const embroideryOptions = [{id:'Light',label:'Light'},{id:'Medium',label:'Medium'},{id:'Full',label:'Full'}];
 
-  const labelCls = 'text-xs text-gray-400 uppercase tracking-wide font-medium mb-1.5 block';
-  const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400';
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
-      style={{ backgroundColor:'rgba(0,0,0,0.38)', backdropFilter:'blur(3px)' }}
+      style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
-        <div className="p-5 border-b border-gray-100 flex items-center gap-3">
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
+        <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
             <ArrowLeftIcon size={18}/>
           </button>
-          <div className="font-bold text-xl text-gray-900">{mode==='add'?'Add Customization Request':'Edit Customization'}</div>
+          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6]">{mode==='add'?'Add Customization Request':'Edit Customization'}</div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -1200,8 +1200,8 @@ function CustomizationModal({
               <table className="w-full">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Style</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Base Price</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Style</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Base Price</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1209,7 +1209,7 @@ function CustomizationModal({
                     <td className="px-3 py-2.5">
                       <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId}/>
                     </td>
-                    <td className="px-3 py-2.5 text-sm font-bold text-gray-900 text-right">{formatCurrency(basePriceNumber)}</td>
+                    <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(basePriceNumber)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1222,7 +1222,7 @@ function CustomizationModal({
             <div className="flex gap-2">
               {embroideryOptions.map(o=>(
                 <button key={o.id} type="button" onClick={()=>handleEmbroidery(embroidery===o.id?null:o.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${embroidery===o.id?'bg-indigo-600 border-indigo-600 text-white':'border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${embroidery===o.id?'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24] text-white':'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
                   {o.label}
                 </button>
               ))}
@@ -1251,12 +1251,12 @@ function CustomizationModal({
             <span className={labelCls}>Flags</span>
             <div className="flex gap-2 mb-3">
               {([
-                { label:'M2M',         active:m2m,  toggle:()=>handleM2m(!m2m),   color:'bg-blue-100 text-blue-700 border-blue-300' },
-                { label:'Alterations', active:alts, toggle:()=>handleAlts(!alts), color:'bg-violet-100 text-violet-700 border-violet-300' },
-                { label:'Rush',        active:rush, toggle:()=>handleRush(!rush), color:'bg-pink-100 text-pink-700 border-pink-300' },
+                { label:'M2M',         active:m2m,  toggle:()=>handleM2m(!m2m),   color:'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
+                { label:'Alterations', active:alts, toggle:()=>handleAlts(!alts), color:'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
+                { label:'Rush',        active:rush, toggle:()=>handleRush(!rush), color:'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
               ] as const).map(f=>(
                 <button key={f.label} type="button" onClick={f.toggle}
-                  className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active?f.color:'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}>
+                  className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active?f.color:'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 bg-white dark:bg-[#25211A] hover:bg-gray-50 hover:dark:bg-white/5'}`}>
                   {f.active && <CheckIcon size={11} weight="bold"/>}
                   {f.label}
                 </button>
@@ -1278,15 +1278,15 @@ function CustomizationModal({
               ...((m2m || alts) ? [{ label: 'M2M / Alterations', amount: altsM2mAmount, sub: null }] : []),
               ...(rush ? [{ label: 'Rush Fee', amount: rushFeeAmount, sub: rushFeePercentDisplay || null }] : []),
             ]).map(({ label, amount, sub }) => (
-              <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-600">
+              <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
                   {label}
-                  {sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}
+                  {sub && <span className="text-xs font-medium text-gray-400 dark:text-gray-500"> ({sub})</span>}
                 </span>
-                <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
+                <span className="text-sm text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(amount)}</span>
               </div>
             ))}
-            <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-2">
+            <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-2">
               <span className="text-sm">Grand Total</span>
               <span className="text-sm">{formatCurrency(grandTotal)}</span>
             </div>
@@ -1302,10 +1302,10 @@ function CustomizationModal({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-100 flex justify-end items-center">
+        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end items-center">
           {mode==='add' && (
             <button onClick={handleSave} disabled={saving || !styleId}
-              className="bg-gray-900 text-white rounded-lg px-5 py-2 text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50">
+              className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
               {saving?'Adding…':'Add Customization'}
             </button>
           )}
@@ -1483,11 +1483,11 @@ function PostAppointmentModal({
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[onClose]);
 
-  const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400';
-  const labelCls = 'text-xs text-gray-400 uppercase tracking-wide font-medium mb-1.5 block';
+  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
   const measInput = (label:string, val:string, set:(v:string)=>void, onBlur:()=>void, ph:string) => (
     <div>
-      <div className="text-xs text-gray-400 mb-1">{label}</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</div>
       <input value={val} onChange={e=>set(e.target.value)} onBlur={onBlur} placeholder={ph}
         className={`${inputCls} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
         style={{ MozAppearance:'textfield' } as React.CSSProperties} type="number"/>
@@ -1502,21 +1502,21 @@ function PostAppointmentModal({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
-        style={{ backgroundColor:'rgba(0,0,0,0.38)', backdropFilter:'blur(3px)' }}
+        style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
         onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-        <div className="bg-white rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
           onClick={e=>e.stopPropagation()}>
 
           {/* Header */}
-          <div className="p-5 border-b border-gray-100">
+          <div className="p-5 border-b border-gray-100 dark:border-white/5">
             <div className="flex items-start gap-6 flex-wrap">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 text-xl font-bold text-gray-500">
+                <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0 text-xl font-bold text-gray-500 dark:text-gray-400">
                   {clientName ? clientName.charAt(0).toUpperCase() : '?'}
                 </div>
                 <div className="min-w-0">
-                  <div className="font-bold text-xl text-gray-900 truncate">{clientName || 'Unknown Client'}</div>
-                  <div className="text-sm text-gray-400 mt-0.5">{shortType}</div>
+                  <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] truncate">{clientName || 'Unknown Client'}</div>
+                  <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{shortType}</div>
                 </div>
               </div>
               <div className="ml-auto flex flex-col justify-between h-14 items-start flex-shrink-0">
@@ -1548,21 +1548,21 @@ function PostAppointmentModal({
               <FieldLabel label="Wedding Date" fieldId={CLIENT.WEDDING} />
               <div className="flex items-center gap-3">
                 {isFieldReadOnlyBySource(CLIENT.WEDDING) ? (
-                  <div className="flex-1 text-sm text-gray-700 py-1.5">{weddingDisplay || '—'}</div>
+                  <div className="flex-1 text-sm text-gray-700 dark:text-gray-300 py-1.5">{weddingDisplay || '—'}</div>
                 ) : (
                   <div className="relative flex-1">
                     <input type="text" value={weddingDisplay} onChange={e=>setWeddingDisplay(e.target.value)}
                       onBlur={handleWeddingBlur} placeholder="e.g. May 26, 2027"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-9 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"/>
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 pr-9 text-sm outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]"/>
                     <button type="button" onClick={()=>setShowCalendar(o=>!o)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-400">
                       <CalendarIcon size={15}/>
                     </button>
                     {showCalendar && <MiniCalendar selected={weddingIso?new Date(weddingIso+'T00:00:00'):new Date()} onSelect={handleWeddingCalPick} onClose={()=>setShowCalendar(false)}/>}
                   </div>
                 )}
-                <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap text-sm text-gray-700">
-                  <input type="checkbox" checked={weddingConfirmed} onChange={e=>handleConfirmed(e.target.checked)} className="w-4 h-4 accent-blue-600"/>
+                <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={weddingConfirmed} onChange={e=>handleConfirmed(e.target.checked)} className="w-4 h-4 accent-[#D97706] dark:accent-[#FBBF24]"/>
                   Confirmed with client
                 </label>
               </div>
@@ -1602,7 +1602,7 @@ function PostAppointmentModal({
                 {measInput('Arm Length',     armLength, setArmLength, ()=>handleMeasBlur(CLIENT.MEAS_ARM_LENGTH,armLength), '23"')}
               </div>
               <div className="mb-3">
-                <div className="text-xs text-gray-400 mb-1">Measurement Notes (posture, concerns, alterations flags…)</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Measurement Notes (posture, concerns, alterations flags…)</div>
                 <textarea value={measNotes} onChange={e=>setMeasNotes(e.target.value)} onBlur={handleMeasNotesBlur}
                   placeholder="Any posture notes, concerns, or alterations flags…" rows={2}
                   className={`${inputCls} resize-none`}/>
@@ -1623,15 +1623,15 @@ function PostAppointmentModal({
                 <div className="flex flex-wrap gap-2 mb-3">
                   {linkedCustomizations.map(c=>(
                     <button key={c.id} type="button" onClick={()=>setEditCustomizationId(c.id)}
-                      className="bg-indigo-100 text-indigo-700 border border-indigo-300 rounded-full text-xs font-medium px-3 py-1 hover:bg-indigo-200 transition-colors text-left">
+                      className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-3 py-1 hover:bg-[#FDE68A] dark:hover:bg-[#4A3B18] transition-colors text-left">
                       {fmtCustomizationPill(c)}
                     </button>
                   ))}
                 </div>
               )}
               <button type="button" onClick={()=>setOpenCustomizationAdd(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                <UploadIcon size={14} className="text-gray-500"/>Add Customization Request
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+                <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Add Customization Request
               </button>
             </div>
 
@@ -1645,20 +1645,20 @@ function PostAppointmentModal({
 
             {/* Stage-specific sidebar fields */}
             {showSidebarFields && (
-              <div className="border-t border-gray-100 pt-5 space-y-4">
-                <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold">
+              <div className="border-t border-gray-100 dark:border-white/5 pt-5 space-y-4">
+                <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">
                   {showPreApptFields ? 'Pre-Appointment Info' : 'Client Context'}
                 </div>
 
                 {showPreApptFields && (
                   <>
                     <div className="grid grid-cols-3 gap-3">
-                      <div><div className={labelCls}>Country</div><div className="text-sm text-gray-700">{cStr(CLIENT.COUNTRY)||'—'}</div></div>
-                      <div><div className={labelCls}>Next Appointment</div><div className="text-sm text-gray-700">{fmtFriendly(cStr(CLIENT.NEXT_APPT))||'—'}</div></div>
-                      <div><div className={labelCls}>Total Appointments</div><div className="text-sm text-gray-700">{cStr(CLIENT.APPT_COUNT)||'—'}</div></div>
+                      <div><div className={labelCls}>Country</div><div className="text-sm text-gray-700 dark:text-gray-300">{cStr(CLIENT.COUNTRY)||'—'}</div></div>
+                      <div><div className={labelCls}>Next Appointment</div><div className="text-sm text-gray-700 dark:text-gray-300">{fmtFriendly(cStr(CLIENT.NEXT_APPT))||'—'}</div></div>
+                      <div><div className={labelCls}>Total Appointments</div><div className="text-sm text-gray-700 dark:text-gray-300">{cStr(CLIENT.APPT_COUNT)||'—'}</div></div>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
-                      <div><div className={labelCls}>Studio</div><div className="text-sm text-gray-700">{cStr(CLIENT.STUDIO_SHORT_NAME)||'—'}</div></div>
+                      <div><div className={labelCls}>Studio</div><div className="text-sm text-gray-700 dark:text-gray-300">{cStr(CLIENT.STUDIO_SHORT_NAME)||'—'}</div></div>
                       <div><div className={labelCls}>RTW Size (0–20)</div>
                         <input value={rtwSize} onChange={e=>setRtwSize(e.target.value)} onBlur={handleRtwBlur} placeholder="8" type="number"
                           className={`${inputCls} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
@@ -1666,8 +1666,8 @@ function PostAppointmentModal({
                       </div>
                       <div/>
                     </div>
-                    <div><FieldLabel label="Favorite Styles (Acuity)" fieldId={CLIENT.FAV_STYLES_ACUITY} /><div className="text-sm text-gray-700">{cStr(CLIENT.FAV_STYLES_ACUITY)||'—'}</div></div>
-                    <div><div className={labelCls}>Samples Not Where Needed</div><div className="text-sm text-gray-700">{cStr(CLIENT.SAMPLES_NOT_NEEDED)||'—'}</div></div>
+                    <div><FieldLabel label="Favorite Styles (Acuity)" fieldId={CLIENT.FAV_STYLES_ACUITY} /><div className="text-sm text-gray-700 dark:text-gray-300">{cStr(CLIENT.FAV_STYLES_ACUITY)||'—'}</div></div>
+                    <div><div className={labelCls}>Samples Not Where Needed</div><div className="text-sm text-gray-700 dark:text-gray-300">{cStr(CLIENT.SAMPLES_NOT_NEEDED)||'—'}</div></div>
                     <EditableTextarea
                       label="Personal Style Notes"
                       fieldId={CLIENT.PERSONAL_NOTES}
@@ -1692,22 +1692,22 @@ function PostAppointmentModal({
                 {showDelibFields && (
                   <>
                     <div className="grid grid-cols-3 gap-3">
-                      <div><div className={labelCls}>Country</div><div className="text-sm text-gray-700">{cStr(CLIENT.COUNTRY)||'—'}</div></div>
-                      <div><div className={labelCls}>Last Appointment</div><div className="text-sm text-gray-700">{fmtFriendly(cStr(CLIENT.LAST_APPT))||'—'}</div></div>
-                      <div><div className={labelCls}>Next Appointment</div><div className="text-sm text-gray-700">{fmtFriendly(cStr(CLIENT.NEXT_APPT))||'—'}</div></div>
+                      <div><div className={labelCls}>Country</div><div className="text-sm text-gray-700 dark:text-gray-300">{cStr(CLIENT.COUNTRY)||'—'}</div></div>
+                      <div><div className={labelCls}>Last Appointment</div><div className="text-sm text-gray-700 dark:text-gray-300">{fmtFriendly(cStr(CLIENT.LAST_APPT))||'—'}</div></div>
+                      <div><div className={labelCls}>Next Appointment</div><div className="text-sm text-gray-700 dark:text-gray-300">{fmtFriendly(cStr(CLIENT.NEXT_APPT))||'—'}</div></div>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
-                      <div><div className={labelCls}>Customization Requests</div><div className="text-sm text-gray-700">{linkedCustomizations.length>0?String(linkedCustomizations.length):'—'}</div></div>
+                      <div><div className={labelCls}>Customization Requests</div><div className="text-sm text-gray-700 dark:text-gray-300">{linkedCustomizations.length>0?String(linkedCustomizations.length):'—'}</div></div>
                       <div><div className={labelCls}>Interest in Alterations</div>
                         <button type="button" onClick={()=>saveClientField(CLIENT.INTEREST_ALTS, !cBool(CLIENT.INTEREST_ALTS))}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${cBool(CLIENT.INTEREST_ALTS)?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${cBool(CLIENT.INTEREST_ALTS)?'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30':'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10'}`}>
                           {cBool(CLIENT.INTEREST_ALTS)?<CheckIcon size={11} weight="bold"/>:<XIcon size={11}/>}
                           {cBool(CLIENT.INTEREST_ALTS)?'Yes':'No'}
                         </button>
                       </div>
                       <div><div className={labelCls}>Interest in M2M</div>
                         <button type="button" onClick={()=>saveClientField(CLIENT.INTEREST_M2M, !cBool(CLIENT.INTEREST_M2M))}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${cBool(CLIENT.INTEREST_M2M)?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${cBool(CLIENT.INTEREST_M2M)?'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30':'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10'}`}>
                           {cBool(CLIENT.INTEREST_M2M)?<CheckIcon size={11} weight="bold"/>:<XIcon size={11}/>}
                           {cBool(CLIENT.INTEREST_M2M)?'Yes':'No'}
                         </button>
@@ -2000,23 +2000,23 @@ function AppointmentsApp(): React.ReactElement {
   };
   const pillCls = (v:string) => {
     const l=v.toLowerCase();
-    if (l==='missing'||l==='pending') return 'bg-red-50 text-red-600 border border-red-200';
-    if (l==='complete'||l==='uploaded'||l==='sent') return 'bg-green-50 text-green-700 border border-green-200';
+    if (l==='missing'||l==='pending') return 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30';
+    if (l==='complete'||l==='uploaded'||l==='sent') return 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30';
     return 'bg-orange-50 text-orange-600 border border-orange-200';
   };
 
-  if (errorState) return <div className="flex items-center justify-center h-full"><p className="text-gray-500">Error loading configuration.</p></div>;
+  if (errorState) return <div className="flex items-center justify-center h-full"><p className="text-gray-500 dark:text-gray-400">Error loading configuration.</p></div>;
   if (!appointmentsTable || !clientsTable) return (
     <div className="flex items-center justify-center h-full">
       <div className="text-center p-8">
-        <p className="text-lg font-semibold text-gray-800 mb-2">Configuration Required</p>
-        <p className="text-sm text-gray-500">Set Appointments and Clients tables in the properties panel.</p>
+        <p className="text-lg font-semibold text-gray-800 dark:text-[#F3EFE6] mb-2">Configuration Required</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Set Appointments and Clients tables in the properties panel.</p>
       </div>
     </div>
   );
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden font-sans antialiased" style={{ backgroundColor:'#F6F4F0' }}>
+    <div className="h-screen flex flex-col overflow-hidden font-sans antialiased bg-[#F8F5EE] dark:bg-[#1B1813]">
       <style>{`::-webkit-scrollbar-button{display:none;height:0;width:0}`}</style>
       {selectedRecord && (
         <PostAppointmentModal
@@ -2047,49 +2047,49 @@ function AppointmentsApp(): React.ReactElement {
       {/* Header */}
       <div className="px-7 pt-5 pb-4 flex-shrink-0 flex items-center gap-3">
         <button onClick={()=>{ const d=new Date(selectedDate); d.setDate(d.getDate()-1); setSelectedDate(d); }}
-          className="bg-transparent border border-gray-200 rounded-lg px-2.5 py-1.5 cursor-pointer text-gray-700 hover:bg-gray-50 transition-colors">
+          className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 cursor-pointer text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
           <CaretLeftIcon size={14}/>
         </button>
         <div className="relative">
           <button onClick={()=>setShowCalendar(!showCalendar)}
-            className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer text-sm font-semibold text-gray-900 flex items-center gap-2 hover:bg-gray-50 transition-colors">
-            <CalendarIcon size={13} className="text-gray-500"/>{fmtDisplay(selectedDate)}
+            className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 cursor-pointer text-sm font-semibold text-gray-900 dark:text-[#F3EFE6] flex items-center gap-2 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+            <CalendarIcon size={13} className="text-gray-500 dark:text-gray-400"/>{fmtDisplay(selectedDate)}
           </button>
           {showCalendar && <MiniCalendar selected={selectedDate} onSelect={(d)=>setSelectedDate(d)} onClose={()=>setShowCalendar(false)}/>}
         </div>
         <button onClick={()=>{ const d=new Date(selectedDate); d.setDate(d.getDate()+1); setSelectedDate(d); }}
-          className="bg-transparent border border-gray-200 rounded-lg px-2.5 py-1.5 cursor-pointer text-gray-700 hover:bg-gray-50 transition-colors">
+          className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 cursor-pointer text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
           <CaretRightIcon size={14}/>
         </button>
         {!isToday && (
           <button onClick={()=>setSelectedDate(new Date())}
-            className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
             Today
           </button>
         )}
-        <div className="h-6 w-px bg-gray-200"/>
+        <div className="h-6 w-px bg-gray-200 dark:bg-white/10"/>
         {/* Search */}
         <div ref={searchRef} className="relative">
-          <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none"/>
+          <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 z-10 pointer-events-none"/>
           <input type="text" placeholder="Search client…" value={clientSearch}
             onChange={e=>setClientSearch(e.target.value)}
             onFocus={()=>{ if(searchResults.length>0) setShowSearchDrop(true); }}
-            className="pl-9 pr-8 py-1.5 text-sm bg-white border border-gray-300 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 w-[200px]"/>
+            className="pl-9 pr-8 py-1.5 text-sm bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] w-[200px]"/>
           {clientSearch && (
             <button type="button" onClick={()=>{setClientSearch('');setShowSearchDrop(false);}}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-400">
               <XIcon size={14}/>
             </button>
           )}
           {showSearchDrop && searchResults.length>0 && (
-            <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-lg w-[280px] max-h-[300px] overflow-y-auto">
+            <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-lg w-[280px] max-h-[300px] overflow-y-auto">
               {searchResults.map(rec=>{
                 const name = fClient ? rec.getCellValueAsString(fClient!) : '';
                 const t = fTime ? (rec.getCellValue(fTime!) as string|null) : null;
                 return (
                   <button key={rec.id} onClick={()=>{setSelectedRecordId(rec.id);setShowSearchDrop(false);setClientSearch('');}}
-                    className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0">
-                    <div className="text-xs text-gray-500">{t?`${fmtDisplay(new Date(t))} at ${fmtNYTime(new Date(t))}`:''}</div>
+                    className="w-full text-left px-4 py-2 hover:bg-[#FEF3C7] dark:bg-[#3A2E12] transition-colors border-b border-gray-100 dark:border-white/5 last:border-b-0">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{t?`${fmtDisplay(new Date(t))} at ${fmtNYTime(new Date(t))}`:''}</div>
                   </button>
                 );
               })}
@@ -2104,7 +2104,7 @@ function AppointmentsApp(): React.ReactElement {
       <div className="px-7 pb-3 flex-shrink-0">
         <div className="flex gap-3 overflow-x-auto pb-2">
           {todayAppts.length===0
-            ? <p className="text-gray-400 text-xs py-3">No consultation appointments today for the selected filters.</p>
+            ? <p className="text-gray-400 dark:text-gray-500 text-xs py-3">No consultation appointments today for the selected filters.</p>
             : todayAppts.map(rec=>(
                 <TodayCard key={rec.id} record={rec} apptTable={appointmentsTable} clientRecords={clientRecords} onClick={()=>setSelectedRecordId(rec.id)}/>
               ))}
@@ -2113,18 +2113,18 @@ function AppointmentsApp(): React.ReactElement {
 
       {/* Table */}
       <div className="px-7 pb-5 flex-1 min-h-0 overflow-hidden flex flex-col">
-        <div className="overflow-auto rounded-xl border border-gray-200 w-full flex-1 min-h-0">
+        <div className="overflow-auto rounded-xl border border-gray-200 dark:border-white/10 w-full flex-1 min-h-0">
           <table className="w-full border-collapse min-w-[960px]">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {['Time','Client','Studio','Wedding Date','Sales Associate','Favorite Styles','Measurements','Photos','Follow-Up','Customizations'].map(h=>(
-                  <th key={h} className="text-left px-3 py-2 text-xs text-gray-400 font-bold tracking-wider uppercase whitespace-nowrap">{h}</th>
+                  <th key={h} className="text-left px-3 py-2 text-xs text-gray-400 dark:text-gray-500 font-bold tracking-wider uppercase whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filteredRecs.length===0
-                ? <tr><td colSpan={10} className="px-8 py-8 text-center text-gray-400 text-sm">No consultation appointments for {fmtDisplay(selectedDate)}.</td></tr>
+                ? <tr><td colSpan={10} className="px-8 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No consultation appointments for {fmtDisplay(selectedDate)}.</td></tr>
                 : filteredRecs.map((rec,idx)=>{
                     const t      = fTime   ? (rec.getCellValue(fTime!)  as string|null) : null;
                     const name   = fClient ? rec.getCellValueAsString(fClient!) : '';
@@ -2146,26 +2146,26 @@ function AppointmentsApp(): React.ReactElement {
                     const custCount = custRaw?.length ?? 0;
                     return (
                       <tr key={rec.id} onClick={()=>setSelectedRecordId(rec.id)}
-                        className={`border-b border-gray-100 cursor-pointer transition-colors ${idx%2===0?'bg-white':'bg-gray-50'} hover:bg-blue-50`}>
-                        <td className="px-3 py-3 text-sm text-gray-700 whitespace-nowrap tabular-nums">{t?fmtNYTime(new Date(t)):'—'}</td>
-                        <td className="px-3 py-3"><div className="font-semibold text-sm text-gray-900">{name||'Unknown'}</div></td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{studio||'—'}</td>
+                        className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors ${idx%2===0?'bg-white dark:bg-[#25211A]':'bg-gray-50 dark:bg-white/5'} hover:bg-[#FEF3C7] dark:bg-[#3A2E12]`}>
+                        <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap tabular-nums">{t?fmtNYTime(new Date(t)):'—'}</td>
+                        <td className="px-3 py-3"><div className="font-semibold text-sm text-gray-900 dark:text-[#F3EFE6]">{name||'Unknown'}</div></td>
+                        <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{studio||'—'}</td>
                         <td className="px-3 py-3">
-                          <div className="text-sm text-gray-700">{weddingRaw?fmtFriendly(weddingRaw):'—'}</div>
+                          <div className="text-sm text-gray-700 dark:text-gray-300">{weddingRaw?fmtFriendly(weddingRaw):'—'}</div>
                           {weddingRaw && !wConfirmed && (
-                            <span className="inline-flex mt-0.5 rounded-full text-xs font-medium px-2.5 py-0.5 bg-red-50 text-red-600 border border-red-200">Needs confirmation</span>
+                            <span className="inline-flex mt-0.5 rounded-full text-xs font-medium px-2.5 py-0.5 bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">Needs confirmation</span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{sa||'—'}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{sa||'—'}</td>
                         <td className="px-3 py-3">
                           {favStylesList.length>0
-                            ? <div className="flex flex-wrap gap-1">{favStylesList.slice(0,2).map(s=><span key={s.id} className="bg-gray-100 rounded px-2 py-0.5 text-xs text-gray-700">{s.name}</span>)}{favStylesList.length>2&&<span className="text-xs text-gray-400">+{favStylesList.length-2}</span>}</div>
-                            : <span className="text-gray-300">—</span>}
+                            ? <div className="flex flex-wrap gap-1">{favStylesList.slice(0,2).map(s=><span key={s.id} className="bg-gray-100 dark:bg-white/10 rounded px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300">{s.name}</span>)}{favStylesList.length>2&&<span className="text-xs text-gray-400 dark:text-gray-500">+{favStylesList.length-2}</span>}</div>
+                            : <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                         <td className="px-3 py-3"><span className={`rounded-full text-xs font-medium px-2.5 py-0.5 ${pillCls(measStatus)}`}>{measStatus}</span></td>
                         <td className="px-3 py-3"><span className={`rounded-full text-xs font-medium px-2.5 py-0.5 ${pillCls(photosStatus)}`}>{photosStatus}</span></td>
                         <td className="px-3 py-3"><span className={`rounded-full text-xs font-medium px-2.5 py-0.5 ${pillCls(followStatus)}`}>{followStatus}</span></td>
-                        <td className="px-3 py-3">{custCount>0?<span className="text-sm text-gray-700">{custCount} request{custCount===1?'':'s'}</span>:<span className="text-gray-300">—</span>}</td>
+                        <td className="px-3 py-3">{custCount>0?<span className="text-sm text-gray-700 dark:text-gray-300">{custCount} request{custCount===1?'':'s'}</span>:<span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       </tr>
                     );
                   })}

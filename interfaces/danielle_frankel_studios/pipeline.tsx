@@ -115,6 +115,22 @@ const STAFF_FIELD_IS_ACTIVE   = 'fldB6rPTjxATp7uMf';
 const THREE_PL_OPTIONS = ['UPS', 'FedEx', 'DHL', 'INTERJUMBO'];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CHAMPAGNE COLOR SYSTEM (reference — this file encodes these as Tailwind
+// arbitrary-value classes with dark: variants, matching the existing pattern
+// of dark:bg-[#hex] used throughout rather than runtime theme branching)
+// ─────────────────────────────────────────────────────────────────────────────
+const LIGHT = {
+  app_bg: '#F8F5EE', surface: '#FFFFFF', border: '#E9E0CE',
+  text_primary: '#1A1612', text_secondary: '#6B6357',
+  accent: '#D97706', accent_soft: '#FEF3C7',
+};
+const DARK = {
+  app_bg: '#1B1813', surface: '#25211A', border: '#38322A',
+  text_primary: '#F3EFE6', text_secondary: '#B8AF9F',
+  accent: '#FBBF24', accent_soft: '#3A2E12',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WRITE QUEUE
 // ─────────────────────────────────────────────────────────────────────────────
 let _writeQueue: Promise<void> = Promise.resolve();
@@ -555,7 +571,7 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
     <div className="flex items-center gap-2">
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors ${hasSelection ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors ${hasSelection ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
           <span className="truncate">{displayText}</span>
           {hasSelection ? (
             <span
@@ -572,10 +588,10 @@ const MultiSelectDropdown = React.memo(function MultiSelectDropdown({ label, opt
           )}
         </button>
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
+          <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1">
             {options.map(option => (
               <button key={option} type="button" onClick={() => toggleOption(option)}
-                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected.includes(option) ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected.includes(option) ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                 <span className="truncate">{option}</span>
               </button>
             ))}
@@ -622,7 +638,7 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
     <div className="flex items-center gap-2">
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors ${hasSelection ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+          className={`inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors ${hasSelection ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
           <span className="truncate">{displayText}</span>
           {hasSelection ? (
             <span
@@ -639,10 +655,10 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
           )}
         </button>
         {isOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[200px] py-1">
+          <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg max-h-[260px] overflow-y-auto w-[200px] py-1">
             {options.map(option => (
               <button key={option} type="button" onClick={() => handleSelect(option)}
-                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected === option ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selected === option ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                 <span className="truncate">{option}</span>
               </button>
             ))}
@@ -667,8 +683,10 @@ const ClientCard = React.memo(function ClientCard({ client, stageColors, onCardC
   return (
     <div
       onClick={() => onCardClick(client.id)}
-      className="relative bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow space-y-1"
-      style={{ borderLeftColor: stageColors.bg, borderLeftWidth: '3px' }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
+      className="relative bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-3 cursor-pointer transition-colors space-y-1"
+      style={{ borderLeftColor: stageColors.bg, borderLeftWidth: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
     >
       {/* Flag badge: absolute top-right */}
       {client.flagCount > 0 && (
@@ -736,7 +754,7 @@ function FieldLabel({ children, saving, error, fieldId }: { children: React.Reac
           · {SOURCE_LABELS[source]}
         </span>
       )}
-      {saving && <span className="text-xs text-blue-500 dark:text-blue-400 animate-pulse">saving…</span>}
+      {saving && <span className="text-xs text-[#D97706] dark:text-[#FBBF24] animate-pulse">saving…</span>}
       {error && <span className="text-xs text-red-500 dark:text-red-400">{error}</span>}
     </label>
   );
@@ -781,9 +799,9 @@ function EditableText({ label, value, fieldId, recordId, base, tableId = 'tblLLU
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       {multiline
         ? <textarea value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur} rows={3}
-            className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none resize-none transition-colors" />
+            className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none resize-none transition-colors" />
         : <input type="text" value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur}
-            className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" />
+            className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
       }
     </div>
   );
@@ -841,7 +859,7 @@ function EditableNumber({ label, value, fieldId, recordId, base, tableId = 'tblL
       <div className="flex items-center gap-1">
         <input type="number" value={localValue} min={min} max={max} step={step}
           onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur}
-          className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           style={{ MozAppearance: 'textfield' } as React.CSSProperties} />
         {suffix && <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">{suffix}</span>}
       </div>
@@ -963,9 +981,9 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
   if (!coords) return null;
 
   return (
-    <div ref={popupRef} style={{ position: 'fixed', top: coords.top, bottom: coords.bottom, left: coords.left, width: coords.width, zIndex: 9999 }}>
+    <div ref={popupRef} style={{ position: 'fixed', top: coords.top, bottom: coords.bottom, left: coords.left, width: coords.width, zIndex: 20 }}>
       {noStyle ? children : (
-        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg py-1">
+        <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg py-1">
           {children}
         </div>
       )}
@@ -1020,7 +1038,7 @@ const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect
   };
 
   return (
-    <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3" onClick={e => e.stopPropagation()}>
+    <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl p-3" onClick={e => e.stopPropagation()}>
       <div className="flex items-center justify-between mb-3">
         <button type="button" onClick={prevMonth}
           className="w-7 h-7 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -1045,8 +1063,8 @@ const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect
             <button key={i} type="button" onClick={() => { onSelect(date); onClose(); }}
               className={[
                 'w-8 h-8 mx-auto flex items-center justify-center rounded-full text-xs transition-colors',
-                isSelected ? 'bg-blue-600 text-white font-semibold'
-                  : isToday ? 'border border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-500/10'
+                isSelected ? 'bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] font-semibold'
+                  : isToday ? 'border border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24] font-medium hover:bg-[#FEF3C7] dark:hover:bg-[#3A2E12]'
                   : currentMonth ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10'
                   : 'text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5',
               ].join(' ')}>
@@ -1059,7 +1077,7 @@ const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect
         <button type="button" onClick={() => { onSelect(null); onClose(); }}
           className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">Clear</button>
         <button type="button" onClick={() => { onSelect(new Date()); onClose(); }}
-          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium transition-colors">Today</button>
+          className="text-xs text-[#D97706] dark:text-[#FBBF24] hover:text-[#B45F04] dark:hover:text-[#FCD34D] font-medium transition-colors">Today</button>
       </div>
     </div>
   );
@@ -1156,7 +1174,7 @@ function EditableDate({ label, value, fieldId, recordId, base, tableId = 'tblLLU
           onChange={e => setInputText(e.target.value)}
           onBlur={handleInputBlur}
           onFocus={() => setOpen(true)}
-          className="flex-1 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors" />
+          className="flex-1 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
         <button type="button" onClick={() => setOpen(o => !o)}
           className="flex-shrink-0 w-8 h-8 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-400 dark:hover:border-white/20 transition-colors">
           <CalendarIcon size={14} />
@@ -1222,19 +1240,19 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
         <span className="truncate text-left">{localValue || '—'}</span>
         <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)}>
           <button type="button" onClick={() => handleSelect('')}
-            className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${!localValue ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+            className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${!localValue ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
             —
           </button>
           {options.map(o => (
             <button key={o} type="button" onClick={() => handleSelect(o)}
-              className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
               {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
               {localValue !== o && <span className="w-3 flex-shrink-0" />}
               <span className="truncate">{o}</span>
@@ -1317,7 +1335,7 @@ function StylePicker({ label, currentIds, currentNames, fieldId, recordId, base,
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(!open)}
-        className="w-full text-left text-sm text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none flex items-center gap-2 transition-colors">
+        className="w-full text-left text-sm text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none flex items-center gap-2 transition-colors">
         <span className="truncate flex-1">{selectedNames}</span>
         {selectedIds.length > 0 && (
           <span
@@ -1343,7 +1361,7 @@ function StylePicker({ label, currentIds, currentNames, fieldId, recordId, base,
         <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)} width={260}>
           <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <input type="text" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} autoFocus
-              className="w-full text-sm bg-white dark:bg-[#1e1d1b] text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-colors" />
+              className="w-full text-sm bg-white dark:bg-[#1e1d1b] text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] transition-colors" />
           </div>
           <div className="overflow-y-auto" style={{ maxHeight: '168px', scrollbarWidth: 'none' }}>
             <style>{`.style-picker-list::-webkit-scrollbar{display:none}`}</style>
@@ -1353,7 +1371,7 @@ function StylePicker({ label, currentIds, currentNames, fieldId, recordId, base,
               )}
               {options.map(o => (
                 <button key={o.id} type="button" onClick={() => toggleId(o.id)}
-                  className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${selectedIds.includes(o.id) ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                  className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${selectedIds.includes(o.id) ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                   {selectedIds.includes(o.id) && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
                   {!selectedIds.includes(o.id) && <span className="w-3 flex-shrink-0" />}
                   <span className="truncate">{o.name}</span>
@@ -1469,7 +1487,7 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
       <span className="ml-1 inline-flex items-center gap-1">
         {entry.dir === 'asc' ? <CaretUpIcon size={12} weight="bold" /> : <CaretDownIcon size={12} weight="bold" />}
         {sortEntries.length > 1 && (
-          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-blue-600 text-white text-[9px] font-semibold leading-none">
+          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] text-[9px] font-semibold leading-none">
             {idx + 1}
           </span>
         )}
@@ -1609,7 +1627,7 @@ function BooleanDropdown({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full text-left text-sm text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none flex items-center justify-between gap-2 transition-colors"
+        className="w-full text-left text-sm text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none flex items-center justify-between gap-2 transition-colors"
       >
         <span>{displayLabel}</span>
         <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -1623,7 +1641,7 @@ function BooleanDropdown({
                 type="button"
                 onClick={() => handleSelect(opt.value)}
                 className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${
-                  localValue === opt.value ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'
+                  localValue === opt.value ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'
                 }`}
               >
                 {localValue === opt.value && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
@@ -1940,7 +1958,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
           </button>
           <button
             onClick={() => setShowAllFields(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors"
           >
             {showAllFields ? 'Show current stage' : 'Show all stages'}
           </button>
@@ -1983,19 +2001,19 @@ const FullProfileModal = React.memo(function FullProfileModal({
               <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Sales Associate</div>
               <div className="text-lg text-gray-900 dark:text-[#F5F3EF] font-medium mt-1">{client.salesAssociateName || '—'}</div>
               {client.formattedSAPhone && (
-                <a href={`tel:${client.salesAssociatePhone}`} className="text-lg text-blue-600 dark:text-blue-400 block">{client.formattedSAPhone}</a>
+                <a href={`tel:${client.salesAssociatePhone}`} className="text-lg text-[#D97706] dark:text-[#FBBF24] block">{client.formattedSAPhone}</a>
               )}
             </div>
             <div>
               <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Email</div>
               {client.email
-                ? <a href={`mailto:${client.email}`} className="text-lg text-blue-600 dark:text-blue-400 font-medium mt-1 block truncate">{client.email}</a>
+                ? <a href={`mailto:${client.email}`} className="text-lg text-[#D97706] dark:text-[#FBBF24] font-medium mt-1 block truncate">{client.email}</a>
                 : <div className="text-lg text-gray-400 dark:text-gray-500 mt-1">—</div>}
             </div>
             <div>
               <div className="text-base text-gray-400 dark:text-gray-500 tracking-wide">Phone</div>
               {client.formattedPhone
-                ? <a href={`tel:${client.phone}`} className="text-lg text-blue-600 dark:text-blue-400 font-medium mt-1 block">{client.formattedPhone}</a>
+                ? <a href={`tel:${client.phone}`} className="text-lg text-[#D97706] dark:text-[#FBBF24] font-medium mt-1 block">{client.formattedPhone}</a>
                 : <div className="text-lg text-gray-400 dark:text-gray-500 mt-1">—</div>}
             </div>
           </div>
@@ -2055,7 +2073,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
             </div>
             <div>
               <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide">Total Appointments</div>
-              <div className="text-base text-blue-600 dark:text-blue-400 font-medium mt-1">{client.appointmentCount}</div>
+              <div className="text-base text-[#D97706] dark:text-[#FBBF24] font-medium mt-1">{client.appointmentCount}</div>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -2240,7 +2258,7 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
         onChange={e => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Search by name, phone, email, AM order…"
-        className="w-full bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 dark:text-[#F5F3EF] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+        className="w-full bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg pl-9 pr-8 py-1.5 text-sm text-gray-900 dark:text-[#F5F3EF] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] placeholder:text-gray-400 dark:placeholder:text-gray-500"
       />
       {query && (
         <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
@@ -2251,8 +2269,8 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
       {open && (
         <div
           ref={listRef}
-          className="absolute left-0 top-full mt-1 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg z-50 overflow-y-auto"
-          style={{ width: 440, maxHeight: 360 }}
+          className="absolute left-0 top-full mt-1 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg z-20 overflow-y-auto"
+          style={{ width: 440, maxHeight: 360, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
         >
           {results.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">No matches found.</div>
@@ -2264,7 +2282,7 @@ function SearchDropdown({ clientsData, onSelect, stageColorsByStage }: {
               data-active={i === activeIdx ? 'true' : 'false'}
               onMouseEnter={() => setActiveIdx(i)}
               onClick={() => handleSelect(c.id)}
-              className={`px-4 py-2.5 cursor-pointer border-b border-gray-100 dark:border-white/10 last:border-b-0 transition-colors ${i === activeIdx ? 'bg-blue-50 dark:bg-blue-500/15' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
+              className={`px-4 py-2.5 cursor-pointer border-b border-gray-100 dark:border-white/10 last:border-b-0 transition-colors ${i === activeIdx ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
@@ -2317,14 +2335,14 @@ function ViewDropdown({ value, onChange }: { value: 'kanban'|'list'; onChange: (
     <div className="flex items-center gap-2">
       <div ref={containerRef} className="relative">
         <button type="button" onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center justify-center w-[110px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors">
+          className="flex items-center justify-center w-[110px] bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
           <span className="truncate text-center">{VIEW_LABELS[value]}</span>
         </button>
         {isOpen && (
-          <div className="absolute top-full right-0 mt-1 z-50 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[110px] py-1">
+          <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg max-h-[260px] overflow-y-auto w-[110px] py-1">
             {VIEW_OPTIONS.map(option => (
               <button key={option} type="button" onClick={() => handleSelect(option)}
-                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                 <span className="truncate">{VIEW_LABELS[option]}</span>
               </button>
             ))}
@@ -2810,7 +2828,7 @@ function Pipeline(): React.ReactElement {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#F6F4F0] dark:bg-[#1A1917]">
+    <div className="h-screen flex flex-col overflow-hidden font-sans bg-[#F6F4F0] dark:bg-[#1A1917]">
       {/* Filter row */}
       <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
@@ -2830,7 +2848,7 @@ function Pipeline(): React.ReactElement {
       {noMatchingClients && (
         <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-shrink-0">
           <span>No clients match the current filters.</span>
-          <button type="button" onClick={clearAllFilters} className="text-blue-600 dark:text-blue-400 hover:underline">Clear all filters</button>
+          <button type="button" onClick={clearAllFilters} className="text-[#D97706] dark:text-[#FBBF24] hover:underline">Clear all filters</button>
         </div>
       )}
 

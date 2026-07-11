@@ -263,14 +263,14 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
       <span className="text-sm text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
       <div className="relative">
         <button type="button" onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center gap-1.5 min-w-[140px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-1.5 text-base text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-amber-400/50 outline-none transition-colors">
+          className="inline-flex items-center gap-1.5 min-w-[140px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-amber-400/50 outline-none transition-colors">
           <span className="truncate flex-1 text-left">{displayText}</span>
           {values.length > 0
             ? <XIcon size={14} className="text-gray-400 flex-shrink-0 hover:text-gray-600" onClick={e => { e.stopPropagation(); onChange([]); }} />
             : <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />}
         </button>
         {open && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg shadow-lg w-[240px] overflow-hidden">
+          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg shadow-lg w-[240px] overflow-hidden">
             {searchable && (
               <div className="px-2 pt-1.5 pb-1 border-b border-gray-100 dark:border-white/5">
                 <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…"
@@ -278,13 +278,13 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
               </div>
             )}
             <button type="button" onClick={() => { onChange([]); setOpen(false); setQuery(''); }}
-              className={`w-full text-left px-3 py-2 text-base transition-colors ${values.length === 0 ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${values.length === 0 ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
             <div className="overflow-y-auto" style={{ maxHeight: Math.min(filteredOptions.length, 10) * 36 || 36, scrollbarWidth: 'none' }}>
               {filteredOptions.map(opt => {
                 const sel = values.includes(opt);
                 return (
                   <button key={opt} type="button" onClick={() => toggle(opt)} style={{ height: 36 }}
-                    className={`w-full text-left px-3 py-2 text-base transition-colors ${sel ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${sel ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                     <span className="truncate block">{opt}</span>
                   </button>
                 );
@@ -336,25 +336,25 @@ function StyleSelectSingle({ value, options, placeholder, onChange, disabled }: 
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => !disabled && setOpen(o => !o)} disabled={disabled}
-        className="w-full flex items-center justify-between gap-2 bg-white dark:bg-[#1B1813] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-base text-left outline-none hover:border-gray-400 dark:hover:border-amber-400/50 transition-colors disabled:opacity-50">
+        className="w-full flex items-center justify-between gap-2 bg-white dark:bg-[#1B1813] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-left outline-none hover:border-gray-400 dark:hover:border-amber-400/50 transition-colors disabled:opacity-50">
         <span className={sel ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}>{sel?.label ?? placeholder}</span>
         <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-[70] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
+        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
           <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <div className="relative">
               <MagnifyingGlassIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} autoFocus
-                className="w-full pl-8 pr-3 py-1.5 text-base border border-gray-200 dark:border-[#38322A] rounded-md focus:outline-none focus:border-amber-400 bg-white dark:bg-[#1B1813] text-gray-700 dark:text-gray-300" />
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-[#38322A] rounded-md focus:outline-none focus:border-amber-400 bg-white dark:bg-[#1B1813] text-gray-700 dark:text-gray-300" />
             </div>
           </div>
           <div className="overflow-y-auto flex-1" style={{ scrollbarWidth: 'none' }}>
             <button type="button" onClick={() => { onChange(null); setOpen(false); setQ(''); }}
-              className={`w-full text-left px-4 py-2 text-base transition-colors ${!value ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{placeholder}</button>
+              className={`w-full text-left px-4 py-2 text-sm transition-colors ${!value ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{placeholder}</button>
             {filtered.map(o => (
               <button key={o.id} type="button" onClick={() => { onChange(o.id); setOpen(false); setQ(''); }}
-                className={`w-full text-left px-4 py-2 text-base transition-colors ${o.id === value ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o.label}</button>
+                className={`w-full text-left px-4 py-2 text-sm transition-colors ${o.id === value ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o.label}</button>
             ))}
           </div>
         </div>
@@ -559,13 +559,13 @@ function LineItemsTable({
             <MagnifyingGlassIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" placeholder="Search customizations to add…" value={query}
               onFocus={() => setOpen(true)} onChange={e => { setQuery(e.target.value); setOpen(true); }}
-              className="w-full pl-8 pr-3 py-2 text-base border border-gray-300 dark:border-[#38322A] rounded-lg focus:outline-none focus:border-amber-400 bg-white dark:bg-[#1B1813] text-gray-700 dark:text-gray-300 transition-colors" />
+              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-[#38322A] rounded-lg focus:outline-none focus:border-amber-400 bg-white dark:bg-[#1B1813] text-gray-700 dark:text-gray-300 transition-colors" />
           </div>
           {open && (
-            <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-xl shadow-xl max-h-[260px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+            <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-xl shadow-xl max-h-[260px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               {filteredSuggestions.map(s => (
                 <button key={s.id} type="button" onClick={() => addAndClear(s.id)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-base text-gray-700 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-white/5 transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-white/5 transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
                   <span>
                     {s.name}
                     {s.label && <span className="text-sm font-medium text-gray-400 dark:text-gray-500"> ({s.label})</span>}
@@ -573,7 +573,7 @@ function LineItemsTable({
                   <span className="text-sm font-medium text-gray-400 dark:text-gray-500">{formatCurrency(s.amount)}</span>
                 </button>
               ))}
-              {filteredSuggestions.length === 0 && <div className="px-3 py-3 text-base text-gray-400 dark:text-gray-500 text-center">No matching customizations</div>}
+              {filteredSuggestions.length === 0 && <div className="px-3 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">No matching customizations</div>}
             </div>
           )}
         </div>
@@ -600,17 +600,17 @@ function LineItemsTable({
                     </button>
                   </td>
                 )}
-                <td className="px-3 py-2.5 text-base text-gray-900 dark:text-gray-100">{item.name}</td>
+                <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100">{item.name}</td>
                 <td className="px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
                 <td className="px-3 py-2.5">
                   <ApprovalStatusPill status={item.approval} colorMap={preApprovalColorMap} />
                 </td>
-                <td className="px-3 py-2.5 text-base text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
+                <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
               </tr>
             ))}
             {selectedItems.length === 0 && (
               <tr>
-                <td colSpan={disabled ? 4 : 5} className="px-3 py-6 text-center text-gray-400 dark:text-gray-500 text-base">
+                <td colSpan={disabled ? 4 : 5} className="px-3 py-6 text-center text-gray-400 dark:text-gray-500 text-sm">
                   No customizations added yet.
                 </td>
               </tr>
@@ -618,8 +618,8 @@ function LineItemsTable({
             {/* Total is always shown, even at $0.00 with no line items. */}
             <tr className="border-t border-gray-200 dark:border-white/10">
               {!disabled && <td className="px-3 py-2.5" />}
-              <td colSpan={3} className="px-3 py-2.5 text-base font-bold text-gray-900 dark:text-gray-100">Total</td>
-              <td className="px-3 py-2.5 text-base font-bold text-gray-900 dark:text-gray-100 text-right">{formatCurrency(totalAmount)}</td>
+              <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-gray-100">Total</td>
+              <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-gray-100 text-right">{formatCurrency(totalAmount)}</td>
             </tr>
           </tbody>
         </table>
@@ -862,14 +862,14 @@ function RecordDetailPage({
   const grandTotal = basePriceNumber + totalCustomizationCost + rushFeeAmount + altsM2mAmount;
 
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
-  const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-base text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
+  const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
 
   return (
     <div className="h-screen flex flex-col font-sans antialiased" style={{ backgroundColor: '#F8F5EE' }}>
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-6 py-4 border-b border-[#E9E0CE] dark:border-[#38322A] bg-white dark:bg-[#25211A]">
         <button type="button" onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2 text-base font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-[#38322A] rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors flex-shrink-0">
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-[#38322A] rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors flex-shrink-0">
           <ArrowLeftIcon size={16} />
           Go back
         </button>
@@ -894,22 +894,22 @@ function RecordDetailPage({
             {!showCounterForm ? (
               <>
                 <button type="button" onClick={handleApprove} disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-base font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
                   <CheckCircleIcon size={15} /> Approve
                 </button>
                 <button type="button" onClick={handleDeny} disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-base font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
                   <XSquareIcon size={15} /> Deny
                 </button>
                 <button type="button" onClick={() => setShowCounterForm(true)} disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-base font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
                   <ArrowCounterClockwiseIcon size={15} /> Counter-Propose
                 </button>
               </>
             ) : (
               <>
                 <button type="button" onClick={handleSubmitCounter} disabled={saving}
-                  className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-base font-medium hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors disabled:opacity-50">
+                  className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors disabled:opacity-50">
                   Submit Counter-Proposal
                 </button>
                 <button type="button" onClick={() => setShowCounterForm(false)}
@@ -927,11 +927,11 @@ function RecordDetailPage({
         {/* Concurrent-edit warning */}
         {concurrentEditWarning && (
           <div className="flex-shrink-0 flex items-center justify-between gap-3 px-6 py-3 bg-amber-50 dark:bg-amber-400/10 border-b border-amber-200 dark:border-amber-400/30">
-            <span className="text-base text-amber-800 dark:text-amber-300">
+            <span className="text-sm text-amber-800 dark:text-amber-300">
               This record was updated by another user while you had it open.
             </span>
             <button type="button" onClick={reloadFromRecord}
-              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-base font-medium bg-amber-100 dark:bg-amber-400/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-400/40 hover:bg-amber-200 dark:hover:bg-amber-400/30 transition-colors">
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-100 dark:bg-amber-400/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-400/40 hover:bg-amber-200 dark:hover:bg-amber-400/30 transition-colors">
               Reload record
             </button>
           </div>
@@ -963,7 +963,7 @@ function RecordDetailPage({
                         <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
                           onChange={handleStyleId} disabled={!canUpdate} />
                       </td>
-                      <td className="px-3 py-2.5 text-base font-bold text-gray-900 dark:text-gray-100 text-right">{formatCurrency(basePriceNumber)}</td>
+                      <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-gray-100 text-right">{formatCurrency(basePriceNumber)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -978,7 +978,7 @@ function RecordDetailPage({
                   <button key={o} type="button"
                     onClick={() => canUpdate && handleEmbroidery(embroidery === o ? null : o)}
                     disabled={!canUpdate}
-                    className={`px-3 py-1.5 rounded-lg text-base font-medium border transition-colors disabled:opacity-50 ${
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${
                       embroidery === o
                         ? 'bg-amber-600 dark:bg-amber-400 border-amber-600 dark:border-amber-400 text-white dark:text-gray-900'
                         : 'border-gray-300 dark:border-[#38322A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
@@ -1009,16 +1009,16 @@ function RecordDetailPage({
                 { label: 'M2M / Alterations', display: altsM2mDisplay,                sub: null },
               ].map(({ label, display, sub }) => (
                 <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5">
-                  <span className="text-base text-gray-600 dark:text-gray-400">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
                     {label}
                     {sub && <span className="text-sm font-medium text-gray-400 dark:text-gray-500"> ({sub})</span>}
                   </span>
-                  <span className="text-base text-gray-900 dark:text-gray-200">{display}</span>
+                  <span className="text-sm text-gray-900 dark:text-gray-200">{display}</span>
                 </div>
               ))}
               <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-2">
-                <span className="text-base">Grand Total</span>
-                <span className="text-base">{formatCurrency(grandTotal)}</span>
+                <span className="text-sm">Grand Total</span>
+                <span className="text-sm">{formatCurrency(grandTotal)}</span>
               </div>
             </div>
 
@@ -1063,27 +1063,27 @@ function RecordDetailPage({
 
             {/* Status banners */}
             {approvalStatus === 'Counter-Proposed' && (
-              <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-base text-amber-800 dark:text-amber-300">
+              <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
                 Production has counter-proposed. Review the revised price above.
               </div>
             )}
             {approvalStatus === 'Denied' && (
-              <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-base text-red-700 dark:text-red-300">
+              <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 This customization request was denied.
               </div>
             )}
             {approvalStatus === 'Purchased' && (
-              <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3 text-base text-emerald-700 dark:text-emerald-300">
+              <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
                 Finalized and purchased.
               </div>
             )}
             {(approvalStatus === 'Approved' || approvalStatus === 'Counter-Proposed' || approvalStatus === 'Purchased') && fApproved && (
               <div>
                 <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Counter-Proposed Price' : 'Approved Price'}</span>
-                <div className="text-base text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
+                <div className="text-sm text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
               </div>
             )}
-            {error && <div className="text-red-600 dark:text-red-400 text-base">{error}</div>}
+            {error && <div className="text-red-600 dark:text-red-400 text-sm">{error}</div>}
 
           </div>
         </div>
@@ -1184,7 +1184,7 @@ function CustomizationApp(): React.ReactElement {
       <div className="h-screen flex items-center justify-center font-sans" style={{ backgroundColor: '#F8F5EE' }}>
         <div className="text-center">
           <p className="text-gray-600 text-xl font-medium">Configuration Required</p>
-          <p className="text-gray-500 text-base mt-2">Ensure the Customizations and Customization Pricing tables are available.</p>
+          <p className="text-gray-500 text-sm mt-2">Ensure the Customizations and Customization Pricing tables are available.</p>
         </div>
       </div>
     );
@@ -1193,7 +1193,7 @@ function CustomizationApp(): React.ReactElement {
   if (!fields) {
     return (
       <div className="h-screen flex items-center justify-center font-sans" style={{ backgroundColor: '#F8F5EE' }}>
-        <div className="text-gray-600 dark:text-gray-400 text-base">Loading…</div>
+        <div className="text-gray-600 dark:text-gray-400 text-sm">Loading…</div>
       </div>
     );
   }
@@ -1254,7 +1254,7 @@ function CustomizationApp(): React.ReactElement {
                   || (fields.weddingDate ? record.getCellValueAsString(fields.weddingDate) : '');
                 const approvedVal = fields.approvedPricing          ? record.getCellValueAsString(fields.approvedPricing)          : '';
                 const proposedVal = fields.proposedTotalCustomPrice ? record.getCellValueAsString(fields.proposedTotalCustomPrice) : '';
-                const cellCls = 'px-3 py-2.5 text-base text-gray-700 dark:text-gray-300';
+                const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                 return (
                   <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id })}
                     className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
@@ -1271,7 +1271,7 @@ function CustomizationApp(): React.ReactElement {
               })}
               {filteredRecords.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-base">
+                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
                     No customization records found.
                   </td>
                 </tr>
