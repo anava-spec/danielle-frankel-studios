@@ -26,6 +26,9 @@ const FIELD_IDS = {
   DRAFT_SHIPPING: 'fldcItXhwxpimLdyR',
   DRAFT_TAXES: 'fldLzzEF6NIoYdKMF',
   DRAFT_DISCOUNT: 'fldjyvFWtv5cr05nV',
+  DRAFT_SHIPPING_NOTES: 'fld8I8RAeCknwwOJQ',
+  DRAFT_TAXES_NOTES: 'fldcfJOub8fF9ZOPM',
+  DRAFT_DISCOUNT_NOTES: 'fld8nhM0InrdrqXWh',
   DRAFT_TOTAL: 'fldt5xLGU8aMFKfed',
   DRAFT_CREATED_AT: 'fldDN6BShO586Ac6V',
   DRAFT_LAST_MODIFIED: 'fldLDr7uFKCK9cuAQ',
@@ -789,6 +792,9 @@ function Layer2({
   const [shipping, setShipping] = useState('');
   const [taxes, setTaxes] = useState('');
   const [discount, setDiscount] = useState('');
+  const [shippingNotes, setShippingNotes] = useState('');
+  const [taxesNotes, setTaxesNotes] = useState('');
+  const [discountNotes, setDiscountNotes] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
@@ -1040,6 +1046,9 @@ function Layer2({
       const shippingFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
       const taxesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
       const discountFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
+      const shippingNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
+      const taxesNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
+      const discountNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
 
       const fields: Record<string, unknown> = {};
 
@@ -1050,6 +1059,9 @@ function Layer2({
       if (shippingFieldObj) fields[shippingFieldObj.id] = parseCurrency(shipping);
       if (taxesFieldObj) fields[taxesFieldObj.id] = parseCurrency(taxes);
       if (discountFieldObj) fields[discountFieldObj.id] = parseCurrency(discount);
+      if (shippingNotesFieldObj && shippingNotes.trim()) fields[shippingNotesFieldObj.id] = shippingNotes.trim();
+      if (taxesNotesFieldObj && taxesNotes.trim()) fields[taxesNotesFieldObj.id] = taxesNotes.trim();
+      if (discountNotesFieldObj && discountNotes.trim()) fields[discountNotesFieldObj.id] = discountNotes.trim();
 
       const newDraftId = await draftOrdersTable.createRecordAsync(fields);
       onSave(newDraftId);
@@ -1093,9 +1105,9 @@ function Layer2({
           <div className="flex gap-6 items-start">
             <div className="w-[60%] min-w-0 space-y-4">
               {!isClientPreset && (
-              <div ref={clientSearchRef} className="relative">
-                <label className="block text-sm font-medium mb-2">Client</label>
-                <div className="relative">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold">Client</h2>
+                <div ref={clientSearchRef} className="relative w-64">
                   <MagnifyingGlassIcon
                     size={16}
                     className="absolute left-3 top-1/2 -translate-y-1/2"
@@ -1152,29 +1164,29 @@ function Layer2({
                       <XIcon size={16} />
                     </button>
                   )}
+                  {showClientSearch && (clientId || clientSearchQuery.trim() !== '') && (
+                    <div
+                      className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                      style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+                    >
+                      {filteredClients.map((client, index) => (
+                        <button
+                          key={client.id}
+                          onClick={() => {
+                            onClientSelect(client.id);
+                            setShowClientSearch(false);
+                            setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                          style={{ color: theme.text, backgroundColor: index === clientHighlightIndex ? theme.bgHover : 'transparent' }}
+                          onMouseEnter={() => setClientHighlightIndex(index)}
+                        >
+                          {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {showClientSearch && (clientId || clientSearchQuery.trim() !== '') && (
-                  <div
-                    className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                    style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-                  >
-                    {filteredClients.map((client, index) => (
-                      <button
-                        key={client.id}
-                        onClick={() => {
-                          onClientSelect(client.id);
-                          setShowClientSearch(false);
-                          setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                        style={{ color: theme.text, backgroundColor: index === clientHighlightIndex ? theme.bgHover : 'transparent' }}
-                        onMouseEnter={() => setClientHighlightIndex(index)}
-                      >
-                        {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
               )}
 
@@ -1493,7 +1505,17 @@ function Layer2({
                             style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
                           />
                         </td>
-                        <td></td>
+                        <td className="py-2 pl-3">
+                          <input
+                            type="text"
+                            placeholder="Notes..."
+                            value={shippingNotes}
+                            onChange={e => setShippingNotes(e.target.value)}
+                            disabled={!clientId}
+                            className="w-full px-2 py-1 rounded-md text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+                          />
+                        </td>
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-2">Taxes</td>
@@ -1508,7 +1530,17 @@ function Layer2({
                             style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
                           />
                         </td>
-                        <td></td>
+                        <td className="py-2 pl-3">
+                          <input
+                            type="text"
+                            placeholder="Notes..."
+                            value={taxesNotes}
+                            onChange={e => setTaxesNotes(e.target.value)}
+                            disabled={!clientId}
+                            className="w-full px-2 py-1 rounded-md text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+                          />
+                        </td>
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-2">Discount</td>
@@ -1523,7 +1555,17 @@ function Layer2({
                             style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
                           />
                         </td>
-                        <td></td>
+                        <td className="py-2 pl-3">
+                          <input
+                            type="text"
+                            placeholder="Notes..."
+                            value={discountNotes}
+                            onChange={e => setDiscountNotes(e.target.value)}
+                            disabled={!clientId}
+                            className="w-full px-2 py-1 rounded-md text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+                          />
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -1712,6 +1754,9 @@ function Layer4({
   const shippingField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
   const taxesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
   const discountField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
+  const shippingNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
+  const taxesNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
+  const discountNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
   const styleSubtotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE_SUBTOTAL);
   const customizationSubtotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATION_SUBTOTAL);
   const totalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TOTAL);
@@ -1909,6 +1954,9 @@ function Layer4({
   const shipping = shippingField ? (draft.getCellValue(shippingField) as number | null) ?? 0 : 0;
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
+  const shippingNotes = shippingNotesField ? draft.getCellValueAsString(shippingNotesField) : '';
+  const taxesNotes = taxesNotesField ? draft.getCellValueAsString(taxesNotesField) : '';
+  const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
   const styleSubtotal = styleSubtotalField ? (draft.getCellValue(styleSubtotalField) as number | null) ?? 0 : 0;
   const customizationSubtotal = customizationSubtotalField ? (draft.getCellValue(customizationSubtotalField) as number | null) ?? 0 : 0;
   const total = totalField ? (draft.getCellValue(totalField) as number | null) ?? 0 : 0;
@@ -2067,6 +2115,19 @@ function Layer4({
     try {
       await draftOrdersTable.updateRecordAsync(draftId, {
         [field.id]: numValue,
+      });
+      setFieldErrors({ ...fieldErrors, [fieldKey]: '' });
+    } catch (error) {
+      console.error(`Failed to update ${fieldKey}:`, error);
+      setFieldErrors({ ...fieldErrors, [fieldKey]: `Failed to update ${fieldKey}.` });
+    }
+  };
+
+  const handleNotesBlur = async (field: Field | null, value: string, fieldKey: string) => {
+    if (!isEditable || !field) return;
+    try {
+      await draftOrdersTable.updateRecordAsync(draftId, {
+        [field.id]: value,
       });
       setFieldErrors({ ...fieldErrors, [fieldKey]: '' });
     } catch (error) {
@@ -2394,7 +2455,13 @@ function Layer4({
                         <CurrencyInput label="Shipping" value={shipping} field={shippingField} fieldKey="shipping" error={fieldErrors.shipping} theme={theme} onBlur={handleCurrencyBlur} hideLabel />
                       ) : formatCurrency(shipping)}
                     </td>
-                    <td></td>
+                    <td className="py-2 pl-3">
+                      {isEditable ? (
+                        <NotesInput value={shippingNotes} field={shippingNotesField} fieldKey="shippingNotes" theme={theme} onBlur={handleNotesBlur} />
+                      ) : (
+                        <span className="text-xs" style={{ color: theme.textMuted }}>{shippingNotes}</span>
+                      )}
+                    </td>
                   </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-2">Taxes</td>
@@ -2403,7 +2470,13 @@ function Layer4({
                         <CurrencyInput label="Taxes" value={taxes} field={taxesField} fieldKey="taxes" error={fieldErrors.taxes} theme={theme} onBlur={handleCurrencyBlur} hideLabel />
                       ) : formatCurrency(taxes)}
                     </td>
-                    <td></td>
+                    <td className="py-2 pl-3">
+                      {isEditable ? (
+                        <NotesInput value={taxesNotes} field={taxesNotesField} fieldKey="taxesNotes" theme={theme} onBlur={handleNotesBlur} />
+                      ) : (
+                        <span className="text-xs" style={{ color: theme.textMuted }}>{taxesNotes}</span>
+                      )}
+                    </td>
                   </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-2">Discount</td>
@@ -2412,7 +2485,13 @@ function Layer4({
                         <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel />
                       ) : `-${formatCurrency(discount)}`}
                     </td>
-                    <td></td>
+                    <td className="py-2 pl-3">
+                      {isEditable ? (
+                        <NotesInput value={discountNotes} field={discountNotesField} fieldKey="discountNotes" theme={theme} onBlur={handleNotesBlur} />
+                      ) : (
+                        <span className="text-xs" style={{ color: theme.textMuted }}>{discountNotes}</span>
+                      )}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -2514,6 +2593,34 @@ function CurrencyInput({ label, value, field, fieldKey, error, theme, onBlur, hi
       />
       {error && <p className="text-xs mt-1" style={{ color: theme.danger }}>{error}</p>}
     </div>
+  );
+}
+
+interface NotesInputProps {
+  value: string;
+  field: Field | null;
+  fieldKey: string;
+  theme: typeof COLORS.LIGHT;
+  onBlur: (field: Field | null, value: string, fieldKey: string) => Promise<void>;
+}
+
+function NotesInput({ value, field, fieldKey, theme, onBlur }: NotesInputProps) {
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      placeholder="Notes..."
+      value={localValue}
+      onChange={e => setLocalValue(e.target.value)}
+      onBlur={() => onBlur(field, localValue, fieldKey)}
+      className="w-full px-2 py-1 rounded-md text-xs"
+      style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+    />
   );
 }
 
