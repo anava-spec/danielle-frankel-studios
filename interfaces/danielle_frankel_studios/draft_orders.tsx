@@ -34,6 +34,7 @@ const FIELD_IDS = {
   DRAFT_GRAND_TOTAL: 'fldpqxb0FPd5vH0tI',
   DRAFT_WEDDING_DATE: 'fldmKmFUAqaS0FYQD',
   DRAFT_DUE_DATE: 'fldEIrZxfSsTz3FmA',
+  DRAFT_LEAD_TIME: 'fldJM7YjyoCN20xac',
 
   CLIENT_FULL_NAME: 'fldB3Wyam01D3wR5Q',
   CLIENT_STAGE: 'fldLcxVZvI1rigBlh',
@@ -575,7 +576,7 @@ interface Layer2Props {
   getClientName: (clientId: string) => string;
   onClose: () => void;
   onSave: (newDraftId: string) => void;
-  onClientSelect: (clientId: string) => void;
+  onClientSelect: (clientId: string | null) => void;
 }
 
 function Layer2({
@@ -689,6 +690,7 @@ function Layer2({
   }, [clientId, clientRecords, clientFavoriteStylesAcuityField, clientFavoriteStylesAppointmentField, getLinkedRecordIds]);
 
   const eligibleStyles = useMemo(() => {
+    if (eligibleStyleIds.length === 0) return styleRecords;
     return styleRecords.filter(s => eligibleStyleIds.includes(s.id));
   }, [styleRecords, eligibleStyleIds]);
 
@@ -885,15 +887,28 @@ function Layer2({
                   setClientSearchQuery(value);
                   setShowClientSearch(value.trim() !== '');
                 }}
-                className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
+                readOnly={!!clientId}
+                className={`w-full pl-9 py-2 rounded-md text-sm ${clientId ? 'pr-9' : 'pr-3'}`}
                 style={{
                   backgroundColor: theme.bg,
                   border: `1px solid ${theme.border}`,
                   color: theme.text
                 }}
               />
+              {clientId && (
+                <button
+                  onClick={() => {
+                    onClientSelect(null);
+                    setClientSearchQuery('');
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 hover:cursor-pointer"
+                  style={{ color: theme.textMuted }}
+                >
+                  <XIcon size={16} />
+                </button>
+              )}
             </div>
-            {showClientSearch && clientSearchQuery.trim() !== '' && (
+            {showClientSearch && !clientId && clientSearchQuery.trim() !== '' && (
               <div
                 className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                 style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
@@ -1314,6 +1329,7 @@ function Layer4({
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const weddingDateField = getField(draftOrdersTable, FIELD_IDS.DRAFT_WEDDING_DATE);
   const dueDateField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DUE_DATE);
+  const leadTimeField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LEAD_TIME);
 
   const styleNameField = getField(stylesTable, FIELD_IDS.STYLE_NAME);
   const stylePriceField = getField(stylesTable, FIELD_IDS.STYLE_PRICE);
@@ -1348,44 +1364,6 @@ function Layer4({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  if (!draft) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <p style={{ color: theme.textSecondary }}>Draft not found.</p>
-      </div>
-    );
-  }
-
-  const label = labelField ? draft.getCellValueAsString(labelField) : 'Untitled';
-  const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
-  const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
-  const linkedStyleIds = getLinkedRecordIds(draft, styleField);
-  const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
-  const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
-  const shipping = shippingField ? (draft.getCellValue(shippingField) as number | null) ?? 0 : 0;
-  const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
-  const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
-  const styleSubtotal = styleSubtotalField ? (draft.getCellValue(styleSubtotalField) as number | null) ?? 0 : 0;
-  const customizationSubtotal = customizationSubtotalField ? (draft.getCellValue(customizationSubtotalField) as number | null) ?? 0 : 0;
-  const total = totalField ? (draft.getCellValue(totalField) as number | null) ?? 0 : 0;
-  const grandTotal = grandTotalField ? (draft.getCellValue(grandTotalField) as number | null) ?? 0 : 0;
-
-  const mostRecentDraft = getMostRecentDraft(clientId);
-  const isMostRecent = mostRecentDraft?.id === draftId;
-  const isEditable = isMostRecent && !isLocked && canUpdate;
-
-  let readOnlyReason = '';
-  if (!canUpdate) {
-    readOnlyReason = 'You don\'t have permission to edit.';
-  } else if (!isMostRecent) {
-    readOnlyReason = 'A newer draft exists for this client.';
-  } else if (isLocked) {
-    readOnlyReason = 'This draft is locked.';
-  }
-
-  const linkedStyles = styleRecords.filter(s => linkedStyleIds.includes(s.id));
-  const linkedCustomizations = customizationRecords.filter(c => linkedCustomizationIds.includes(c.id));
 
   const clientCustomizations = useMemo(() => {
     return customizationRecords.filter(customization => {
@@ -1437,6 +1415,45 @@ function Layer4({
     const today = new Date();
     return Math.floor((dueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
   }, [dueDate]);
+
+  if (!draft) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <p style={{ color: theme.textSecondary }}>Draft not found.</p>
+      </div>
+    );
+  }
+
+  const label = labelField ? draft.getCellValueAsString(labelField) : 'Untitled';
+  const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
+  const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
+  const linkedStyleIds = getLinkedRecordIds(draft, styleField);
+  const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
+  const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
+  const shipping = shippingField ? (draft.getCellValue(shippingField) as number | null) ?? 0 : 0;
+  const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
+  const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
+  const styleSubtotal = styleSubtotalField ? (draft.getCellValue(styleSubtotalField) as number | null) ?? 0 : 0;
+  const customizationSubtotal = customizationSubtotalField ? (draft.getCellValue(customizationSubtotalField) as number | null) ?? 0 : 0;
+  const total = totalField ? (draft.getCellValue(totalField) as number | null) ?? 0 : 0;
+  const grandTotal = grandTotalField ? (draft.getCellValue(grandTotalField) as number | null) ?? 0 : 0;
+  const leadTime = leadTimeField ? (draft.getCellValue(leadTimeField) as number | null) : null;
+
+  const mostRecentDraft = getMostRecentDraft(clientId);
+  const isMostRecent = mostRecentDraft?.id === draftId;
+  const isEditable = isMostRecent && !isLocked && canUpdate;
+
+  let readOnlyReason = '';
+  if (!canUpdate) {
+    readOnlyReason = 'You don\'t have permission to edit.';
+  } else if (!isMostRecent) {
+    readOnlyReason = 'A newer draft exists for this client.';
+  } else if (isLocked) {
+    readOnlyReason = 'This draft is locked.';
+  }
+
+  const linkedStyles = styleRecords.filter(s => linkedStyleIds.includes(s.id));
+  const linkedCustomizations = customizationRecords.filter(c => linkedCustomizationIds.includes(c.id));
 
   const handleToggleLock = async () => {
     if (!canUpdate || !lockedField) return;
@@ -1837,6 +1854,7 @@ function Layer4({
             {weddingDate && dueDate && (
               <p className="text-xs" style={{ color: theme.textSecondary }}>
                 Wedding Date: {formatDate(weddingDate.toISOString())} · Due Date: {formatDate(dueDate.toISOString())} · {weeksUntilDueDate} weeks until due date
+                {leadTime !== null && ` · Lead Time: ${leadTime} weeks`}
               </p>
             )}
             {!clientDueDate && (
