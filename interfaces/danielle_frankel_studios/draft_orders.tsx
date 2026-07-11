@@ -837,7 +837,6 @@ function Layer2({
   const customizationClientField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CLIENT);
   const customizationDetailField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_DETAIL);
   const customizationEffectivePriceField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_EFFECTIVE_PRICE);
-  const customizationApprovalStatusField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_APPROVAL_STATUS);
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
   const rushRuleWeeksField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_WEEKS);
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
@@ -1076,7 +1075,7 @@ function Layer2({
         className="relative w-full max-h-[90vh] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
         style={{
           backgroundColor: theme.bgCard,
-          maxWidth: '720px',
+          maxWidth: '960px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
           opacity: isVisible ? 1 : 0,
           transform: isVisible ? 'scale(1)' : 'scale(0.96)'
@@ -1090,440 +1089,507 @@ function Layer2({
           )}
         </div>
 
-        <div className="flex-1 overflow-auto p-6 space-y-6">
-          {!isClientPreset && (
-          <div ref={clientSearchRef} className="relative">
-            <label className="block text-sm font-medium mb-2">Client</label>
-            <div className="relative">
-              <MagnifyingGlassIcon
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: theme.textMuted }}
-              />
-              <input
-                type="text"
-                placeholder="Search clients..."
-                value={clientSearchQuery}
-                onChange={e => {
-                  const value = e.target.value;
-                  setClientSearchQuery(value);
-                  setShowClientSearch(value.trim() !== '');
-                  setClientHighlightIndex(-1);
-                }}
-                onFocus={() => {
-                  if (clientId) {
-                    setShowClientSearch(true);
-                    setClientHighlightIndex(-1);
-                  }
-                }}
-                onKeyDown={e => {
-                  if (!showClientSearch || filteredClients.length === 0) return;
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    setClientHighlightIndex(i => Math.min(i + 1, filteredClients.length - 1));
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    setClientHighlightIndex(i => Math.max(i - 1, 0));
-                  } else if (e.key === 'Enter' && clientHighlightIndex >= 0) {
-                    e.preventDefault();
-                    const client = filteredClients[clientHighlightIndex];
-                    onClientSelect(client.id);
-                    setShowClientSearch(false);
-                    setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
-                  }
-                }}
-                className={`w-full pl-9 py-2 rounded-md text-sm ${clientId ? 'pr-9' : 'pr-3'}`}
-                style={{
-                  backgroundColor: theme.bg,
-                  border: `1px solid ${theme.border}`,
-                  color: theme.text
-                }}
-              />
-              {clientId && (
-                <button
-                  onClick={() => {
-                    onClientSelect(null);
-                    setClientSearchQuery('');
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 hover:cursor-pointer"
-                  style={{ color: theme.textMuted }}
-                >
-                  <XIcon size={16} />
-                </button>
-              )}
-            </div>
-            {showClientSearch && (clientId || clientSearchQuery.trim() !== '') && (
-              <div
-                className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-              >
-                {filteredClients.map((client, index) => (
-                  <button
-                    key={client.id}
-                    onClick={() => {
-                      onClientSelect(client.id);
-                      setShowClientSearch(false);
-                      setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
+        <div className="flex-1 overflow-auto p-6">
+          <div className="flex gap-6 items-start">
+            <div className="w-[60%] min-w-0 space-y-4">
+              {!isClientPreset && (
+              <div ref={clientSearchRef} className="relative">
+                <label className="block text-sm font-medium mb-2">Client</label>
+                <div className="relative">
+                  <MagnifyingGlassIcon
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: theme.textMuted }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search clients..."
+                    value={clientSearchQuery}
+                    onChange={e => {
+                      const value = e.target.value;
+                      setClientSearchQuery(value);
+                      setShowClientSearch(value.trim() !== '');
+                      setClientHighlightIndex(-1);
                     }}
-                    className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                    style={{ color: theme.text, backgroundColor: index === clientHighlightIndex ? theme.bgHover : 'transparent' }}
-                    onMouseEnter={() => setClientHighlightIndex(index)}
+                    onFocus={() => {
+                      if (clientId) {
+                        setShowClientSearch(true);
+                        setClientHighlightIndex(-1);
+                      }
+                    }}
+                    onKeyDown={e => {
+                      if (!showClientSearch || filteredClients.length === 0) return;
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setClientHighlightIndex(i => Math.min(i + 1, filteredClients.length - 1));
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setClientHighlightIndex(i => Math.max(i - 1, 0));
+                      } else if (e.key === 'Enter' && clientHighlightIndex >= 0) {
+                        e.preventDefault();
+                        const client = filteredClients[clientHighlightIndex];
+                        onClientSelect(client.id);
+                        setShowClientSearch(false);
+                        setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
+                      }
+                    }}
+                    className={`w-full pl-9 py-2 rounded-md text-sm ${clientId ? 'pr-9' : 'pr-3'}`}
+                    style={{
+                      backgroundColor: theme.bg,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.text
+                    }}
+                  />
+                  {clientId && (
+                    <button
+                      onClick={() => {
+                        onClientSelect(null);
+                        setClientSearchQuery('');
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 hover:cursor-pointer"
+                      style={{ color: theme.textMuted }}
+                    >
+                      <XIcon size={16} />
+                    </button>
+                  )}
+                </div>
+                {showClientSearch && (clientId || clientSearchQuery.trim() !== '') && (
+                  <div
+                    className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                    style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                   >
-                    {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
-                  </button>
-                ))}
+                    {filteredClients.map((client, index) => (
+                      <button
+                        key={client.id}
+                        onClick={() => {
+                          onClientSelect(client.id);
+                          setShowClientSearch(false);
+                          setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                        style={{ color: theme.text, backgroundColor: index === clientHighlightIndex ? theme.bgHover : 'transparent' }}
+                        onMouseEnter={() => setClientHighlightIndex(index)}
+                      >
+                        {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          )}
+              )}
 
-          <div>
-            <label className="block text-sm font-medium mb-2">Styles</label>
-            <div ref={styleSearchRef} className="relative mb-2">
-              <MagnifyingGlassIcon
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: theme.textMuted }}
-              />
-              <input
-                type="text"
-                placeholder={clientId ? 'Search styles...' : 'Select a client first'}
-                value={styleSearchQuery}
-                onChange={e => {
-                  const value = e.target.value;
-                  setStyleSearchQuery(value);
-                  setShowStyleSearch(true);
-                  setStyleHighlightIndex(-1);
-                }}
-                onFocus={() => {
-                  if (clientId) {
-                    setShowStyleSearch(true);
-                    setStyleHighlightIndex(-1);
-                  }
-                }}
-                onKeyDown={e => {
-                  if (!showStyleSearch || eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '') return;
-                  if (filteredStyles.length === 0) return;
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    setStyleHighlightIndex(i => Math.min(i + 1, filteredStyles.length - 1));
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    setStyleHighlightIndex(i => Math.max(i - 1, 0));
-                  } else if (e.key === 'Enter' && styleHighlightIndex >= 0) {
-                    e.preventDefault();
-                    const style = filteredStyles[styleHighlightIndex];
-                    const isSelected = selectedStyleIds.includes(style.id);
-                    setSelectedStyleIds(
-                      isSelected
-                        ? selectedStyleIds.filter(id => id !== style.id)
-                        : [...selectedStyleIds, style.id]
-                    );
-                    setStyleSearchQuery('');
-                  }
-                }}
-                disabled={!clientId}
-                className="w-full pl-9 pr-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  backgroundColor: theme.bg,
-                  border: `1px solid ${theme.border}`,
-                  color: theme.text
-                }}
-              />
-              {showStyleSearch && clientId && (
-                <div
-                  className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                  style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-                >
-                  {eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '' ? (
-                    <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>
-                      This client doesn't have pre-selected styles. Start typing to search styles.
-                    </p>
-                  ) : (
-                    filteredStyles.map((style, index) => {
-                      const isSelected = selectedStyleIds.includes(style.id);
-                      const isHighlighted = index === styleHighlightIndex;
-                      return (
-                        <button
-                          key={style.id}
-                          onClick={() => {
+              <div className="rounded-lg overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <h2 className="text-base font-semibold">Styles</h2>
+                    <div ref={styleSearchRef} className="relative w-64">
+                      <MagnifyingGlassIcon
+                        size={16}
+                        className="absolute left-3 top-1/2 -translate-y-1/2"
+                        style={{ color: theme.textMuted }}
+                      />
+                      <input
+                        type="text"
+                        placeholder={clientId ? 'Search styles...' : 'Select a client first'}
+                        value={styleSearchQuery}
+                        onChange={e => {
+                          const value = e.target.value;
+                          setStyleSearchQuery(value);
+                          setShowStyleSearch(true);
+                          setStyleHighlightIndex(-1);
+                        }}
+                        onFocus={() => {
+                          if (clientId) {
+                            setShowStyleSearch(true);
+                            setStyleHighlightIndex(-1);
+                          }
+                        }}
+                        onKeyDown={e => {
+                          if (!showStyleSearch || eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '') return;
+                          if (filteredStyles.length === 0) return;
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setStyleHighlightIndex(i => Math.min(i + 1, filteredStyles.length - 1));
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setStyleHighlightIndex(i => Math.max(i - 1, 0));
+                          } else if (e.key === 'Enter' && styleHighlightIndex >= 0) {
+                            e.preventDefault();
+                            const style = filteredStyles[styleHighlightIndex];
+                            const isSelected = selectedStyleIds.includes(style.id);
                             setSelectedStyleIds(
                               isSelected
                                 ? selectedStyleIds.filter(id => id !== style.id)
                                 : [...selectedStyleIds, style.id]
                             );
                             setStyleSearchQuery('');
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
-                          style={{
-                            color: theme.text,
-                            backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
-                          }}
-                          onMouseEnter={() => setStyleHighlightIndex(index)}
+                          }
+                        }}
+                        disabled={!clientId}
+                        className="w-full pl-9 pr-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: theme.bg,
+                          border: `1px solid ${theme.border}`,
+                          color: theme.text
+                        }}
+                      />
+                      {showStyleSearch && clientId && (
+                        <div
+                          className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                         >
-                          <span className={isSelected ? 'font-medium' : ''}>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                          <span style={{ color: theme.textSecondary }}>
-                            {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                          </span>
-                        </button>
-                      );
-                    })
+                          {eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '' ? (
+                            <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>
+                              This client doesn't have pre-selected styles. Start typing to search styles.
+                            </p>
+                          ) : (
+                            filteredStyles.map((style, index) => {
+                              const isSelected = selectedStyleIds.includes(style.id);
+                              const isHighlighted = index === styleHighlightIndex;
+                              return (
+                                <button
+                                  key={style.id}
+                                  onClick={() => {
+                                    setSelectedStyleIds(
+                                      isSelected
+                                        ? selectedStyleIds.filter(id => id !== style.id)
+                                        : [...selectedStyleIds, style.id]
+                                    );
+                                    setStyleSearchQuery('');
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between gap-2"
+                                  style={{
+                                    color: theme.text,
+                                    backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
+                                  }}
+                                  onMouseEnter={() => setStyleHighlightIndex(index)}
+                                >
+                                  <span className={`truncate ${isSelected ? 'font-medium' : ''}`}>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                                  <span className="whitespace-nowrap" style={{ color: theme.textSecondary }}>
+                                    {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {selectedStyles.length === 0 ? (
+                    <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
+                  ) : (
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="w-6"></th>
+                          <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                          <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedStyles.map(style => (
+                          <tr key={style.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                            <td className="py-2">
+                              <button
+                                onClick={() => setSelectedStyleIds(selectedStyleIds.filter(id => id !== style.id))}
+                                className="hover:cursor-pointer"
+                                style={{ color: theme.textMuted }}
+                              >
+                                <XIcon size={14} />
+                              </button>
+                            </td>
+                            <td className="py-2 pr-3">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</td>
+                            <td className="py-2 text-right whitespace-nowrap">
+                              {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                          <td></td>
+                          <td className="py-2 font-medium">Subtotal</td>
+                          <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(styleSubtotal)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   )}
                 </div>
-              )}
-            </div>
-            {selectedStyles.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedStyles.map(style => (
-                  <div
-                    key={style.id}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
-                    style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
-                  >
-                    <span className="text-sm whitespace-nowrap">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                    <span className="text-sm whitespace-nowrap" style={{ color: theme.textSecondary }}>
-                      {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                    </span>
-                    <button
-                      onClick={() => setSelectedStyleIds(selectedStyleIds.filter(id => id !== style.id))}
-                      className="p-0.5 rounded hover:cursor-pointer"
-                      style={{ color: theme.textMuted }}
-                    >
-                      <XIcon size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          {clientId && clientCustomizations.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium mb-2">Customizations</label>
-                  <div ref={customizationSearchRef} className="relative mb-2">
-                    <MagnifyingGlassIcon 
-                      size={16} 
-                      className="absolute left-3 top-1/2 -translate-y-1/2"
-                      style={{ color: theme.textMuted }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Search customizations..."
-                      value={customizationSearchQuery}
-                      onChange={e => {
-                        setCustomizationSearchQuery(e.target.value);
-                        setCustomizationHighlightIndex(-1);
-                      }}
-                      onFocus={() => {
-                        setShowCustomizationSearch(true);
-                        setCustomizationHighlightIndex(-1);
-                      }}
-                      onKeyDown={e => {
-                        if (!showCustomizationSearch || filteredCustomizations.length === 0) return;
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setCustomizationHighlightIndex(i => Math.min(i + 1, filteredCustomizations.length - 1));
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setCustomizationHighlightIndex(i => Math.max(i - 1, 0));
-                        } else if (e.key === 'Enter' && customizationHighlightIndex >= 0) {
-                          e.preventDefault();
-                          const customization = filteredCustomizations[customizationHighlightIndex];
-                          const isSelected = selectedCustomizationIds.includes(customization.id);
-                          setSelectedCustomizationIds(
-                            isSelected
-                              ? selectedCustomizationIds.filter(id => id !== customization.id)
-                              : [...selectedCustomizationIds, customization.id]
-                          );
-                          setCustomizationSearchQuery('');
-                        }
-                      }}
-                      className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
-                      style={{
-                        backgroundColor: theme.bg,
-                        border: `1px solid ${theme.border}`,
-                        color: theme.text
-                      }}
-                    />
-                    {showCustomizationSearch && (
-                      <div
-                        className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
-                        style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
-                      >
-                        {filteredCustomizations.map((customization, index) => {
-                          const isSelected = selectedCustomizationIds.includes(customization.id);
-                          const isHighlighted = index === customizationHighlightIndex;
-                          const approvalStatus = customizationApprovalStatusField
-                            ? customization.getCellValueAsString(customizationApprovalStatusField)
-                            : '';
-                          const isTentative = approvalStatus !== 'Approved by Client';
-                          return (
-                            <button
-                              key={customization.id}
-                              onClick={() => {
-                                setSelectedCustomizationIds(
-                                  isSelected
-                                    ? selectedCustomizationIds.filter(id => id !== customization.id)
-                                    : [...selectedCustomizationIds, customization.id]
-                                );
-                                setCustomizationSearchQuery('');
-                              }}
-                              className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                              style={{
-                                color: theme.text,
-                                backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
-                              }}
-                              onMouseEnter={() => setCustomizationHighlightIndex(index)}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className={isSelected ? 'font-medium' : ''}>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                                <div className="flex items-center gap-2">
-                                  {isTentative && <StatusPill label="Tentative" variant="tentative" />}
-                                  <span style={{ color: theme.textSecondary }}>
-                                    {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                                  </span>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
+                {clientId && clientCustomizations.length > 0 && (
+                  <div className="p-4 border-t" style={{ borderColor: theme.borderLight }}>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h2 className="text-base font-semibold">Customizations</h2>
+                      <div ref={customizationSearchRef} className="relative w-64">
+                        <MagnifyingGlassIcon
+                          size={16}
+                          className="absolute left-3 top-1/2 -translate-y-1/2"
+                          style={{ color: theme.textMuted }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Search customizations..."
+                          value={customizationSearchQuery}
+                          onChange={e => {
+                            setCustomizationSearchQuery(e.target.value);
+                            setCustomizationHighlightIndex(-1);
+                          }}
+                          onFocus={() => {
+                            setShowCustomizationSearch(true);
+                            setCustomizationHighlightIndex(-1);
+                          }}
+                          onKeyDown={e => {
+                            if (!showCustomizationSearch || filteredCustomizations.length === 0) return;
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setCustomizationHighlightIndex(i => Math.min(i + 1, filteredCustomizations.length - 1));
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setCustomizationHighlightIndex(i => Math.max(i - 1, 0));
+                            } else if (e.key === 'Enter' && customizationHighlightIndex >= 0) {
+                              e.preventDefault();
+                              const customization = filteredCustomizations[customizationHighlightIndex];
+                              const isSelected = selectedCustomizationIds.includes(customization.id);
+                              setSelectedCustomizationIds(
+                                isSelected
+                                  ? selectedCustomizationIds.filter(id => id !== customization.id)
+                                  : [...selectedCustomizationIds, customization.id]
+                              );
+                              setCustomizationSearchQuery('');
+                            }
+                          }}
+                          className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
+                          style={{
+                            backgroundColor: theme.bg,
+                            border: `1px solid ${theme.border}`,
+                            color: theme.text
+                          }}
+                        />
+                        {showCustomizationSearch && (
+                          <div
+                            className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+                            style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+                          >
+                            {filteredCustomizations.map((customization, index) => {
+                              const isSelected = selectedCustomizationIds.includes(customization.id);
+                              const isHighlighted = index === customizationHighlightIndex;
+                              return (
+                                <button
+                                  key={customization.id}
+                                  onClick={() => {
+                                    setSelectedCustomizationIds(
+                                      isSelected
+                                        ? selectedCustomizationIds.filter(id => id !== customization.id)
+                                        : [...selectedCustomizationIds, customization.id]
+                                    );
+                                    setCustomizationSearchQuery('');
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                                  style={{
+                                    color: theme.text,
+                                    backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
+                                  }}
+                                  onMouseEnter={() => setCustomizationHighlightIndex(index)}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className={`truncate ${isSelected ? 'font-medium' : ''}`}>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+                                    <span className="whitespace-nowrap" style={{ color: theme.textSecondary }}>
+                                      {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
+                    </div>
+                    {selectedCustomizations.length === 0 ? (
+                      <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
+                    ) : (
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr>
+                            <th className="w-6"></th>
+                            <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                            <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedCustomizations.map(customization => (
+                            <tr key={customization.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                              <td className="py-2 align-top">
+                                <button
+                                  onClick={() => setSelectedCustomizationIds(selectedCustomizationIds.filter(id => id !== customization.id))}
+                                  className="hover:cursor-pointer"
+                                  style={{ color: theme.textMuted }}
+                                >
+                                  <XIcon size={14} />
+                                </button>
+                              </td>
+                              <td className="py-2 pr-3 align-top">
+                                <div>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</div>
+                                {customizationDetailField && customization.getCellValueAsString(customizationDetailField) && (
+                                  <div className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
+                                    {customization.getCellValueAsString(customizationDetailField)}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 text-right align-top whitespace-nowrap">
+                                {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                            <td></td>
+                            <td className="py-2 font-medium">Subtotal</td>
+                            <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(customizationSubtotal)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     )}
                   </div>
-                  {selectedCustomizations.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCustomizations.map(customization => (
-                        <div
-                          key={customization.id}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
-                          style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
-                        >
-                          <span className="text-sm whitespace-nowrap">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                          <span className="text-sm whitespace-nowrap" style={{ color: theme.textSecondary }}>
-                            {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                          </span>
-                          <button
-                            onClick={() => setSelectedCustomizationIds(selectedCustomizationIds.filter(id => id !== customization.id))}
-                            className="p-0.5 rounded hover:cursor-pointer"
-                            style={{ color: theme.textMuted }}
-                          >
-                            <XIcon size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-            </div>
-          )}
+                )}
 
-          <div className="pt-4 border-t" style={{ borderColor: theme.borderLight }}>
-            <h3 className="text-sm font-semibold mb-3">Additional Charges</h3>
-            
-            {rushFee !== 0 && (
-              <div className="flex items-center justify-between py-2 gap-4">
-                <div>
-                  <span className="text-sm">Rush Fee</span>
-                  {clientDueDate && weeksUntilDueDate !== null && (
-                    <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
-                      Due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(clientDueDate.toISOString())}.
+                <div className="p-4 border-t" style={{ borderColor: theme.borderLight }}>
+                  <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
+                  {!clientDueDate && clientId && (
+                    <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
+                      Rush fee requires a wedding date on file.
                     </p>
                   )}
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Charge</th>
+                        <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                        <th className="text-left pb-2 pl-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rushFee !== 0 && (
+                        <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                          <td className="py-2">Rush Fee</td>
+                          <td className="py-2 text-right whitespace-nowrap">{formatCurrency(rushFee)}</td>
+                          <td className="py-2 pl-3 text-xs" style={{ color: theme.textMuted }}>
+                            {clientDueDate && weeksUntilDueDate !== null &&
+                              `Due date to have the styles ready is in ${weeksUntilDueDate} week${weeksUntilDueDate === 1 ? '' : 's'}, on ${formatDate(clientDueDate.toISOString())}.`}
+                          </td>
+                        </tr>
+                      )}
+                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td className="py-2">Shipping</td>
+                        <td className="py-2 text-right">
+                          <input
+                            type="text"
+                            placeholder="$0.00"
+                            value={shipping}
+                            onChange={e => setShipping(e.target.value)}
+                            disabled={!clientId}
+                            className="w-24 px-2 py-1 rounded-md text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td className="py-2">Taxes</td>
+                        <td className="py-2 text-right">
+                          <input
+                            type="text"
+                            placeholder="$0.00"
+                            value={taxes}
+                            onChange={e => setTaxes(e.target.value)}
+                            disabled={!clientId}
+                            className="w-24 px-2 py-1 rounded-md text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td className="py-2">Discount</td>
+                        <td className="py-2 text-right">
+                          <input
+                            type="text"
+                            placeholder="$0.00"
+                            value={discount}
+                            onChange={e => setDiscount(e.target.value)}
+                            disabled={!clientId}
+                            className="w-24 px-2 py-1 rounded-md text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(rushFee)}</span>
-              </div>
-            )}
-            {!clientDueDate && clientId && (
-              <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
-                Rush fee requires a wedding date on file.
-              </p>
-            )}
-            
-            <div className="grid grid-cols-3 gap-3 mt-2">
-              <div>
-                <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>Shipping</label>
-                <input
-                  type="text"
-                  placeholder="$0.00"
-                  value={shipping}
-                  onChange={e => setShipping(e.target.value)}
-                  disabled={!clientId}
-                  className="w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: theme.bg,
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>Taxes</label>
-                <input
-                  type="text"
-                  placeholder="$0.00"
-                  value={taxes}
-                  onChange={e => setTaxes(e.target.value)}
-                  disabled={!clientId}
-                  className="w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: theme.bg,
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>Discount</label>
-                <input
-                  type="text"
-                  placeholder="$0.00"
-                  value={discount}
-                  onChange={e => setDiscount(e.target.value)}
-                  disabled={!clientId}
-                  className="w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: theme.bg,
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text
-                  }}
-                />
               </div>
             </div>
-          </div>
 
-          <div className="pt-4 border-t" style={{ borderColor: theme.borderLight }}>
-            <h3 className="text-sm font-semibold mb-3">Preview</h3>
-            <p className="text-xs mb-3" style={{ color: theme.textMuted }}>
-              Saves automatically once you click Save Draft
-            </p>
-            <div className="space-y-2 text-sm">
-              {styleSubtotal !== 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: theme.textSecondary }}>Style Subtotal</span>
-                  <span>{formatCurrency(styleSubtotal)}</span>
-                </div>
-              )}
-              {customizationSubtotal !== 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: theme.textSecondary }}>Customization Subtotal</span>
-                  <span>{formatCurrency(customizationSubtotal)}</span>
-                </div>
-              )}
-              {total !== 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: theme.textSecondary }}>Total (fees - discount)</span>
-                  <span>{formatCurrency(total)}</span>
-                </div>
-              )}
-              {grandTotal !== 0 && (
-                <div className="flex justify-between pt-2 border-t font-semibold" style={{ borderColor: theme.borderLight }}>
-                  <span>Grand Total</span>
-                  <span>{formatCurrency(grandTotal)}</span>
-                </div>
-              )}
+            <div className="w-[40%] shrink-0 sticky top-0">
+              <div className="p-4 rounded-lg space-y-4 text-base" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                <h2 className="text-base font-semibold mb-1">Summary</h2>
+                <p className="text-xs" style={{ color: theme.textMuted }}>
+                  Saves automatically once you click Save Draft
+                </p>
+                {styleSubtotal !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Style Subtotal</span>
+                    <span>{formatCurrency(styleSubtotal)}</span>
+                  </div>
+                )}
+                {customizationSubtotal !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Customization Subtotal</span>
+                    <span>{formatCurrency(customizationSubtotal)}</span>
+                  </div>
+                )}
+                {rushFee !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Rush Fee</span>
+                    <span>{formatCurrency(rushFee)}</span>
+                  </div>
+                )}
+                {parseCurrency(shipping) !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Shipping</span>
+                    <span>{formatCurrency(parseCurrency(shipping))}</span>
+                  </div>
+                )}
+                {parseCurrency(taxes) !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Taxes</span>
+                    <span>{formatCurrency(parseCurrency(taxes))}</span>
+                  </div>
+                )}
+                {parseCurrency(discount) !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Discount</span>
+                    <span>-{formatCurrency(parseCurrency(discount))}</span>
+                  </div>
+                )}
+                {total !== 0 && (
+                  <div className="flex justify-between pt-3 border-t" style={{ borderColor: theme.borderLight }}>
+                    <span style={{ color: theme.textSecondary }}>Total (fees - discount)</span>
+                    <span>{formatCurrency(total)}</span>
+                  </div>
+                )}
+                {grandTotal !== 0 && (
+                  <div className="flex justify-between pt-3 border-t font-semibold" style={{ borderColor: theme.borderLight }}>
+                    <span>Grand Total</span>
+                    <span>{formatCurrency(grandTotal)}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-        
+
         <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: theme.border }}>
           <div>
             {saveError && <p className="text-sm" style={{ color: theme.danger }}>{saveError}</p>}
@@ -1659,7 +1725,6 @@ function Layer4({
   const customizationIdField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_ID);
   const customizationDetailField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_DETAIL);
   const customizationEffectivePriceField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_EFFECTIVE_PRICE);
-  const customizationApprovalStatusField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_APPROVAL_STATUS);
   const customizationClientField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CLIENT);
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
   const clientDueDateField = getField(clientsTable, FIELD_IDS.CLIENT_DUE_DATE);
@@ -2051,7 +2116,7 @@ function Layer4({
             <div className="rounded-lg overflow-hidden" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
             <div className="p-4">
               <div className="flex items-center justify-between gap-3 mb-3">
-                <h2 className="text-sm font-semibold">Styles</h2>
+                <h2 className="text-base font-semibold">Styles</h2>
                 {isEditable && (
                 <div ref={styleSearchRef} className="relative w-64">
                   <MagnifyingGlassIcon
@@ -2111,12 +2176,12 @@ function Layer4({
                             <button
                               key={style.id}
                               onClick={() => handleAddStyle(style.id)}
-                              className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
+                              className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between gap-2"
                               style={{ color: theme.text, backgroundColor: index === styleHighlightIndex ? theme.bgHover : 'transparent' }}
                               onMouseEnter={() => setStyleHighlightIndex(index)}
                             >
-                              <span>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                              <span style={{ color: theme.textSecondary }}>
+                              <span className="truncate">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                              <span className="whitespace-nowrap" style={{ color: theme.textSecondary }}>
                                 {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
                               </span>
                             </button>
@@ -2131,38 +2196,50 @@ function Layer4({
               {linkedStyles.length === 0 ? (
                 <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
               ) : (
-                <div className="space-y-1">
-                  {linkedStyles.map(style => (
-                    <div
-                      key={style.id}
-                      className="flex items-center justify-between px-3 py-2 rounded-md"
-                      style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
-                    >
-                      <span className="text-sm">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm" style={{ color: theme.textSecondary }}>
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="w-6"></th>
+                      <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                      <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linkedStyles.map(style => (
+                      <tr key={style.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td className="py-2">
+                          {isEditable && (
+                            <button
+                              onClick={() => handleRemoveStyle(style.id)}
+                              className="hover:cursor-pointer"
+                              style={{ color: theme.textMuted }}
+                            >
+                              <XIcon size={14} />
+                            </button>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</td>
+                        <td className="py-2 text-right whitespace-nowrap">
                           {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                        </span>
-                        {isEditable && (
-                          <button
-                            onClick={() => handleRemoveStyle(style.id)}
-                            className="p-0.5 rounded hover:cursor-pointer"
-                            style={{ color: theme.textMuted }}
-                          >
-                            <XIcon size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                      <td></td>
+                      <td className="py-2 font-medium">Subtotal</td>
+                      <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(styleSubtotal)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               )}
             </div>
 
             {clientCustomizations.length > 0 && (
               <div className="p-4 border-t" style={{ borderColor: theme.borderLight }}>
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <h2 className="text-sm font-semibold">Customizations</h2>
+                  <h2 className="text-base font-semibold">Customizations</h2>
                   {isEditable && (
                   <div ref={customizationSearchRef} className="relative w-64">
                     <MagnifyingGlassIcon
@@ -2211,31 +2288,22 @@ function Layer4({
                       >
                         {filteredCustomizations
                           .filter(c => !linkedCustomizationIds.includes(c.id))
-                          .map((customization, index) => {
-                            const approvalStatus = customizationApprovalStatusField
-                              ? customization.getCellValueAsString(customizationApprovalStatusField)
-                              : '';
-                            const isTentative = approvalStatus !== 'Approved by Client';
-                            return (
-                              <button
-                                key={customization.id}
-                                onClick={() => handleAddCustomization(customization.id)}
-                                className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                                style={{ color: theme.text, backgroundColor: index === customizationHighlightIndex ? theme.bgHover : 'transparent' }}
-                                onMouseEnter={() => setCustomizationHighlightIndex(index)}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                                  <div className="flex items-center gap-2">
-                                    {isTentative && <StatusPill label="Tentative" variant="tentative" />}
-                                    <span style={{ color: theme.textSecondary }}>
-                                      {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                                    </span>
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
+                          .map((customization, index) => (
+                            <button
+                              key={customization.id}
+                              onClick={() => handleAddCustomization(customization.id)}
+                              className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                              style={{ color: theme.text, backgroundColor: index === customizationHighlightIndex ? theme.bgHover : 'transparent' }}
+                              onMouseEnter={() => setCustomizationHighlightIndex(index)}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
+                                <span className="whitespace-nowrap" style={{ color: theme.textSecondary }}>
+                                  {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
                       </div>
                     )}
                   </div>
@@ -2245,124 +2313,116 @@ function Layer4({
                 {linkedCustomizations.length === 0 ? (
                   <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
                 ) : (
-                  <div className="space-y-1">
-                    {linkedCustomizations.map(customization => {
-                      const approvalStatus = customizationApprovalStatusField
-                        ? customization.getCellValueAsString(customizationApprovalStatusField)
-                        : '';
-                      const isTentative = approvalStatus !== 'Approved by Client';
-                      return (
-                        <div
-                          key={customization.id}
-                          className="px-3 py-2 rounded-md"
-                          style={{ backgroundColor: theme.bg, border: `1px solid ${theme.borderLight}` }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
-                            <div className="flex items-center gap-2">
-                              {isTentative && <StatusPill label="Tentative" variant="tentative" />}
-                              <span className="text-sm" style={{ color: theme.textSecondary }}>
-                                {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
-                              </span>
-                              {isEditable && (
-                                <button
-                                  onClick={() => handleRemoveCustomization(customization.id)}
-                                  className="p-0.5 rounded hover:cursor-pointer"
-                                  style={{ color: theme.textMuted }}
-                                >
-                                  <XIcon size={14} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-xs mt-1" style={{ color: theme.textSecondary }}>
-                            {customizationDetailField ? customization.getCellValueAsString(customizationDetailField) : ''}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="w-6"></th>
+                        <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                        <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linkedCustomizations.map(customization => (
+                        <tr key={customization.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                          <td className="py-2 align-top">
+                            {isEditable && (
+                              <button
+                                onClick={() => handleRemoveCustomization(customization.id)}
+                                className="hover:cursor-pointer"
+                                style={{ color: theme.textMuted }}
+                              >
+                                <XIcon size={14} />
+                              </button>
+                            )}
+                          </td>
+                          <td className="py-2 pr-3 align-top">
+                            <div>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</div>
+                            {customizationDetailField && customization.getCellValueAsString(customizationDetailField) && (
+                              <div className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
+                                {customization.getCellValueAsString(customizationDetailField)}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 text-right align-top whitespace-nowrap">
+                            {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td></td>
+                        <td className="py-2 font-medium">Subtotal</td>
+                        <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(customizationSubtotal)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 )}
               </div>
             )}
 
             <div className="p-4 border-t" style={{ borderColor: theme.borderLight }}>
-              <h2 className="text-sm font-semibold mb-3">Additional Charges</h2>
-
-              <div className="space-y-3">
-                {rushFee !== 0 && (
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="text-sm">Rush Fee</span>
-                      {dueDate && weeksUntilDueDate !== null && (
-                        <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
-                          Due date to have the styles ready is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(dueDate.toISOString())}.
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(rushFee)}</span>
-                  </div>
-                )}
-                {!clientDueDate && (
-                  <p className="text-xs" style={{ color: theme.textSecondary }}>
-                    Rush fee requires a wedding date on file.
-                  </p>
-                )}
-
-                {isEditable ? (
-                  <div className="grid grid-cols-3 gap-3">
-                    <CurrencyInput
-                      label="Shipping"
-                      value={shipping}
-                      field={shippingField}
-                      fieldKey="shipping"
-                      error={fieldErrors.shipping}
-                      theme={theme}
-                      onBlur={handleCurrencyBlur}
-                    />
-                    <CurrencyInput
-                      label="Taxes"
-                      value={taxes}
-                      field={taxesField}
-                      fieldKey="taxes"
-                      error={fieldErrors.taxes}
-                      theme={theme}
-                      onBlur={handleCurrencyBlur}
-                    />
-                    <CurrencyInput
-                      label="Discount"
-                      value={discount}
-                      field={discountField}
-                      fieldKey="discount"
-                      error={fieldErrors.discount}
-                      theme={theme}
-                      onBlur={handleCurrencyBlur}
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span style={{ color: theme.textSecondary }}>Shipping</span>
-                      <span>{formatCurrency(shipping)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span style={{ color: theme.textSecondary }}>Taxes</span>
-                      <span>{formatCurrency(taxes)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span style={{ color: theme.textSecondary }}>Discount</span>
-                      <span>-{formatCurrency(discount)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
+              {!clientDueDate && (
+                <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
+                  Rush fee requires a wedding date on file.
+                </p>
+              )}
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Charge</th>
+                    <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                    <th className="text-left pb-2 pl-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rushFee !== 0 && (
+                    <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                      <td className="py-2">Rush Fee</td>
+                      <td className="py-2 text-right whitespace-nowrap">{formatCurrency(rushFee)}</td>
+                      <td className="py-2 pl-3 text-xs" style={{ color: theme.textMuted }}>
+                        {dueDate && weeksUntilDueDate !== null &&
+                          `Due date to have the styles ready is in ${weeksUntilDueDate} week${weeksUntilDueDate === 1 ? '' : 's'}, on ${formatDate(dueDate.toISOString())}.`}
+                      </td>
+                    </tr>
+                  )}
+                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                    <td className="py-2">Shipping</td>
+                    <td className="py-2 text-right">
+                      {isEditable ? (
+                        <CurrencyInput label="Shipping" value={shipping} field={shippingField} fieldKey="shipping" error={fieldErrors.shipping} theme={theme} onBlur={handleCurrencyBlur} hideLabel />
+                      ) : formatCurrency(shipping)}
+                    </td>
+                    <td></td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                    <td className="py-2">Taxes</td>
+                    <td className="py-2 text-right">
+                      {isEditable ? (
+                        <CurrencyInput label="Taxes" value={taxes} field={taxesField} fieldKey="taxes" error={fieldErrors.taxes} theme={theme} onBlur={handleCurrencyBlur} hideLabel />
+                      ) : formatCurrency(taxes)}
+                    </td>
+                    <td></td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                    <td className="py-2">Discount</td>
+                    <td className="py-2 text-right">
+                      {isEditable ? (
+                        <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel />
+                      ) : `-${formatCurrency(discount)}`}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
             </div>
           </div>
 
           <div className="w-[40%] shrink-0 sticky top-0">
-            <div className="p-4 rounded-lg space-y-2 text-sm" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
-              <h2 className="text-sm font-semibold mb-1">Summary</h2>
+            <div className="p-4 rounded-lg space-y-4 text-base" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <h2 className="text-base font-semibold mb-1">Summary</h2>
               {styleSubtotal !== 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: theme.textSecondary }}>Style Subtotal</span>
@@ -2400,13 +2460,13 @@ function Layer4({
                 </div>
               )}
               {total !== 0 && (
-                <div className="flex justify-between pt-2 border-t" style={{ borderColor: theme.borderLight }}>
+                <div className="flex justify-between pt-3 border-t" style={{ borderColor: theme.borderLight }}>
                   <span style={{ color: theme.textSecondary }}>Total (fees − discount)</span>
                   <span>{formatCurrency(total)}</span>
                 </div>
               )}
               {grandTotal !== 0 && (
-                <div className="flex justify-between pt-2 border-t font-semibold text-base" style={{ borderColor: theme.borderLight }}>
+                <div className="flex justify-between pt-3 border-t font-semibold" style={{ borderColor: theme.borderLight }}>
                   <span>Grand Total</span>
                   <span>{formatCurrency(grandTotal)}</span>
                 </div>
@@ -2427,18 +2487,19 @@ interface CurrencyInputProps {
   error?: string;
   theme: typeof COLORS.LIGHT;
   onBlur: (field: Field | null, value: string, fieldKey: string) => Promise<void>;
+  hideLabel?: boolean;
 }
 
-function CurrencyInput({ label, value, field, fieldKey, error, theme, onBlur }: CurrencyInputProps) {
+function CurrencyInput({ label, value, field, fieldKey, error, theme, onBlur, hideLabel }: CurrencyInputProps) {
   const [localValue, setLocalValue] = useState(formatCurrency(value));
-  
+
   useEffect(() => {
     setLocalValue(formatCurrency(value));
   }, [value]);
 
   return (
     <div>
-      <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>{label}</label>
+      {!hideLabel && <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>{label}</label>}
       <input
         type="text"
         value={localValue}
