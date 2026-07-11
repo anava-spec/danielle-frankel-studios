@@ -18,6 +18,40 @@ import {
   EnvelopeSimple as EnvelopeSimpleIcon,
 } from '@phosphor-icons/react';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAMPAGNE COLOR SYSTEM (reference — encoded as Tailwind arbitrary-value
+// classes with dark: variants throughout, matching the pattern used across
+// the other interface files in this directory)
+// ─────────────────────────────────────────────────────────────────────────────
+const LIGHT = {
+  app_bg: '#F8F5EE', surface: '#FFFFFF', border: '#E9E0CE',
+  text_primary: '#1A1612', text_secondary: '#6B6357',
+  accent: '#D97706', accent_soft: '#FEF3C7',
+};
+const DARK = {
+  app_bg: '#1B1813', surface: '#25211A', border: '#38322A',
+  text_primary: '#F3EFE6', text_secondary: '#B8AF9F',
+  accent: '#FBBF24', accent_soft: '#3A2E12',
+};
+
+// ─── Dark mode ────────────────────────────────────────────────────────────────
+function useTheme(): 'light' | 'dark' {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const h = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
+  }, [theme]);
+  return theme;
+}
+
 // CSS to hide scrollbars while maintaining functionality
 const GLOBAL_STYLES = `
   .no-scrollbar {
@@ -30,20 +64,27 @@ const GLOBAL_STYLES = `
   .pill-switch {
     position: relative;
     display: inline-flex;
-    background: #fff;
-    border: 1px solid #D1D5DB;
+    background: #FFFFFF;
+    border: 1px solid #E9E0CE;
     border-radius: 0.5rem;
     overflow: hidden;
+  }
+  .dark .pill-switch {
+    background: #25211A;
+    border-color: #38322A;
   }
   .pill-switch-track {
     position: absolute;
     top: 0;
     left: 0;
     height: 100%;
-    background: #111827;
+    background: #D97706;
     border-radius: 0.5rem;
     transition: transform 0.2s ease;
     pointer-events: none;
+  }
+  .dark .pill-switch-track {
+    background: #FBBF24;
   }
   .pill-switch-btn {
     position: relative;
@@ -60,13 +101,22 @@ const GLOBAL_STYLES = `
     text-align: center;
   }
   .pill-switch-btn.active {
-    color: #fff;
+    color: #FFFFFF;
+  }
+  .dark .pill-switch-btn.active {
+    color: #1B1813;
   }
   .pill-switch-btn.inactive {
-    color: #374151;
+    color: #6B6357;
+  }
+  .dark .pill-switch-btn.inactive {
+    color: #B8AF9F;
   }
   .pill-switch-btn.inactive:hover {
-    color: #111827;
+    color: #1A1612;
+  }
+  .dark .pill-switch-btn.inactive:hover {
+    color: #F3EFE6;
   }
 `;
 
@@ -317,9 +367,9 @@ function renderTimeCell(timeValue: string): React.ReactElement {
 
   return (
     <span className="whitespace-nowrap">
-      <span style={{ color: '#6B6B6B' }}>{timePart}</span>
+      <span className="text-gray-600 dark:text-gray-400">{timePart}</span>
       {tzName && (
-        <span style={{ color: '#9B9B9B' }} className="ml-1 text-xs">{tzName}</span>
+        <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">{tzName}</span>
       )}
     </span>
   );
@@ -363,17 +413,17 @@ function getAppointmentTypePillClasses(typeLabel: string, size: PillSize = 'sm')
   const base = `inline-flex items-center ${sizeClasses[size]} rounded-full font-medium whitespace-nowrap border`;
   const lower = typeLabel.toLowerCase();
 
-  if (lower.includes('final fitting')) return `${base} bg-violet-100 text-violet-700 border-violet-200`;
-  if (lower.includes('fit assessment & pick up')) return `${base} bg-teal-100 text-teal-700 border-teal-200`;
-  if (lower.includes('fit assessment & ship')) return `${base} bg-slate-100 text-slate-600 border-slate-200`;
-  if (lower.includes('fit assessment')) return `${base} bg-amber-100 text-amber-700 border-amber-200`;
-  if (lower.includes('alterations')) return `${base} bg-orange-100 text-orange-700 border-orange-200`;
-  if (lower.includes('accessories consultation')) return `${base} bg-blue-100 text-blue-700 border-blue-200`;
-  if (lower.includes('consultation')) return `${base} bg-green-100 text-green-700 border-green-200`;
-  if (lower.includes('measurements')) return `${base} bg-sky-100 text-sky-700 border-sky-200`;
-  if (lower.includes('pick up')) return `${base} bg-pink-100 text-pink-700 border-pink-200`;
-  if (lower.includes('shipping')) return `${base} bg-purple-100 text-purple-700 border-purple-200`;
-  return `${base} bg-gray-100 text-gray-600 border-gray-200`;
+  if (lower.includes('final fitting')) return `${base} bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-200 border-violet-200 dark:border-violet-700`;
+  if (lower.includes('fit assessment & pick up')) return `${base} bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-200 border-teal-200 dark:border-teal-700`;
+  if (lower.includes('fit assessment & ship')) return `${base} bg-slate-100 dark:bg-slate-900/40 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700`;
+  if (lower.includes('fit assessment')) return `${base} bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-200 border-amber-200 dark:border-amber-700`;
+  if (lower.includes('alterations')) return `${base} bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-200 border-orange-200 dark:border-orange-700`;
+  if (lower.includes('accessories consultation')) return `${base} bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 border-blue-200 dark:border-blue-700`;
+  if (lower.includes('consultation')) return `${base} bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-200 border-green-200 dark:border-green-700`;
+  if (lower.includes('measurements')) return `${base} bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 border-sky-200 dark:border-sky-700`;
+  if (lower.includes('pick up')) return `${base} bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-200 border-pink-200 dark:border-pink-700`;
+  if (lower.includes('shipping')) return `${base} bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200 border-purple-200 dark:border-purple-700`;
+  return `${base} bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]`;
 }
 
 type AppointmentCategory = 'pick-up-only' | 'combined-pick-up' | 'standard';
@@ -386,52 +436,52 @@ function getAppointmentCategory(typeLabel: string): AppointmentCategory {
 }
 
 const AIRTABLE_COLOR_MAP: Record<string, string> = {
-  blue: 'bg-blue-200 text-blue-800 border-blue-300',
-  blueBright: 'bg-blue-100 text-blue-700 border-blue-200',
-  blueLight1: 'bg-blue-50 text-blue-600 border-blue-100',
-  blueLight2: 'bg-blue-50 text-blue-500 border-blue-100',
-  cyan: 'bg-cyan-200 text-cyan-800 border-cyan-300',
-  cyanBright: 'bg-cyan-100 text-cyan-700 border-cyan-200',
-  cyanLight1: 'bg-cyan-50 text-cyan-600 border-cyan-100',
-  cyanLight2: 'bg-cyan-50 text-cyan-500 border-cyan-100',
-  teal: 'bg-teal-200 text-teal-800 border-teal-300',
-  tealBright: 'bg-teal-100 text-teal-700 border-teal-200',
-  tealLight1: 'bg-teal-50 text-teal-600 border-teal-100',
-  tealLight2: 'bg-teal-50 text-teal-500 border-teal-100',
-  green: 'bg-green-200 text-green-800 border-green-300',
-  greenBright: 'bg-green-100 text-green-700 border-green-200',
-  greenLight1: 'bg-green-50 text-green-600 border-green-100',
-  greenLight2: 'bg-green-50 text-green-500 border-green-100',
-  yellow: 'bg-yellow-200 text-yellow-800 border-yellow-300',
-  yellowBright: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  yellowLight1: 'bg-yellow-50 text-yellow-600 border-yellow-100',
-  yellowLight2: 'bg-yellow-50 text-yellow-500 border-yellow-100',
-  orange: 'bg-orange-200 text-orange-800 border-orange-300',
-  orangeBright: 'bg-orange-100 text-orange-700 border-orange-200',
-  orangeLight1: 'bg-orange-50 text-orange-600 border-orange-100',
-  orangeLight2: 'bg-orange-50 text-orange-500 border-orange-100',
-  red: 'bg-red-200 text-red-800 border-red-300',
-  redBright: 'bg-red-100 text-red-700 border-red-200',
-  redLight1: 'bg-red-50 text-red-600 border-red-100',
-  redLight2: 'bg-red-50 text-red-500 border-red-100',
-  pink: 'bg-pink-200 text-pink-800 border-pink-300',
-  pinkBright: 'bg-pink-100 text-pink-700 border-pink-200',
-  pinkLight1: 'bg-pink-50 text-pink-600 border-pink-100',
-  pinkLight2: 'bg-pink-50 text-pink-500 border-pink-100',
-  purple: 'bg-purple-200 text-purple-800 border-purple-300',
-  purpleBright: 'bg-purple-100 text-purple-700 border-purple-200',
-  purpleLight1: 'bg-purple-50 text-purple-600 border-purple-100',
-  purpleLight2: 'bg-purple-50 text-purple-500 border-purple-100',
-  gray: 'bg-gray-200 text-gray-800 border-gray-300',
-  grayBright: 'bg-gray-100 text-gray-600 border-gray-200',
-  grayLight1: 'bg-gray-50 text-gray-500 border-gray-100',
-  grayLight2: 'bg-gray-50 text-gray-400 border-gray-100',
+  blue: 'bg-blue-200 dark:bg-blue-800/50 text-blue-800 dark:text-blue-100 border-blue-300 dark:border-blue-600',
+  blueBright: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  blueLight1: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300 border-blue-100 dark:border-blue-800',
+  blueLight2: 'bg-blue-50 dark:bg-blue-950/30 text-blue-500 dark:text-blue-400 border-blue-100 dark:border-blue-800',
+  cyan: 'bg-cyan-200 dark:bg-cyan-800/50 text-cyan-800 dark:text-cyan-100 border-cyan-300 dark:border-cyan-600',
+  cyanBright: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  cyanLight1: 'bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-300 border-cyan-100 dark:border-cyan-800',
+  cyanLight2: 'bg-cyan-50 dark:bg-cyan-950/30 text-cyan-500 dark:text-cyan-400 border-cyan-100 dark:border-cyan-800',
+  teal: 'bg-teal-200 dark:bg-teal-800/50 text-teal-800 dark:text-teal-100 border-teal-300 dark:border-teal-600',
+  tealBright: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-200 border-teal-200 dark:border-teal-700',
+  tealLight1: 'bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-300 border-teal-100 dark:border-teal-800',
+  tealLight2: 'bg-teal-50 dark:bg-teal-950/30 text-teal-500 dark:text-teal-400 border-teal-100 dark:border-teal-800',
+  green: 'bg-green-200 dark:bg-green-800/50 text-green-800 dark:text-green-100 border-green-300 dark:border-green-600',
+  greenBright: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-200 border-green-200 dark:border-green-700',
+  greenLight1: 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-300 border-green-100 dark:border-green-800',
+  greenLight2: 'bg-green-50 dark:bg-green-950/30 text-green-500 dark:text-green-400 border-green-100 dark:border-green-800',
+  yellow: 'bg-yellow-200 dark:bg-yellow-800/50 text-yellow-800 dark:text-yellow-100 border-yellow-300 dark:border-yellow-600',
+  yellowBright: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-200 border-yellow-200 dark:border-yellow-700',
+  yellowLight1: 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-600 dark:text-yellow-300 border-yellow-100 dark:border-yellow-800',
+  yellowLight2: 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-500 dark:text-yellow-400 border-yellow-100 dark:border-yellow-800',
+  orange: 'bg-orange-200 dark:bg-orange-800/50 text-orange-800 dark:text-orange-100 border-orange-300 dark:border-orange-600',
+  orangeBright: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-200 border-orange-200 dark:border-orange-700',
+  orangeLight1: 'bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-300 border-orange-100 dark:border-orange-800',
+  orangeLight2: 'bg-orange-50 dark:bg-orange-950/30 text-orange-500 dark:text-orange-400 border-orange-100 dark:border-orange-800',
+  red: 'bg-red-200 dark:bg-red-800/50 text-red-800 dark:text-red-100 border-red-300 dark:border-red-600',
+  redBright: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200 border-red-200 dark:border-red-700',
+  redLight1: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-300 border-red-100 dark:border-red-800',
+  redLight2: 'bg-red-50 dark:bg-red-950/30 text-red-500 dark:text-red-400 border-red-100 dark:border-red-800',
+  pink: 'bg-pink-200 dark:bg-pink-800/50 text-pink-800 dark:text-pink-100 border-pink-300 dark:border-pink-600',
+  pinkBright: 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-200 border-pink-200 dark:border-pink-700',
+  pinkLight1: 'bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-300 border-pink-100 dark:border-pink-800',
+  pinkLight2: 'bg-pink-50 dark:bg-pink-950/30 text-pink-500 dark:text-pink-400 border-pink-100 dark:border-pink-800',
+  purple: 'bg-purple-200 dark:bg-purple-800/50 text-purple-800 dark:text-purple-100 border-purple-300 dark:border-purple-600',
+  purpleBright: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200 border-purple-200 dark:border-purple-700',
+  purpleLight1: 'bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-300 border-purple-100 dark:border-purple-800',
+  purpleLight2: 'bg-purple-50 dark:bg-purple-950/30 text-purple-500 dark:text-purple-400 border-purple-100 dark:border-purple-800',
+  gray: 'bg-gray-200 dark:bg-white/15 text-gray-800 dark:text-[#F3EFE6] border-gray-300 dark:border-white/15',
+  grayBright: 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]',
+  grayLight1: 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5',
+  grayLight2: 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500 border-gray-100 dark:border-white/5',
 };
 
 function getAirtableSelectPillClasses(colorName: string | null | undefined): string {
   const colorClasses = colorName
-    ? (AIRTABLE_COLOR_MAP[colorName] ?? 'bg-gray-100 text-gray-600 border-gray-200')
-    : 'bg-gray-100 text-gray-600 border-gray-200';
+    ? (AIRTABLE_COLOR_MAP[colorName] ?? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]')
+    : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
   return `inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses}`;
 }
 
@@ -463,17 +513,17 @@ function MissingDataPill(): React.ReactElement {
 }
 
 const STAGE_PILL_CLASSES: Record<string, string> = {
-  'Pre-Appointment': 'bg-sky-50 text-sky-700 border-sky-200',
-  'Deliberating': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Sold': 'bg-green-50 text-green-700 border-green-200',
-  'In Alterations': 'bg-orange-50 text-orange-700 border-orange-200',
-  'In Fulfillment': 'bg-violet-50 text-violet-700 border-violet-200',
-  'Did Not Convert': 'bg-gray-100 text-gray-500 border-gray-200',
+  'Pre-Appointment': 'bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+  'Deliberating': 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+  'Sold': 'bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800',
+  'In Alterations': 'bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+  'In Fulfillment': 'bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+  'Did Not Convert': 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]',
 };
 
 function StagePill({ stage, size = 'sm' }: { stage: string | null; size?: 'sm' | 'lg' }): React.ReactElement {
-  if (!stage) return <span className="text-gray-400">—</span>;
-  const colorClasses = STAGE_PILL_CLASSES[stage] ?? 'bg-gray-100 text-gray-600 border-gray-200';
+  if (!stage) return <span className="text-gray-400 dark:text-gray-500">—</span>;
+  const colorClasses = STAGE_PILL_CLASSES[stage] ?? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
   const sizeClass = size === 'lg' 
     ? 'inline-flex items-center text-sm px-3 py-1.5 rounded-full font-medium border whitespace-nowrap'
     : 'inline-flex items-center text-base px-2 py-0.5 rounded-full font-medium border whitespace-nowrap';
@@ -501,7 +551,7 @@ function DetailRow({ label, fieldId, children }: DetailRowProps): React.ReactEle
   const source = fieldId !== undefined ? FIELD_SOURCE[fieldId] : undefined;
   return (
     <div>
-      <div className="text-xs text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
         <span>{label}</span>
         {source && (
           <span
@@ -583,7 +633,7 @@ function MiniCalendar({ selectedDate, onSelectDate, onClose }: MiniCalendarProps
 
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
-  const startDay = firstDay.getDay();
+  const startDay = (firstDay.getDay() + 6) % 7; // Monday-start week
   const totalDays = lastDay.getDate();
 
   const days: (number | null)[] = [];
@@ -621,25 +671,26 @@ function MiniCalendar({ selectedDate, onSelectDate, onClose }: MiniCalendarProps
   return (
     <div
       ref={containerRef}
-      className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64"
+      className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg p-3 w-[272px]"
+      style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
     >
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={handlePrevMonth}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          className="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
         >
-          <CaretLeftIcon size={16} className="text-gray-600" />
+          <CaretLeftIcon size={16} className="text-gray-600 dark:text-gray-400" />
         </button>
-        <span className="text-sm font-medium text-gray-800">{monthLabel}</span>
+        <span className="text-sm font-medium text-gray-800 dark:text-[#F3EFE6]">{monthLabel}</span>
         <button
           onClick={handleNextMonth}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          className="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
         >
-          <CaretRightIcon size={16} className="text-gray-600" />
+          <CaretRightIcon size={16} className="text-gray-600 dark:text-gray-400" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+      <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 dark:text-gray-400 mb-1">
+        {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
           <div key={d} className="py-1">
             {d}
           </div>
@@ -658,12 +709,12 @@ function MiniCalendar({ selectedDate, onSelectDate, onClose }: MiniCalendarProps
             <button
               key={day}
               onClick={() => handleDayClick(day)}
-              className={`py-1 text-sm rounded transition-colors ${
+              className={`w-8 h-8 mx-auto flex items-center justify-center text-sm rounded-full transition-colors ${
                 isSelected
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#25211A] font-semibold'
                   : isToday
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'hover:bg-gray-100 text-gray-800'
+                  ? 'border border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24] font-medium hover:bg-[#FEF3C7] dark:hover:bg-[#3A2E12]'
+                  : 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-800 dark:text-[#F3EFE6]'
               }`}
             >
               {day}
@@ -674,7 +725,7 @@ function MiniCalendar({ selectedDate, onSelectDate, onClose }: MiniCalendarProps
       {selectedStr !== todayStr && (
         <button
           onClick={handleGoToToday}
-          className="mt-2 w-full text-xs text-blue-600 hover:underline"
+          className="mt-2 w-full text-xs text-[#D97706] dark:text-[#FBBF24] hover:underline"
         >
           Go to Today
         </button>
@@ -712,22 +763,22 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
   
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-500 font-medium whitespace-nowrap">{label}</span>
+      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
       <div ref={containerRef} className="relative">
         <button 
           type="button" 
           onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-colors"
+          className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
         >
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
         {open && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1 no-scrollbar">
+          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1 no-scrollbar" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
             <button 
               type="button" 
               onClick={() => { onChange([]); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length === 0 ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length === 0 ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#B45F04] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}
             >
               All
             </button>
@@ -738,7 +789,7 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
                   key={opt}
                   type="button"
                   onClick={() => toggleOption(opt)}
-                  className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${sel ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
+                  className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${sel ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#B45F04] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}
                 >
                   {opt}
                 </button>
@@ -751,7 +802,7 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
         <button 
           type="button" 
           onClick={() => onChange([])}
-          className="text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline cursor-pointer transition-colors"
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline-offset-2 hover:underline cursor-pointer transition-colors"
         >
           Clear
         </button>
@@ -775,18 +826,18 @@ function NotificationModal({ content, onClose }: NotificationModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)' }}
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4"
+        className="bg-white dark:bg-[#25211A] rounded-xl p-8 max-w-[480px] w-full mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-base text-gray-800 mb-6 leading-relaxed">{content}</p>
+        <p className="text-base text-gray-800 dark:text-[#F3EFE6] mb-6 leading-relaxed">{content}</p>
         <div className="flex justify-center">
           <button
             onClick={onClose}
-            className="px-8 py-2 rounded-full bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
+            className="px-8 py-2 rounded-full bg-gray-900 dark:bg-[#F3EFE6] text-white dark:text-[#1B1813] text-sm font-medium hover:bg-gray-700 dark:hover:bg-white/20 transition-colors"
           >
             Close
           </button>
@@ -868,8 +919,8 @@ function ActionButtons({
   };
 
   const btn = 'text-sm font-medium border rounded-lg transition-colors whitespace-nowrap min-w-[100px] px-4 py-1.5 text-center';
-  const btnDefault = `${btn} border-gray-200 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer`;
-  const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 bg-white text-gray-700`;
+  const btnDefault = `${btn} border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer`;
+  const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300`;
   const btnGreen = `${btn} border-green-200 bg-green-100 text-green-700 cursor-default`;
 
   const pillRed = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-base font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
@@ -1136,10 +1187,10 @@ function CalendarActionButtons({
   };
 
   const txtBase = 'text-xs font-medium transition-colors';
-  const btnBlue = `${txtBase} text-blue-600 hover:text-blue-800 cursor-pointer`;
-  const btnDisabledCls = `${txtBase} opacity-40 cursor-not-allowed text-gray-400`;
+  const btnBlue = `${txtBase} text-[#D97706] dark:text-[#FBBF24] hover:text-[#B45F04] dark:text-[#FBBF24] cursor-pointer`;
+  const btnDisabledCls = `${txtBase} opacity-40 cursor-not-allowed text-gray-400 dark:text-gray-500`;
   const btnGreenTxt = `${txtBase} text-green-600`;
-  const sep = <span className="text-gray-300 text-xs select-none">·</span>;
+  const sep = <span className="text-gray-300 dark:text-gray-600 text-xs select-none">·</span>;
 
   const items: React.ReactNode[] = [];
 
@@ -1182,7 +1233,7 @@ function CalendarActionButtons({
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-2 pt-2 border-t border-gray-100"
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-2 pt-2 border-t border-gray-100 dark:border-white/5"
       onClick={(e) => e.stopPropagation()}>
       {items.reduce<React.ReactNode[]>((acc, item, i) => {
         if (i > 0) acc.push(<React.Fragment key={`sep-${i}`}>{sep}</React.Fragment>);
@@ -1313,14 +1364,14 @@ function CalendarPivot({
   return (
     <div className="overflow-auto h-full">
       <table className="border-collapse w-full">
-        <thead className="sticky top-0 z-10 bg-gray-50">
+        <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-white/5">
           <tr>
-            <th className="border border-gray-200 px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide w-20 bg-gray-50">
+            <th className="border border-gray-200 dark:border-[#38322A] px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide w-20 bg-gray-50 dark:bg-white/5">
               Time
             </th>
             {displayColumns.map((col) => (
               <th key={col.id}
-                className="border border-gray-200 px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide min-w-[280px] bg-gray-50">
+                className="border border-gray-200 dark:border-[#38322A] px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide min-w-[280px] bg-gray-50 dark:bg-white/5">
                 {col.name}
               </th>
             ))}
@@ -1329,14 +1380,14 @@ function CalendarPivot({
         <tbody>
           {sortedHours.map((hour) => (
             <tr key={hour}>
-              <td className="border border-gray-200 px-4 py-3 text-sm text-gray-600 font-medium align-top whitespace-nowrap bg-gray-50">
+              <td className="border border-gray-200 dark:border-[#38322A] px-4 py-3 text-sm text-gray-600 dark:text-gray-400 font-medium align-top whitespace-nowrap bg-gray-50 dark:bg-white/5">
                 {String(hour).padStart(2, '0')}:00
               </td>
               {displayColumns.map((col) => {
                 const colRecords = pivot.get(hour)?.get(col.id) ?? [];
                 return (
                   <td key={`${hour}-${col.id}`}
-                    className="border border-gray-200 p-2 align-top min-w-[280px]"
+                    className="border border-gray-200 dark:border-[#38322A] p-2 align-top min-w-[280px]"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => handleDrop(col.id)}
                   >
@@ -1472,14 +1523,17 @@ function CalendarCardCompact({
   const showAltLead = isAlterationsAppt;
 
   // Stage pill color class
-  const stagePillClasses = STAGE_PILL_CLASSES[clientStage ?? ''] ?? 'bg-gray-100 text-gray-500 border-gray-200';
+  const stagePillClasses = STAGE_PILL_CLASSES[clientStage ?? ''] ?? 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
 
   return (
     <div
       draggable
       onDragStart={() => onDragStart(record.id)}
       onClick={() => onSelectRecord(record.id)}
-      className="bg-white border border-gray-200 rounded-lg p-3 cursor-move hover:shadow-md transition-shadow relative min-h-[120px] flex flex-col"
+      className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg p-3 cursor-move transition-shadow relative min-h-[120px] flex flex-col"
+      style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
     >
       {/* Stage pill: top-right */}
       {clientStage && (
@@ -1489,20 +1543,20 @@ function CalendarCardCompact({
       )}
 
       {/* Client name */}
-      <div className="text-sm font-semibold text-gray-800 mb-1 pr-24">{clientName}</div>
+      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-24">{clientName}</div>
 
       {/* Appointment type — bold */}
-      <div className="text-xs font-bold text-gray-700 mb-1.5">{shortType}</div>
+      <div className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
 
       {/* Fields */}
       <div className="space-y-0.5">
-        {saValue && <div className="text-xs text-gray-600">SA: {saValue}</div>}
+        {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
         {showAltLead && (
-          <div className={`text-xs ${altLeadValue ? 'text-gray-600' : 'text-red-500'}`}>
+          <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
             Alt Lead: {altLeadValue || 'missing'}
           </div>
         )}
-        {roomValue && <div className="text-xs text-gray-600">Room: {roomValue}</div>}
+        {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
       </div>
 
       <CalendarActionButtons
@@ -1571,7 +1625,7 @@ function EditableCell({ value, onSave, isSaving, canEdit, fieldId, readOnly }: E
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
         disabled={isSaving}
-        className="text-sm px-2 py-1 border border-blue-400 rounded outline-none w-full bg-blue-50"
+        className="text-sm px-2 py-1 border border-[#D97706] rounded outline-none w-full bg-[#FEF3C7] dark:bg-[#3A2E12]"
       />
     );
   }
@@ -1579,8 +1633,7 @@ function EditableCell({ value, onSave, isSaving, canEdit, fieldId, readOnly }: E
   return (
     <div 
       onClick={() => !effectiveReadOnly && canEdit && setIsEditing(true)}
-      style={{ color: '#6B6B6B' }}
-      className={!effectiveReadOnly && canEdit ? 'cursor-pointer hover:bg-gray-50 px-2 py-1 rounded' : ''}
+      className={`text-gray-600 dark:text-gray-400 ${!effectiveReadOnly && canEdit ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 px-2 py-1 rounded' : ''}`}
     >
       {value || '—'}
     </div>
@@ -1647,27 +1700,27 @@ function EditableLinkedRecord({
   if (isEditing) {
     return (
       <div ref={containerRef} className="relative">
-        <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg w-[240px] no-scrollbar" style={{ overflow: 'visible' }}>
-          <div className="p-2 border-b border-gray-100">
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg w-[240px] no-scrollbar" style={{ overflow: 'visible', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <input
               ref={searchRef}
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search…"
-              className="w-full text-sm px-2 py-1 border border-gray-200 rounded outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+              className="w-full text-sm px-2 py-1 border border-gray-200 dark:border-[#38322A] rounded outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]"
             />
           </div>
           <div className="max-h-[180px] overflow-y-auto py-1 no-scrollbar">
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-400">No results</div>
+              <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No results</div>
             ) : (
               filteredOptions.map(opt => (
                 <button
                   key={opt.id}
                   onClick={() => handleSelect(opt.id, opt.name)}
                   className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
-                    recordId === opt.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                    recordId === opt.id ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#B45F04] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
                   }`}
                 >
                   {opt.name}
@@ -1685,10 +1738,9 @@ function EditableLinkedRecord({
       onClick={() => !effectiveReadOnly && canEdit && setIsEditing(true)}
       className={`px-3 py-2 rounded-md border transition-colors ${
         !effectiveReadOnly && canEdit 
-          ? 'border-gray-300 bg-white hover:bg-gray-50 cursor-pointer' 
-          : 'border-gray-200 bg-gray-50'
-      }`}
-      style={{ color: '#6B6B6B' }}
+          ? 'border-gray-300 dark:border-white/15 bg-white dark:bg-[#25211A] hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer' 
+          : 'border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5'
+      } text-gray-600 dark:text-gray-400`}
     >
       {value || '—'}
     </div>
@@ -1948,18 +2000,18 @@ function DetailDrawer({
   }, [roomOptions, roomRecords, roomsTable, appointmentsTable, record]);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-white">
+    <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-[#25211A]">
       <style>{GLOBAL_STYLES}</style>
-      <div className="p-5 border-b border-gray-200">
+      <div className="p-5 border-b border-gray-200 dark:border-[#38322A]">
         <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-base font-semibold text-blue-700 flex-shrink-0">
+          <div className="w-12 h-12 rounded-full bg-[#FEF3C7] dark:bg-[#3A2E12] flex items-center justify-center text-base font-semibold text-[#B45F04] dark:text-[#FBBF24] flex-shrink-0">
             {initials}
           </div>
           <div className="flex-1 min-w-0">
             {/* Row 1: Name + Studio + Stage pill */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xl font-semibold text-gray-800">{displayName}</span>
-              {studioName && <span className="text-base text-gray-500">{studioName}</span>}
+              <span className="text-xl font-semibold text-gray-800 dark:text-[#F3EFE6]">{displayName}</span>
+              {studioName && <span className="text-base text-gray-500 dark:text-gray-400">{studioName}</span>}
               {clientStage && <StagePill stage={clientStage} size="lg" />}
             </div>
 
@@ -1968,18 +2020,18 @@ function DetailDrawer({
               <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
                 {phone && (
                   <span className="flex items-center gap-1">
-                    <PhoneIcon size={13} className="text-gray-400 flex-shrink-0" />
-                    <a href={`tel:${phone}`} className="text-sm text-blue-600 hover:underline">{phone}</a>
+                    <PhoneIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                    <a href={`tel:${phone}`} className="text-sm text-[#D97706] dark:text-[#FBBF24] hover:underline">{phone}</a>
                   </span>
                 )}
                 {email && (
                   <span className="flex items-center gap-1">
-                    <EnvelopeSimpleIcon size={13} className="text-gray-400 flex-shrink-0" />
-                    <a href={`mailto:${email}`} className="text-sm text-blue-600 hover:underline">{email}</a>
+                    <EnvelopeSimpleIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                    <a href={`mailto:${email}`} className="text-sm text-[#D97706] dark:text-[#FBBF24] hover:underline">{email}</a>
                   </span>
                 )}
-                <span className="text-sm text-gray-600">{weddingDisplay}</span>
-                {saValue && <span className="text-sm text-gray-600">SA: {saValue}</span>}
+                <span className="text-sm text-gray-600 dark:text-gray-400">{weddingDisplay}</span>
+                {saValue && <span className="text-sm text-gray-600 dark:text-gray-400">SA: {saValue}</span>}
               </div>
             )}
 
@@ -1990,7 +2042,7 @@ function DetailDrawer({
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
-        <div className="text-xs text-gray-400 uppercase tracking-wide mb-3 mt-2">
+        <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 mt-2">
           Appointment details
         </div>
 
@@ -2012,7 +2064,7 @@ function DetailDrawer({
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-5">
           <DetailRow label="Time" fieldId={FIELD_IDS.APPT_TIME}>
-            <div className="text-base text-gray-800 font-medium">{timeDisplay}</div>
+            <div className="text-base text-gray-800 dark:text-[#F3EFE6] font-medium">{timeDisplay}</div>
           </DetailRow>
           <DetailRow label="Room">
             <EditableLinkedRecord
@@ -2047,7 +2099,7 @@ function DetailDrawer({
 
         {/* #29 — Appointment Notes (editable, all types) */}
         <div className="mt-5">
-          <div className="text-xs text-gray-400 uppercase tracking-wide mb-1 flex items-center gap-1"><span>Appointment notes</span></div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1"><span>Appointment notes</span></div>
           <textarea
             value={apptNotesValue}
             onChange={(e) => setApptNotesValue(e.target.value)}
@@ -2055,7 +2107,7 @@ function DetailDrawer({
             disabled={isSavingNotes || !appointmentsTable.hasPermissionToUpdateRecords()}
             rows={3}
             placeholder="Team notes (e.g. bride is running late)…"
-            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 resize-none transition-colors"
+            className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-[#38322A] rounded-md bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300 placeholder-gray-300 focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] resize-none transition-colors"
           />
         </div>
 
@@ -2063,30 +2115,30 @@ function DetailDrawer({
         {isFirstVisit && linkedClientRecord && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Preferred stylist">
-              <div className="text-base text-gray-800">{clientStylistsField ? linkedClientRecord.getCellValueAsString(clientStylistsField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientStylistsField ? linkedClientRecord.getCellValueAsString(clientStylistsField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Ready to wear size" fieldId={FIELD_IDS.CLIENT_RTW_SIZE}>
-              <div className="text-base text-gray-800">{clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Next appointment">
-              <div className="text-base text-gray-800">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Previous appointments">
-              <div className="text-base text-gray-800">{clientApptRecordsField ? linkedClientRecord.getCellValueAsString(clientApptRecordsField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientApptRecordsField ? linkedClientRecord.getCellValueAsString(clientApptRecordsField) : '—'}</div>
             </DetailRow>
             {clientFavStylesAcuityField && linkedClientRecord.getCellValueAsString(clientFavStylesAcuityField) && (
               <DetailRow label="Favorite styles" fieldId={FIELD_IDS.CLIENT_FAV_STYLES_ACUITY}>
-                <div className="text-base text-gray-800">{linkedClientRecord.getCellValueAsString(clientFavStylesAcuityField)}</div>
+                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{linkedClientRecord.getCellValueAsString(clientFavStylesAcuityField)}</div>
               </DetailRow>
             )}
             <DetailRow label="Personal style notes" fieldId={FIELD_IDS.CLIENT_PERSONAL_NOTES}>
-              <div className="text-base text-gray-800">{clientPersonalNotesField ? linkedClientRecord.getCellValueAsString(clientPersonalNotesField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientPersonalNotesField ? linkedClientRecord.getCellValueAsString(clientPersonalNotesField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Wedding location" fieldId={FIELD_IDS.CLIENT_WEDDING_LOC}>
-              <div className="text-base text-gray-800">{clientWeddingLocField ? linkedClientRecord.getCellValueAsString(clientWeddingLocField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientWeddingLocField ? linkedClientRecord.getCellValueAsString(clientWeddingLocField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Wedding planner" fieldId={FIELD_IDS.CLIENT_WEDDING_PLANNER}>
-              <div className="text-base text-gray-800">{clientWeddingPlannerField ? linkedClientRecord.getCellValueAsString(clientWeddingPlannerField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientWeddingPlannerField ? linkedClientRecord.getCellValueAsString(clientWeddingPlannerField) : '—'}</div>
             </DetailRow>
           </div>
         )}
@@ -2094,45 +2146,45 @@ function DetailDrawer({
         {isFitPickUp && linkedClientRecord && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Last appointment">
-              <div className="text-base text-gray-800">{clientLastApptField ? linkedClientRecord.getCellValueAsString(clientLastApptField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientLastApptField ? linkedClientRecord.getCellValueAsString(clientLastApptField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Next appointment">
-              <div className="text-base text-gray-800">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
             </DetailRow>
             <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               <DetailRow label="Bust">
-                <div className="text-base text-gray-800">{bustField ? record.getCellValueAsString(bustField) : '—'}</div>
+                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{bustField ? record.getCellValueAsString(bustField) : '—'}</div>
               </DetailRow>
               <DetailRow label="Waist">
-                <div className="text-base text-gray-800">{waistField ? record.getCellValueAsString(waistField) : '—'}</div>
+                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{waistField ? record.getCellValueAsString(waistField) : '—'}</div>
               </DetailRow>
               <DetailRow label="Hips">
-                <div className="text-base text-gray-800">{hipsField ? record.getCellValueAsString(hipsField) : '—'}</div>
+                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{hipsField ? record.getCellValueAsString(hipsField) : '—'}</div>
               </DetailRow>
               <DetailRow label="Height">
-                <div className="text-base text-gray-800">{heightField ? record.getCellValueAsString(heightField) : '—'}</div>
+                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{heightField ? record.getCellValueAsString(heightField) : '—'}</div>
               </DetailRow>
             </div>
             <DetailRow label="Measurement photos">
-              <div className="text-base text-gray-800">{clientMeasurementsField ? linkedClientRecord.getCellValueAsString(clientMeasurementsField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientMeasurementsField ? linkedClientRecord.getCellValueAsString(clientMeasurementsField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Photos from appointment">
-              <div className="text-base text-gray-800">{apptPhotosField ? record.getCellValueAsString(apptPhotosField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{apptPhotosField ? record.getCellValueAsString(apptPhotosField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Follow-up">
-              <div className="text-base text-gray-800">{followUpField ? record.getCellValueAsString(followUpField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{followUpField ? record.getCellValueAsString(followUpField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Interest in alterations">
-              <div className="text-base text-gray-800">{clientInterestAltsField ? linkedClientRecord.getCellValueAsString(clientInterestAltsField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientInterestAltsField ? linkedClientRecord.getCellValueAsString(clientInterestAltsField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Interest in made to measure">
-              <div className="text-base text-gray-800">{clientInterestM2mField ? linkedClientRecord.getCellValueAsString(clientInterestM2mField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientInterestM2mField ? linkedClientRecord.getCellValueAsString(clientInterestM2mField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Rush order">
-              <div className="text-base text-gray-800">{clientIsRushField ? linkedClientRecord.getCellValueAsString(clientIsRushField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientIsRushField ? linkedClientRecord.getCellValueAsString(clientIsRushField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Private appointment notes">
-              <div className="text-base text-gray-800">{clientApptNotesField ? linkedClientRecord.getCellValueAsString(clientApptNotesField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientApptNotesField ? linkedClientRecord.getCellValueAsString(clientApptNotesField) : '—'}</div>
             </DetailRow>
           </div>
         )}
@@ -2140,12 +2192,12 @@ function DetailDrawer({
         {isAlterations && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Alterations notes">
-              <div className="text-base text-gray-800">{altNotesField ? record.getCellValueAsString(altNotesField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{altNotesField ? record.getCellValueAsString(altNotesField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Customizations">
-              <div className="text-base text-gray-800">{customizationField ? record.getCellValueAsString(customizationField) : '—'}</div>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{customizationField ? record.getCellValueAsString(customizationField) : '—'}</div>
             </DetailRow>
-            <div className="text-sm text-gray-600 italic">Flags (veil/shoes purchased) pending confirmation with Julia</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 italic">Flags (veil/shoes purchased) pending confirmation with Julia</div>
           </div>
         )}
 
@@ -2154,7 +2206,7 @@ function DetailDrawer({
             {favStylesValue && (
               <div className="mt-5">
                 <DetailRow label="Favorite styles">
-                  <div className="text-base text-gray-800">{favStylesValue}</div>
+                  <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{favStylesValue}</div>
                 </DetailRow>
               </div>
             )}
@@ -2162,7 +2214,7 @@ function DetailDrawer({
             {isNyStudio && samplesNotInNyValue && (
               <div className="mt-5">
                 <DetailRow label="Samples not in NY">
-                  <div className="text-base text-gray-800">{samplesNotInNyValue}</div>
+                  <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{samplesNotInNyValue}</div>
                 </DetailRow>
               </div>
             )}
@@ -2171,10 +2223,10 @@ function DetailDrawer({
       </div>
 
       {canExpand && (
-        <div className="p-5 border-t border-gray-200">
+        <div className="p-5 border-t border-gray-200 dark:border-[#38322A]">
           <button
             onClick={() => expandRecord(record)}
-            className="w-full px-4 py-2.5 rounded-md bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
+            className="w-full px-4 py-2.5 rounded-md bg-gray-900 dark:bg-[#F3EFE6] text-white dark:text-[#1B1813] text-sm font-medium hover:bg-gray-700 dark:hover:bg-white/20 transition-colors"
           >
             Open Full Record
           </button>
@@ -2187,6 +2239,7 @@ function DetailDrawer({
 type SortState = { column?: string; direction?: 'asc' | 'desc' };
 
 function AppointmentsApp(): React.ReactElement {
+  useTheme();
   const base = useBase();
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
 
@@ -2692,9 +2745,9 @@ function AppointmentsApp(): React.ReactElement {
   const getSortArrow = (column: string) => {
     if (sortState.column !== column) return null;
     return sortState.direction === 'desc' ? (
-      <CaretDownIcon size={14} className="text-gray-600 inline ml-1" />
+      <CaretDownIcon size={14} className="text-gray-600 dark:text-gray-400 inline ml-1" />
     ) : (
-      <CaretUpIcon size={14} className="text-gray-600 inline ml-1" />
+      <CaretUpIcon size={14} className="text-gray-600 dark:text-gray-400 inline ml-1" />
     );
   };
 
@@ -2702,7 +2755,7 @@ function AppointmentsApp(): React.ReactElement {
     const clickable = column && ['client', 'stage', 'type', 'room', 'sa', 'altlead'].includes(column);
     return (
       <th 
-        className={`px-3 py-2 text-sm font-semibold text-gray-700 whitespace-nowrap text-left ${clickable ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+        className={`px-3 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap text-left ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10' : ''}`}
         onClick={() => column && clickable && handleSort(column)}
       >
         {label}
@@ -2727,18 +2780,18 @@ function AppointmentsApp(): React.ReactElement {
 
   if (errorState) {
     return (
-      <div className="flex items-center justify-center h-full" style={{ backgroundColor: '#F6F4F0' }}>
-        <p className="text-gray-500">Error loading configuration.</p>
+      <div className="flex items-center justify-center h-full bg-[#F8F5EE] dark:bg-[#1B1813]">
+        <p className="text-gray-500 dark:text-gray-400">Error loading configuration.</p>
       </div>
     );
   }
 
   if (!appointmentsTable || !clientsTable) {
     return (
-      <div className="flex items-center justify-center h-full" style={{ backgroundColor: '#F6F4F0' }}>
+      <div className="flex items-center justify-center h-full bg-[#F8F5EE] dark:bg-[#1B1813]">
         <div className="text-center p-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">Configuration Required</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-[#F3EFE6] mb-2">Configuration Required</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Please set the Appointments and Clients tables in the properties panel.
           </p>
         </div>
@@ -2747,7 +2800,7 @@ function AppointmentsApp(): React.ReactElement {
   }
 
   return (
-    <div className="h-screen flex flex-col font-sans antialiased" style={{ backgroundColor: '#F6F4F0' }}>
+    <div className="h-screen flex flex-col overflow-hidden font-sans antialiased bg-[#F8F5EE] dark:bg-[#1B1813]">
       <style>{GLOBAL_STYLES}</style>
       {modal && <NotificationModal content={modal.content} onClose={() => setModal(null)} />}
 
@@ -2756,26 +2809,26 @@ function AppointmentsApp(): React.ReactElement {
         <div ref={dateStepperRef} className="relative flex items-center gap-1">
           <button
             onClick={handlePrevDay}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
           >
-            <CaretLeftIcon size={20} className="text-gray-600" />
+            <CaretLeftIcon size={20} className="text-gray-600 dark:text-gray-400" />
           </button>
           <button
             onClick={() => setShowCalendar(!showCalendar)}
-            className="px-2 py-1 text-base font-medium text-gray-800 hover:bg-gray-100 rounded transition-colors"
+            className="px-2 py-1 text-base font-medium text-gray-800 dark:text-[#F3EFE6] hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
           >
             {formatDisplayDate(selectedDate)}
           </button>
           <button
             onClick={handleNextDay}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded transition-colors"
           >
-            <CaretRightIcon size={20} className="text-gray-600" />
+            <CaretRightIcon size={20} className="text-gray-600 dark:text-gray-400" />
           </button>
           {isNotToday() && (
             <button
               onClick={handleGoToToday}
-              className="ml-2 text-sm px-2.5 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+              className="ml-2 text-sm px-2.5 py-1 rounded-md border border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors font-medium"
             >
               Today
             </button>
@@ -2838,17 +2891,17 @@ function AppointmentsApp(): React.ReactElement {
         <LayoutToggle value={layoutMode} onChange={setLayoutMode} />
       </div>
 
-      <div className="relative flex-1 mx-6 mb-6 bg-white border border-[#E5E1DA] rounded-xl overflow-hidden flex flex-col">
+      <div className="relative flex-1 mx-6 mb-6 bg-white dark:bg-[#25211A] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl overflow-hidden flex flex-col">
         <div className="flex-1 overflow-auto">
           {filteredRecords.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-500">
-              <CalendarIcon size={40} className="text-gray-300 mb-2" />
+            <div className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
+              <CalendarIcon size={40} className="text-gray-300 dark:text-gray-600 mb-2" />
               <span className="text-sm">No appointments for {formatDisplayDate(selectedDate)}</span>
             </div>
           ) : layoutMode === 'list' ? (
             filteredRecords.length > 0 ? (
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-[#38322A] sticky top-0">
                   <tr>
                     {columnHeader('Time')}
                     {columnHeader('Client', 'client')}
@@ -2900,14 +2953,14 @@ function AppointmentsApp(): React.ReactElement {
                       <tr
                         key={record.id}
                         onClick={() => handleRowClick(record.id)}
-                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-50' : ''
+                        className={`border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
                         }`}
                       >
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
                           {timeValue ? renderTimeCell(timeValue) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-base font-medium whitespace-nowrap" style={{ color: '#1C1C1C' }}>
+                        <td className="px-3 py-2.5 text-base font-medium whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
                           {clientLinkField && record.getCellValueAsString(clientLinkField)
                             ? record.getCellValueAsString(clientLinkField)
                             : <MissingDataPill />}
@@ -2921,14 +2974,14 @@ function AppointmentsApp(): React.ReactElement {
                             : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {roomValue ? <span style={{ color: '#6B6B6B' }}>{roomValue}</span> : <MissingDataPill />}
+                          {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {saValue ? <span style={{ color: '#6B6B6B' }}>{saValue}</span> : '—'}
+                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
                           {altLeadValue
-                            ? <span style={{ color: '#6B6B6B' }}>{altLeadValue}</span>
+                            ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
                             : isAlterationsAppt ? <MissingDataPill /> : '—'}
                         </td>
                         <td className="px-3 py-2.5">
@@ -2990,11 +3043,11 @@ function AppointmentsApp(): React.ReactElement {
       {selectedRecordId && selectedRecord && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)' }}
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
           onClick={() => setSelectedRecordId(null)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-[680px] max-h-[70vh] overflow-hidden flex flex-col shadow-2xl mx-4"
+            className="bg-white dark:bg-[#25211A] rounded-xl w-full max-w-[720px] max-h-[70vh] overflow-hidden flex flex-col mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <DetailDrawer

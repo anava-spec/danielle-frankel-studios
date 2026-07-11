@@ -46,6 +46,23 @@ const FIELD_IDS = {
   STYLE_NAME:           'fldEs3chQAeplPc1w',
 } as const;
 
+// ─── Theme (auto-detects OS/Airtable color scheme) ─────────────────────────────
+function useTheme(): 'light' | 'dark' {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const h = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+  return theme;
+}
+
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
 // Ordinal suffix helper — returns "1st", "2nd", "3rd", "4th", etc.
@@ -100,13 +117,13 @@ function fmt$(v: number | null | undefined): string {
 
 function getStageColor(s: string | null | undefined): string {
   switch (s) {
-    case 'Sold':           return 'bg-green-50 text-green-700 border-green-200';
-    case 'In Alterations': return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'Sold':           return 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-200 dark:border-green-500/30';
+    case 'In Alterations': return 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-500/30';
     case 'In Fulfillment':
     case 'Shipped':
-    case 'Picked Up':      return 'bg-blue-50 text-blue-700 border-blue-200';
-    case 'Deliberating':   return 'bg-yellow-50 text-yellow-700 border-yellow-200';
-    default:               return 'bg-gray-100 text-gray-600 border-gray-200';
+    case 'Picked Up':      return 'bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30';
+    case 'Deliberating':   return 'bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-500/30';
+    default:               return 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10';
   }
 }
 
@@ -156,18 +173,18 @@ function MultiSelectDropdown({
 
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-sm text-gray-500 font-medium whitespace-nowrap">{label}</span>
+      <span className="text-sm text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{label}</span>
       <div ref={ref} className="relative">
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center justify-between gap-2 min-w-[150px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-colors"
+          className="inline-flex items-center justify-between gap-2 min-w-[150px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 hover:dark:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
         >
           <span className="truncate">{displayText}</span>
-          <CaretDownIcon size={13} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
         {open && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[150px]">
+          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg py-1 min-w-[150px]">
             {options.map(opt => (
               <button
                 key={opt}
@@ -175,8 +192,8 @@ function MultiSelectDropdown({
                 onClick={() => onChange(opt, !selected.has(opt))}
                 className={`w-full text-left px-3 py-1.5 text-sm transition-colors whitespace-nowrap ${
                   selected.has(opt)
-                    ? 'bg-amber-50 text-amber-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-50'
+                    ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'
                 }`}
               >
                 {opt}
@@ -186,7 +203,7 @@ function MultiSelectDropdown({
         )}
       </div>
       {selected.size > 0 && (
-        <button onClick={onClear} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+        <button onClick={onClear} className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-300 transition-colors">
           Clear
         </button>
       )}
@@ -198,18 +215,18 @@ function MultiSelectDropdown({
 function SearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div className="relative flex items-center">
-      <MagnifyingGlassIcon size={14} className="absolute left-2.5 text-gray-400 pointer-events-none" />
+      <MagnifyingGlassIcon size={14} className="absolute left-2.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
       <input
         type="text"
         placeholder="Search by client, Shopify #, or Apparel ID..."
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="pl-8 pr-7 py-1.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 placeholder-gray-400 hover:border-gray-400 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-colors w-72"
+        className="pl-8 pr-7 py-1.5 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 hover:border-gray-400 hover:dark:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors w-72"
       />
       {value && (
         <button
           onClick={() => onChange('')}
-          className="absolute right-2.5 text-gray-400 hover:text-gray-600 transition-colors"
+          className="absolute right-2.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-300 transition-colors"
         >
           <XIcon size={13} />
         </button>
@@ -250,43 +267,43 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
   }, [onClose]);
 
   const FinRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex justify-between items-center py-1.5 text-sm border-b border-gray-50 last:border-0">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-800 font-medium">{value}</span>
+    <div className="flex justify-between items-center py-1.5 text-sm border-b border-gray-50 dark:border-white/5 last:border-0">
+      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-gray-800 dark:text-[#F3EFE6] font-medium">{value}</span>
     </div>
   );
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)' }}
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl w-full max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100 dark:border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-semibold text-sm flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-[#FEF3C7] dark:bg-[#3A2E12] flex items-center justify-center text-[#D97706] dark:text-[#FBBF24] font-semibold text-sm flex-shrink-0">
               {getInitials(data.clientName)}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-gray-900">{data.clientName || '—'}</h2>
+                <h2 className="text-base font-bold text-gray-900 dark:text-[#F3EFE6]">{data.clientName || '—'}</h2>
                 {data.stage && (
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium border ${getStageColor(data.stage)}`}>
                     {data.stage}
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                 {[data.studioName, data.weddingDate ? `Wedding ${formatDate(data.weddingDate)}` : null].filter(Boolean).join(' · ')}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors ml-4">
+          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-300 transition-colors ml-4">
             <XIcon size={18} />
           </button>
         </div>
@@ -297,64 +314,64 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
             {/* Left */}
             <div className="space-y-5">
               <div>
-                <span className="text-sm text-gray-400 uppercase tracking-wide mb-2 block">Contact</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Contact</span>
                 <div className="space-y-1.5">
                   {data.phone && (
-                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                      <PhoneIcon size={13} className="text-gray-400 flex-shrink-0" />
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <PhoneIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
                       <span>{data.phone}</span>
                     </div>
                   )}
                   {data.email && (
-                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                      <EnvelopeIcon size={13} className="text-gray-400 flex-shrink-0" />
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <EnvelopeIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
                       <span className="truncate">{data.email}</span>
                     </div>
                   )}
-                  {!data.phone && !data.email && <span className="text-sm text-gray-400">—</span>}
+                  {!data.phone && !data.email && <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
                 </div>
               </div>
 
               <div>
-                <span className="text-sm text-gray-400 uppercase tracking-wide mb-1 block">Sales Associate</span>
-                <p className="text-sm text-gray-800">{data.saName || '—'}</p>
+                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 block">Sales Associate</span>
+                <p className="text-sm text-gray-800 dark:text-[#F3EFE6]">{data.saName || '—'}</p>
               </div>
 
               <div>
-                <span className="text-sm text-gray-400 uppercase tracking-wide mb-1 block">Order</span>
-                <div className="space-y-0.5 text-sm text-gray-700">
+                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 block">Order</span>
+                <div className="space-y-0.5 text-sm text-gray-700 dark:text-gray-300">
                   <div>Shopify <span className="font-medium">{data.shopifyNum || '—'}</span></div>
                   <div>
                     Apparel ID{' '}
-                    <span className={`font-medium ${data.amNum ? 'text-amber-600' : 'text-gray-400'}`}>
+                    <span className={`font-medium ${data.amNum ? 'text-[#D97706] dark:text-[#FBBF24]' : 'text-gray-400 dark:text-gray-500'}`}>
                       {data.amNum ? `AM-${data.amNum}` : '—'}
                     </span>
                   </div>
-                  <div className="text-gray-500">{formatDateOrdinal(data.orderDateRaw)}</div>
+                  <div className="text-gray-500 dark:text-gray-400">{formatDateOrdinal(data.orderDateRaw)}</div>
                 </div>
               </div>
 
               <div>
-                <span className="text-sm text-gray-400 uppercase tracking-wide mb-2 block">Items Sold</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Items Sold</span>
                 {data.itemNames.length > 0 ? (
                   <div className="space-y-1">
                     {data.itemNames.map((name, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                        <CircleIcon size={7} className="text-amber-400 flex-shrink-0" weight="fill" />
+                      <div key={i} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <CircleIcon size={7} className="text-[#FBBF24] flex-shrink-0" weight="fill" />
                         <span>{name}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <span className="text-sm text-gray-400">—</span>
+                  <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
                 )}
               </div>
             </div>
 
             {/* Right: Financials */}
             <div>
-              <span className="text-sm text-gray-400 uppercase tracking-wide mb-3 block">Financials</span>
-              <div className="bg-gray-50 rounded-xl p-4">
+              <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 block">Financials</span>
+              <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-4">
                 <FinRow label="Subtotal"        value={fmt$(data.subtotal)} />
                 <FinRow label="Shipping"        value={fmt$(data.shipping)} />
                 <FinRow label="Taxes"           value={fmt$(data.taxes)} />
@@ -363,9 +380,9 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
                 <FinRow label="Made-to-Measure" value={data.m2m && data.m2m > 0 ? fmt$(data.m2m) : '—'} />
                 <FinRow label="Rush Fee"        value={fmt$(data.rushFee)} />
                 <FinRow label="Refunded Amount" value={fmt$(data.refunded)} />
-                <div className="flex justify-between items-center pt-2 mt-1 border-t border-gray-200">
-                  <span className="text-sm font-semibold text-gray-900">Total</span>
-                  <span className="text-base font-semibold text-amber-600">{fmt$(data.total)}</span>
+                <div className="flex justify-between items-center pt-2 mt-1 border-t border-gray-200 dark:border-white/10">
+                  <span className="text-sm font-semibold text-gray-900 dark:text-[#F3EFE6]">Total</span>
+                  <span className="text-base font-semibold text-[#D97706] dark:text-[#FBBF24]">{fmt$(data.total)}</span>
                 </div>
               </div>
             </div>
@@ -380,6 +397,7 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function SoldApp(): React.ReactElement {
+  useTheme();
   const base = useBase();
 
   const ordersTable  = base.getTableByIdIfExists('tblHFGbijtvZcRPkE');
@@ -637,7 +655,7 @@ function SoldApp(): React.ReactElement {
     return (
       <button
         onClick={() => handleColumnClick(colKey)}
-        className="inline-flex items-center gap-1 hover:text-gray-800 transition-colors"
+        className="inline-flex items-center gap-1 hover:text-gray-800 hover:dark:text-gray-200 transition-colors"
       >
         {label}
         {active && sortDir === 'desc' && <CaretDownIcon size={11} />}
@@ -648,10 +666,10 @@ function SoldApp(): React.ReactElement {
 
   if (!ordersTable || !clientsTable || !stylesTable || !studiosTable) {
     return (
-      <div className="flex items-center justify-center h-screen" style={{ backgroundColor: '#F8F5EE' }}>
+      <div className="flex items-center justify-center h-screen bg-[#F8F5EE] dark:bg-[#1B1813]">
         <div className="text-center">
-          <p className="text-base font-semibold text-gray-900">Configuration Required</p>
-          <p className="text-sm text-gray-500 mt-1">Please configure the required tables in the properties panel.</p>
+          <p className="text-base font-semibold text-gray-900 dark:text-[#F3EFE6]">Configuration Required</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Please configure the required tables in the properties panel.</p>
         </div>
       </div>
     );
@@ -659,10 +677,7 @@ function SoldApp(): React.ReactElement {
 
   // 7 columns: Client | Shopify # | Apparel ID | Date Sold | Items Purchased | Total | SA
   return (
-    <div
-      className="font-sans antialiased flex flex-col"
-      style={{ backgroundColor: '#F8F5EE', height: '100vh', overflow: 'hidden' }}
-    >
+    <div className="font-sans antialiased flex flex-col h-screen overflow-hidden bg-[#F8F5EE] dark:bg-[#1B1813]">
       {/* Header — filters flush left, no box */}
       <div className="flex-shrink-0 px-6 py-3 flex items-center gap-5">
         <SearchInput value={searchQuery} onChange={setSearchQuery} />
@@ -692,9 +707,9 @@ function SoldApp(): React.ReactElement {
 
       {/* Table container */}
       <div className="flex-1 px-6 pb-6 min-h-0">
-        <div className="bg-white border border-[#E9E0CE] rounded-xl h-full flex flex-col overflow-hidden">
+        <div className="bg-white dark:bg-[#25211A] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl h-full flex flex-col overflow-hidden">
           {/* Sticky header */}
-          <div className="flex-shrink-0 border-b border-gray-200 bg-gray-50">
+          <div className="flex-shrink-0 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
             <table className="w-full table-fixed">
               <colgroup>
                 <col style={{ width: '20%' }} />
@@ -716,7 +731,7 @@ function SoldApp(): React.ReactElement {
                     ['Total',           'total'],
                     ['SA',              'saName'],
                   ] as [string, string][]).map(([label, key]) => (
-                    <th key={key} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                    <th key={key} className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                       <ColHeader label={label} colKey={key} />
                     </th>
                   ))}
@@ -732,7 +747,7 @@ function SoldApp(): React.ReactElement {
           >
             {sortedRows.length === 0 ? (
               <div className="flex items-center justify-center py-16">
-                <p className="text-sm text-gray-400">No orders match the current filters.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">No orders match the current filters.</p>
               </div>
             ) : (
               <table className="w-full table-fixed">
@@ -750,27 +765,27 @@ function SoldApp(): React.ReactElement {
                     <tr
                       key={row.id}
                       onClick={() => handleRowClick(row)}
-                      className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer transition-colors"
+                      className="border-b border-gray-100 dark:border-white/5 hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] cursor-pointer transition-colors"
                     >
                       <td className="px-3 py-2.5">
-                        <div className="text-sm font-medium text-gray-800 truncate">{row.clientName || '—'}</div>
+                        <div className="text-sm font-medium text-gray-800 dark:text-[#F3EFE6] truncate">{row.clientName || '—'}</div>
                         {row.stage && (
                           <span className={`mt-0.5 inline-flex items-center px-2 py-0 rounded-full text-xs font-medium border ${getStageColor(row.stage)}`}>
                             {row.stage}
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700">{row.shopifyNum || '—'}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">{row.shopifyNum || '—'}</td>
                       <td className="px-3 py-2.5 text-sm">
                         {row.amNum
-                          ? <span className="text-amber-600 font-medium">AM-{row.amNum}</span>
-                          : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 text-red-600 border-red-200">Missing</span>
+                          ? <span className="text-[#D97706] dark:text-[#FBBF24] font-medium">AM-{row.amNum}</span>
+                          : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-200 dark:border-red-500/30">Missing</span>
                         }
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700">{formatDateOrdinal(row.orderDateRaw)}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 truncate">{row.itemNames.join(', ') || '—'}</td>
-                      <td className="px-3 py-2.5 text-sm font-medium text-gray-800">{fmt$(row.total)}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 truncate">{row.saName || '—'}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">{formatDateOrdinal(row.orderDateRaw)}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 truncate">{row.itemNames.join(', ') || '—'}</td>
+                      <td className="px-3 py-2.5 text-sm font-medium text-gray-800 dark:text-[#F3EFE6]">{fmt$(row.total)}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 truncate">{row.saName || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
