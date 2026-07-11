@@ -703,10 +703,13 @@ function Layer2({
   const [isSaving, setIsSaving] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [showClientSearch, setShowClientSearch] = useState(false);
+  const [clientHighlightIndex, setClientHighlightIndex] = useState(-1);
   const [styleSearchQuery, setStyleSearchQuery] = useState('');
   const [showStyleSearch, setShowStyleSearch] = useState(false);
+  const [styleHighlightIndex, setStyleHighlightIndex] = useState(-1);
   const [customizationSearchQuery, setCustomizationSearchQuery] = useState('');
   const [showCustomizationSearch, setShowCustomizationSearch] = useState(false);
+  const [customizationHighlightIndex, setCustomizationHighlightIndex] = useState(-1);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const clientSearchRef = useRef<HTMLDivElement>(null);
@@ -982,9 +985,29 @@ function Layer2({
                   const value = e.target.value;
                   setClientSearchQuery(value);
                   setShowClientSearch(value.trim() !== '');
+                  setClientHighlightIndex(-1);
                 }}
                 onFocus={() => {
-                  if (clientId) setShowClientSearch(true);
+                  if (clientId) {
+                    setShowClientSearch(true);
+                    setClientHighlightIndex(-1);
+                  }
+                }}
+                onKeyDown={e => {
+                  if (!showClientSearch || filteredClients.length === 0) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setClientHighlightIndex(i => Math.min(i + 1, filteredClients.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setClientHighlightIndex(i => Math.max(i - 1, 0));
+                  } else if (e.key === 'Enter' && clientHighlightIndex >= 0) {
+                    e.preventDefault();
+                    const client = filteredClients[clientHighlightIndex];
+                    onClientSelect(client.id);
+                    setShowClientSearch(false);
+                    setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
+                  }
                 }}
                 className={`w-full pl-9 py-2 rounded-md text-sm ${clientId ? 'pr-9' : 'pr-3'}`}
                 style={{
@@ -1011,7 +1034,7 @@ function Layer2({
                 className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                 style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
               >
-                {filteredClients.map(client => (
+                {filteredClients.map((client, index) => (
                   <button
                     key={client.id}
                     onClick={() => {
@@ -1020,9 +1043,8 @@ function Layer2({
                       setClientSearchQuery(clientNameField ? client.getCellValueAsString(clientNameField) : '');
                     }}
                     className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                    style={{ color: theme.text }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    style={{ color: theme.text, backgroundColor: index === clientHighlightIndex ? theme.bgHover : 'transparent' }}
+                    onMouseEnter={() => setClientHighlightIndex(index)}
                   >
                     {clientNameField ? client.getCellValueAsString(clientNameField) : 'Unknown'}
                   </button>
@@ -1046,7 +1068,35 @@ function Layer2({
                 onChange={e => {
                   const value = e.target.value;
                   setStyleSearchQuery(value);
-                  setShowStyleSearch(value.trim() !== '');
+                  setShowStyleSearch(true);
+                  setStyleHighlightIndex(-1);
+                }}
+                onFocus={() => {
+                  if (clientId) {
+                    setShowStyleSearch(true);
+                    setStyleHighlightIndex(-1);
+                  }
+                }}
+                onKeyDown={e => {
+                  if (!showStyleSearch || eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '') return;
+                  if (filteredStyles.length === 0) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setStyleHighlightIndex(i => Math.min(i + 1, filteredStyles.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setStyleHighlightIndex(i => Math.max(i - 1, 0));
+                  } else if (e.key === 'Enter' && styleHighlightIndex >= 0) {
+                    e.preventDefault();
+                    const style = filteredStyles[styleHighlightIndex];
+                    const isSelected = selectedStyleIds.includes(style.id);
+                    setSelectedStyleIds(
+                      isSelected
+                        ? selectedStyleIds.filter(id => id !== style.id)
+                        : [...selectedStyleIds, style.id]
+                    );
+                    setStyleSearchQuery('');
+                  }
                 }}
                 disabled={!clientId}
                 className="w-full pl-9 pr-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1056,36 +1106,45 @@ function Layer2({
                   color: theme.text
                 }}
               />
-              {showStyleSearch && clientId && styleSearchQuery.trim() !== '' && (
+              {showStyleSearch && clientId && (
                 <div
                   className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                   style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                 >
-                  {filteredStyles.map(style => {
-                    const isSelected = selectedStyleIds.includes(style.id);
-                    return (
-                      <button
-                        key={style.id}
-                        onClick={() => {
-                          setSelectedStyleIds(
-                            isSelected
-                              ? selectedStyleIds.filter(id => id !== style.id)
-                              : [...selectedStyleIds, style.id]
-                          );
-                          setStyleSearchQuery('');
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
-                        style={{ color: theme.text, backgroundColor: isSelected ? theme.accentSoft : 'transparent' }}
-                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isSelected ? theme.accentSoft : 'transparent'; }}
-                      >
-                        <span className={isSelected ? 'font-medium' : ''}>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                        <span style={{ color: theme.textSecondary }}>
-                          {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  {eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '' ? (
+                    <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>
+                      This client doesn't have pre-selected styles. Start typing to search styles.
+                    </p>
+                  ) : (
+                    filteredStyles.map((style, index) => {
+                      const isSelected = selectedStyleIds.includes(style.id);
+                      const isHighlighted = index === styleHighlightIndex;
+                      return (
+                        <button
+                          key={style.id}
+                          onClick={() => {
+                            setSelectedStyleIds(
+                              isSelected
+                                ? selectedStyleIds.filter(id => id !== style.id)
+                                : [...selectedStyleIds, style.id]
+                            );
+                            setStyleSearchQuery('');
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
+                          style={{
+                            color: theme.text,
+                            backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
+                          }}
+                          onMouseEnter={() => setStyleHighlightIndex(index)}
+                        >
+                          <span className={isSelected ? 'font-medium' : ''}>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                          <span style={{ color: theme.textSecondary }}>
+                            {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               )}
             </div>
@@ -1127,22 +1186,49 @@ function Layer2({
                       type="text"
                       placeholder="Search customizations..."
                       value={customizationSearchQuery}
-                      onChange={e => setCustomizationSearchQuery(e.target.value)}
-                      onFocus={() => setShowCustomizationSearch(true)}
+                      onChange={e => {
+                        setCustomizationSearchQuery(e.target.value);
+                        setCustomizationHighlightIndex(-1);
+                      }}
+                      onFocus={() => {
+                        setShowCustomizationSearch(true);
+                        setCustomizationHighlightIndex(-1);
+                      }}
+                      onKeyDown={e => {
+                        if (!showCustomizationSearch || filteredCustomizations.length === 0) return;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setCustomizationHighlightIndex(i => Math.min(i + 1, filteredCustomizations.length - 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setCustomizationHighlightIndex(i => Math.max(i - 1, 0));
+                        } else if (e.key === 'Enter' && customizationHighlightIndex >= 0) {
+                          e.preventDefault();
+                          const customization = filteredCustomizations[customizationHighlightIndex];
+                          const isSelected = selectedCustomizationIds.includes(customization.id);
+                          setSelectedCustomizationIds(
+                            isSelected
+                              ? selectedCustomizationIds.filter(id => id !== customization.id)
+                              : [...selectedCustomizationIds, customization.id]
+                          );
+                          setCustomizationSearchQuery('');
+                        }
+                      }}
                       className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
-                      style={{ 
-                        backgroundColor: theme.bg, 
+                      style={{
+                        backgroundColor: theme.bg,
                         border: `1px solid ${theme.border}`,
-                        color: theme.text 
+                        color: theme.text
                       }}
                     />
                     {showCustomizationSearch && (
-                      <div 
+                      <div
                         className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                         style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                       >
-                        {filteredCustomizations.map(customization => {
+                        {filteredCustomizations.map((customization, index) => {
                           const isSelected = selectedCustomizationIds.includes(customization.id);
+                          const isHighlighted = index === customizationHighlightIndex;
                           const approvalStatus = customizationApprovalStatusField
                             ? customization.getCellValueAsString(customizationApprovalStatusField)
                             : '';
@@ -1159,9 +1245,11 @@ function Layer2({
                                 setCustomizationSearchQuery('');
                               }}
                               className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                              style={{ color: theme.text, backgroundColor: isSelected ? theme.accentSoft : 'transparent' }}
-                              onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isSelected ? theme.accentSoft : 'transparent'; }}
+                              style={{
+                                color: theme.text,
+                                backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
+                              }}
+                              onMouseEnter={() => setCustomizationHighlightIndex(index)}
                             >
                               <div className="flex items-center justify-between">
                                 <span className={isSelected ? 'font-medium' : ''}>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
@@ -1450,8 +1538,10 @@ function Layer4({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [styleSearchQuery, setStyleSearchQuery] = useState('');
   const [showStyleSearch, setShowStyleSearch] = useState(false);
+  const [styleHighlightIndex, setStyleHighlightIndex] = useState(-1);
   const [customizationSearchQuery, setCustomizationSearchQuery] = useState('');
   const [showCustomizationSearch, setShowCustomizationSearch] = useState(false);
+  const [customizationHighlightIndex, setCustomizationHighlightIndex] = useState(-1);
 
   const styleSearchRef = useRef<HTMLDivElement>(null);
   const customizationSearchRef = useRef<HTMLDivElement>(null);
@@ -1845,7 +1935,27 @@ function Layer4({
                     onChange={e => {
                       const value = e.target.value;
                       setStyleSearchQuery(value);
-                      setShowStyleSearch(value.trim() !== '');
+                      setShowStyleSearch(true);
+                      setStyleHighlightIndex(-1);
+                    }}
+                    onFocus={() => {
+                      setShowStyleSearch(true);
+                      setStyleHighlightIndex(-1);
+                    }}
+                    onKeyDown={e => {
+                      if (!showStyleSearch) return;
+                      const addableStyles = filteredStyles.filter(s => !linkedStyleIds.includes(s.id));
+                      if (addableStyles.length === 0) return;
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setStyleHighlightIndex(i => Math.min(i + 1, addableStyles.length - 1));
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setStyleHighlightIndex(i => Math.max(i - 1, 0));
+                      } else if (e.key === 'Enter' && styleHighlightIndex >= 0) {
+                        e.preventDefault();
+                        handleAddStyle(addableStyles[styleHighlightIndex].id);
+                      }
                     }}
                     className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
                     style={{
@@ -1854,28 +1964,33 @@ function Layer4({
                       color: theme.text
                     }}
                   />
-                  {showStyleSearch && styleSearchQuery.trim() !== '' && (
+                  {showStyleSearch && (
                     <div
                       className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                       style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                     >
-                      {filteredStyles
-                        .filter(s => !linkedStyleIds.includes(s.id))
-                        .map(style => (
-                          <button
-                            key={style.id}
-                            onClick={() => handleAddStyle(style.id)}
-                            className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
-                            style={{ color: theme.text }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                          >
-                            <span>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
-                            <span style={{ color: theme.textSecondary }}>
-                              {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
-                            </span>
-                          </button>
-                        ))}
+                      {eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '' ? (
+                        <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>
+                          This client doesn't have pre-selected styles. Start typing to search styles.
+                        </p>
+                      ) : (
+                        filteredStyles
+                          .filter(s => !linkedStyleIds.includes(s.id))
+                          .map((style, index) => (
+                            <button
+                              key={style.id}
+                              onClick={() => handleAddStyle(style.id)}
+                              className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer flex justify-between"
+                              style={{ color: theme.text, backgroundColor: index === styleHighlightIndex ? theme.bgHover : 'transparent' }}
+                              onMouseEnter={() => setStyleHighlightIndex(index)}
+                            >
+                              <span>{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</span>
+                              <span style={{ color: theme.textSecondary }}>
+                                {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
+                              </span>
+                            </button>
+                          ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -1926,8 +2041,29 @@ function Layer4({
                       type="text"
                       placeholder="Add customization..."
                       value={customizationSearchQuery}
-                      onChange={e => setCustomizationSearchQuery(e.target.value)}
-                      onFocus={() => setShowCustomizationSearch(true)}
+                      onChange={e => {
+                        setCustomizationSearchQuery(e.target.value);
+                        setCustomizationHighlightIndex(-1);
+                      }}
+                      onFocus={() => {
+                        setShowCustomizationSearch(true);
+                        setCustomizationHighlightIndex(-1);
+                      }}
+                      onKeyDown={e => {
+                        if (!showCustomizationSearch) return;
+                        const addableCustomizations = filteredCustomizations.filter(c => !linkedCustomizationIds.includes(c.id));
+                        if (addableCustomizations.length === 0) return;
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setCustomizationHighlightIndex(i => Math.min(i + 1, addableCustomizations.length - 1));
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setCustomizationHighlightIndex(i => Math.max(i - 1, 0));
+                        } else if (e.key === 'Enter' && customizationHighlightIndex >= 0) {
+                          e.preventDefault();
+                          handleAddCustomization(addableCustomizations[customizationHighlightIndex].id);
+                        }
+                      }}
                       className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
                       style={{
                         backgroundColor: theme.bg,
@@ -1942,7 +2078,7 @@ function Layer4({
                       >
                         {filteredCustomizations
                           .filter(c => !linkedCustomizationIds.includes(c.id))
-                          .map(customization => {
+                          .map((customization, index) => {
                             const approvalStatus = customizationApprovalStatusField
                               ? customization.getCellValueAsString(customizationApprovalStatusField)
                               : '';
@@ -1952,9 +2088,8 @@ function Layer4({
                                 key={customization.id}
                                 onClick={() => handleAddCustomization(customization.id)}
                                 className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
-                                style={{ color: theme.text }}
-                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                style={{ color: theme.text, backgroundColor: index === customizationHighlightIndex ? theme.bgHover : 'transparent' }}
+                                onMouseEnter={() => setCustomizationHighlightIndex(index)}
                               >
                                 <div className="flex items-center justify-between">
                                   <span>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</span>
