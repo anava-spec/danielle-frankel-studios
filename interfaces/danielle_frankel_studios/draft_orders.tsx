@@ -523,7 +523,7 @@ function Layer1({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-[15%] py-4 border-b" style={{ borderColor: theme.border }}>
+      <div className="flex items-center gap-3 px-[10%] py-4 border-b" style={{ borderColor: theme.border }}>
         <div className="relative flex-1 max-w-xs">
           <MagnifyingGlassIcon
             size={16}
@@ -567,7 +567,7 @@ function Layer1({
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto px-[15%] py-6">
+      <div className="flex-1 overflow-auto px-[10%] py-6">
         {filteredClients.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p style={{ color: theme.textSecondary }}>
@@ -575,12 +575,12 @@ function Layer1({
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-4">
             {filteredClients.map(client => {
               const clientName = nameField ? client.getCellValueAsString(nameField) : 'Unknown';
               const draftCount = getLinkedRecordIds(client, draftOrdersField).length;
               const mostRecentDraft = getMostRecentDraft(client.id);
-              const grandTotal = mostRecentDraft && grandTotalField 
+              const grandTotal = mostRecentDraft && grandTotalField
                 ? (mostRecentDraft.getCellValue(grandTotalField) as number | null)
                 : null;
               const isLocked = mostRecentDraft && lockedField
@@ -591,21 +591,19 @@ function Layer1({
                 <div
                   key={client.id}
                   onClick={() => onClientClick(client.id)}
-                  className="flex items-center justify-between p-4 rounded-lg cursor-pointer transition-colors"
+                  className="flex flex-col gap-2 p-4 rounded-lg cursor-pointer transition-colors"
                   style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.bgHover; }}
                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = theme.bgCard; }}
                 >
-                  <div className="flex-1">
+                  <div className="flex items-start justify-between gap-2">
                     <p className="font-medium">{clientName}</p>
-                    <p className="text-sm" style={{ color: theme.textSecondary }}>
-                      {draftCount} draft{draftCount !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium">{formatCurrency(grandTotal)}</span>
                     <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
                   </div>
+                  <p className="text-sm" style={{ color: theme.textSecondary }}>
+                    {draftCount} draft{draftCount !== 1 ? 's' : ''}
+                  </p>
+                  <span className="font-medium">{formatCurrency(grandTotal)}</span>
                 </div>
               );
             })}
@@ -675,7 +673,7 @@ function Layer3({
         style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
       />
       <div
-        className="relative w-full h-[640px] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
+        className="relative w-full h-[380px] flex flex-col rounded-xl overflow-hidden transition-all duration-200 ease-out"
         style={{
           backgroundColor: theme.bgCard,
           maxWidth: '560px',
@@ -1418,18 +1416,17 @@ function Layer2({
             <h3 className="text-sm font-semibold mb-3">Additional Charges</h3>
             
             {rushFee !== 0 && (
-              <div className="flex items-center justify-between py-2">
+              <div className="flex items-center justify-between py-2 gap-4">
                 <div>
                   <span className="text-sm">Rush Fee</span>
-                  <span className="text-xs ml-2" style={{ color: theme.textMuted }}>(auto-calculated)</span>
+                  {clientDueDate && weeksUntilDueDate !== null && (
+                    <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
+                      Calculated because the due date to have the styles ready by is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(clientDueDate.toISOString())}.
+                    </p>
+                  )}
                 </div>
-                <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
+                <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(rushFee)}</span>
               </div>
-            )}
-            {clientDueDate && weeksUntilDueDate !== null && (
-              <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
-                Due {formatDate(clientDueDate.toISOString())} — {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'} away.
-              </p>
             )}
             {!clientDueDate && clientId && (
               <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
@@ -2285,18 +2282,17 @@ function Layer4({
 
               <div className="space-y-3">
                 {rushFee !== 0 && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
                       <span className="text-sm">Rush Fee</span>
-                      <span className="text-xs ml-2" style={{ color: theme.textMuted }}>(auto-calculated)</span>
+                      {dueDate && weeksUntilDueDate !== null && (
+                        <p className="text-xs mt-0.5" style={{ color: theme.textMuted }}>
+                          Calculated because the due date to have the styles ready by is in {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'}, on {formatDate(dueDate.toISOString())}.
+                        </p>
+                      )}
                     </div>
-                    <span className="text-sm font-medium">{formatCurrency(rushFee)}</span>
+                    <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(rushFee)}</span>
                   </div>
-                )}
-                {dueDate && weeksUntilDueDate !== null && (
-                  <p className="text-xs" style={{ color: theme.textSecondary }}>
-                    Due {formatDate(dueDate.toISOString())} — {weeksUntilDueDate} week{weeksUntilDueDate === 1 ? '' : 's'} away.
-                  </p>
                 )}
                 {!clientDueDate && (
                   <p className="text-xs" style={{ color: theme.textSecondary }}>
