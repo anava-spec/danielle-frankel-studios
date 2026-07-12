@@ -1290,18 +1290,19 @@ function Layer2({
                   {selectedStyles.length === 0 ? (
                     <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
                   ) : (
+                    <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                     <table className="w-full text-sm border-collapse">
                       <thead>
-                        <tr>
-                          <th className="w-6"></th>
-                          <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
-                          <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                        <tr style={{ backgroundColor: theme.bgHover }}>
+                          <th className="w-10 pl-4 py-3"></th>
+                          <th className="text-left py-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                          <th className="text-right py-3 pr-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selectedStyles.map(style => (
                           <tr key={style.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                            <td className="py-2">
+                            <td className="py-3 pl-4">
                               <button
                                 onClick={() => setSelectedStyleIds(selectedStyleIds.filter(id => id !== style.id))}
                                 className="hover:cursor-pointer"
@@ -1310,21 +1311,22 @@ function Layer2({
                                 <XIcon size={14} />
                               </button>
                             </td>
-                            <td className="py-2 pr-3">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</td>
-                            <td className="py-2 text-right whitespace-nowrap">
+                            <td className="py-3 pr-3">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</td>
+                            <td className="py-3 pr-4 text-right whitespace-nowrap">
                               {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot>
-                        <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                          <td></td>
-                          <td className="py-2 font-medium">Subtotal</td>
-                          <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(styleSubtotal)}</td>
+                        <tr style={{ borderTop: `1px solid ${theme.border}` }}>
+                          <td className="py-3 pl-4"></td>
+                          <td className="py-3 font-medium">Subtotal</td>
+                          <td className="py-3 pr-4 text-right font-medium whitespace-nowrap">{formatCurrency(styleSubtotal)}</td>
                         </tr>
                       </tfoot>
                     </table>
+                    </div>
                   )}
               </div>
 
@@ -1419,18 +1421,19 @@ function Layer2({
                     {selectedCustomizations.length === 0 ? (
                       <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
                     ) : (
+                      <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                       <table className="w-full text-sm border-collapse">
                         <thead>
-                          <tr>
-                            <th className="w-6"></th>
-                            <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
-                            <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                          <tr style={{ backgroundColor: theme.bgHover }}>
+                            <th className="w-10 pl-4 py-3"></th>
+                            <th className="text-left py-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                            <th className="text-right py-3 pr-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedCustomizations.map(customization => (
                             <tr key={customization.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                              <td className="py-2 align-top">
+                              <td className="py-3 pl-4 align-top">
                                 <button
                                   onClick={() => setSelectedCustomizationIds(selectedCustomizationIds.filter(id => id !== customization.id))}
                                   className="hover:cursor-pointer"
@@ -1439,7 +1442,7 @@ function Layer2({
                                   <XIcon size={14} />
                                 </button>
                               </td>
-                              <td className="py-2 pr-3 align-top">
+                              <td className="py-3 pr-3 align-top">
                                 <div>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</div>
                                 {customizationDetailField && customization.getCellValueAsString(customizationDetailField) && (
                                   <div className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
@@ -1447,20 +1450,21 @@ function Layer2({
                                   </div>
                                 )}
                               </td>
-                              <td className="py-2 text-right align-top whitespace-nowrap">
+                              <td className="py-3 pr-4 text-right align-top whitespace-nowrap">
                                 {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                            <td></td>
-                            <td className="py-2 font-medium">Subtotal</td>
-                            <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(customizationSubtotal)}</td>
+                          <tr style={{ borderTop: `1px solid ${theme.border}` }}>
+                            <td className="py-3 pl-4"></td>
+                            <td className="py-3 font-medium">Subtotal</td>
+                            <td className="py-3 pr-4 text-right font-medium whitespace-nowrap">{formatCurrency(customizationSubtotal)}</td>
                           </tr>
                         </tfoot>
                       </table>
+                      </div>
                     )}
                 </div>
               )}
@@ -1472,6 +1476,7 @@ function Layer2({
                       Rush fee requires a wedding date on file.
                     </p>
                   )}
+                  <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                   <table className="w-full text-sm border-collapse table-fixed">
                     <colgroup>
                       <col style={{ width: '25%' }} />
@@ -1479,26 +1484,26 @@ function Layer2({
                       <col style={{ width: '50%' }} />
                     </colgroup>
                     <thead>
-                      <tr>
-                        <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Charge</th>
-                        <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
-                        <th className="text-left pb-2 pl-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Notes</th>
+                      <tr style={{ backgroundColor: theme.bgHover }}>
+                        <th className="text-left py-3 pl-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Charge</th>
+                        <th className="text-right py-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                        <th className="text-left py-3 pl-3 pr-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {rushFee !== 0 && (
                         <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                          <td className="py-2" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
-                          <td className="py-2 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
-                          <td className="py-2 pl-3 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
+                          <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
+                          <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
+                          <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
                             {clientDueDate && weeksUntilDueDate !== null &&
                               `Due date to have the styles ready is in ${weeksUntilDueDate} week${weeksUntilDueDate === 1 ? '' : 's'}, on ${formatDate(clientDueDate.toISOString())}.`}
                           </td>
                         </tr>
                       )}
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-2">Shipping</td>
-                        <td className="py-2">
+                        <td className="py-3 pl-4">Shipping</td>
+                        <td className="py-3">
                           <input
                             type="text"
                             placeholder="$0.00"
@@ -1509,7 +1514,7 @@ function Layer2({
                             style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
                           />
                         </td>
-                        <td className="py-2 pl-3">
+                        <td className="py-3 pl-3 pr-4">
                           <input
                             type="text"
                             placeholder="Notes..."
@@ -1522,8 +1527,8 @@ function Layer2({
                         </td>
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-2">Taxes</td>
-                        <td className="py-2">
+                        <td className="py-3 pl-4">Taxes</td>
+                        <td className="py-3">
                           <input
                             type="text"
                             placeholder="$0.00"
@@ -1534,7 +1539,7 @@ function Layer2({
                             style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
                           />
                         </td>
-                        <td className="py-2 pl-3">
+                        <td className="py-3 pl-3 pr-4">
                           <input
                             type="text"
                             placeholder="Notes..."
@@ -1547,8 +1552,8 @@ function Layer2({
                         </td>
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-2">Discount</td>
-                        <td className="py-2">
+                        <td className="py-3 pl-4">Discount</td>
+                        <td className="py-3">
                           <input
                             type="text"
                             placeholder="$0.00"
@@ -1559,7 +1564,7 @@ function Layer2({
                             style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
                           />
                         </td>
-                        <td className="py-2 pl-3">
+                        <td className="py-3 pl-3 pr-4">
                           <input
                             type="text"
                             placeholder="Notes..."
@@ -1573,6 +1578,7 @@ function Layer2({
                       </tr>
                     </tbody>
                   </table>
+                  </div>
               </div>
             </div>
 
@@ -2259,18 +2265,19 @@ function Layer4({
               {linkedStyles.length === 0 ? (
                 <p className="text-sm" style={{ color: theme.textSecondary }}>No styles selected.</p>
               ) : (
+                <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                 <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr>
-                      <th className="w-6"></th>
-                      <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
-                      <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                    <tr style={{ backgroundColor: theme.bgHover }}>
+                      <th className="w-10 pl-4 py-3"></th>
+                      <th className="text-left py-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                      <th className="text-right py-3 pr-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
                     </tr>
                   </thead>
                   <tbody>
                     {linkedStyles.map(style => (
                       <tr key={style.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-2">
+                        <td className="py-3 pl-4">
                           {isEditable && (
                             <button
                               onClick={() => handleRemoveStyle(style.id)}
@@ -2281,21 +2288,22 @@ function Layer4({
                             </button>
                           )}
                         </td>
-                        <td className="py-2 pr-3">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</td>
-                        <td className="py-2 text-right whitespace-nowrap">
+                        <td className="py-3 pr-3">{styleNameField ? style.getCellValueAsString(styleNameField) : 'Unknown'}</td>
+                        <td className="py-3 pr-4 text-right whitespace-nowrap">
                           {formatCurrency(stylePriceField ? (style.getCellValue(stylePriceField) as number | null) : null)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                      <td></td>
-                      <td className="py-2 font-medium">Subtotal</td>
-                      <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(styleSubtotal)}</td>
+                    <tr style={{ borderTop: `1px solid ${theme.border}` }}>
+                      <td className="py-3 pl-4"></td>
+                      <td className="py-3 font-medium">Subtotal</td>
+                      <td className="py-3 pr-4 text-right font-medium whitespace-nowrap">{formatCurrency(styleSubtotal)}</td>
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               )}
           </div>
 
@@ -2376,18 +2384,19 @@ function Layer4({
                 {linkedCustomizations.length === 0 ? (
                   <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
                 ) : (
+                  <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr>
-                        <th className="w-6"></th>
-                        <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
-                        <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                      <tr style={{ backgroundColor: theme.bgHover }}>
+                        <th className="w-10 pl-4 py-3"></th>
+                        <th className="text-left py-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Name</th>
+                        <th className="text-right py-3 pr-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
                       </tr>
                     </thead>
                     <tbody>
                       {linkedCustomizations.map(customization => (
                         <tr key={customization.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                          <td className="py-2 align-top">
+                          <td className="py-3 pl-4 align-top">
                             {isEditable && (
                               <button
                                 onClick={() => handleRemoveCustomization(customization.id)}
@@ -2398,7 +2407,7 @@ function Layer4({
                               </button>
                             )}
                           </td>
-                          <td className="py-2 pr-3 align-top">
+                          <td className="py-3 pr-3 align-top">
                             <div>{customizationIdField ? customization.getCellValueAsString(customizationIdField) : 'Unknown'}</div>
                             {customizationDetailField && customization.getCellValueAsString(customizationDetailField) && (
                               <div className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>
@@ -2406,20 +2415,21 @@ function Layer4({
                               </div>
                             )}
                           </td>
-                          <td className="py-2 text-right align-top whitespace-nowrap">
+                          <td className="py-3 pr-4 text-right align-top whitespace-nowrap">
                             {formatCurrency(customizationEffectivePriceField ? (customization.getCellValue(customizationEffectivePriceField) as number | null) : null)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td></td>
-                        <td className="py-2 font-medium">Subtotal</td>
-                        <td className="py-2 text-right font-medium whitespace-nowrap">{formatCurrency(customizationSubtotal)}</td>
+                      <tr style={{ borderTop: `1px solid ${theme.border}` }}>
+                        <td className="py-3 pl-4"></td>
+                        <td className="py-3 font-medium">Subtotal</td>
+                        <td className="py-3 pr-4 text-right font-medium whitespace-nowrap">{formatCurrency(customizationSubtotal)}</td>
                       </tr>
                     </tfoot>
                   </table>
+                  </div>
                 )}
             </div>
           )}
@@ -2431,6 +2441,7 @@ function Layer4({
                   Rush fee requires a wedding date on file.
                 </p>
               )}
+              <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
               <table className="w-full text-sm border-collapse table-fixed">
                 <colgroup>
                   <col style={{ width: '25%' }} />
@@ -2438,31 +2449,31 @@ function Layer4({
                   <col style={{ width: '50%' }} />
                 </colgroup>
                 <thead>
-                  <tr>
-                    <th className="text-left pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Charge</th>
-                    <th className="text-right pb-2 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
-                    <th className="text-left pb-2 pl-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Notes</th>
+                  <tr style={{ backgroundColor: theme.bgHover }}>
+                    <th className="text-left py-3 pl-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Charge</th>
+                    <th className="text-right py-3 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Price</th>
+                    <th className="text-left py-3 pl-3 pr-4 text-xs font-medium uppercase tracking-wide" style={{ color: theme.textMuted }}>Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rushFee !== 0 && (
                     <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                      <td className="py-2" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
-                      <td className="py-2 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
-                      <td className="py-2 pl-3 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
+                      <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
+                      <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
+                      <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
                         {dueDate && weeksUntilDueDate !== null &&
                           `Due date to have the styles ready is in ${weeksUntilDueDate} week${weeksUntilDueDate === 1 ? '' : 's'}, on ${formatDate(dueDate.toISOString())}.`}
                       </td>
                     </tr>
                   )}
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-2">Shipping</td>
-                    <td className="py-2">
+                    <td className="py-3 pl-4">Shipping</td>
+                    <td className="py-3">
                       {isEditable ? (
                         <CurrencyInput label="Shipping" value={shipping} field={shippingField} fieldKey="shipping" error={fieldErrors.shipping} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
                       ) : <span className="block text-right">{formatCurrency(shipping)}</span>}
                     </td>
-                    <td className="py-2 pl-3">
+                    <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={shippingNotes} field={shippingNotesField} fieldKey="shippingNotes" theme={theme} onBlur={handleNotesBlur} borderless />
                       ) : (
@@ -2471,13 +2482,13 @@ function Layer4({
                     </td>
                   </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-2">Taxes</td>
-                    <td className="py-2">
+                    <td className="py-3 pl-4">Taxes</td>
+                    <td className="py-3">
                       {isEditable ? (
                         <CurrencyInput label="Taxes" value={taxes} field={taxesField} fieldKey="taxes" error={fieldErrors.taxes} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
                       ) : <span className="block text-right">{formatCurrency(taxes)}</span>}
                     </td>
-                    <td className="py-2 pl-3">
+                    <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={taxesNotes} field={taxesNotesField} fieldKey="taxesNotes" theme={theme} onBlur={handleNotesBlur} borderless />
                       ) : (
@@ -2486,13 +2497,13 @@ function Layer4({
                     </td>
                   </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-2">Discount</td>
-                    <td className="py-2">
+                    <td className="py-3 pl-4">Discount</td>
+                    <td className="py-3">
                       {isEditable ? (
                         <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
                       ) : <span className="block text-right">{`-${formatCurrency(discount)}`}</span>}
                     </td>
-                    <td className="py-2 pl-3">
+                    <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={discountNotes} field={discountNotesField} fieldKey="discountNotes" theme={theme} onBlur={handleNotesBlur} borderless />
                       ) : (
@@ -2502,6 +2513,7 @@ function Layer4({
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 
