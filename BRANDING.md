@@ -179,6 +179,26 @@ One shared `StatusPill` component (replacing the four near-duplicates — `Appro
 
 ---
 
+## 10b. Line-Item Tables
+
+The pattern for any panel that shows a **collection of linked records or itemized values with an aggregate total** — e.g. a Draft Order's Styles/Customizations/Additional Charges lists, or Customization Requests' customization list (`customization_requests.tsx`). Distinct from a full data-grid table (there's no such thing elsewhere in these interfaces): this is always scoped to one panel/section, shows a handful of rows, and ends in a summary row.
+
+**When to use it**: whenever a section's content *is* a list of records/charges attached to a parent (styles on a draft, customizations on a draft, line items on a request) rather than free-form content. If a section has a title + a search/add control + a removable list of things that sum to a subtotal, it's a Line-Item Table — don't build a bespoke stacked-card list for it.
+
+Structure:
+- **Container**: `1px` `border`, `8px` radius (§3), `overflow-hidden` so the header and footer corners clip cleanly — the border/radius live on a wrapping `<div>` around the `<table>`, not the table element itself (table borders don't render rounded corners reliably).
+- **Header row** (`<thead>`): `bg-hover`-tinted background (per §10's existing table-header convention), uppercase `11px` labels, weight `500`, colored `text_secondary`, `12px` vertical padding (`py-3`).
+- **Body rows** (`<tbody>`): `1px` top border in `border_light` (a lighter shade than the container's own `border` — define this token alongside `border` in §1 if a file doesn't have it yet) between every row, same `py-3` row height as the header, horizontal padding consistent with the header (`pl-4`/`pr-4` on the outermost columns).
+- **Remove-row column** (optional, first column): fixed narrow width (`w-10`), an `X` icon (`14px`, §11) in `text_muted`, only rendered when the row is actually removable — omit the column's cell content (not the column) for non-removable rows so alignment holds.
+- **Amount column(s)**: right-aligned, `whitespace-nowrap` (currency values must never wrap).
+- **Supplementary detail**: when a row's primary label has secondary context (e.g. a customization's detail text), render it as a second line *inside the same cell* — never as a separate column — at `12px`/`text_secondary`.
+- **Asymmetric column widths**: when columns need fixed proportions instead of auto-sizing (e.g. Additional Charges' Charge/Price/Notes at 25%/25%/50%), use a `<colgroup>` with explicit percentage `<col>` widths and `table-fixed` on the `<table>` — don't approximate proportions with padding/min-width tricks.
+- **Editable vs. non-editable cells**: an editable cell (e.g. a Shipping amount input) renders **borderless** — no box, no background, just text that happens to be an `<input>` — so it reads as part of the row. A **non-editable** cell/row (e.g. Rush Fee, which is always computed) instead gets a `neutral_bg`-tinted background across its cells to signal "this one is fixed," rather than the other way around (never box the editable ones to mark them as special — that inverts the visual hierarchy).
+- **Footer/summary row** (`<tfoot>`): bold label + bold amount, separated from the body by the container's stronger `border` (not the lighter `border_light` used between body rows), same padding as body rows. Every Line-Item Table ends in exactly one summary row (`Subtotal` for a list of records, `Total` for a list of charges) — never omit it, even if it duplicates a number shown elsewhere in a side panel.
+- **Empty state**: when there's nothing to show, render a plain `text_secondary` sentence ("No styles selected.") in place of the whole table — never render an empty table shell with just a header row.
+
+---
+
 ## 11. Icons
 
 - `@phosphor-icons/react` exclusively — no inline hand-rolled SVGs, no other icon package.
@@ -239,3 +259,4 @@ When building or refactoring an interface, confirm:
 - [ ] Filter dropdowns show the filter name as placeholder only when unapplied, the value + inline `X` when applied — no external label, no "Clear" text link (§5, §6)
 - [ ] Search bar placeholder reads "Search by `<field>`, `<field>`…" (§6)
 - [ ] Layout selector is a centered-text dropdown, not toggle buttons/tabs (§5b)
+- [ ] Any panel listing linked records/itemized charges uses the Line-Item Table pattern (§10b) — bordered/rounded container, shaded header, subtotal/total footer row — not a bespoke stacked-card list

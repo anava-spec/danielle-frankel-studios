@@ -1577,6 +1577,13 @@ function Layer2({
                         </td>
                       </tr>
                     </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: `1px solid ${theme.border}` }}>
+                        <td className="py-3 pl-4 font-medium">Total</td>
+                        <td className="py-3 font-medium text-right whitespace-nowrap">{formatCurrency(total)}</td>
+                        <td className="py-3 pl-3 pr-4"></td>
+                      </tr>
+                    </tfoot>
                   </table>
                   </div>
               </div>
@@ -2512,6 +2519,13 @@ function Layer4({
                     </td>
                   </tr>
                 </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: `1px solid ${theme.border}` }}>
+                    <td className="py-3 pl-4 font-medium">Total</td>
+                    <td className="py-3 font-medium text-right whitespace-nowrap">{formatCurrency(total)}</td>
+                    <td className="py-3 pl-3 pr-4"></td>
+                  </tr>
+                </tfoot>
               </table>
               </div>
             </div>
