@@ -1190,7 +1190,7 @@ function Layer2({
               </div>
               )}
 
-              <div className="rounded-lg p-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <div>
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <h2 className="text-base font-semibold">Styles</h2>
                     <div ref={styleSearchRef} className="relative w-64">
@@ -1329,7 +1329,7 @@ function Layer2({
               </div>
 
               {clientId && clientCustomizations.length > 0 && (
-                <div className="rounded-lg p-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <h2 className="text-base font-semibold">Customizations</h2>
                       <div ref={customizationSearchRef} className="relative w-64">
@@ -1465,7 +1465,7 @@ function Layer2({
                 </div>
               )}
 
-              <div className="rounded-lg p-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <div>
                   <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
                   {!clientDueDate && clientId && (
                     <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
@@ -2177,7 +2177,7 @@ function Layer4({
       <div className="flex-1 overflow-auto px-[15%] py-6">
         <div className="flex gap-6 items-start">
           <div className="w-[60%] min-w-0 space-y-4">
-            <div className="rounded-lg p-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+            <div>
               <div className="flex items-center justify-between gap-3 mb-3">
                 <h2 className="text-base font-semibold">Styles</h2>
                 {isEditable && (
@@ -2300,7 +2300,7 @@ function Layer4({
           </div>
 
           {clientCustomizations.length > 0 && (
-            <div className="rounded-lg p-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+            <div>
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h2 className="text-base font-semibold">Customizations</h2>
                   {isEditable && (
@@ -2424,7 +2424,7 @@ function Layer4({
             </div>
           )}
 
-          <div className="rounded-lg p-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+          <div>
               <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
               {!clientDueDate && (
                 <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
