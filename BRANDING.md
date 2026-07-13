@@ -75,9 +75,13 @@ const SEMANTIC = {
 ## 2. Typography
 
 - Font stack: `'Inter', system-ui, sans-serif` — declare this explicitly (inline `style={{ fontFamily: ... }}` on the root container, or a Tailwind `fontFamily` theme extension if the project has a config). Every file must declare it; don't rely on the browser default.
-- Sizes (px, not Tailwind's rem-based scale, for consistency with the token approach): `11px` (meta/labels), `12px`–`13px` (table cells, default body), `14px` (emphasized body/section labels), `15px`–`16px` (headers within a panel), `18px`+ (page titles only).
+- **Page-level heading hierarchy** (previously unspecified — every builder was picking their own sizes):
+  - **Title**: `18px`, weight `700`, `text_primary`. One per page, at the top of the header bar.
+  - **Subtitle**: `14px`, weight `500`, `text_secondary`. Optional — only when a page needs a short qualifier under the Title (e.g. a client name, a record count).
+  - **Description** (explanatory text under a Title/Subtitle, when a page needs one): `13px`, weight `400`, `text_secondary`.
+- Sizes (px, not Tailwind's rem-based scale, for consistency with the token approach): `11px` (meta/labels), `12px`–`13px` (table cells, default body), `14px` (emphasized body/section labels), `15px`–`16px` (headers within a panel), `18px`+ (page titles only, per hierarchy above).
 - Weights: `400` body, `500` for labels/table headers, `600` for emphasized values and headers, `700` reserved for page-level titles only.
-- Table headers: uppercase, `letter-spacing` wide (`0.05em`), `11px`, weight `500`, colored `text_secondary`.
+- Table headers: `capitalize` (not `uppercase`), `letter-spacing` wide (`0.05em`), `11px`, weight `500`, colored `text_secondary`.
 
 ---
 
@@ -105,13 +109,17 @@ Use raw `rgba` box-shadows (matches `sample_tracker.tsx`, more control than Tail
 
 Custom component, never a native `<select>`. One shared `Dropdown` pattern:
 - Trigger: same control styling as inputs (padding/radius/border per §3), `CaretDown` icon from `@phosphor-icons/react` on the right, rotates 180° when open (`transition-transform`, ~150ms).
+- **This applies to every `Dropdown` instance — filters and data fields alike.** A dropdown editing a record field (e.g. a status field on a detail page) follows the exact same trigger behavior as a filter dropdown — there's no separate "field dropdown" variant.
 - **Trigger label swaps based on state — no separate label sits outside the control:**
-  - **No filter applied**: trigger shows the filter's name (e.g. `Studio`, `Sales Associate`) in `text_secondary`, acting as its own placeholder/label. No filter name is ever shown as separate static text next to the control.
-  - **Filter applied**: trigger shows the **selected value** (e.g. `Los Angeles`, `Last 7 days`) in `text_primary`/`accent`-tinted per the active-state rule below, and a small `X` icon (`@phosphor-icons/react`, `14px`) appears at the trigger's right edge (replacing or sitting just before the `CaretDown`) to clear that one filter directly — no separate "Clear" text link per filter.
+  - **Nothing selected**: trigger shows the field/filter's name (e.g. `Studio`, `Sales Associate`) in `text_secondary`, acting as its own placeholder/label. No name is ever shown as separate static text next to the control.
+  - **Something selected**: trigger shows the **selected value** (e.g. `Los Angeles`, `Last 7 days`) in `text_primary`/`accent`-tinted per the active-state rule below. The `CaretDown` is **replaced** by a small `X` icon (`@phosphor-icons/react`, `14px`) at the trigger's right edge — always a hard swap, never both icons shown together, never the `X` merely sitting alongside the caret. Clicking the `X` clears the selection directly — no separate "Clear" text link per filter/field.
   - When a filter is active, color the trigger's **border** as well as text/background with `accent` — not just background (this was sample_tracker.tsx's improvement over the others; keep it).
   - **Exception — filters attached to an already color-coded panel**: when a dropdown filters a panel that itself uses semantic color (e.g. a "Sample Alerts"/danger-styled list where each card already has a red/amber border per urgency), the accent-on-active treatment can visually compete with that panel's own coloring. In that case, the trigger may opt out of the accent border/text-on-active (stay neutral `border`/`text_muted` regardless of state) while keeping every other behavior identical — value display, the inline `X`-to-clear, and the placeholder-name-when-empty state. Implement this as an explicit opt-out prop on the shared component (e.g. `accentOnActive={false}`), not a one-off inline override, so it stays traceable as a deliberate exception rather than a missed migration.
 - Panel: `surface` background, `1px` `border`, dropdown shadow (§4), `8px` radius, click-outside-to-close.
 - Options: `8px 12px` padding, hover state = `accent_soft` background, selected state = `accent` text + checkmark.
+- **Never render a checkbox next to an option, in single- or multi-select dropdowns.** A selected option is always communicated by highlighting it (the `accent` text + checkmark treatment above) — never by a checkbox control, even when multiple options can be selected at once.
+- **Deciding single- vs. multi-select is a required question, not a default.** When building a new filter, always ask whether it should accept one selection or several before implementing it — don't assume single-select as a default.
+- **Never add an "All" option to a filter's option list.** Having nothing selected already means "no filter applied" (i.e. every record shows) — an explicit "All" entry duplicates that default state and adds a redundant click.
 - **Filter names are always spelled out in full** — no abbreviations (`Sales Associate`, not `SA`) — since the name is user-facing placeholder text now (per above), not an internal label a developer might be tempted to shorten.
 
 ---
@@ -169,7 +177,7 @@ One shared `StatusPill` component (replacing the four near-duplicates — `Appro
 - Root shell: `h-screen flex flex-col overflow-hidden` — always include `overflow-hidden` on the root (pipeline.tsx's omission was a bug, not a variant).
 - Page structure: header bar (title + primary filters + primary action) → scrollable main content → optional footer/summary bar.
 - Modals: `fixed inset-0` wrapper, overlay per §4, centered panel with header / scrollable body / footer (footer holds actions, right-aligned, primary button rightmost).
-- Table headers: `app_bg`-tinted background, uppercase `11px` labels (per §2) — this convention was already shared between two files; keep it as the standard for every table.
+- Table headers: `app_bg`-tinted background, `capitalize` (not `uppercase`) `11px` labels (per §2) — this convention was already shared between two files; keep it as the standard for every table.
 - z-index scale — fix one scale and use only these values everywhere (replaces the current ad hoc `z-50/60/65/70/100/1000`):
   - `10`: sticky headers
   - `20`: dropdown/calendar panels
@@ -187,7 +195,7 @@ The pattern for any panel that shows a **collection of linked records or itemize
 
 Structure:
 - **Container**: `1px` `border`, `8px` radius (§3), `overflow-hidden` so the header and footer corners clip cleanly — the border/radius live on a wrapping `<div>` around the `<table>`, not the table element itself (table borders don't render rounded corners reliably).
-- **Header row** (`<thead>`): `bg-hover`-tinted background (per §10's existing table-header convention), uppercase `11px` labels, weight `500`, colored `text_secondary`, `12px` vertical padding (`py-3`).
+- **Header row** (`<thead>`): `bg-hover`-tinted background (per §10's existing table-header convention), `capitalize` (not `uppercase`) `11px` labels, weight `500`, colored `text_secondary`, `12px` vertical padding (`py-3`).
 - **Body rows** (`<tbody>`): `1px` top border in `border_light` (a lighter shade than the container's own `border` — define this token alongside `border` in §1 if a file doesn't have it yet) between every row, same `py-3` row height as the header, horizontal padding consistent with the header (`pl-4`/`pr-4` on the outermost columns).
 - **Remove-row column** (optional, first column): fixed narrow width (`w-10`), an `X` icon (`14px`, §11) in `text_muted`, only rendered when the row is actually removable — omit the column's cell content (not the column) for non-removable rows so alignment holds.
 - **Amount column(s)**: right-aligned, `whitespace-nowrap` (currency values must never wrap).

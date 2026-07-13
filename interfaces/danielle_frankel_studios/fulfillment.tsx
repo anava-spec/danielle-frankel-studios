@@ -553,10 +553,10 @@ function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, on
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
   }, [onCancel]);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
       onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[380px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] mb-1.5">{title}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
@@ -862,7 +862,7 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
           <p className="text-xs text-gray-500 dark:text-gray-400">Data synced from Apparel Magic — read only.</p>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             {fieldsToShow.map(([label, value]) => (
               <div key={label}>
                 <span className={lbl}>{label}</span>
@@ -1845,7 +1845,7 @@ function FulfillmentApp(): React.ReactElement {
   );
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden font-sans antialiased bg-[#F6F4F0] dark:bg-[#1A1917]">
+    <div className="h-screen flex flex-col overflow-hidden antialiased bg-[#F6F4F0] dark:bg-[#1A1917]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
 
       {selectedRecord && (
         <DetailModal
