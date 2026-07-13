@@ -379,6 +379,23 @@ function getReadinessSeverity(checksPassed: boolean, progress: number): Readines
   return progress > 0 ? 'red' : 'yellow';
 }
 
+const READINESS_SEVERITY_TEXT: Record<ReadinessSeverity, string> = { green: 'Ready', yellow: 'Pending', red: 'Attention' };
+
+type ReadinessCheckLabel = 'Tax' | 'Address' | 'Hold';
+const READINESS_CHECK_REASON: Record<ReadinessCheckLabel, string> = {
+  Tax: 'Tax not confirmed', Address: 'Address not confirmed', Hold: 'Hold pending',
+};
+
+// Builds the tooltip/aria-label for a combined readiness chip. `checks` must be passed
+// in fixed Tax → Address → Hold order so the failing-check list stays consistent.
+function buildReadinessTooltip(severity: ReadinessSeverity, checks: Array<{ label: ReadinessCheckLabel; passed: boolean }>): string {
+  const text = READINESS_SEVERITY_TEXT[severity];
+  const failing = checks.filter(c => !c.passed);
+  if (failing.length === 0) return `${text} — all checks passed`;
+  if (failing.length === 1) return `${text} — ${READINESS_CHECK_REASON[failing[0]!.label]}`;
+  return `${text} — ${failing.map(c => c.label).join(', ')} pending`;
+}
+
 function ReadinessDot({ severity, label }: { severity: ReadinessSeverity; label: string }) {
   const cls: Record<ReadinessSeverity, string> = {
     green:  'bg-green-500',
@@ -388,6 +405,24 @@ function ReadinessDot({ severity, label }: { severity: ReadinessSeverity; label:
   return (
     <span className="inline-flex items-center" title={label} aria-label={label} role="img">
       <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${cls[severity]}`} />
+    </span>
+  );
+}
+
+// Combined-check readiness chip — dot + status text ("Ready"/"Pending"/"Attention"), used in
+// the Readiness columns and the client-level chip. Individual per-check flags keep ReadinessDot.
+function ReadinessChip({ severity, tooltip }: { severity: ReadinessSeverity; tooltip: string }) {
+  const cls: Record<ReadinessSeverity, string> = {
+    green:  'bg-green-50  dark:bg-green-500/15  text-green-700  dark:text-green-300  border-green-200  dark:border-green-500/30',
+    yellow: 'bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-500/30',
+    red:    'bg-red-50    dark:bg-red-500/15    text-red-600    dark:text-red-300    border-red-200    dark:border-red-500/30',
+  };
+  const dotCls: Record<ReadinessSeverity, string> = { green: 'bg-green-500', yellow: 'bg-yellow-400', red: 'bg-red-500' };
+  return (
+    <span title={tooltip} aria-label={tooltip}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${cls[severity]}`}>
+      <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls[severity]}`} />
+      {READINESS_SEVERITY_TEXT[severity]}
     </span>
   );
 }
@@ -437,7 +472,7 @@ function MiniTable({ headers, rows, onRowClick }: {
         <thead>
           <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
             {headers.map((h, i) => (
-              <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+              <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
             ))}
           </tr>
         </thead>
@@ -510,7 +545,7 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
     finally { setSaving(false); }
   };
 
-  const lbl = 'text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium block mb-1.5';
+  const lbl = 'text-xs text-gray-500 dark:text-gray-400 capitalize tracking-wide font-medium block mb-1.5';
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
 
   return (
@@ -521,7 +556,7 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
         onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
           <div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-0.5">Order Adjustment</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order Adjustment</p>
             <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">New Adjustment</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
@@ -603,7 +638,7 @@ function AdjustmentDetailModal({ record, adjTable, onClose }: {
   }, [onClose]);
 
   const showDirection = changeType === 'Tax Adjustment' || changeType === 'Other';
-  const lbl = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1';
+  const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
   const signedVariant: PillVariant = signedAmount === null ? 'gray' : signedAmount >= 0 ? 'orange' : 'green';
   const signedLabel = signedAmount === null ? '—' : signedAmount >= 0 ? `+${formatCurrency(signedAmount)}` : formatCurrency(signedAmount);
@@ -616,7 +651,7 @@ function AdjustmentDetailModal({ record, adjTable, onClose }: {
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
           <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-0.5">Adjustment</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Adjustment</p>
             <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{orderId || 'Adjustment Detail'}</p>
           </div>
           <Pill variant={signedVariant}>{signedLabel}</Pill>
@@ -769,7 +804,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
   }, [onClose, selectedAdj, showAddModal]);
 
-  const lbl = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1';
+  const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
 
   const allAdjDirs: string[] = [
@@ -831,7 +866,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
           <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-0.5">Order</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order</p>
               <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">
                 {orderNumber ? `#${orderNumber}` : '—'}{amOrderNum ? ` · AM ${amOrderNum}` : ''}
               </p>
@@ -843,7 +878,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
           </div>
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             <section>
-              <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium block mb-3">Financials</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Financials</span>
               <div className="grid grid-cols-4 gap-3">
                 {([['Subtotal', subtotal], ['Shipping', shipping], ['Taxes', taxes], ['Total', total]] as [string, number | null][]).map(([label, val]) => (
                   <div key={label} className="bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2.5">
@@ -861,7 +896,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             </section>
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
-              <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium block mb-3">Pickup Readiness</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Pickup Readiness</span>
               <div className="flex items-center gap-4 flex-wrap mb-3">
                 {([
                   ['Tax', taxConfirmed],
@@ -878,7 +913,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                 })}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">Pickup Released</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide">Pickup Released</span>
                 <ToggleButton checked={pickupReleased} disabled={!canRelease && !pickupReleased}
                   label={pickupReleased ? 'Released' : 'Not Released'}
                   onChange={handleTogglePickupReleased} />
@@ -890,7 +925,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             </section>
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
-              <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium block mb-3">Fulfillment</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Fulfillment</span>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -936,7 +971,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             <section>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium">Order Adjustments</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">Order Adjustments</span>
                   {(localAdjs.length + optimisticAdjs.length) > 0 && (
                     <span className={`text-xs font-semibold ${totalAdjustments >= 0 ? 'text-orange-600 dark:text-orange-400' : 'text-green-600 dark:text-green-400'}`}>
                       {totalAdjustments >= 0 ? '+' : ''}{formatCurrency(totalAdjustments)} net
@@ -1004,11 +1039,11 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   const clientProgress            = get<number>(FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
   const clientChecksPassed = addrConfirmed && clientHoldReleased && clientAllOrdersTaxConfirmed;
   const clientSeverity = getReadinessSeverity(clientChecksPassed, clientProgress);
-  const clientFailing: string[] = [];
-  if (!addrConfirmed) clientFailing.push('Address not confirmed');
-  if (!clientHoldReleased) clientFailing.push('On hold');
-  if (!clientAllOrdersTaxConfirmed) clientFailing.push('Tax pending on 1+ order');
-  const clientReadinessLabel = clientChecksPassed ? 'Pickup Ready' : clientFailing.join(' · ');
+  const clientTooltip = buildReadinessTooltip(clientSeverity, [
+    { label: 'Tax',     passed: clientAllOrdersTaxConfirmed },
+    { label: 'Address', passed: addrConfirmed },
+    { label: 'Hold',    passed: clientHoldReleased },
+  ]);
 
   const linkedOrderIds = useMemo(() => {
     try {
@@ -1067,12 +1102,12 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     const orderProgress              = getOrderNum(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
     const orderChecksPassed = orderTaxConfirmed && orderClientAddrConfirmed && orderClientHoldReleased;
     const orderSeverity = getReadinessSeverity(orderChecksPassed, orderProgress);
-    const orderFailing: string[] = [];
-    if (!orderTaxConfirmed) orderFailing.push('Tax pending on this order');
-    if (!orderClientAddrConfirmed) orderFailing.push('Address not confirmed');
-    if (!orderClientHoldReleased) orderFailing.push('On hold');
-    const orderReadinessLabel = orderChecksPassed ? 'Ready' : orderFailing.join(' · ');
-    row.push(<ReadinessDot severity={orderSeverity} label={orderReadinessLabel} />);
+    const orderTooltip = buildReadinessTooltip(orderSeverity, [
+      { label: 'Tax',     passed: orderTaxConfirmed },
+      { label: 'Address', passed: orderClientAddrConfirmed },
+      { label: 'Hold',    passed: orderClientHoldReleased },
+    ]);
+    row.push(<ReadinessChip severity={orderSeverity} tooltip={orderTooltip} />);
     return row;
   });
 
@@ -1093,7 +1128,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     );
   }
 
-  const lbl = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1';
+  const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
   const readOnly = 'w-full text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5';
   const div = <div className="border-t border-gray-100 dark:border-white/5" />;
@@ -1115,28 +1150,25 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
               {studioName && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">{studioName}</span>
               )}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
-                <ReadinessDot severity={clientSeverity} label={clientReadinessLabel} />
-                {clientReadinessLabel}
-              </span>
+              <ReadinessChip severity={clientSeverity} tooltip={clientTooltip} />
             </div>
             <div className="grid grid-cols-4 gap-x-4">
               <div className="min-w-0">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Phone</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Phone</span>
                 <input className="text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-full"
                   value={phone} onChange={e => setPhone(e.target.value)} onBlur={() => save(FIELD_IDS.PHONE, phone)} placeholder="—" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Email</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Email</span>
                 <input className="text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-full"
                   value={email} onChange={e => setEmail(e.target.value)} onBlur={() => save(FIELD_IDS.EMAIL, email)} placeholder="—" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Sales Associate</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Sales Associate</span>
                 <span className="text-sm text-gray-700 dark:text-gray-200 block truncate py-1">{saName || '—'}</span>
               </div>
               <div className="min-w-0">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Wedding Date</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Wedding Date</span>
                 <DatePicker value={weddingDate ? weddingDate.slice(0, 10) : ''} onChange={v => { setWeddingDate(v); save(FIELD_IDS.WEDDING_DATE, v || null); }} placeholder="—" align="right" />
               </div>
             </div>
@@ -1151,7 +1183,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
           <section>
             <div className="flex items-center gap-2 mb-3">
               <ShoppingCartIcon size={14} className="text-gray-400 dark:text-gray-500" />
-              <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium">Shopify Orders</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">Shopify Orders</span>
               {linkedOrders.length > 0 && <span className="text-xs text-gray-400 dark:text-gray-500">({linkedOrders.length})</span>}
             </div>
             <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
@@ -1162,7 +1194,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                       ? ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Adjusted Total', 'Readiness']
                       : ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Readiness']
                     ).map((h, i) => (
-                      <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                      <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1182,7 +1214,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                 {linkedOrders.length > 0 && (
                   <tfoot>
                     <tr className="border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
-                      <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</td>
+                      <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wide">Total</td>
                       <td className="px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(totalSum)}</td>
                       {hasAnyAdjustedTotal && (
                         <td className="px-3 py-2 text-sm font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(adjTotalSum)}</td>
@@ -1201,7 +1233,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
           <section>
             <div className="flex items-center gap-2 mb-3">
               <MapPinIcon size={14} className="text-gray-400 dark:text-gray-500" />
-              <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium">Address</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">Address</span>
             </div>
             <div className="space-y-3">
               <div>
@@ -1222,12 +1254,12 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
             {/* Address confirmed + Hold — same row */}
             <div className="mt-4 flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">Address Confirmed</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide">Address Confirmed</span>
                 <ToggleButton checked={addrConfirmed} label={addrConfirmed ? 'Confirmed' : 'Not Confirmed'}
                   onChange={v => { setAddrConfirmed(v); save(FIELD_IDS.ADDRESS_CONFIRMED, v); }} />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">Hold Until</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide">Hold Until</span>
                 <DatePicker value={holdDate ? holdDate.slice(0, 10) : ''}
                   onChange={v => { setHoldDate(v); save(FIELD_IDS.HOLD_SHIPMENT_DATE, v || null); }}
                   className="w-[180px]" placeholder="No hold" openUp />
@@ -1245,7 +1277,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
 
           {/* 3. Fulfillment Notes */}
           <section>
-            <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium block mb-3">Fulfillment Notes</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Fulfillment Notes</span>
             <textarea className={`${inp} resize-none min-h-[80px]`} rows={3}
               value={notes} onChange={e => setNotes(e.target.value)}
               onBlur={() => save(FIELD_IDS.FULFILLMENT_NOTES, notes)} placeholder="Add notes…" />
@@ -1304,10 +1336,24 @@ function FulfillmentApp(): React.ReactElement {
     try { return !!(rec.getCellValue(f) as boolean | null); } catch { return false; }
   }, [fields]);
 
+  // Background gate — always applied, not user-facing: only clients with sold items and
+  // a wedding date on or after today belong in the fulfillment queue.
   const fulfillmentRecords = useMemo(() => {
     if (!allRecords) return [];
-    return allRecords.filter(r => getSel(r, FIELD_IDS.STAGE)?.name === 'In Fulfillment');
-  }, [allRecords, getSel]);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const itemsField   = fields[FIELD_IDS.ITEMS_SOLD];
+    const weddingField = fields[FIELD_IDS.WEDDING_DATE];
+    return allRecords.filter(r => {
+      if (getSel(r, FIELD_IDS.STAGE)?.name !== 'In Fulfillment') return false;
+      const itemsVal = itemsField ? r.getCellValue(itemsField) : null;
+      const hasItems = Array.isArray(itemsVal) ? itemsVal.length > 0 : !!itemsVal;
+      if (!hasItems) return false;
+      const wd = weddingField ? (r.getCellValue(weddingField) as string | null) : null;
+      if (!wd) return false;
+      const wdDate = new Date(wd); wdDate.setHours(0, 0, 0, 0);
+      return wdDate.getTime() >= today.getTime();
+    });
+  }, [allRecords, getSel, fields]);
 
   const uniqueStudios = useMemo(() => {
     if (!studiosRecords || !studiosTable) return [];
@@ -1484,17 +1530,17 @@ function FulfillmentApp(): React.ReactElement {
             <table className="w-full min-w-[960px] border-collapse">
               <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1e1d1b]">
                 <tr className="border-b border-gray-200 dark:border-white/10">
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[130px]">Client</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[120px]">Wedding Date</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[130px]">Phone</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[180px]">Email</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[130px]">Sales Associate</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[100px]">Delivery</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[160px]">Items</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[110px]">% Picked</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[100px]">Readiness</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[70px]">Hold</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[140px]">Status</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[130px]">Client</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Wedding Date</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[130px]">Phone</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[180px]">Email</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[130px]">Sales Associate</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[100px]">Delivery</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Items</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[110px]">% Picked</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[100px]">Readiness</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[70px]">Hold</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[140px]">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1513,11 +1559,11 @@ function FulfillmentApp(): React.ReactElement {
                   const rProgress       = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
                   const rChecksPassed   = rAddrConfirmed && rHoldReleased && rTaxConfirmed;
                   const rSeverity       = getReadinessSeverity(rChecksPassed, rProgress);
-                  const rFailing: string[] = [];
-                  if (!rAddrConfirmed) rFailing.push('Address not confirmed');
-                  if (!rHoldReleased)  rFailing.push('On hold');
-                  if (!rTaxConfirmed)  rFailing.push('Tax pending on 1+ order');
-                  const rReadinessLabel = rChecksPassed ? 'Ready' : rFailing.join(' · ');
+                  const rTooltip = buildReadinessTooltip(rSeverity, [
+                    { label: 'Tax',     passed: rTaxConfirmed },
+                    { label: 'Address', passed: rAddrConfirmed },
+                    { label: 'Hold',    passed: rHoldReleased },
+                  ]);
                   const hasHold      = !!holdDate;
                   const delivVariant: PillVariant =
                     delivStatus === 'Fulfilled'         ? 'green' :
@@ -1546,7 +1592,7 @@ function FulfillmentApp(): React.ReactElement {
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{fItems ? <CellRenderer record={rec} field={fItems} /> : '—'}</td>
                       <td className="px-3 py-2.5"><ProgressBar percentage={pickedRollup ?? 0} /></td>
-                      <td className="px-3 py-2.5"><ReadinessDot severity={rSeverity} label={rReadinessLabel} /></td>
+                      <td className="px-3 py-2.5"><ReadinessChip severity={rSeverity} tooltip={rTooltip} /></td>
                       <td className="px-3 py-2.5"><Pill variant={hasHold ? 'red' : 'green'}>{hasHold ? 'Yes' : 'No'}</Pill></td>
                       <td className="px-3 py-2.5"><Pill variant={statusVariant}>{statusText}</Pill></td>
                     </tr>
