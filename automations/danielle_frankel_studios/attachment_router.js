@@ -6,9 +6,12 @@ TABLE SRC  : Attachments  (tbli57E9YzWb5Qmku)
 TABLE DST  : DF_Clients   (tblLLUlDgJ4ktzF7c)  — Measurements / Appointment Photos
              proposals    (tblP7tVuCuXMzI4ir)  — Customization Proposal / Signed Proposal
 TRIGGER    : When record is created in Attachments
-VERSION    : 1.1.0 — added Customization Proposal / Signed Proposal routing on
+VERSION    : 1.2.0 — added Customization Proposal / Signed Proposal routing on
                      top of the existing Measurements / Appointment Photos
-                     flow. All field IDs verified against live base + the
+                     flow. attachments.customization_proposal links directly
+                     to the Proposals table (not via Customizations), so a
+                     Proposal is fetched by ID directly — no search/matching
+                     needed. All field IDs verified against live base + the
                      customer_journey DBML schema export.
 
 NOTE ON BASE: this automation must live on the SANDBOX base, because the
@@ -28,8 +31,8 @@ OBJECTIVE
         linked DF_Clients record. Existing attachments are never replaced.
 
     "Customization Proposal" / "Signed Proposal"
-      → WRITES the files onto the matching Proposals record (found via
-        customization_request), into unsigned_document or signed_document
+      → WRITES the files onto the Proposals record linked directly via
+        customization_proposal, into unsigned_document or signed_document
         respectively. A signed copy can only ever be attached to a Proposal
         that already has its unsigned copy — see guard clause 4.
 
@@ -42,11 +45,13 @@ GUARD CLAUSE
   1. type field must be set and recognised — one of the four values below
   2. attachments field must not be empty — nothing to copy if no files uploaded
   3. (Measurements / Appointment Photos) client field must not be empty
-  4. (Customization Proposal / Signed Proposal) customization_request must
-     not be empty, AND a matching Proposal must exist at the right stage:
-       - Customization Proposal → a Proposal still missing unsigned_document
-       - Signed Proposal        → a Proposal with unsigned_document already
-                                   set and signed_document still empty
+  4. (Customization Proposal / Signed Proposal) customization_proposal must
+     not be empty and must point at a Proposal that exists, AND that Proposal
+     must be at the right stage:
+       - Customization Proposal → no restriction (unsigned_document is set/
+                                   overwritten regardless of current value)
+       - Signed Proposal        → the Proposal must already have
+                                   unsigned_document set
 
 FIELD MAPPING
   type = "Measurements"        → DF_Clients.Measurements       (fldcWwbKOc9nkgzzV)
@@ -99,7 +104,7 @@ const FIELDS_ATTACHMENTS = {
   client               : 'fldTESnHcalw4JlbA', // multipleRecordLinks → DF_Clients
   type                 : 'fld39kLMqKEZucDXe', // singleSelect
   attachments          : 'fldBgFSXBWHlejuEK', // multipleAttachments
-  customization_request: 'fld5GbTtosSjljhAz', // multipleRecordLinks → Customizations
+  customization_proposal: 'fldp6Cq7466RvRgij', // multipleRecordLinks → proposals (direct)
 };
 
 // Target field on DF_Clients per type value (type option name → field ID)
@@ -110,7 +115,6 @@ const CLIENTS_TARGET_FIELD = {
 
 // Proposals table fields (tblP7tVuCuXMzI4ir)
 const FIELDS_PROPOSALS = {
-  source_customization : 'fldeXnhSr8r6rw78k', // multipleRecordLinks → Customizations
   unsigned_document    : 'fldlUFhODjgDyeOFg', // multipleAttachments
   signed_document      : 'fld1Z37faYGD7jDia', // multipleAttachments
   status               : 'fldW0GbVWnhZGUAtv', // singleSelect: Generated | Signed
@@ -235,10 +239,9 @@ class ClientsRepository {
 // ─────────────────────────────────────────────────────────────────────────────
 // PROPOSALS REPOSITORY CLASS
 // Read and write access to the proposals table (Customization Proposal /
-// Signed Proposal route). A Proposal is matched by source_customization, not
-// by ID directly — the Attachments record only carries the Customization,
-// since the Proposal it belongs to may not have existed yet when the
-// interface first sent the user to this form.
+// Signed Proposal route). attachments.customization_proposal links directly
+// to the target Proposal record — no search/matching needed, just a fetch by
+// ID (same pattern as ClientsRepository.getById).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ProposalsRepository {
@@ -247,55 +250,16 @@ class ProposalsRepository {
     this.logger = logger;
   }
 
-  async _matchesForCustomization(customizationId, extraFields) {
+  async getById(proposalId) {
+    this.logger.step(3, `Loading Proposal record → ${proposalId}`);
     const result = await this.table.selectRecordsAsync({
-      fields: [FIELDS_PROPOSALS.source_customization, ...extraFields],
+      fields: [FIELDS_PROPOSALS.unsigned_document, FIELDS_PROPOSALS.signed_document],
     });
-    return result.records.filter(r => {
-      const link = r.getCellValue(FIELDS_PROPOSALS.source_customization);
-      return Array.isArray(link) && link.some(l => l.id === customizationId);
-    });
-  }
-
-  // Multiple Proposals can exist for the same Customization over time (a
-  // proposal can be regenerated) — the correct target is the most recently
-  // created one still missing unsigned_document. selectRecordsAsync returns
-  // records in creation order, so the last match is the most recent.
-  async findPendingUnsigned(customizationId) {
-    this.logger.step(3, `Searching Proposals for pending unsigned → customization: ${customizationId}`);
-    const matches = (await this._matchesForCustomization(customizationId, [FIELDS_PROPOSALS.unsigned_document]))
-      .filter(r => {
-        const existing = r.getCellValue(FIELDS_PROPOSALS.unsigned_document);
-        return !existing || existing.length === 0;
-      });
-    const record = matches.length ? matches[matches.length - 1] : null;
+    const record = result.records.find(r => r.id === proposalId);
     if (!record) throw new Error(
-      `Guard clause: no pending Proposal found for customization ${customizationId} ` +
-      `(either none exists, or all matching Proposals already have unsigned_document set).`
+      `Proposal record not found → proposalId: ${proposalId}`
     );
-    this.logger.audit(`Matched pending-unsigned Proposal → ${record.id}`);
-    return record;
-  }
-
-  // A signed copy can only ever belong to a Proposal that already has its
-  // unsigned_document and doesn't have a signed_document yet.
-  async findPendingSigned(customizationId) {
-    this.logger.step(3, `Searching Proposals for pending signed → customization: ${customizationId}`);
-    const matches = (await this._matchesForCustomization(customizationId, [FIELDS_PROPOSALS.unsigned_document, FIELDS_PROPOSALS.signed_document]))
-      .filter(r => {
-        const unsigned = r.getCellValue(FIELDS_PROPOSALS.unsigned_document);
-        const signed   = r.getCellValue(FIELDS_PROPOSALS.signed_document);
-        const hasUnsigned = !!unsigned && unsigned.length > 0;
-        const hasSigned   = !!signed && signed.length > 0;
-        return hasUnsigned && !hasSigned;
-      });
-    const record = matches.length ? matches[matches.length - 1] : null;
-    if (!record) throw new Error(
-      `Guard clause: no Proposal for customization ${customizationId} is ready for a signed document ` +
-      `(a Proposal must already have unsigned_document, and not yet have signed_document, before a ` +
-      `signed copy can be attached).`
-    );
-    this.logger.audit(`Matched pending-signed Proposal → ${record.id}`);
+    this.logger.audit(`Proposal record loaded → ${proposalId}`);
     return record;
   }
 
@@ -361,14 +325,14 @@ class AttachmentPropagationService {
     }
 
     if (PROPOSAL_TYPES.has(typeName)) {
-      const linkedCustomization = record.getCellValue(FIELDS_ATTACHMENTS.customization_request);
-      if (!linkedCustomization || linkedCustomization.length === 0) throw new Error(
-        'Guard clause: customization_request field is empty. Cannot find the Proposal to attach to.'
+      const linkedProposal = record.getCellValue(FIELDS_ATTACHMENTS.customization_proposal);
+      if (!linkedProposal || linkedProposal.length === 0) throw new Error(
+        'Guard clause: customization_proposal field is empty. Cannot find the Proposal to attach to.'
       );
       this.logger.audit(
-        `Guard passed (proposal route) → customization: ${linkedCustomization[0].id} | type: ${typeName} | files: ${attachments.length}`
+        `Guard passed (proposal route) → proposal: ${linkedProposal[0].id} | type: ${typeName} | files: ${attachments.length}`
       );
-      return { route: 'proposal', customizationId: linkedCustomization[0].id, typeName, newAttachments: attachments };
+      return { route: 'proposal', proposalId: linkedProposal[0].id, typeName, newAttachments: attachments };
     }
 
     throw new Error(
@@ -388,19 +352,23 @@ class AttachmentPropagationService {
     return { client_id: clientId, proposal_id: null, type: typeName, files_appended: newAttachments.length, total_files: totalFiles };
   }
 
-  async _runProposalRoute({ customizationId, typeName, newAttachments }) {
+  async _runProposalRoute({ proposalId, typeName, newAttachments }) {
+    const proposalRecord = await this.proposalsRepo.getById(proposalId);
     const isSigned = typeName === 'Signed Proposal';
-    const proposalRecord = isSigned
-      ? await this.proposalsRepo.findPendingSigned(customizationId)
-      : await this.proposalsRepo.findPendingUnsigned(customizationId);
 
     if (isSigned) {
-      await this.proposalsRepo.writeSignedDocument(proposalRecord.id, newAttachments);
+      const existingUnsigned = proposalRecord.getCellValue(FIELDS_PROPOSALS.unsigned_document);
+      const hasUnsigned = !!existingUnsigned && existingUnsigned.length > 0;
+      if (!hasUnsigned) throw new Error(
+        `Guard clause: Proposal ${proposalId} does not have unsigned_document yet — a signed copy ` +
+        `cannot be attached before the unsigned one exists.`
+      );
+      await this.proposalsRepo.writeSignedDocument(proposalId, newAttachments);
     } else {
-      await this.proposalsRepo.writeUnsignedDocument(proposalRecord.id, newAttachments);
+      await this.proposalsRepo.writeUnsignedDocument(proposalId, newAttachments);
     }
 
-    return { client_id: null, proposal_id: proposalRecord.id, type: typeName, files_appended: newAttachments.length, total_files: newAttachments.length };
+    return { client_id: null, proposal_id: proposalId, type: typeName, files_appended: newAttachments.length, total_files: newAttachments.length };
   }
 
   async run(attachmentsRecordId) {

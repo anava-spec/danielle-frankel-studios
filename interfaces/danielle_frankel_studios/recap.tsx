@@ -196,17 +196,20 @@ const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/app6Q4xMZ1ngJxiV8/pag
 
 // Used for both the unsigned copy (right after "Generate Proposal") and the
 // signed copy (from the Proposals list) — same form, different `type` value.
-// The automations/danielle_frankel_studios/proposal_attachment_router.js
-// automation reads customization_request + type to route the attachment onto
-// the right Proposal field. `hide_*` (paired with `prefill_*`) makes Airtable
+// The automations/danielle_frankel_studios/attachment_router.js automation
+// reads customization_proposal (a direct link to this exact Proposal
+// record) + type to route the attachment onto the right field. `hide_*`
+// (paired with `prefill_*`) makes Airtable
 // hide that field on the form entirely, leaving only the file picker visible.
 type ProposalAttachmentType = 'Customization Proposal' | 'Signed Proposal';
-function buildProposalAttachmentFormUrl(clientId: string, customizationId: string, type: ProposalAttachmentType): string {
+// attachments.customization_proposal links directly to the Proposals table
+// (not to Customizations) — proposalId here is a Proposals record ID.
+function buildProposalAttachmentFormUrl(clientId: string, proposalId: string, type: ProposalAttachmentType): string {
   const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
   url.searchParams.set('prefill_client', clientId);
   url.searchParams.set('hide_client', 'true');
-  url.searchParams.set('prefill_customization_request', customizationId);
-  url.searchParams.set('hide_customization_request', 'true');
+  url.searchParams.set('prefill_customization_proposal', proposalId);
+  url.searchParams.set('hide_customization_proposal', 'true');
   url.searchParams.set('prefill_type', type);
   url.searchParams.set('hide_type', 'true');
   return url.toString();
@@ -1340,17 +1343,16 @@ function CustomizationModal({
                   const styleStr   = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
                   const isSigned   = statusStr === 'Signed';
                   const hasUnsigned = fUnsignedP ? !!(p.getCellValue(fUnsignedP) as unknown[]|null)?.length : false;
-                  const disabled = isSigned || !hasUnsigned;
-                  const title = isSigned ? 'Already signed' : !hasUnsigned ? 'Waiting on the unsigned document to be attached first' : 'Upload signed document';
+                  // Always clickable — the modal itself explains and gates
+                  // whether uploading a signed copy is possible yet.
+                  const title = isSigned ? 'Signed' : hasUnsigned ? 'Upload signed document' : 'View proposal';
                   return (
-                    <button key={p.id} type="button" disabled={disabled}
+                    <button key={p.id} type="button"
                       onClick={()=>setSignedUploadProposalId(p.id)}
                       title={title}
                       className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
-                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 cursor-default'
-                        : disabled
-                          ? 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-white/10 cursor-not-allowed'
-                          : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
+                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 hover:dark:bg-emerald-500/25'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
                       {styleStr || 'Proposal'} — {statusStr || 'Generated'}
                     </button>
                   );
@@ -1649,7 +1651,8 @@ function ProposalPreviewModal({
   // automations/danielle_frankel_studios/proposal_attachment_router.js)
   // copies the uploaded file onto this Proposal's unsigned_document.
   const openAttachmentForm = () => {
-    window.open(buildProposalAttachmentFormUrl(clientId, customizationId, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
+    if (!createdRecordId) return;
+    window.open(buildProposalAttachmentFormUrl(clientId, createdRecordId, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
   };
 
   // Zero-amount fees add no information on a client-facing proposal — skip them.
@@ -1748,13 +1751,6 @@ function ProposalPreviewModal({
             <div className="text-sm text-red-600 dark:text-red-400 pt-2 border-t border-gray-100 dark:border-white/5">{errorMsg}</div>
           )}
 
-          {success && (
-            <div className="pt-2 border-t border-gray-100 dark:border-white/5">
-              <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">
-                Proposal saved. Click "Upload Generated Proposal" below to attach the printed PDF — it'll link back to this proposal automatically.
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer — Close/Print/Confirm & Save while pending; once saved,
@@ -1790,14 +1786,16 @@ function ProposalPreviewModal({
 }
 
 // ─── SignedDocumentUploadModal ─────────────────────────────────────────────────
-// Opened from the Proposals list once a Proposal already has unsigned_document
-// (see the gate in CustomizationModal's Proposals pill) — never available
-// before that. Same reasoning as ProposalPreviewModal: the SDK can't push a
-// local File into an attachment field, so this hands off to the same
-// attachments form with type = "Signed Proposal". The
-// proposal_attachment_router automation matches it back to this exact
-// Proposal (the one with unsigned_document set and signed_document still
-// empty) and sets status to "Signed" itself — nothing left to confirm here.
+// Opened from the Proposals list — always openable, so the user can see this
+// Proposal's status even before it's ready for a signed copy. The Interface
+// Extensions SDK can't push a local File into an attachment field, so this
+// hands off to the same attachments form with type = "Signed Proposal",
+// prefilled with this exact Proposal record (not the source Customization —
+// the attachments.customization_proposal field links directly to Proposals).
+// The attachment_router automation matches it back to this Proposal and sets
+// status to "Signed" itself — nothing left to confirm here. Uploading is
+// gated on unsigned_document already being present, since a signed copy of a
+// document that was never generated makes no sense.
 interface SignedDocumentUploadModalProps {
   proposalRecord: AirtableRecord | null;
   proposalsTable: Table;
@@ -1812,14 +1810,15 @@ function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: 
   if (!proposalRecord) return null;
   const fStyleSnap = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
   const fClientP   = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
-  const fSourceP   = proposalsTable.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION);
+  const fUnsignedP = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
   const styleName  = fStyleSnap ? proposalRecord.getCellValueAsString(fStyleSnap) : '';
   const clientId   = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
-  const customizationId = fSourceP ? ((proposalRecord.getCellValue(fSourceP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+  const hasUnsigned = fUnsignedP ? !!(proposalRecord.getCellValue(fUnsignedP) as unknown[]|null)?.length : false;
+  const canUpload = hasUnsigned && !!clientId;
 
   const openAttachmentForm = () => {
-    if (!clientId || !customizationId) return;
-    window.open(buildProposalAttachmentFormUrl(clientId, customizationId, 'Signed Proposal'), '_blank', 'noopener,noreferrer');
+    if (!canUpload || !clientId) return;
+    window.open(buildProposalAttachmentFormUrl(clientId, proposalRecord.id, 'Signed Proposal'), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -1835,10 +1834,16 @@ function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: 
         </div>
         <div className="p-5 space-y-3">
           <div className="text-sm text-gray-500 dark:text-gray-400">{styleName || 'Proposal'}</div>
-          <div className="text-sm text-gray-700 dark:text-gray-300">
-            Attach the countersigned PDF using the upload form — it'll link back to this proposal and mark it Signed automatically.
-          </div>
-          <button type="button" onClick={openAttachmentForm} disabled={!clientId || !customizationId}
+          {hasUnsigned ? (
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              Attach the countersigned PDF using the upload form — it'll link back to this proposal and mark it Signed automatically.
+            </div>
+          ) : (
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              This proposal doesn't have its unsigned document attached yet — attach that first before a signed copy can be uploaded.
+            </div>
+          )}
+          <button type="button" onClick={openAttachmentForm} disabled={!canUpload}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
             <UploadIcon size={14}/>Open Upload Form
           </button>
