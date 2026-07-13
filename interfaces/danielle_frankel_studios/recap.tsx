@@ -1433,10 +1433,22 @@ function buildProposalSnapshot(
 }
 
 // ─── ProposalPreviewModal ─────────────────────────────────────────────────────
-// Opened from "Generate Proposal". Print → attach the printed PDF → Confirm &
-// Save creates the Proposal record. The Close countdown only guards against
-// closing before the document has even been seen — once the user has clicked
-// Confirm & Save and it succeeds, closing is immediate and unconditional.
+// Opened from "Generate Proposal". Print → Confirm & Save creates the Proposal
+// record (client/sales associate/source customization links + snapshot
+// values, status "Generated"). The record is created WITHOUT
+// unsigned_document: the Interface Extensions SDK only accepts attachment
+// cell values shaped as { url, filename } — it can't take a local File
+// directly (confirmed by Airtable's own write-time validation error) — so
+// there is no way to push a file living only on the user's disk into an
+// attachment field from this code. Once the record exists, the last step
+// hands off to Airtable's own record page (which has no such restriction) so
+// the user drops the printed PDF onto unsigned_document there directly —
+// same reasoning as AttachmentSection's external-form handoff elsewhere in
+// this file, just targeting the record we just created instead of a form.
+//
+// The Close countdown only guards against closing before the document has
+// even been seen — once Confirm & Save succeeds, closing is immediate and
+// unconditional.
 const PROPOSAL_CLOSE_COUNTDOWN_SECONDS = 8;
 
 interface ProposalPreviewModalProps {
@@ -1447,19 +1459,20 @@ interface ProposalPreviewModalProps {
   saRecordId: string | null;
   customizationId: string;
   proposalsTable: Table | null;
+  baseId: string;
   onClose: () => void;
 }
 function ProposalPreviewModal({
-  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, onClose,
+  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, baseId, onClose,
 }: ProposalPreviewModalProps) {
   const [countdown, setCountdown]     = useState(PROPOSAL_CLOSE_COUNTDOWN_SECONDS);
   const [printed, setPrinted]         = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File|null>(null);
   const [saving, setSaving]           = useState(false);
   const [errorMsg, setErrorMsg]       = useState<string|null>(null);
-  const [success, setSuccess]         = useState(false);
+  const [createdRecordId, setCreatedRecordId] = useState<string|null>(null);
   const [generatedAt]                 = useState(() => new Date());
 
+  const success = !!createdRecordId;
   const closeEnabled = countdown <= 0 || success;
 
   // Single interval started on mount, ticking down to 0 — not restarted per
@@ -1479,21 +1492,13 @@ function ProposalPreviewModal({
     return () => document.removeEventListener('keydown', h);
   }, [closeEnabled, onClose]);
 
-  // A successful save closes the modal on its own — the countdown no longer
-  // applies once the record actually exists.
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(onClose, 1200);
-    return () => clearTimeout(t);
-  }, [success, onClose]);
-
   const handlePrint = () => {
     window.print();
     setPrinted(true);
   };
 
   const handleConfirmSave = async () => {
-    if (!proposalsTable || !selectedFile || saving) return;
+    if (!proposalsTable || saving || success) return;
     setSaving(true);
     setErrorMsg(null);
     try {
@@ -1504,18 +1509,22 @@ function ProposalPreviewModal({
         [PROPOSAL.SNAPSHOT_CUSTOMIZATIONS]:     snapshot.customizationsText,
         [PROPOSAL.SNAPSHOT_EMBROIDERY_AMOUNT]:  { name: snapshot.embroideryAmount },
         [PROPOSAL.SNAPSHOT_PRICING]:            snapshot.pricingTotal,
-        [PROPOSAL.UNSIGNED_DOCUMENT]:           [{ file: selectedFile }],
         [PROPOSAL.STATUS]:                      { name: 'Generated' },
       };
       if (saRecordId) fields[PROPOSAL.SALES_ASSOCIATE] = [{ id: saRecordId }];
-      await queueWrite(() => proposalsTable!.createRecordAsync(fields));
-      setSuccess(true);
+      const newId = await queueWrite(() => proposalsTable!.createRecordAsync(fields));
+      setCreatedRecordId(newId);
     } catch (err) {
       console.error('Failed to save proposal:', err);
-      setErrorMsg('Failed to save the proposal. Your selected file is still attached — try again.');
+      setErrorMsg('Failed to save the proposal. Try again.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const openRecordToAttach = () => {
+    if (!createdRecordId || !proposalsTable) return;
+    window.open(`https://airtable.com/${baseId}/${proposalsTable.id}/${createdRecordId}`, '_blank', 'noopener,noreferrer');
   };
 
   const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
@@ -1564,16 +1573,12 @@ function ProposalPreviewModal({
             <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
           </div>
 
-          {/* Attach step — appears after Print, independent of the Close countdown */}
+          {/* Confirm step — appears after Print, independent of the Close countdown */}
           {printed && !success && (
             <div className="pt-2 border-t border-gray-100 dark:border-white/5">
-              <span className={labelCls}>Attach the Printed PDF</span>
-              <input type="file" accept="application/pdf,.pdf"
-                onChange={e => { setErrorMsg(null); setSelectedFile(e.target.files?.[0] ?? null); }}
-                className="text-sm text-gray-700 dark:text-gray-300 mb-2 block"/>
-              {selectedFile && <div className="text-sm text-gray-700 dark:text-gray-300 mb-2">Selected: {selectedFile.name}</div>}
+              <span className={labelCls}>Save the Proposal</span>
               {errorMsg && <div className="text-sm text-red-600 dark:text-red-400 mb-2">{errorMsg}</div>}
-              <button type="button" onClick={handleConfirmSave} disabled={!selectedFile || saving}
+              <button type="button" onClick={handleConfirmSave} disabled={saving}
                 className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
                 {saving ? 'Saving…' : errorMsg ? 'Retry' : 'Confirm & Save'}
               </button>
@@ -1581,8 +1586,14 @@ function ProposalPreviewModal({
           )}
 
           {success && (
-            <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">
-              Proposal saved.
+            <div className="pt-2 border-t border-gray-100 dark:border-white/5 space-y-3">
+              <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">
+                Proposal saved. Last step: attach the printed PDF to the record in Airtable — file uploads can't happen from this window.
+              </div>
+              <button type="button" onClick={openRecordToAttach}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+                <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Open Record to Attach PDF
+              </button>
             </div>
           )}
         </div>
@@ -1605,39 +1616,49 @@ function ProposalPreviewModal({
 
 // ─── SignedDocumentUploadModal ─────────────────────────────────────────────────
 // Separate action from proposal generation — opened from the client's existing
-// Proposals list to upload the signed PDF back onto that SAME record (never
-// creates a new one). A single updateRecordAsync call is atomic: if it fails,
-// the record (including its unsigned_document) is untouched.
+// Proposals list to attach the signed PDF back onto that SAME record (never
+// creates a new one). The Interface Extensions SDK can't push a local File
+// into an attachment field (same limitation as ProposalPreviewModal — see the
+// comment there), so the file itself is dropped onto signed_document directly
+// on the record's own Airtable page, which has no such restriction; "Mark as
+// Signed" only flips the status field, which IS a normal writable field, via a
+// single atomic updateRecordAsync — if that call fails, nothing about the
+// record (including whatever's already in unsigned_document) changes.
 interface SignedDocumentUploadModalProps {
   proposalRecord: AirtableRecord | null;
   proposalsTable: Table;
+  baseId: string;
   onClose: () => void;
 }
-function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: SignedDocumentUploadModalProps) {
-  const [selectedFile, setSelectedFile] = useState<File|null>(null);
-  const [uploading, setUploading]       = useState(false);
-  const [errorMsg, setErrorMsg]         = useState<string|null>(null);
+function SignedDocumentUploadModal({ proposalRecord, proposalsTable, baseId, onClose }: SignedDocumentUploadModalProps) {
+  const [saving, setSaving]     = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string|null>(null);
+  const [signed, setSigned]     = useState(false);
 
   useEffect(()=>{
     const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[onClose]);
 
-  const handleUpload = async () => {
-    if (!proposalRecord || !selectedFile || uploading) return;
-    setUploading(true);
+  const openRecord = () => {
+    if (!proposalRecord) return;
+    window.open(`https://airtable.com/${baseId}/${proposalsTable.id}/${proposalRecord.id}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleMarkSigned = async () => {
+    if (!proposalRecord || saving) return;
+    setSaving(true);
     setErrorMsg(null);
     try {
       await queueWrite(() => proposalsTable.updateRecordAsync(proposalRecord.id, {
-        [PROPOSAL.SIGNED_DOCUMENT]: [{ file: selectedFile }],
-        [PROPOSAL.STATUS]:          { name: 'Signed' },
+        [PROPOSAL.STATUS]: { name: 'Signed' },
       }));
-      onClose();
+      setSigned(true);
     } catch (err) {
-      console.error('Failed to upload signed document:', err);
-      setErrorMsg('Failed to upload the signed document. Please try again.');
+      console.error('Failed to mark proposal as signed:', err);
+      setErrorMsg('Failed to update the status. The record is unchanged — try again.');
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   };
 
@@ -1659,16 +1680,20 @@ function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: 
         </div>
         <div className="p-5 space-y-3">
           <div className="text-sm text-gray-500 dark:text-gray-400">{styleName || 'Proposal'}</div>
-          <input type="file" accept="application/pdf,.pdf"
-            onChange={e=>{ setErrorMsg(null); setSelectedFile(e.target.files?.[0] ?? null); }}
-            className="text-sm text-gray-700 dark:text-gray-300 block"/>
-          {selectedFile && <div className="text-sm text-gray-700 dark:text-gray-300">{selectedFile.name}</div>}
+          <div className="text-sm text-gray-700 dark:text-gray-300">
+            File uploads can't happen from this window — open the record in Airtable and drop the signed PDF onto Signed Document there, then come back and confirm below.
+          </div>
+          <button type="button" onClick={openRecord}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+            <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Open Record in Airtable
+          </button>
           {errorMsg && <div className="text-sm text-red-600 dark:text-red-400">{errorMsg}</div>}
+          {signed && <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">Marked as Signed.</div>}
         </div>
         <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end">
-          <button onClick={handleUpload} disabled={!selectedFile || uploading}
+          <button onClick={handleMarkSigned} disabled={saving || signed}
             className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
-            {uploading ? 'Uploading…' : 'Upload Signed Document'}
+            {saving ? 'Saving…' : signed ? 'Signed' : 'Mark as Signed'}
           </button>
         </div>
       </div>
@@ -2237,6 +2262,7 @@ function PostAppointmentModal({
             saRecordId={saRecord?.id ?? null}
             customizationId={proposalCustomizationId}
             proposalsTable={proposalsTable}
+            baseId={base.id}
             onClose={()=>setProposalCustomizationId(null)}
           />
         );
@@ -2246,6 +2272,7 @@ function PostAppointmentModal({
         <SignedDocumentUploadModal
           proposalRecord={proposalRecords?.find(r=>r.id===signedUploadProposalId) ?? null}
           proposalsTable={proposalsTable}
+          baseId={base.id}
           onClose={()=>setSignedUploadProposalId(null)}
         />
       )}
