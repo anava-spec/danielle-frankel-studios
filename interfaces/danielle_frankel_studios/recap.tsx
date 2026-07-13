@@ -989,6 +989,11 @@ interface CustomizationModalProps {
   linkedClientId: string | null;
   favoriteStyleIds: string[];
   clientWeddingIso: string | null;
+  clientName: string;
+  saName: string;
+  saRecordId: string | null;
+  proposalsTable: Table | null;
+  proposalRecords: AirtableRecord[] | null;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
 }
@@ -997,7 +1002,9 @@ function CustomizationModal({
   mode, existingRecord, customizationsTable, pricingTable, pricingRecords, stylesRecords,
   stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, stylesSelfUsageField,
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField,
-  linkedClientId, favoriteStyleIds, clientWeddingIso, base, onClose
+  linkedClientId, favoriteStyleIds, clientWeddingIso,
+  clientName, saName, saRecordId, proposalsTable, proposalRecords,
+  base, onClose
 }: CustomizationModalProps) {
   const custTable = customizationsTable ?? base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATIONS);
 
@@ -1132,6 +1139,74 @@ function CustomizationModal({
 
   const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
 
+  // ── Generate Proposal ─────────────────────────────────────────────────────
+  const [showProposalPreview, setShowProposalPreview]         = useState(false);
+  const [signedUploadProposalId, setSignedUploadProposalId]   = useState<string|null>(null);
+  const pTypeField = pricingTable?.getFieldIfExists(PRICING.TYPE) ?? null;
+
+  const styleName = useMemo(
+    () => (styleId ? (stylesRecords?.find(r=>r.id===styleId)?.name ?? '') : ''),
+    [styleId, stylesRecords]
+  );
+
+  const proposalMissing = useMemo(() => {
+    if (mode !== 'edit') return [];
+    const missing: string[] = [];
+    if (!styleName) missing.push('Customized Style');
+    if (pricingIds.length === 0) missing.push('at least one selected customization');
+    if (!embroidery) missing.push('Amount of Embroidery/Paint/Lace');
+    if (grandTotal <= 0) missing.push('a calculated price greater than $0');
+    if (!linkedClientId) missing.push('client');
+    if (!saName) missing.push('sales associate');
+    return missing;
+  }, [mode, styleName, pricingIds, embroidery, grandTotal, linkedClientId, saName]);
+  const canGenerateProposal = mode === 'edit' && !!existingRecord && proposalMissing.length === 0;
+
+  // Same values already shown in this modal's own Order Summary — the printed
+  // proposal is guaranteed to match what's on screen because it's built from
+  // these, not re-derived from the record.
+  const proposalSnapshot = useMemo<ProposalSnapshot | null>(() => {
+    if (!canGenerateProposal || !pTypeField) return null;
+    const lineItems: ProposalLineItem[] = pricingIds
+      .map(id => {
+        const r = pricingRecords?.find(pr=>pr.id===id);
+        if (!r) return null;
+        const { amount, label } = resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor);
+        return {
+          id: r.id,
+          name: r.getCellValueAsString(pTypeField),
+          label,
+          amount,
+          approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
+        };
+      })
+      .filter((x): x is ProposalLineItem => x !== null);
+    return {
+      styleName,
+      lineItems,
+      basePriceNumber,
+      customizationTotal,
+      embroideryAmount: embroidery ?? '',
+      m2m, alts, rush,
+      altsM2mAmount,
+      rushFeeAmount,
+      rushFeePercentDisplay,
+      grandTotal,
+    };
+  }, [canGenerateProposal, pTypeField, pricingIds, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField,
+      basePriceNumber, multiplierFactor, preApprovalField, styleName, customizationTotal, embroidery, m2m, alts, rush,
+      altsM2mAmount, rushFeeAmount, rushFeePercentDisplay, grandTotal]);
+
+  const customizationProposals = useMemo(() => {
+    if (!proposalRecords || !existingRecord || !proposalsTable) return [];
+    const fSourceP = proposalsTable.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION);
+    if (!fSourceP) return [];
+    return proposalRecords.filter(r => {
+      const lnk = r.getCellValue(fSourceP) as Array<{id:string}>|null;
+      return lnk?.some(l=>l.id===existingRecord.id) ?? false;
+    });
+  }, [proposalRecords, proposalsTable, existingRecord]);
+
   // ── Auto-save for edit mode ───────────────────────────────────────────────
   const autoSave = useCallback((patch: Record<string,unknown>) => {
     if (mode !== 'edit' || !custTable || !existingRecord) return;
@@ -1192,6 +1267,7 @@ function CustomizationModal({
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
       style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
@@ -1199,17 +1275,57 @@ function CustomizationModal({
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
-        <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
-            <ArrowLeftIcon size={18}/>
-          </button>
-          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6]">{mode==='add'?'Add Customization Request':'Edit Customization'}</div>
+        <div className="border-b border-gray-100 dark:border-white/5">
+          <div className="p-5 flex items-center gap-3">
+            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
+              <ArrowLeftIcon size={18}/>
+            </button>
+            <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">{mode==='add'?'Add Customization Request':'Edit Customization'}</div>
+            {mode === 'edit' && (
+              <button type="button" disabled={!canGenerateProposal} onClick={()=>setShowProposalPreview(true)}
+                title={canGenerateProposal ? 'Generate Proposal' : `Missing: ${proposalMissing.join(', ')}`}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
+                <FileTextIcon size={14}/>Generate Proposal
+              </button>
+            )}
+          </div>
+          {mode === 'edit' && !canGenerateProposal && (
+            <div className="px-5 pb-3 -mt-2 text-[11px] text-red-500 dark:text-red-400">
+              Missing for proposal: {proposalMissing.join(', ')}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Stage pipeline — edit mode only */}
           {mode === 'edit' && (
             <CustomizationStagePipeline currentStatus={status} onChange={handleStatus}/>
+          )}
+
+          {/* Proposals generated from this customization request */}
+          {mode === 'edit' && proposalsTable && customizationProposals.length > 0 && (
+            <div>
+              <span className={labelCls}>Proposals</span>
+              <div className="flex flex-wrap gap-2">
+                {customizationProposals.map(p=>{
+                  const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
+                  const fStyleP  = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
+                  const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
+                  const styleStr  = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
+                  const isSigned  = statusStr === 'Signed';
+                  return (
+                    <button key={p.id} type="button" disabled={isSigned}
+                      onClick={()=>setSignedUploadProposalId(p.id)}
+                      title={isSigned ? 'Already signed' : 'Upload signed document'}
+                      className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
+                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 cursor-default'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
+                      {styleStr || 'Proposal'} — {statusStr || 'Generated'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Customized Style — invoice-style row; Base Price is a lookup off
@@ -1336,100 +1452,60 @@ function CustomizationModal({
         </div>
       </div>
     </div>
+
+      {showProposalPreview && proposalSnapshot && linkedClientId && existingRecord && (
+        <ProposalPreviewModal
+          snapshot={proposalSnapshot}
+          clientName={clientName}
+          clientId={linkedClientId}
+          saName={saName}
+          saRecordId={saRecordId}
+          customizationId={existingRecord.id}
+          proposalsTable={proposalsTable}
+          baseId={base.id}
+          onClose={()=>setShowProposalPreview(false)}
+        />
+      )}
+
+      {signedUploadProposalId && proposalsTable && (
+        <SignedDocumentUploadModal
+          proposalRecord={proposalRecords?.find(r=>r.id===signedUploadProposalId) ?? null}
+          proposalsTable={proposalsTable}
+          baseId={base.id}
+          onClose={()=>setSignedUploadProposalId(null)}
+        />
+      )}
+    </>
   );
 }
 
 // ─── Proposal snapshot ─────────────────────────────────────────────────────────
-// Reads a Customization record's current values into a plain snapshot object at
-// the moment "Generate Proposal" is clicked — the same math CustomizationModal
-// uses for "Proposed Total Custom Price" (Base Price + Customization Total,
-// before Rush Fee/M2M-Alterations), so a Proposal's numbers always match what
-// was shown in that modal. This is copied into the Proposal record verbatim
-// (not re-read later), so a later edit to the source Customization can't
-// silently change an already-generated proposal.
+// Built directly from CustomizationModal's own already-computed values (see
+// its "Generate Proposal" section) — not re-derived from scratch — so the
+// numbers and line items on the printed document are guaranteed to match
+// exactly what that modal displays. Copied into the Proposal record verbatim
+// at save time, so a later edit to the source Customization can't silently
+// change an already-generated proposal.
+interface ProposalLineItem {
+  id: string;
+  name: string;
+  label: string | null;
+  amount: number;
+  approval: string;
+}
 interface ProposalSnapshot {
   styleName: string;
-  customizationsText: string;
+  lineItems: ProposalLineItem[];
+  basePriceNumber: number;
+  customizationTotal: number;
   embroideryAmount: string;
-  pricingTotal: number;
-}
-interface ProposalSnapshotResult {
-  snapshot: ProposalSnapshot | null;
-  missing: string[];
-}
-function buildProposalSnapshot(
-  custRec: AirtableRecord,
-  customizationsTable: Table,
-  stylesRecords: AirtableRecord[] | null,
-  pricingRecords: AirtableRecord[] | null,
-  pricingTable: Table | null,
-  stylesBasePriceField: ReturnType<Table['getFieldIfExists']>,
-  pricingPercentField: ReturnType<Table['getFieldIfExists']>,
-  pricingMultipleField: ReturnType<Table['getFieldIfExists']>,
-  selfUsageField: ReturnType<Table['getFieldIfExists']>,
-  clientId: string | null,
-  saName: string,
-): ProposalSnapshotResult {
-  const missing: string[] = [];
-
-  const fStyled     = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE);
-  const fPricing    = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_PRICING);
-  const fEmbroidery = customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT);
-  const fM2m        = customizationsTable.getFieldIfExists(CUSTOM.M2M);
-  const fAlts       = customizationsTable.getFieldIfExists(CUSTOM.ALTERATIONS);
-  const fRush       = customizationsTable.getFieldIfExists(CUSTOM.RUSH);
-  const fDetail     = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_DETAIL);
-
-  const styleId  = fStyled ? ((custRec.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
-  const styleRec = styleId ? (stylesRecords?.find(r=>r.id===styleId) ?? null) : null;
-  const styleName = styleRec?.name ?? '';
-  if (!styleName) missing.push('Customized Style');
-
-  const pricingIds = fPricing ? ((custRec.getCellValue(fPricing) as Array<{id:string}>|null)?.map(x=>x.id) ?? []) : [];
-  if (pricingIds.length === 0) missing.push('at least one selected customization');
-
-  const embroideryAmount = fEmbroidery ? (custRec.getCellValueAsString(fEmbroidery) || '') : '';
-  if (!embroideryAmount) missing.push('Amount of Embroidery/Paint/Lace');
-
-  const m2m    = fM2m  ? !!(custRec.getCellValue(fM2m)  as boolean|null) : false;
-  const alts   = fAlts ? !!(custRec.getCellValue(fAlts) as boolean|null) : false;
-  const rush   = fRush ? !!(custRec.getCellValue(fRush) as boolean|null) : false;
-  const detail = fDetail ? (custRec.getCellValueAsString(fDetail) || '') : '';
-
-  const basePriceNumber = (styleRec && stylesBasePriceField)
-    ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
-    : 0;
-
-  const selfUsageValue = selfUsageField ? parseCurrencyString(custRec.getCellValueAsString(selfUsageField)) : 0;
-  const multiplierFactor = computeMultiplierFactor(selfUsageValue, embroideryAmount || null);
-
-  const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
-  const customizationTotal = pricingIds.reduce((sum, id) => {
-    const r = pricingRecords?.find(pr => pr.id === id);
-    if (!r) return sum;
-    return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor).amount;
-  }, 0);
-
-  const pricingTotal = basePriceNumber + customizationTotal;
-  if (pricingTotal <= 0) missing.push('a calculated price greater than $0');
-
-  if (!clientId) missing.push('client');
-  if (!saName) missing.push('sales associate');
-
-  const lineItemNames = pricingIds
-    .map(id => pricingRecords?.find(pr=>pr.id===id))
-    .filter((r): r is AirtableRecord => !!r)
-    .map(r => r.name)
-    .filter(Boolean);
-  const flagParts = [alts && 'Alterations', m2m && 'M2M', rush && 'Rush'].filter(Boolean) as string[];
-  const customizationsText = [
-    lineItemNames.length ? `Selections: ${lineItemNames.join(', ')}` : null,
-    flagParts.length ? `Flags: ${flagParts.join(', ')}` : null,
-    detail ? `Detail: ${detail}` : null,
-  ].filter(Boolean).join('\n') || '—';
-
-  if (missing.length > 0) return { snapshot: null, missing };
-  return { snapshot: { styleName, customizationsText, embroideryAmount, pricingTotal }, missing: [] };
+  m2m: boolean;
+  alts: boolean;
+  rush: boolean;
+  altsM2mAmount: number;
+  rushFeeAmount: number;
+  rushFeePercentDisplay: string;
+  grandTotal: number;
 }
 
 // ─── ProposalPreviewModal ─────────────────────────────────────────────────────
@@ -1466,6 +1542,13 @@ function ProposalPreviewModal({
   snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, baseId, onClose,
 }: ProposalPreviewModalProps) {
   const [countdown, setCountdown]     = useState(PROPOSAL_CLOSE_COUNTDOWN_SECONDS);
+  // Not just set synchronously on click — the print dialog itself is async and
+  // OS-native, so the only signal this page actually gets that printing (or a
+  // "Save as PDF") really happened is the browser's own `afterprint` event.
+  // There's no way to know from here whether the user actually saved a file
+  // vs. cancelled the dialog — no browser API exposes that — but requiring
+  // `afterprint` is strictly closer to "a file was produced" than assuming it
+  // the instant Print is clicked.
   const [printed, setPrinted]         = useState(false);
   const [saving, setSaving]           = useState(false);
   const [errorMsg, setErrorMsg]       = useState<string|null>(null);
@@ -1484,6 +1567,12 @@ function ProposalPreviewModal({
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const h = () => setPrinted(true);
+    window.addEventListener('afterprint', h);
+    return () => window.removeEventListener('afterprint', h);
+  }, []);
+
   // Escape is intercepted (not just ignored) while the countdown runs, same as
   // the click-outside guard below — neither can close the modal early.
   useEffect(() => {
@@ -1492,23 +1581,26 @@ function ProposalPreviewModal({
     return () => document.removeEventListener('keydown', h);
   }, [closeEnabled, onClose]);
 
-  const handlePrint = () => {
-    window.print();
-    setPrinted(true);
-  };
-
   const handleConfirmSave = async () => {
     if (!proposalsTable || saving || success) return;
     setSaving(true);
     setErrorMsg(null);
     try {
+      const customizationsSummary = [
+        snapshot.lineItems.length
+          ? `Selections: ${snapshot.lineItems.map(i => `${i.name}${i.label ? ` (${i.label})` : ''} — ${formatCurrency(i.amount)}`).join('; ')}`
+          : null,
+        (snapshot.m2m || snapshot.alts) ? `M2M / Alterations: ${formatCurrency(snapshot.altsM2mAmount)}` : null,
+        snapshot.rush ? `Rush Fee: ${formatCurrency(snapshot.rushFeeAmount)}${snapshot.rushFeePercentDisplay ? ` (${snapshot.rushFeePercentDisplay})` : ''}` : null,
+      ].filter(Boolean).join('\n') || '—';
+
       const fields: Record<string, unknown> = {
         [PROPOSAL.CLIENT]:                     [{ id: clientId }],
         [PROPOSAL.SOURCE_CUSTOMIZATION]:        [{ id: customizationId }],
         [PROPOSAL.SNAPSHOT_STYLE]:              snapshot.styleName,
-        [PROPOSAL.SNAPSHOT_CUSTOMIZATIONS]:     snapshot.customizationsText,
+        [PROPOSAL.SNAPSHOT_CUSTOMIZATIONS]:     customizationsSummary,
         [PROPOSAL.SNAPSHOT_EMBROIDERY_AMOUNT]:  { name: snapshot.embroideryAmount },
-        [PROPOSAL.SNAPSHOT_PRICING]:            snapshot.pricingTotal,
+        [PROPOSAL.SNAPSHOT_PRICING]:            snapshot.grandTotal,
         [PROPOSAL.STATUS]:                      { name: 'Generated' },
       };
       if (saRecordId) fields[PROPOSAL.SALES_ASSOCIATE] = [{ id: saRecordId }];
@@ -1528,10 +1620,17 @@ function ProposalPreviewModal({
   };
 
   const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const orderSummaryRows: Array<{ label: string; amount: number; sub: string | null }> = [
+    { label: 'Base Price',          amount: snapshot.basePriceNumber,  sub: null },
+    { label: 'Customization Total', amount: snapshot.customizationTotal, sub: null },
+    ...((snapshot.m2m || snapshot.alts) ? [{ label: 'M2M / Alterations', amount: snapshot.altsM2mAmount, sub: null }] : []),
+    ...(snapshot.rush ? [{ label: 'Rush Fee', amount: snapshot.rushFeeAmount, sub: snapshot.rushFeePercentDisplay || null }] : []),
+  ];
 
   return (
+    // No dim/blur behind this popup, per request — the overlay only exists to
+    // capture click-outside and center the panel.
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 proposal-modal-chrome"
-      style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
       onClick={e=>{ if (e.target===e.currentTarget && closeEnabled) onClose(); }}>
       <style>{`
         @media print {
@@ -1543,7 +1642,7 @@ function ProposalPreviewModal({
           }
         }
       `}</style>
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
@@ -1562,18 +1661,61 @@ function ProposalPreviewModal({
               <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Style</div><div className="text-sm font-medium">{snapshot.styleName}</div></div>
               <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Amount of Embroidery/Paint/Lace</div><div className="text-sm font-medium">{snapshot.embroideryAmount}</div></div>
             </div>
+
+            {/* Customizations — same invoice-style table as the Customization detail page */}
             <div className="mb-6">
-              <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Customizations</div>
-              <div className="text-sm whitespace-pre-wrap">{snapshot.customizationsText}</div>
+              <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Customizations</div>
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Customization</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Rate</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Pre-Approval</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.lineItems.map(item=>(
+                      <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                        <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
+                        <td className="px-3 py-2.5 text-xs font-medium text-gray-500">{item.label ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700">{item.approval || '—'}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
+                      </tr>
+                    ))}
+                    {snapshot.lineItems.length===0 && (
+                      <tr><td colSpan={4} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="flex justify-between items-center border-t border-gray-200 pt-3 mb-6">
-              <span className="text-sm font-bold">Total Price</span>
-              <span className="text-sm font-bold">{formatCurrency(snapshot.pricingTotal)}</span>
+
+            {/* Order Summary — flags (M2M/Alterations/Rush) only appear here, as
+                rows, exactly like the Customization detail page's own summary. */}
+            <div className="mb-6">
+              <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Order Summary</div>
+              {orderSummaryRows.map(({ label, amount, sub }) => (
+                <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-600">
+                    {label}
+                    {sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}
+                  </span>
+                  <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-2">
+                <span className="text-sm">Grand Total</span>
+                <span className="text-sm">{formatCurrency(snapshot.grandTotal)}</span>
+              </div>
             </div>
+
             <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
           </div>
 
-          {/* Confirm step — appears after Print, independent of the Close countdown */}
+          {/* Confirm step — only appears once `afterprint` fires, i.e. a print/
+              save actually happened. Independent of the Close countdown. */}
           {printed && !success && (
             <div className="pt-2 border-t border-gray-100 dark:border-white/5">
               <span className={labelCls}>Save the Proposal</span>
@@ -1582,6 +1724,12 @@ function ProposalPreviewModal({
                 className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
                 {saving ? 'Saving…' : errorMsg ? 'Retry' : 'Confirm & Save'}
               </button>
+            </div>
+          )}
+
+          {!printed && (
+            <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
+              Print (or save as PDF) to unlock saving the proposal.
             </div>
           )}
 
@@ -1600,7 +1748,7 @@ function ProposalPreviewModal({
 
         {/* Footer */}
         <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-between items-center">
-          <button type="button" onClick={handlePrint}
+          <button type="button" onClick={()=>window.print()}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
             <PrinterIcon size={14} className="text-gray-500 dark:text-gray-400"/>Print
           </button>
@@ -1668,9 +1816,8 @@ function SignedDocumentUploadModal({ proposalRecord, proposalsTable, baseId, onC
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
-      style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[480px] overflow-hidden flex flex-col shadow-2xl"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[480px] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
         onClick={e=>e.stopPropagation()}>
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
           <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
@@ -1824,47 +1971,17 @@ function PostAppointmentModal({
     return [styleName||'Style', statusStr].filter(Boolean).join(' — ') || c.name || 'Customization';
   }, [customizationRecords, customizationsTable]);
 
-  // ── Generate Proposal ─────────────────────────────────────────────────────
-  const [proposalCustomizationId, setProposalCustomizationId] = useState<string|null>(null);
-  const [signedUploadProposalId, setSignedUploadProposalId]   = useState<string|null>(null);
-
   // Sales associate has no linked Staff record anywhere else in this file — it's
   // a plain name field on both Appointments and Clients. Resolved against the
   // Staff table here (by name match) only so it can be linked on the Proposal;
-  // if no matching Staff record exists, the name still displays on the
-  // document, but the proposal can't be generated (see missing-fields list).
+  // passed down to CustomizationModal, which owns the actual Generate Proposal
+  // action (see its title-bar button).
   const fApptSaName = apptTable.getFieldIfExists(APPT.SA_NAME);
   const saName = cStr(CLIENT.SA_NAME) || (fApptSaName ? record.getCellValueAsString(fApptSaName) : '');
   const saRecord = useMemo(
     () => (saName && staffRecords) ? (staffRecords.find(r=>r.name===saName) ?? null) : null,
     [saName, staffRecords]
   );
-
-  const proposalSnapshots = useMemo(() => {
-    const map = new Map<string, ProposalSnapshotResult>();
-    if (!customizationsTable) return map;
-    linkedCustomizations.forEach(c => {
-      const rec = customizationRecords?.find(r=>r.id===c.id);
-      if (!rec) return;
-      map.set(c.id, buildProposalSnapshot(
-        rec, customizationsTable, stylesRecords, pricingRecords, pricingTable,
-        stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField,
-        clientId, saName
-      ));
-    });
-    return map;
-  }, [linkedCustomizations, customizationRecords, customizationsTable, stylesRecords, pricingRecords, pricingTable,
-      stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, clientId, saName]);
-
-  const clientProposals = useMemo(() => {
-    if (!proposalRecords || !clientId || !proposalsTable) return [];
-    const fClientP = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
-    if (!fClientP) return [];
-    return proposalRecords.filter(r => {
-      const lnk = r.getCellValue(fClientP) as Array<{id:string}>|null;
-      return lnk?.some(l=>l.id===clientId) ?? false;
-    });
-  }, [proposalRecords, proposalsTable, clientId]);
 
   // Save helper
   const saveClientField = useCallback((fieldId:string, value:unknown) => {
@@ -2053,31 +2170,13 @@ function PostAppointmentModal({
             <div>
               <span className={labelCls}>Customization Requests</span>
               {linkedCustomizations.length > 0 && (
-                <div className="flex flex-col gap-2 mb-3">
-                  {linkedCustomizations.map(c=>{
-                    const result = proposalSnapshots.get(c.id);
-                    const canGenerate = !!result?.snapshot;
-                    return (
-                      <div key={c.id}>
-                        <div className="flex items-center gap-1.5">
-                          <button type="button" onClick={()=>setEditCustomizationId(c.id)}
-                            className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-3 py-1 hover:bg-[#FDE68A] dark:hover:bg-[#4A3B18] transition-colors text-left">
-                            {fmtCustomizationPill(c)}
-                          </button>
-                          <button type="button" disabled={!canGenerate} onClick={()=>setProposalCustomizationId(c.id)}
-                            title={canGenerate ? 'Generate Proposal' : `Missing: ${(result?.missing??[]).join(', ')}`}
-                            className="flex items-center gap-1.5 p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                            <FileTextIcon size={13}/>
-                          </button>
-                        </div>
-                        {!canGenerate && result && (
-                          <div className="text-[11px] text-red-500 dark:text-red-400 mt-1 pl-1">
-                            Missing for proposal: {result.missing.join(', ')}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {linkedCustomizations.map(c=>(
+                    <button key={c.id} type="button" onClick={()=>setEditCustomizationId(c.id)}
+                      className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-3 py-1 hover:bg-[#FDE68A] dark:hover:bg-[#4A3B18] transition-colors text-left">
+                      {fmtCustomizationPill(c)}
+                    </button>
+                  ))}
                 </div>
               )}
               <button type="button" onClick={()=>setOpenCustomizationAdd(true)}
@@ -2085,32 +2184,6 @@ function PostAppointmentModal({
                 <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Add Customization Request
               </button>
             </div>
-
-            {/* Proposals */}
-            {clientProposals.length > 0 && proposalsTable && (
-              <div>
-                <span className={labelCls}>Proposals</span>
-                <div className="flex flex-wrap gap-2">
-                  {clientProposals.map(p=>{
-                    const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
-                    const fStyleP  = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
-                    const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
-                    const styleStr  = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
-                    const isSigned  = statusStr === 'Signed';
-                    return (
-                      <button key={p.id} type="button" disabled={isSigned}
-                        onClick={()=>setSignedUploadProposalId(p.id)}
-                        title={isSigned ? 'Already signed' : 'Upload signed document'}
-                        className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
-                          ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 cursor-default'
-                          : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
-                        {styleStr || 'Proposal'} — {statusStr || 'Generated'}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Post-Appointment Notes */}
             <div>
@@ -2221,6 +2294,11 @@ function PostAppointmentModal({
           linkedClientId={clientId}
           favoriteStyleIds={existingFavStyles.map(s=>s.id)}
           clientWeddingIso={clientWeddingIso}
+          clientName={clientName || 'Unknown Client'}
+          saName={saName}
+          saRecordId={saRecord?.id ?? null}
+          proposalsTable={proposalsTable}
+          proposalRecords={proposalRecords}
           base={base}
           onClose={()=>setOpenCustomizationAdd(false)}
         />
@@ -2245,35 +2323,13 @@ function PostAppointmentModal({
           linkedClientId={clientId}
           favoriteStyleIds={existingFavStyles.map(s=>s.id)}
           clientWeddingIso={clientWeddingIso}
+          clientName={clientName || 'Unknown Client'}
+          saName={saName}
+          saRecordId={saRecord?.id ?? null}
+          proposalsTable={proposalsTable}
+          proposalRecords={proposalRecords}
           base={base}
           onClose={()=>setEditCustomizationId(null)}
-        />
-      )}
-
-      {proposalCustomizationId && clientId && (() => {
-        const result = proposalSnapshots.get(proposalCustomizationId);
-        if (!result?.snapshot) return null;
-        return (
-          <ProposalPreviewModal
-            snapshot={result.snapshot}
-            clientName={clientName || 'Unknown Client'}
-            clientId={clientId}
-            saName={saName}
-            saRecordId={saRecord?.id ?? null}
-            customizationId={proposalCustomizationId}
-            proposalsTable={proposalsTable}
-            baseId={base.id}
-            onClose={()=>setProposalCustomizationId(null)}
-          />
-        );
-      })()}
-
-      {signedUploadProposalId && proposalsTable && (
-        <SignedDocumentUploadModal
-          proposalRecord={proposalRecords?.find(r=>r.id===signedUploadProposalId) ?? null}
-          proposalsTable={proposalsTable}
-          baseId={base.id}
-          onClose={()=>setSignedUploadProposalId(null)}
         />
       )}
     </>
