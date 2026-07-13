@@ -1168,8 +1168,8 @@ function CustomizationModal({
   const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
 
   // ── Generate Proposal ─────────────────────────────────────────────────────
-  const [showProposalPreview, setShowProposalPreview]         = useState(false);
-  const [signedUploadProposalId, setSignedUploadProposalId]   = useState<string|null>(null);
+  const [showProposalPreview, setShowProposalPreview] = useState(false);
+  const [viewProposalId, setViewProposalId]           = useState<string|null>(null);
   const pTypeField = pricingTable?.getFieldIfExists(PRICING.TYPE) ?? null;
 
   const styleName = useMemo(
@@ -1330,30 +1330,24 @@ function CustomizationModal({
             <CustomizationStagePipeline currentStatus={status} onChange={handleStatus}/>
           )}
 
-          {/* Proposals generated from this customization request */}
+          {/* Proposals generated from this customization request — chip label
+              is the record's own primary field (proposal_id formula). */}
           {mode === 'edit' && proposalsTable && customizationProposals.length > 0 && (
             <div>
               <span className={labelCls}>Proposals</span>
               <div className="flex flex-wrap gap-2">
                 {customizationProposals.map(p=>{
-                  const fStatusP   = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
-                  const fStyleP    = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
-                  const fUnsignedP = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
-                  const statusStr  = fStatusP ? p.getCellValueAsString(fStatusP) : '';
-                  const styleStr   = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
-                  const isSigned   = statusStr === 'Signed';
-                  const hasUnsigned = fUnsignedP ? !!(p.getCellValue(fUnsignedP) as unknown[]|null)?.length : false;
-                  // Always clickable — the modal itself explains and gates
-                  // whether uploading a signed copy is possible yet.
-                  const title = isSigned ? 'Signed' : hasUnsigned ? 'Upload signed document' : 'View proposal';
+                  const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
+                  const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
+                  const isSigned = statusStr === 'Signed';
                   return (
                     <button key={p.id} type="button"
-                      onClick={()=>setSignedUploadProposalId(p.id)}
-                      title={title}
+                      onClick={()=>setViewProposalId(p.id)}
+                      title="View proposal"
                       className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
                         ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 hover:dark:bg-emerald-500/25'
                         : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
-                      {styleStr || 'Proposal'} — {statusStr || 'Generated'}
+                      {p.name || 'Proposal'}
                     </button>
                   );
                 })}
@@ -1499,13 +1493,19 @@ function CustomizationModal({
         />
       )}
 
-      {signedUploadProposalId && proposalsTable && (
-        <SignedDocumentUploadModal
-          proposalRecord={proposalRecords?.find(r=>r.id===signedUploadProposalId) ?? null}
-          proposalsTable={proposalsTable}
-          onClose={()=>setSignedUploadProposalId(null)}
-        />
-      )}
+      {viewProposalId && proposalsTable && (() => {
+        const rec = proposalRecords?.find(r=>r.id===viewProposalId) ?? null;
+        if (!rec) return null;
+        return (
+          <ProposalDetailModal
+            proposalRecord={rec}
+            proposalsTable={proposalsTable}
+            clientName={clientName}
+            saName={saName}
+            onClose={()=>setViewProposalId(null)}
+          />
+        );
+      })()}
     </>
   );
 }
@@ -1785,67 +1785,143 @@ function ProposalPreviewModal({
   );
 }
 
-// ─── SignedDocumentUploadModal ─────────────────────────────────────────────────
-// Opened from the Proposals list — always openable, so the user can see this
-// Proposal's status even before it's ready for a signed copy. The Interface
-// Extensions SDK can't push a local File into an attachment field, so this
-// hands off to the same attachments form with type = "Signed Proposal",
-// prefilled with this exact Proposal record (not the source Customization —
-// the attachments.customization_proposal field links directly to Proposals).
-// The attachment_router automation matches it back to this Proposal and sets
-// status to "Signed" itself — nothing left to confirm here. Uploading is
-// gated on unsigned_document already being present, since a signed copy of a
-// document that was never generated makes no sense.
-interface SignedDocumentUploadModalProps {
-  proposalRecord: AirtableRecord | null;
+// ─── ProposalAttachmentField ────────────────────────────────────────────────
+// One row inside ProposalDetailModal: either an "Upload" button (attachment
+// not present yet) or a thumbnail + Download once it is. Shared between the
+// unsigned and signed sections since both behave identically — only the
+// label, files, and upload handler differ.
+type ProposalFile = { id: string; url: string; filename: string; thumbnails?: { small?: { url: string }; large?: { url: string } } };
+interface ProposalAttachmentFieldProps {
+  label: string;
+  files: ProposalFile[];
+  onUpload: () => void;
+  uploadDisabledReason?: string;
+}
+function ProposalAttachmentField({ label, files, onUpload, uploadDisabledReason }: ProposalAttachmentFieldProps) {
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  const file = files[0];
+  return (
+    <div>
+      <span className={labelCls}>{label}</span>
+      {file ? (
+        <div className="flex items-center gap-3">
+          {/* Opens in the same tab, per request — this navigates the interface away. */}
+          <div onClick={()=>window.open(file.url, '_self')}
+            className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0">
+            <img src={file.thumbnails?.large?.url ?? file.thumbnails?.small?.url ?? file.url} alt={file.filename} className="w-full h-full object-cover"/>
+          </div>
+          <a href={file.url} download={file.filename} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+            <UploadIcon size={14} className="text-gray-500 dark:text-gray-400 rotate-180"/>Download
+          </a>
+        </div>
+      ) : (
+        <div>
+          <button type="button" onClick={onUpload} disabled={!!uploadDisabledReason}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
+            <UploadIcon size={14}/>Upload {label}
+          </button>
+          {uploadDisabledReason && <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{uploadDisabledReason}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ProposalDetailModal ────────────────────────────────────────────────────
+// Opened by clicking a Proposal chip (from CustomizationModal's Proposals
+// list or the Customization Requests table). Reuses the same document layout
+// as ProposalPreviewModal's preview, but reads from the persisted snapshot_*
+// fields on an already-saved record rather than live in-progress values —
+// there's no structured line-items array stored on the record, only the
+// flattened snapshot_customizations text, so this shows that text block
+// instead of rebuilding a line-items table. Also owns both attachment slots
+// (unsigned/signed): the Interface Extensions SDK can't push a local File
+// into an attachment field, so uploading either one hands off to the same
+// attachments form, prefilled with this exact Proposal record — the
+// attachment_router automation matches it back and (for signed) sets status
+// to "Signed" itself. A signed copy can't be uploaded before the unsigned
+// one exists.
+interface ProposalDetailModalProps {
+  proposalRecord: AirtableRecord;
   proposalsTable: Table;
+  clientName: string;
+  saName: string;
   onClose: () => void;
 }
-function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: SignedDocumentUploadModalProps) {
+function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saName, onClose }: ProposalDetailModalProps) {
   useEffect(()=>{
     const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[onClose]);
 
-  if (!proposalRecord) return null;
-  const fStyleSnap = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
-  const fClientP   = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
-  const fUnsignedP = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
-  const styleName  = fStyleSnap ? proposalRecord.getCellValueAsString(fStyleSnap) : '';
-  const clientId   = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
-  const hasUnsigned = fUnsignedP ? !!(proposalRecord.getCellValue(fUnsignedP) as unknown[]|null)?.length : false;
-  const canUpload = hasUnsigned && !!clientId;
+  const fStyle          = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
+  const fCustomizations = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_CUSTOMIZATIONS);
+  const fEmbroidery     = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_EMBROIDERY_AMOUNT);
+  const fPricing        = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_PRICING);
+  const fUnsigned       = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
+  const fSigned         = proposalsTable.getFieldIfExists(PROPOSAL.SIGNED_DOCUMENT);
+  const fClientP        = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
 
-  const openAttachmentForm = () => {
-    if (!canUpload || !clientId) return;
+  const styleName          = fStyle ? proposalRecord.getCellValueAsString(fStyle) : '';
+  const customizationsText = fCustomizations ? proposalRecord.getCellValueAsString(fCustomizations) : '';
+  const embroidery         = fEmbroidery ? proposalRecord.getCellValueAsString(fEmbroidery) : '';
+  const pricing            = fPricing ? ((proposalRecord.getCellValue(fPricing) as number|null) ?? 0) : 0;
+  const clientId           = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+
+  const unsigned = fUnsigned ? ((proposalRecord.getCellValue(fUnsigned) as ProposalFile[]|null) ?? []) : [];
+  const signed   = fSigned   ? ((proposalRecord.getCellValue(fSigned)   as ProposalFile[]|null) ?? []) : [];
+  const hasUnsigned = unsigned.length > 0;
+
+  const openUnsignedUploadForm = () => {
+    if (!clientId) return;
+    window.open(buildProposalAttachmentFormUrl(clientId, proposalRecord.id, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
+  };
+  const openSignedUploadForm = () => {
+    if (!clientId || !hasUnsigned) return;
     window.open(buildProposalAttachmentFormUrl(clientId, proposalRecord.id, 'Signed Proposal'), '_blank', 'noopener,noreferrer');
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[480px] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
         onClick={e=>e.stopPropagation()}>
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
           <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
             <ArrowLeftIcon size={18}/>
           </button>
-          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6]">Upload Signed Document</div>
+          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">{proposalRecord.name || 'Proposal'}</div>
         </div>
-        <div className="p-5 space-y-3">
-          <div className="text-sm text-gray-500 dark:text-gray-400">{styleName || 'Proposal'}</div>
-          {hasUnsigned ? (
-            <div className="text-sm text-gray-700 dark:text-gray-300">
-              Attach the countersigned PDF using the upload form — it'll link back to this proposal and mark it Signed automatically.
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div className="bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
+            <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
+            <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="text-sm"><span className="capitalize text-gray-500">Client: </span><span className="font-medium">{clientName}</span></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Sales Associate: </span><span className="font-medium">{saName || '—'}</span></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{styleName}</span></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{embroidery}</span></div>
             </div>
-          ) : (
-            <div className="text-sm text-gray-700 dark:text-gray-300">
-              This proposal doesn't have its unsigned document attached yet — attach that first before a signed copy can be uploaded.
+            <div className="mb-6">
+              <div className="text-sm whitespace-pre-wrap">{customizationsText || '—'}</div>
             </div>
-          )}
-          <button type="button" onClick={openAttachmentForm} disabled={!canUpload}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
-            <UploadIcon size={14}/>Open Upload Form
+            <div className="flex justify-between items-center border-t border-gray-200 pt-3">
+              <span className="text-sm font-bold">Total Price</span>
+              <span className="text-sm font-bold">{formatCurrency(pricing)}</span>
+            </div>
+          </div>
+
+          <ProposalAttachmentField label="Unsigned Proposal" files={unsigned} onUpload={openUnsignedUploadForm}/>
+          <ProposalAttachmentField label="Signed Proposal" files={signed} onUpload={openSignedUploadForm}
+            uploadDisabledReason={!hasUnsigned ? 'Attach the unsigned proposal first' : undefined}/>
+        </div>
+
+        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end">
+          <button type="button" onClick={onClose}
+            className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+            Close
           </button>
         </div>
       </div>
@@ -1893,6 +1969,7 @@ function PostAppointmentModal({
 }: PostApptModalProps) {
   const [openCustomizationAdd, setOpenCustomizationAdd] = useState(false);
   const [editCustomizationId, setEditCustomizationId]   = useState<string|null>(null);
+  const [viewProposalId, setViewProposalId]             = useState<string|null>(null);
 
   const fClientLink = apptTable.getFieldIfExists(APPT.CLIENT_LINK);
   const fTypeField  = apptTable.getFieldIfExists(APPT.TYPE);
@@ -1969,7 +2046,7 @@ function PostAppointmentModal({
     m2m: boolean;
     alts: boolean;
     rush: boolean;
-    proposalsCount: number;
+    proposals: AirtableRecord[];
     grandTotal: number;
   }
   const customizationRows = useMemo<CustomizationRow[]>(() => {
@@ -1999,12 +2076,12 @@ function PostAppointmentModal({
         const alts = fAlts ? !!(rec.getCellValue(fAlts) as boolean|null) : false;
         const rush = fRush ? !!(rec.getCellValue(fRush) as boolean|null) : false;
 
-        const proposalsCount = (fSourceP && proposalRecords)
+        const proposals = (fSourceP && proposalRecords)
           ? proposalRecords.filter(p => {
               const link = p.getCellValue(fSourceP) as Array<{id:string}>|null;
               return link?.some(l=>l.id===rec.id) ?? false;
-            }).length
-          : 0;
+            })
+          : [];
 
         const embroideryStr = fEmbroidery ? (rec.getCellValueAsString(fEmbroidery) || '') : '';
         const basePriceNumber = (styleRec && stylesBasePriceField)
@@ -2029,7 +2106,7 @@ function PostAppointmentModal({
           : 0;
         const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
 
-        return { id: c.id, styleName, dateRequested, m2m, alts, rush, proposalsCount, grandTotal };
+        return { id: c.id, styleName, dateRequested, m2m, alts, rush, proposals, grandTotal };
       })
       .filter((r): r is CustomizationRow => r !== null);
   }, [linkedCustomizations, customizationRecords, customizationsTable, stylesRecords, pricingRecords, pricingTable,
@@ -2238,10 +2315,10 @@ function PostAppointmentModal({
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     <tr>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Style</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left w-64">Style</th>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Date of Request</th>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Flags</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Generated Proposals</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Proposals</th>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Total Price</th>
                     </tr>
                   </thead>
@@ -2251,7 +2328,7 @@ function PostAppointmentModal({
                       return (
                         <tr key={row.id} onClick={()=>setEditCustomizationId(row.id)}
                           className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
-                          <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{row.styleName}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6] w-64">{row.styleName}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtFriendly(row.dateRequested) : '—'}</td>
                           <td className="px-3 py-2.5">
                             {flagParts.length > 0 ? (
@@ -2262,7 +2339,19 @@ function PostAppointmentModal({
                               </div>
                             ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">{row.proposalsCount > 0 ? row.proposalsCount : '—'}</td>
+                          <td className="px-3 py-2.5">
+                            {row.proposals.length > 0 ? (
+                              <div className="flex gap-1 flex-wrap">
+                                {row.proposals.map(p=>(
+                                  <button key={p.id} type="button"
+                                    onClick={e=>{ e.stopPropagation(); setViewProposalId(p.id); }}
+                                    className="bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10 rounded-full text-xs font-medium px-2 py-0.5 transition-colors">
+                                    {p.name || 'Proposal'}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          </td>
                           <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(row.grandTotal)}</td>
                         </tr>
                       );
@@ -2426,6 +2515,20 @@ function PostAppointmentModal({
           onClose={()=>setEditCustomizationId(null)}
         />
       )}
+
+      {viewProposalId && proposalsTable && (() => {
+        const rec = proposalRecords?.find(r=>r.id===viewProposalId) ?? null;
+        if (!rec) return null;
+        return (
+          <ProposalDetailModal
+            proposalRecord={rec}
+            proposalsTable={proposalsTable}
+            clientName={clientName || 'Unknown Client'}
+            saName={saName}
+            onClose={()=>setViewProposalId(null)}
+          />
+        );
+      })()}
     </>
   );
 }
