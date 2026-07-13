@@ -19,6 +19,8 @@ import {
   Check as CheckIcon,
   ArrowLeft as ArrowLeftIcon,
   Lightning as LightningIcon,
+  Printer as PrinterIcon,
+  FileText as FileTextIcon,
 } from '@phosphor-icons/react';
 
 // ─── Write queue ──────────────────────────────────────────────────────────────
@@ -38,6 +40,8 @@ const TABLE_IDS = {
   CUSTOMIZATION_PRICING:'tblccTHYe8BCqutyD',
   VENDORS:              'tblZzMdXOlBDJC0BS',
   ATTACHMENTS:          'tbli57E9YzWb5Qmku',
+  STAFF:                'tblbYk88xJ8FQrLS4',
+  PROPOSALS:            'tblP7tVuCuXMzI4ir',
 } as const;
 
 const APPT = {
@@ -132,6 +136,23 @@ const PRICING = {
   PRICE:     'fldoFj5qMu6IRX53d',
   PERCENT:   'fldzVvl1ZMSfEGQdQ',
   MULTIPLE:  'fldEKZTpnJ5Y1gjOw',
+} as const;
+
+// Proposals table — created in the sandbox base for "Customization Proposal
+// Document Generation" (JuliMigLui37089). Field IDs are hardcoded (not
+// discovered via getFieldIfExists by name) since this table was created
+// directly via the Airtable API for this feature.
+const PROPOSAL = {
+  CLIENT:                     'fldlZNjszbY9gI1PT',
+  SALES_ASSOCIATE:            'fld3JGsN4n496CT0q',
+  SOURCE_CUSTOMIZATION:       'fldeXnhSr8r6rw78k',
+  SNAPSHOT_STYLE:             'fldU3ODl61opCWqex',
+  SNAPSHOT_CUSTOMIZATIONS:    'fldxLnC3GcflnLix2',
+  SNAPSHOT_EMBROIDERY_AMOUNT: 'fldnTacwv9Ie43ySX',
+  SNAPSHOT_PRICING:           'fldh80zFrkHTPZ8T8',
+  UNSIGNED_DOCUMENT:          'fldlUFhODjgDyeOFg',
+  SIGNED_DOCUMENT:            'fld1Z37faYGD7jDia',
+  STATUS:                     'fldW0GbVWnhZGUAtv',
 } as const;
 
 // ─── External field source map ─────────────────────────────────────────────────
@@ -1318,6 +1339,343 @@ function CustomizationModal({
   );
 }
 
+// ─── Proposal snapshot ─────────────────────────────────────────────────────────
+// Reads a Customization record's current values into a plain snapshot object at
+// the moment "Generate Proposal" is clicked — the same math CustomizationModal
+// uses for "Proposed Total Custom Price" (Base Price + Customization Total,
+// before Rush Fee/M2M-Alterations), so a Proposal's numbers always match what
+// was shown in that modal. This is copied into the Proposal record verbatim
+// (not re-read later), so a later edit to the source Customization can't
+// silently change an already-generated proposal.
+interface ProposalSnapshot {
+  styleName: string;
+  customizationsText: string;
+  embroideryAmount: string;
+  pricingTotal: number;
+}
+interface ProposalSnapshotResult {
+  snapshot: ProposalSnapshot | null;
+  missing: string[];
+}
+function buildProposalSnapshot(
+  custRec: AirtableRecord,
+  customizationsTable: Table,
+  stylesRecords: AirtableRecord[] | null,
+  pricingRecords: AirtableRecord[] | null,
+  pricingTable: Table | null,
+  stylesBasePriceField: ReturnType<Table['getFieldIfExists']>,
+  pricingPercentField: ReturnType<Table['getFieldIfExists']>,
+  pricingMultipleField: ReturnType<Table['getFieldIfExists']>,
+  selfUsageField: ReturnType<Table['getFieldIfExists']>,
+  clientId: string | null,
+  saName: string,
+): ProposalSnapshotResult {
+  const missing: string[] = [];
+
+  const fStyled     = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE);
+  const fPricing    = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_PRICING);
+  const fEmbroidery = customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT);
+  const fM2m        = customizationsTable.getFieldIfExists(CUSTOM.M2M);
+  const fAlts       = customizationsTable.getFieldIfExists(CUSTOM.ALTERATIONS);
+  const fRush       = customizationsTable.getFieldIfExists(CUSTOM.RUSH);
+  const fDetail     = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_DETAIL);
+
+  const styleId  = fStyled ? ((custRec.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+  const styleRec = styleId ? (stylesRecords?.find(r=>r.id===styleId) ?? null) : null;
+  const styleName = styleRec?.name ?? '';
+  if (!styleName) missing.push('Customized Style');
+
+  const pricingIds = fPricing ? ((custRec.getCellValue(fPricing) as Array<{id:string}>|null)?.map(x=>x.id) ?? []) : [];
+  if (pricingIds.length === 0) missing.push('at least one selected customization');
+
+  const embroideryAmount = fEmbroidery ? (custRec.getCellValueAsString(fEmbroidery) || '') : '';
+  if (!embroideryAmount) missing.push('Amount of Embroidery/Paint/Lace');
+
+  const m2m    = fM2m  ? !!(custRec.getCellValue(fM2m)  as boolean|null) : false;
+  const alts   = fAlts ? !!(custRec.getCellValue(fAlts) as boolean|null) : false;
+  const rush   = fRush ? !!(custRec.getCellValue(fRush) as boolean|null) : false;
+  const detail = fDetail ? (custRec.getCellValueAsString(fDetail) || '') : '';
+
+  const basePriceNumber = (styleRec && stylesBasePriceField)
+    ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
+    : 0;
+
+  const selfUsageValue = selfUsageField ? parseCurrencyString(custRec.getCellValueAsString(selfUsageField)) : 0;
+  const multiplierFactor = computeMultiplierFactor(selfUsageValue, embroideryAmount || null);
+
+  const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
+  const customizationTotal = pricingIds.reduce((sum, id) => {
+    const r = pricingRecords?.find(pr => pr.id === id);
+    if (!r) return sum;
+    return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor).amount;
+  }, 0);
+
+  const pricingTotal = basePriceNumber + customizationTotal;
+  if (pricingTotal <= 0) missing.push('a calculated price greater than $0');
+
+  if (!clientId) missing.push('client');
+  if (!saName) missing.push('sales associate');
+
+  const lineItemNames = pricingIds
+    .map(id => pricingRecords?.find(pr=>pr.id===id))
+    .filter((r): r is AirtableRecord => !!r)
+    .map(r => r.name)
+    .filter(Boolean);
+  const flagParts = [alts && 'Alterations', m2m && 'M2M', rush && 'Rush'].filter(Boolean) as string[];
+  const customizationsText = [
+    lineItemNames.length ? `Selections: ${lineItemNames.join(', ')}` : null,
+    flagParts.length ? `Flags: ${flagParts.join(', ')}` : null,
+    detail ? `Detail: ${detail}` : null,
+  ].filter(Boolean).join('\n') || '—';
+
+  if (missing.length > 0) return { snapshot: null, missing };
+  return { snapshot: { styleName, customizationsText, embroideryAmount, pricingTotal }, missing: [] };
+}
+
+// ─── ProposalPreviewModal ─────────────────────────────────────────────────────
+// Opened from "Generate Proposal". Print → attach the printed PDF → Confirm &
+// Save creates the Proposal record. The Close countdown only guards against
+// closing before the document has even been seen — once the user has clicked
+// Confirm & Save and it succeeds, closing is immediate and unconditional.
+const PROPOSAL_CLOSE_COUNTDOWN_SECONDS = 8;
+
+interface ProposalPreviewModalProps {
+  snapshot: ProposalSnapshot;
+  clientName: string;
+  clientId: string;
+  saName: string;
+  saRecordId: string | null;
+  customizationId: string;
+  proposalsTable: Table | null;
+  onClose: () => void;
+}
+function ProposalPreviewModal({
+  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, onClose,
+}: ProposalPreviewModalProps) {
+  const [countdown, setCountdown]     = useState(PROPOSAL_CLOSE_COUNTDOWN_SECONDS);
+  const [printed, setPrinted]         = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File|null>(null);
+  const [saving, setSaving]           = useState(false);
+  const [errorMsg, setErrorMsg]       = useState<string|null>(null);
+  const [success, setSuccess]         = useState(false);
+  const [generatedAt]                 = useState(() => new Date());
+
+  const closeEnabled = countdown <= 0 || success;
+
+  // Single interval started on mount, ticking down to 0 — not restarted per
+  // render, so it can't drift or reset while the user interacts with the modal.
+  useEffect(() => {
+    const t = setInterval(() => {
+      setCountdown(c => (c <= 1 ? 0 : c - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Escape is intercepted (not just ignored) while the countdown runs, same as
+  // the click-outside guard below — neither can close the modal early.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && closeEnabled) onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [closeEnabled, onClose]);
+
+  // A successful save closes the modal on its own — the countdown no longer
+  // applies once the record actually exists.
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(onClose, 1200);
+    return () => clearTimeout(t);
+  }, [success, onClose]);
+
+  const handlePrint = () => {
+    window.print();
+    setPrinted(true);
+  };
+
+  const handleConfirmSave = async () => {
+    if (!proposalsTable || !selectedFile || saving) return;
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      const fields: Record<string, unknown> = {
+        [PROPOSAL.CLIENT]:                     [{ id: clientId }],
+        [PROPOSAL.SOURCE_CUSTOMIZATION]:        [{ id: customizationId }],
+        [PROPOSAL.SNAPSHOT_STYLE]:              snapshot.styleName,
+        [PROPOSAL.SNAPSHOT_CUSTOMIZATIONS]:     snapshot.customizationsText,
+        [PROPOSAL.SNAPSHOT_EMBROIDERY_AMOUNT]:  { name: snapshot.embroideryAmount },
+        [PROPOSAL.SNAPSHOT_PRICING]:            snapshot.pricingTotal,
+        [PROPOSAL.UNSIGNED_DOCUMENT]:           [{ file: selectedFile }],
+        [PROPOSAL.STATUS]:                      { name: 'Generated' },
+      };
+      if (saRecordId) fields[PROPOSAL.SALES_ASSOCIATE] = [{ id: saRecordId }];
+      await queueWrite(() => proposalsTable!.createRecordAsync(fields));
+      setSuccess(true);
+    } catch (err) {
+      console.error('Failed to save proposal:', err);
+      setErrorMsg('Failed to save the proposal. Your selected file is still attached — try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 proposal-modal-chrome"
+      style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
+      onClick={e=>{ if (e.target===e.currentTarget && closeEnabled) onClose(); }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .proposal-print-area, .proposal-print-area * { visibility: visible !important; }
+          .proposal-print-area {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 32px;
+            background: #ffffff !important; color: #111111 !important;
+          }
+        }
+      `}</style>
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">Generate Proposal</div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Document — the only thing that survives @media print */}
+          <div className="proposal-print-area bg-white text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
+            <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
+            <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Client</div><div className="text-sm font-medium">{clientName}</div></div>
+              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Sales Associate</div><div className="text-sm font-medium">{saName || '—'}</div></div>
+              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Style</div><div className="text-sm font-medium">{snapshot.styleName}</div></div>
+              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Amount of Embroidery/Paint/Lace</div><div className="text-sm font-medium">{snapshot.embroideryAmount}</div></div>
+            </div>
+            <div className="mb-6">
+              <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Customizations</div>
+              <div className="text-sm whitespace-pre-wrap">{snapshot.customizationsText}</div>
+            </div>
+            <div className="flex justify-between items-center border-t border-gray-200 pt-3 mb-6">
+              <span className="text-sm font-bold">Total Price</span>
+              <span className="text-sm font-bold">{formatCurrency(snapshot.pricingTotal)}</span>
+            </div>
+            <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
+          </div>
+
+          {/* Attach step — appears after Print, independent of the Close countdown */}
+          {printed && !success && (
+            <div className="pt-2 border-t border-gray-100 dark:border-white/5">
+              <span className={labelCls}>Attach the Printed PDF</span>
+              <input type="file" accept="application/pdf,.pdf"
+                onChange={e => { setErrorMsg(null); setSelectedFile(e.target.files?.[0] ?? null); }}
+                className="text-sm text-gray-700 dark:text-gray-300 mb-2 block"/>
+              {selectedFile && <div className="text-sm text-gray-700 dark:text-gray-300 mb-2">Selected: {selectedFile.name}</div>}
+              {errorMsg && <div className="text-sm text-red-600 dark:text-red-400 mb-2">{errorMsg}</div>}
+              <button type="button" onClick={handleConfirmSave} disabled={!selectedFile || saving}
+                className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
+                {saving ? 'Saving…' : errorMsg ? 'Retry' : 'Confirm & Save'}
+              </button>
+            </div>
+          )}
+
+          {success && (
+            <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">
+              Proposal saved.
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-between items-center">
+          <button type="button" onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+            <PrinterIcon size={14} className="text-gray-500 dark:text-gray-400"/>Print
+          </button>
+          <button type="button" onClick={()=>{ if (closeEnabled) onClose(); }} disabled={!closeEnabled}
+            className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            {closeEnabled ? 'Close' : `Close (${countdown})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SignedDocumentUploadModal ─────────────────────────────────────────────────
+// Separate action from proposal generation — opened from the client's existing
+// Proposals list to upload the signed PDF back onto that SAME record (never
+// creates a new one). A single updateRecordAsync call is atomic: if it fails,
+// the record (including its unsigned_document) is untouched.
+interface SignedDocumentUploadModalProps {
+  proposalRecord: AirtableRecord | null;
+  proposalsTable: Table;
+  onClose: () => void;
+}
+function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: SignedDocumentUploadModalProps) {
+  const [selectedFile, setSelectedFile] = useState<File|null>(null);
+  const [uploading, setUploading]       = useState(false);
+  const [errorMsg, setErrorMsg]         = useState<string|null>(null);
+
+  useEffect(()=>{
+    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
+    document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
+  },[onClose]);
+
+  const handleUpload = async () => {
+    if (!proposalRecord || !selectedFile || uploading) return;
+    setUploading(true);
+    setErrorMsg(null);
+    try {
+      await queueWrite(() => proposalsTable.updateRecordAsync(proposalRecord.id, {
+        [PROPOSAL.SIGNED_DOCUMENT]: [{ file: selectedFile }],
+        [PROPOSAL.STATUS]:          { name: 'Signed' },
+      }));
+      onClose();
+    } catch (err) {
+      console.error('Failed to upload signed document:', err);
+      setErrorMsg('Failed to upload the signed document. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  if (!proposalRecord) return null;
+  const fStyleSnap = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
+  const styleName = fStyleSnap ? proposalRecord.getCellValueAsString(fStyleSnap) : '';
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
+      style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
+      onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[480px] overflow-hidden flex flex-col shadow-2xl"
+        onClick={e=>e.stopPropagation()}>
+        <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
+            <ArrowLeftIcon size={18}/>
+          </button>
+          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6]">Upload Signed Document</div>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="text-sm text-gray-500 dark:text-gray-400">{styleName || 'Proposal'}</div>
+          <input type="file" accept="application/pdf,.pdf"
+            onChange={e=>{ setErrorMsg(null); setSelectedFile(e.target.files?.[0] ?? null); }}
+            className="text-sm text-gray-700 dark:text-gray-300 block"/>
+          {selectedFile && <div className="text-sm text-gray-700 dark:text-gray-300">{selectedFile.name}</div>}
+          {errorMsg && <div className="text-sm text-red-600 dark:text-red-400">{errorMsg}</div>}
+        </div>
+        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end">
+          <button onClick={handleUpload} disabled={!selectedFile || uploading}
+            className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
+            {uploading ? 'Uploading…' : 'Upload Signed Document'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PostAppointmentModal ─────────────────────────────────────────────────────
 interface PostApptModalProps {
   record: AirtableRecord;
@@ -1339,6 +1697,10 @@ interface PostApptModalProps {
   rushFeePercentField: ReturnType<Table['getFieldIfExists']>;
   leadtimeWeeksField: ReturnType<Table['getFieldIfExists']>;
   favoriteStylesApptField: ReturnType<Table['getFieldIfExists']>;
+  staffTable: Table | null;
+  staffRecords: AirtableRecord[] | null;
+  proposalsTable: Table | null;
+  proposalRecords: AirtableRecord[] | null;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
 }
@@ -1349,6 +1711,7 @@ function PostAppointmentModal({
   pricingTable, pricingRecords,
   stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, stylesSelfUsageField,
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField, favoriteStylesApptField,
+  staffTable, staffRecords, proposalsTable, proposalRecords,
   base, onClose
 }: PostApptModalProps) {
   const [openCustomizationAdd, setOpenCustomizationAdd] = useState(false);
@@ -1435,6 +1798,48 @@ function PostAppointmentModal({
     const statusStr   = statusField ? rec.getCellValueAsString(statusField) : '';
     return [styleName||'Style', statusStr].filter(Boolean).join(' — ') || c.name || 'Customization';
   }, [customizationRecords, customizationsTable]);
+
+  // ── Generate Proposal ─────────────────────────────────────────────────────
+  const [proposalCustomizationId, setProposalCustomizationId] = useState<string|null>(null);
+  const [signedUploadProposalId, setSignedUploadProposalId]   = useState<string|null>(null);
+
+  // Sales associate has no linked Staff record anywhere else in this file — it's
+  // a plain name field on both Appointments and Clients. Resolved against the
+  // Staff table here (by name match) only so it can be linked on the Proposal;
+  // if no matching Staff record exists, the name still displays on the
+  // document, but the proposal can't be generated (see missing-fields list).
+  const fApptSaName = apptTable.getFieldIfExists(APPT.SA_NAME);
+  const saName = cStr(CLIENT.SA_NAME) || (fApptSaName ? record.getCellValueAsString(fApptSaName) : '');
+  const saRecord = useMemo(
+    () => (saName && staffRecords) ? (staffRecords.find(r=>r.name===saName) ?? null) : null,
+    [saName, staffRecords]
+  );
+
+  const proposalSnapshots = useMemo(() => {
+    const map = new Map<string, ProposalSnapshotResult>();
+    if (!customizationsTable) return map;
+    linkedCustomizations.forEach(c => {
+      const rec = customizationRecords?.find(r=>r.id===c.id);
+      if (!rec) return;
+      map.set(c.id, buildProposalSnapshot(
+        rec, customizationsTable, stylesRecords, pricingRecords, pricingTable,
+        stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField,
+        clientId, saName
+      ));
+    });
+    return map;
+  }, [linkedCustomizations, customizationRecords, customizationsTable, stylesRecords, pricingRecords, pricingTable,
+      stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, clientId, saName]);
+
+  const clientProposals = useMemo(() => {
+    if (!proposalRecords || !clientId || !proposalsTable) return [];
+    const fClientP = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
+    if (!fClientP) return [];
+    return proposalRecords.filter(r => {
+      const lnk = r.getCellValue(fClientP) as Array<{id:string}>|null;
+      return lnk?.some(l=>l.id===clientId) ?? false;
+    });
+  }, [proposalRecords, proposalsTable, clientId]);
 
   // Save helper
   const saveClientField = useCallback((fieldId:string, value:unknown) => {
@@ -1623,13 +2028,31 @@ function PostAppointmentModal({
             <div>
               <span className={labelCls}>Customization Requests</span>
               {linkedCustomizations.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {linkedCustomizations.map(c=>(
-                    <button key={c.id} type="button" onClick={()=>setEditCustomizationId(c.id)}
-                      className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-3 py-1 hover:bg-[#FDE68A] dark:hover:bg-[#4A3B18] transition-colors text-left">
-                      {fmtCustomizationPill(c)}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-2 mb-3">
+                  {linkedCustomizations.map(c=>{
+                    const result = proposalSnapshots.get(c.id);
+                    const canGenerate = !!result?.snapshot;
+                    return (
+                      <div key={c.id}>
+                        <div className="flex items-center gap-1.5">
+                          <button type="button" onClick={()=>setEditCustomizationId(c.id)}
+                            className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-3 py-1 hover:bg-[#FDE68A] dark:hover:bg-[#4A3B18] transition-colors text-left">
+                            {fmtCustomizationPill(c)}
+                          </button>
+                          <button type="button" disabled={!canGenerate} onClick={()=>setProposalCustomizationId(c.id)}
+                            title={canGenerate ? 'Generate Proposal' : `Missing: ${(result?.missing??[]).join(', ')}`}
+                            className="flex items-center gap-1.5 p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            <FileTextIcon size={13}/>
+                          </button>
+                        </div>
+                        {!canGenerate && result && (
+                          <div className="text-[11px] text-red-500 dark:text-red-400 mt-1 pl-1">
+                            Missing for proposal: {result.missing.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <button type="button" onClick={()=>setOpenCustomizationAdd(true)}
@@ -1637,6 +2060,32 @@ function PostAppointmentModal({
                 <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Add Customization Request
               </button>
             </div>
+
+            {/* Proposals */}
+            {clientProposals.length > 0 && proposalsTable && (
+              <div>
+                <span className={labelCls}>Proposals</span>
+                <div className="flex flex-wrap gap-2">
+                  {clientProposals.map(p=>{
+                    const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
+                    const fStyleP  = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
+                    const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
+                    const styleStr  = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
+                    const isSigned  = statusStr === 'Signed';
+                    return (
+                      <button key={p.id} type="button" disabled={isSigned}
+                        onClick={()=>setSignedUploadProposalId(p.id)}
+                        title={isSigned ? 'Already signed' : 'Upload signed document'}
+                        className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
+                          ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 cursor-default'
+                          : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
+                        {styleStr || 'Proposal'} — {statusStr || 'Generated'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Post-Appointment Notes */}
             <div>
@@ -1775,6 +2224,31 @@ function PostAppointmentModal({
           onClose={()=>setEditCustomizationId(null)}
         />
       )}
+
+      {proposalCustomizationId && clientId && (() => {
+        const result = proposalSnapshots.get(proposalCustomizationId);
+        if (!result?.snapshot) return null;
+        return (
+          <ProposalPreviewModal
+            snapshot={result.snapshot}
+            clientName={clientName || 'Unknown Client'}
+            clientId={clientId}
+            saName={saName}
+            saRecordId={saRecord?.id ?? null}
+            customizationId={proposalCustomizationId}
+            proposalsTable={proposalsTable}
+            onClose={()=>setProposalCustomizationId(null)}
+          />
+        );
+      })()}
+
+      {signedUploadProposalId && proposalsTable && (
+        <SignedDocumentUploadModal
+          proposalRecord={proposalRecords?.find(r=>r.id===signedUploadProposalId) ?? null}
+          proposalsTable={proposalsTable}
+          onClose={()=>setSignedUploadProposalId(null)}
+        />
+      )}
     </>
   );
 }
@@ -1908,6 +2382,8 @@ function AppointmentsApp(): React.ReactElement {
   const stylesTable         = base.getTableByIdIfExists(TABLE_IDS.STYLES);
   const customizationsTable = base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATIONS);
   const pricingTable        = base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATION_PRICING);
+  const staffTable          = base.getTableByIdIfExists(TABLE_IDS.STAFF);
+  const proposalsTable      = base.getTableByIdIfExists(TABLE_IDS.PROPOSALS);
 
   // useRecords — fall back to appointmentsTable to keep hook count stable
   const appointmentRecords = useRecords(appointmentsTable ?? null);
@@ -1918,6 +2394,10 @@ function AppointmentsApp(): React.ReactElement {
   const customizationRecords = customizationsTable ? _customRaw : null;
   const _pricingRaw        = useRecords(pricingTable ?? appointmentsTable ?? null);
   const pricingRecords     = pricingTable ? _pricingRaw : null;
+  const _staffRaw          = useRecords(staffTable ?? appointmentsTable ?? null);
+  const staffRecords       = staffTable ? _staffRaw : null;
+  const _proposalsRaw      = useRecords(proposalsTable ?? appointmentsTable ?? null);
+  const proposalRecords    = proposalsTable ? _proposalsRaw : null;
 
   const [selectedDate, setSelectedDate]        = useState(new Date());
   const [showCalendar, setShowCalendar]         = useState(false);
@@ -2042,6 +2522,10 @@ function AppointmentsApp(): React.ReactElement {
           rushFeePercentField={rushFeePercentField}
           leadtimeWeeksField={leadtimeWeeksField}
           favoriteStylesApptField={favoriteStylesApptField}
+          staffTable={staffTable}
+          staffRecords={staffRecords}
+          proposalsTable={proposalsTable}
+          proposalRecords={proposalRecords}
           base={base}
           onClose={()=>setSelectedRecordId(null)}
         />
