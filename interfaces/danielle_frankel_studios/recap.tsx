@@ -153,6 +153,7 @@ const PROPOSAL = {
   UNSIGNED_DOCUMENT:          'fldlUFhODjgDyeOFg',
   SIGNED_DOCUMENT:            'fld1Z37faYGD7jDia',
   STATUS:                     'fldW0GbVWnhZGUAtv',
+  GENERATED_AT:               'fldHoui3whPBjKs5x',
 } as const;
 
 // ─── External field source map ─────────────────────────────────────────────────
@@ -272,6 +273,28 @@ function fmtUSDate(s: string|null|undefined): string {
   const d = m ? new Date(+m[1]!, +m[2]!-1, +m[3]!) : new Date(s);
   if (isNaN(d.getTime())) return s;
   return new Intl.DateTimeFormat('en-US', { month:'long', day:'numeric', year:'numeric' }).format(d);
+}
+
+// ─── Proposal filename ─────────────────────────────────────────────────────
+// client_style_date_time, all snake_case — used both as the suggested
+// filename for Print → Save as PDF (via document.title, the only lever a
+// web page has over that dialog's default filename) and as the `download`
+// attribute on the Unsigned/Signed Proposal Download links.
+function toSnakeCase(s: string): string {
+  return s
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+function buildProposalFilename(clientName: string, styleName: string, date: Date): string {
+  const datePart = `${date.getFullYear()}${String(date.getMonth()+1).padStart(2,'0')}${String(date.getDate()).padStart(2,'0')}`;
+  const timePart = `${String(date.getHours()).padStart(2,'0')}${String(date.getMinutes()).padStart(2,'0')}${String(date.getSeconds()).padStart(2,'0')}`;
+  return [toSnakeCase(clientName), toSnakeCase(styleName), datePart, timePart].filter(Boolean).join('_');
+}
+function fileExtension(filename: string): string {
+  const idx = filename.lastIndexOf('.');
+  return idx >= 0 ? filename.slice(idx) : '';
 }
 function parseFlexDate(s: string): Date|null {
   if (!s.trim()) return null;
@@ -1605,11 +1628,19 @@ function ProposalPreviewModal({
     return () => clearInterval(t);
   }, []);
 
+  // document.title is the only lever a web page has over the "Save as PDF"
+  // dialog's suggested filename — set it just before printing, restore it
+  // once the dialog closes.
+  const originalTitleRef = useRef(document.title);
   useEffect(() => {
-    const h = () => setPrinted(true);
+    const h = () => { setPrinted(true); document.title = originalTitleRef.current; };
     window.addEventListener('afterprint', h);
     return () => window.removeEventListener('afterprint', h);
   }, []);
+  const handlePrint = () => {
+    document.title = buildProposalFilename(clientName, snapshot.styleName, generatedAt);
+    window.print();
+  };
 
   // Escape is intercepted (not just ignored) while the countdown runs, same as
   // the click-outside guard below — neither can close the modal early.
@@ -1775,7 +1806,7 @@ function ProposalPreviewModal({
                 className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {closeEnabled ? 'Close' : `Close (${countdown})`}
               </button>
-              <button type="button" onClick={()=>window.print()}
+              <button type="button" onClick={handlePrint}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
                 <PrinterIcon size={14}/>Print
               </button>
@@ -1804,10 +1835,14 @@ interface ProposalAttachmentFieldProps {
   files: ProposalFile[];
   onUpload: () => void;
   uploadDisabledReason?: string;
+  // Suggested filename (without extension) — client_style_date_time,
+  // snake_case. Falls back to the attachment's own filename if omitted.
+  downloadBaseName?: string;
 }
-function ProposalAttachmentField({ label, files, onUpload, uploadDisabledReason }: ProposalAttachmentFieldProps) {
+function ProposalAttachmentField({ label, files, onUpload, uploadDisabledReason, downloadBaseName }: ProposalAttachmentFieldProps) {
   const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const file = files[0];
+  const downloadName = file ? (downloadBaseName ? `${downloadBaseName}${fileExtension(file.filename)}` : file.filename) : '';
   return (
     <div>
       <span className={labelCls}>{label}</span>
@@ -1818,7 +1853,7 @@ function ProposalAttachmentField({ label, files, onUpload, uploadDisabledReason 
             className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0">
             <img src={file.thumbnails?.large?.url ?? file.thumbnails?.small?.url ?? file.url} alt={file.filename} className="w-full h-full object-cover"/>
           </div>
-          <a href={file.url} download={file.filename} target="_blank" rel="noopener noreferrer"
+          <a href={file.url} download={downloadName} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
             <UploadIcon size={14} className="text-gray-500 dark:text-gray-400 rotate-180"/>Download
           </a>
@@ -1870,16 +1905,34 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
   const fUnsigned       = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
   const fSigned         = proposalsTable.getFieldIfExists(PROPOSAL.SIGNED_DOCUMENT);
   const fClientP        = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
+  const fGeneratedAt    = proposalsTable.getFieldIfExists(PROPOSAL.GENERATED_AT);
 
   const styleName          = fStyle ? proposalRecord.getCellValueAsString(fStyle) : '';
   const customizationsText = fCustomizations ? proposalRecord.getCellValueAsString(fCustomizations) : '';
   const embroidery         = fEmbroidery ? proposalRecord.getCellValueAsString(fEmbroidery) : '';
   const pricing            = fPricing ? ((proposalRecord.getCellValue(fPricing) as number|null) ?? 0) : 0;
   const clientId           = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+  const generatedAtRaw     = fGeneratedAt ? (proposalRecord.getCellValue(fGeneratedAt) as string|null) : null;
+  const generatedAt        = generatedAtRaw ? new Date(generatedAtRaw) : new Date();
+  const downloadBaseName   = buildProposalFilename(clientName, styleName, generatedAt);
 
   const unsigned = fUnsigned ? ((proposalRecord.getCellValue(fUnsigned) as ProposalFile[]|null) ?? []) : [];
   const signed   = fSigned   ? ((proposalRecord.getCellValue(fSigned)   as ProposalFile[]|null) ?? []) : [];
   const hasUnsigned = unsigned.length > 0;
+
+  // document.title is the only lever a web page has over the "Save as PDF"
+  // dialog's suggested filename — set it just before printing, restore it
+  // once the dialog closes.
+  const originalTitleRef = useRef(document.title);
+  useEffect(() => {
+    const h = () => { document.title = originalTitleRef.current; };
+    window.addEventListener('afterprint', h);
+    return () => window.removeEventListener('afterprint', h);
+  }, []);
+  const handlePrint = () => {
+    document.title = downloadBaseName;
+    window.print();
+  };
 
   const openUnsignedUploadForm = () => {
     if (!clientId) return;
@@ -1934,15 +1987,15 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
           {/* While unsigned isn't attached yet, offer Print here too — same
               document, in case it wasn't printed/saved during generation. */}
           {!hasUnsigned && (
-            <button type="button" onClick={()=>window.print()}
+            <button type="button" onClick={handlePrint}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
               <PrinterIcon size={14}/>Print
             </button>
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <ProposalAttachmentField label="Unsigned Proposal" files={unsigned} onUpload={openUnsignedUploadForm}/>
-            <ProposalAttachmentField label="Signed Proposal" files={signed} onUpload={openSignedUploadForm}
+            <ProposalAttachmentField label="Unsigned Proposal" files={unsigned} onUpload={openUnsignedUploadForm} downloadBaseName={downloadBaseName}/>
+            <ProposalAttachmentField label="Signed Proposal" files={signed} onUpload={openSignedUploadForm} downloadBaseName={downloadBaseName}
               uploadDisabledReason={!hasUnsigned ? 'Attach the unsigned proposal first' : undefined}/>
           </div>
         </div>
