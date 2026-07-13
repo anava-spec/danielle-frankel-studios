@@ -274,6 +274,18 @@ function fmtUSDate(s: string|null|undefined): string {
   if (isNaN(d.getTime())) return s;
   return new Intl.DateTimeFormat('en-US', { month:'long', day:'numeric', year:'numeric' }).format(d);
 }
+// "July 13, 2026 at 9:10pm" — date (no ordinal) + 12-hour time, lowercase am/pm.
+function fmtUSDateTime12h(s: string|null|undefined): string {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return String(s);
+  const datePart = new Intl.DateTimeFormat('en-US', { month:'long', day:'numeric', year:'numeric' }).format(d);
+  const parts = new Intl.DateTimeFormat('en-US', { hour:'numeric', minute:'2-digit', hour12:true }).formatToParts(d);
+  const hour = parts.find(p=>p.type==='hour')?.value ?? '';
+  const minute = parts.find(p=>p.type==='minute')?.value ?? '';
+  const dayPeriod = (parts.find(p=>p.type==='dayPeriod')?.value ?? '').toLowerCase();
+  return `${datePart} at ${hour}:${minute}${dayPeriod}`;
+}
 
 // ─── Proposal filename ─────────────────────────────────────────────────────
 // client_style_date_time, all snake_case — used both as the suggested
@@ -1243,23 +1255,28 @@ function CustomizationModal({
 
   // Same values already shown in this modal's own Order Summary — the printed
   // proposal is guaranteed to match what's on screen because it's built from
-  // these, not re-derived from the record.
-  const proposalSnapshot = useMemo<ProposalSnapshot | null>(() => {
-    if (!canGenerateProposal || !pTypeField) return null;
-    const lineItems: ProposalLineItem[] = pricingIds
-      .map(id => {
-        const r = pricingRecords?.find(pr=>pr.id===id);
-        if (!r) return null;
-        const { amount, label } = resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor);
-        return {
-          id: r.id,
-          name: r.getCellValueAsString(pTypeField),
-          label,
-          amount,
-          approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
-        };
-      })
-      .filter((x): x is ProposalLineItem => x !== null);
+  // these, not re-derived from the record. Computed unconditionally (not
+  // gated on canGenerateProposal) so it also works as the display source for
+  // ProposalDetailModal, viewing any of this customization's already-saved
+  // proposals — that's just viewing, not generating, so it shouldn't be
+  // blocked by the same validation that gates the Generate button below.
+  const liveDisplaySnapshot = useMemo<ProposalSnapshot>(() => {
+    const lineItems: ProposalLineItem[] = pTypeField
+      ? pricingIds
+        .map(id => {
+          const r = pricingRecords?.find(pr=>pr.id===id);
+          if (!r) return null;
+          const { amount, label } = resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor);
+          return {
+            id: r.id,
+            name: r.getCellValueAsString(pTypeField),
+            label,
+            amount,
+            approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
+          };
+        })
+        .filter((x): x is ProposalLineItem => x !== null)
+      : [];
     return {
       styleName,
       lineItems,
@@ -1272,9 +1289,10 @@ function CustomizationModal({
       rushFeePercentDisplay,
       grandTotal,
     };
-  }, [canGenerateProposal, pTypeField, pricingIds, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField,
+  }, [pTypeField, pricingIds, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField,
       basePriceNumber, multiplierFactor, preApprovalField, styleName, customizationTotal, embroidery, m2m, alts, rush,
       altsM2mAmount, rushFeeAmount, rushFeePercentDisplay, grandTotal]);
+  const proposalSnapshot = canGenerateProposal ? liveDisplaySnapshot : null;
 
   const customizationProposals = useMemo(() => {
     if (!proposalRecords || !existingRecord || !proposalsTable) return [];
@@ -1389,29 +1407,49 @@ function CustomizationModal({
             <CustomizationStagePipeline currentStatus={status} onChange={handleStatus}/>
           )}
 
-          {/* Proposals generated from this customization request — inline
-              item rows (latest first), not chips. Label is the record's own
-              primary field (proposal_id formula). */}
+          {/* Proposals generated from this customization request — invoice-
+              style inline table (latest first). */}
           {mode === 'edit' && proposalsTable && customizationProposals.length > 0 && (
             <div>
               <span className={labelCls}>Proposals</span>
               <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
-                {customizationProposals.map(p=>{
-                  const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
-                  const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
-                  const isSigned = statusStr === 'Signed';
-                  return (
-                    <button key={p.id} type="button" onClick={()=>setViewProposalId(p.id)}
-                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left border-b border-gray-100 dark:border-white/5 last:border-0 hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
-                      <span className="text-sm text-gray-900 dark:text-[#F3EFE6] truncate">{p.name || 'Proposal'}</span>
-                      <span className={`flex-shrink-0 rounded-full text-xs font-medium px-2 py-0.5 border ${isSigned
-                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
-                        : 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10'}`}>
-                        {statusStr || 'Generated'}
-                      </span>
-                    </button>
-                  );
-                })}
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                    <tr>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Generated At</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Unsigned Proposal</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Signed Proposal</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Grand Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customizationProposals.map(p=>{
+                      const fGeneratedAtP = proposalsTable.getFieldIfExists(PROPOSAL.GENERATED_AT);
+                      const fUnsignedP    = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
+                      const fSignedP      = proposalsTable.getFieldIfExists(PROPOSAL.SIGNED_DOCUMENT);
+                      const fPricingP     = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_PRICING);
+                      const generatedAtStr = fGeneratedAtP ? (p.getCellValue(fGeneratedAtP) as string|null) : null;
+                      const unsignedFiles  = fUnsignedP ? ((p.getCellValue(fUnsignedP) as ProposalFile[]|null) ?? []) : [];
+                      const signedFiles    = fSignedP   ? ((p.getCellValue(fSignedP)   as ProposalFile[]|null) ?? []) : [];
+                      const grandTotalVal  = fPricingP ? ((p.getCellValue(fPricingP) as number|null) ?? 0) : 0;
+                      const thumb = (files: ProposalFile[]) => files[0] ? (
+                        <div onClick={e=>{ e.stopPropagation(); window.open(files[0]!.url, '_blank', 'noopener,noreferrer'); }}
+                          className="w-10 h-10 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer hover:opacity-75 transition-opacity">
+                          <img src={files[0]!.thumbnails?.small?.url ?? files[0]!.url} alt={files[0]!.filename} className="w-full h-full object-cover"/>
+                        </div>
+                      ) : <span className="text-gray-300 dark:text-gray-600">—</span>;
+                      return (
+                        <tr key={p.id} onClick={()=>setViewProposalId(p.id)}
+                          className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
+                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{fmtUSDateTime12h(generatedAtStr)}</td>
+                          <td className="px-3 py-2.5">{thumb(unsignedFiles)}</td>
+                          <td className="px-3 py-2.5">{thumb(signedFiles)}</td>
+                          <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(grandTotalVal)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -1563,6 +1601,7 @@ function CustomizationModal({
             proposalsTable={proposalsTable}
             clientName={clientName}
             saName={saName}
+            snapshot={liveDisplaySnapshot}
             onClose={()=>setViewProposalId(null)}
           />
         );
@@ -1598,6 +1637,86 @@ interface ProposalSnapshot {
   rushFeeAmount: number;
   rushFeePercentDisplay: string;
   grandTotal: number;
+}
+
+// ─── ProposalDocument ───────────────────────────────────────────────────────
+// The actual proposal document — shared verbatim between ProposalPreviewModal
+// (generating a new one) and ProposalDetailModal (viewing an existing one),
+// so both look and print identically. Only `.proposal-print-area` survives
+// `@media print` (each modal defines that rule itself, since it also governs
+// whether the surrounding modal chrome is hidden).
+interface ProposalDocumentProps {
+  clientName: string;
+  saName: string;
+  snapshot: ProposalSnapshot;
+  generatedAt: Date;
+}
+function ProposalDocument({ clientName, saName, snapshot, generatedAt }: ProposalDocumentProps) {
+  // Zero-amount fees add no information on a client-facing proposal — skip them.
+  const orderSummaryRows: Array<{ label: string; amount: number; sub: string | null }> = [
+    { label: 'Base Price',          amount: snapshot.basePriceNumber,  sub: null },
+    { label: 'Customization Total', amount: snapshot.customizationTotal, sub: null },
+    ...((snapshot.m2m || snapshot.alts) ? [{ label: 'M2M / Alterations', amount: snapshot.altsM2mAmount, sub: null }] : []),
+    ...(snapshot.rush ? [{ label: 'Rush Fee', amount: snapshot.rushFeeAmount, sub: snapshot.rushFeePercentDisplay || null }] : []),
+  ].filter(row => row.amount !== 0);
+
+  return (
+    <div className="proposal-print-area bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
+      <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
+      <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="text-sm"><span className="capitalize text-gray-500">Client: </span><span className="font-medium">{clientName}</span></div>
+        <div className="text-sm"><span className="capitalize text-gray-500">Sales Associate: </span><span className="font-medium">{saName || '—'}</span></div>
+        <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{snapshot.styleName}</span></div>
+        <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{snapshot.embroideryAmount}</span></div>
+      </div>
+
+      {/* Customizations — invoice-style table, headers included */}
+      <div className="mb-6">
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.lineItems.map(item=>(
+                <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                  <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
+                  <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
+                </tr>
+              ))}
+              {snapshot.lineItems.length===0 && (
+                <tr><td colSpan={2} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Order Summary — flags (M2M/Alterations/Rush) only appear here, as rows */}
+      <div className="mb-6">
+        <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Order Summary</div>
+        {orderSummaryRows.map(({ label, amount, sub }) => (
+          <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
+            <span className="text-sm text-gray-600">
+              {label}
+              {sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}
+            </span>
+            <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-2">
+          <span className="text-sm">Grand Total</span>
+          <span className="text-sm">{formatCurrency(snapshot.grandTotal)}</span>
+        </div>
+      </div>
+
+      <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
+    </div>
+  );
 }
 
 // ─── ProposalPreviewModal ─────────────────────────────────────────────────────
@@ -1723,14 +1842,6 @@ function ProposalPreviewModal({
     window.open(buildProposalAttachmentFormUrl(clientId, createdRecordId, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
   };
 
-  // Zero-amount fees add no information on a client-facing proposal — skip them.
-  const orderSummaryRows: Array<{ label: string; amount: number; sub: string | null }> = [
-    { label: 'Base Price',          amount: snapshot.basePriceNumber,  sub: null },
-    { label: 'Customization Total', amount: snapshot.customizationTotal, sub: null },
-    ...((snapshot.m2m || snapshot.alts) ? [{ label: 'M2M / Alterations', amount: snapshot.altsM2mAmount, sub: null }] : []),
-    ...(snapshot.rush ? [{ label: 'Rush Fee', amount: snapshot.rushFeeAmount, sub: snapshot.rushFeePercentDisplay || null }] : []),
-  ].filter(row => row.amount !== 0);
-
   return (
     // Blur only — no dark dim — behind this popup.
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 proposal-modal-chrome"
@@ -1758,56 +1869,7 @@ function ProposalPreviewModal({
           {/* Document — the only thing that survives @media print. On-screen it
               uses the app's own background tint; print forces plain white
               paper regardless (see @media print above). */}
-          <div className="proposal-print-area bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
-            <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
-            <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="text-sm"><span className="capitalize text-gray-500">Client: </span><span className="font-medium">{clientName}</span></div>
-              <div className="text-sm"><span className="capitalize text-gray-500">Sales Associate: </span><span className="font-medium">{saName || '—'}</span></div>
-              <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{snapshot.styleName}</span></div>
-              <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{snapshot.embroideryAmount}</span></div>
-            </div>
-
-            {/* Customizations — name + price only, no field title above the table */}
-            <div className="mb-6">
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <tbody>
-                    {snapshot.lineItems.map(item=>(
-                      <tr key={item.id} className="border-b border-gray-100 last:border-0">
-                        <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
-                      </tr>
-                    ))}
-                    {snapshot.lineItems.length===0 && (
-                      <tr><td colSpan={2} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Order Summary — flags (M2M/Alterations/Rush) only appear here, as
-                rows, exactly like the Customization detail page's own summary. */}
-            <div className="mb-6">
-              <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Order Summary</div>
-              {orderSummaryRows.map(({ label, amount, sub }) => (
-                <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">
-                    {label}
-                    {sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}
-                  </span>
-                  <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-2">
-                <span className="text-sm">Grand Total</span>
-                <span className="text-sm">{formatCurrency(snapshot.grandTotal)}</span>
-              </div>
-            </div>
-
-            <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
-          </div>
+          <ProposalDocument clientName={clientName} saName={saName} snapshot={snapshot} generatedAt={generatedAt}/>
 
           {!printed && (
             <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
@@ -1877,8 +1939,7 @@ function ProposalAttachmentField({ label, files, onUpload, uploadDisabledReason,
       <span className={labelCls}>{label}</span>
       {file ? (
         <div className="flex items-center gap-3">
-          {/* Opens in the same tab, per request — this navigates the interface away. */}
-          <div onClick={()=>window.open(file.url, '_self')}
+          <div onClick={()=>window.open(file.url, '_blank', 'noopener,noreferrer')}
             className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0">
             <img src={file.thumbnails?.large?.url ?? file.thumbnails?.small?.url ?? file.url} alt={file.filename} className="w-full h-full object-cover"/>
           </div>
@@ -1919,31 +1980,28 @@ interface ProposalDetailModalProps {
   proposalsTable: Table;
   clientName: string;
   saName: string;
+  // Live-recomputed from the source Customization (see CustomizationModal's
+  // liveDisplaySnapshot) — not read from the persisted snapshot_* fields, so
+  // this uses the exact same ProposalDocument component/markup as
+  // ProposalPreviewModal, headers and all, instead of a simplified text view.
+  snapshot: ProposalSnapshot;
   onClose: () => void;
 }
-function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saName, onClose }: ProposalDetailModalProps) {
+function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saName, snapshot, onClose }: ProposalDetailModalProps) {
   useEffect(()=>{
     const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[onClose]);
 
-  const fStyle          = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
-  const fCustomizations = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_CUSTOMIZATIONS);
-  const fEmbroidery     = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_EMBROIDERY_AMOUNT);
-  const fPricing        = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_PRICING);
-  const fUnsigned       = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
-  const fSigned         = proposalsTable.getFieldIfExists(PROPOSAL.SIGNED_DOCUMENT);
-  const fClientP        = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
-  const fGeneratedAt    = proposalsTable.getFieldIfExists(PROPOSAL.GENERATED_AT);
+  const fUnsigned    = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
+  const fSigned      = proposalsTable.getFieldIfExists(PROPOSAL.SIGNED_DOCUMENT);
+  const fClientP     = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
+  const fGeneratedAt = proposalsTable.getFieldIfExists(PROPOSAL.GENERATED_AT);
 
-  const styleName          = fStyle ? proposalRecord.getCellValueAsString(fStyle) : '';
-  const customizationsText = fCustomizations ? proposalRecord.getCellValueAsString(fCustomizations) : '';
-  const embroidery         = fEmbroidery ? proposalRecord.getCellValueAsString(fEmbroidery) : '';
-  const pricing            = fPricing ? ((proposalRecord.getCellValue(fPricing) as number|null) ?? 0) : 0;
-  const clientId           = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
-  const generatedAtRaw     = fGeneratedAt ? (proposalRecord.getCellValue(fGeneratedAt) as string|null) : null;
-  const generatedAt        = generatedAtRaw ? new Date(generatedAtRaw) : new Date();
-  const downloadBaseName   = buildProposalFilename(clientName, styleName, generatedAt);
+  const clientId         = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+  const generatedAtRaw   = fGeneratedAt ? (proposalRecord.getCellValue(fGeneratedAt) as string|null) : null;
+  const generatedAt      = generatedAtRaw ? new Date(generatedAtRaw) : new Date();
+  const downloadBaseName = buildProposalFilename(clientName, snapshot.styleName, generatedAt);
 
   const unsigned = fUnsigned ? ((proposalRecord.getCellValue(fUnsigned) as ProposalFile[]|null) ?? []) : [];
   const signed   = fSigned   ? ((proposalRecord.getCellValue(fSigned)   as ProposalFile[]|null) ?? []) : [];
@@ -1996,23 +2054,7 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="proposal-print-area bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
-            <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
-            <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="text-sm"><span className="capitalize text-gray-500">Client: </span><span className="font-medium">{clientName}</span></div>
-              <div className="text-sm"><span className="capitalize text-gray-500">Sales Associate: </span><span className="font-medium">{saName || '—'}</span></div>
-              <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{styleName}</span></div>
-              <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{embroidery}</span></div>
-            </div>
-            <div className="mb-6">
-              <div className="text-sm whitespace-pre-wrap">{customizationsText || '—'}</div>
-            </div>
-            <div className="flex justify-between items-center border-t border-gray-200 pt-3">
-              <span className="text-sm font-bold">Total Price</span>
-              <span className="text-sm font-bold">{formatCurrency(pricing)}</span>
-            </div>
-          </div>
+          <ProposalDocument clientName={clientName} saName={saName} snapshot={snapshot} generatedAt={generatedAt}/>
 
           {/* While unsigned isn't attached yet, offer Print here too — same
               document, in case it wasn't printed/saved during generation. */}
