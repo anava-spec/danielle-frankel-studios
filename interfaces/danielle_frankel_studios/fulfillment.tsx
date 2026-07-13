@@ -371,14 +371,37 @@ function ToggleButton({ checked, onChange, label, disabled = false }: { checked:
   );
 }
 
+// ─── Pickup Readiness Gate — data-resolution helpers ──────────────────────────
+// Distinguishes "field legitimately false" from "could not be read" (missing field,
+// unreachable record, or — for lookups through a link like client_address_confirmed —
+// an empty lookup array caused by a broken/missing linked record).
+type Resolved<T> = { value: T; resolved: boolean };
+function resolveLookupBool(raw: unknown): Resolved<boolean> {
+  if (Array.isArray(raw)) return raw.length === 0 ? { value: false, resolved: false } : { value: !!raw[0], resolved: true };
+  return { value: !!raw, resolved: true };
+}
+function resolveLookupNum(raw: unknown): Resolved<number> {
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return { value: 0, resolved: false };
+    const v = raw[0]; return { value: typeof v === 'number' ? v : 0, resolved: true };
+  }
+  return { value: typeof raw === 'number' ? raw : 0, resolved: true };
+}
+
 // ─── Pickup Readiness Gate — shared helper ────────────────────────────────────
-type ReadinessSeverity = 'green' | 'yellow' | 'red';
-function getReadinessSeverity(checksPassed: boolean, progress: number): ReadinessSeverity {
+type ReadinessSeverity = 'green' | 'yellow' | 'red' | 'unavailable';
+// checksResolved/progressResolved: false means the underlying data could not be read
+// (missing field, unreachable record, or a broken link) — distinct from a legitimately
+// failed check, so it renders as a neutral gray 'unavailable' state rather than red/yellow.
+function getReadinessSeverity(checksResolved: boolean, checksPassed: boolean, progressResolved: boolean, progress: number): ReadinessSeverity {
+  if (!checksResolved) return 'unavailable';
   if (checksPassed) return 'green';
+  if (!progressResolved) return 'unavailable';
   return progress > 0 ? 'red' : 'yellow';
 }
 
-const READINESS_SEVERITY_TEXT: Record<ReadinessSeverity, string> = { green: 'Ready', yellow: 'Pending', red: 'Attention' };
+const READINESS_SEVERITY_TEXT: Record<ReadinessSeverity, string> = { green: 'Ready', yellow: 'Pending', red: 'Attention', unavailable: 'Unavailable' };
+const READINESS_UNAVAILABLE_TOOLTIP = 'Unavailable — could not load — client or order record not found. Refresh or contact support.';
 
 type ReadinessCheckLabel = 'Tax' | 'Address' | 'Hold';
 const READINESS_CHECK_REASON: Record<ReadinessCheckLabel, string> = {
@@ -387,9 +410,10 @@ const READINESS_CHECK_REASON: Record<ReadinessCheckLabel, string> = {
 
 // Builds the tooltip/aria-label for a combined readiness chip. `checks` must be passed
 // in fixed Tax → Address → Hold order so the failing-check list stays consistent.
-function buildReadinessTooltip(severity: ReadinessSeverity, checks: Array<{ label: ReadinessCheckLabel; passed: boolean }>): string {
+function buildReadinessTooltip(severity: ReadinessSeverity, checks: Array<{ label: ReadinessCheckLabel; passed: boolean; resolved: boolean }>): string {
+  if (severity === 'unavailable') return READINESS_UNAVAILABLE_TOOLTIP;
   const text = READINESS_SEVERITY_TEXT[severity];
-  const failing = checks.filter(c => !c.passed);
+  const failing = checks.filter(c => c.resolved && !c.passed);
   if (failing.length === 0) return `${text} — all checks passed`;
   if (failing.length === 1) return `${text} — ${READINESS_CHECK_REASON[failing[0]!.label]}`;
   return `${text} — ${failing.map(c => c.label).join(', ')} pending`;
@@ -400,6 +424,7 @@ function ReadinessDot({ severity, label }: { severity: ReadinessSeverity; label:
     green:  'bg-green-500',
     yellow: 'bg-yellow-400',
     red:    'bg-red-500',
+    unavailable: 'bg-gray-400 dark:bg-gray-500',
   };
   return (
     <span className="inline-flex items-center" title={label} aria-label={label} role="img">
@@ -408,15 +433,16 @@ function ReadinessDot({ severity, label }: { severity: ReadinessSeverity; label:
   );
 }
 
-// Combined-check readiness chip — dot + status text ("Ready"/"Pending"/"Attention"), used in
-// the Readiness columns and the client-level chip. Individual per-check flags keep ReadinessDot.
+// Combined-check readiness chip — dot + status text ("Ready"/"Pending"/"Attention"/"Unavailable"),
+// used in the Readiness columns and the client-level chip. Individual per-check flags keep ReadinessDot.
 function ReadinessChip({ severity, tooltip }: { severity: ReadinessSeverity; tooltip: string }) {
   const cls: Record<ReadinessSeverity, string> = {
     green:  'bg-green-50  dark:bg-green-500/15  text-green-700  dark:text-green-300  border-green-200  dark:border-green-500/30',
     yellow: 'bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-500/30',
     red:    'bg-red-50    dark:bg-red-500/15    text-red-600    dark:text-red-300    border-red-200    dark:border-red-500/30',
+    unavailable: 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10',
   };
-  const dotCls: Record<ReadinessSeverity, string> = { green: 'bg-green-500', yellow: 'bg-yellow-400', red: 'bg-red-500' };
+  const dotCls: Record<ReadinessSeverity, string> = { green: 'bg-green-500', yellow: 'bg-yellow-400', red: 'bg-red-500', unavailable: 'bg-gray-400 dark:bg-gray-500' };
   return (
     <span title={tooltip} aria-label={tooltip}
       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${cls[severity]}`}>
@@ -745,6 +771,14 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const getNum = (fid: string): number | null => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
   const getSel = (fid: string): string => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return ''; const v = record.getCellValue(f) as { name: string } | null; return v?.name ?? ''; } catch { return ''; } };
   const getBool = (fid: string): boolean => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return false; return !!(record.getCellValue(f) as boolean | null); } catch { return false; } };
+  const getBoolOrError = (fid: string): Resolved<boolean> => {
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: false, resolved: false };
+    try { return resolveLookupBool(record.getCellValue(f)); } catch { return { value: false, resolved: false }; }
+  };
+  const getNumOrError = (fid: string): Resolved<number> => {
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: 0, resolved: false };
+    try { return resolveLookupNum(record.getCellValue(f)); } catch { return { value: 0, resolved: false }; }
+  };
 
   const [trackingNum,  setTrackingNum]  = useState(() => getStr(ORDER_FIELD_IDS.TRACKING_NUMBER));
   const [carrier,      setCarrier]      = useState(() => getSel(ORDER_FIELD_IDS.CARRIER));
@@ -760,9 +794,13 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const [showTaxConfirmPrompt, setShowTaxConfirmPrompt] = useState(false);
 
   // Pickup Readiness Gate — this order's own three checks + progress
-  const clientAddressConfirmed = getBool(ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
-  const clientHoldReleased     = getBool(ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
-  const fulfillmentProgress    = getNum(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
+  const taxConfirmedRes          = getBoolOrError(ORDER_FIELD_IDS.TAX_CONFIRMED);
+  const clientAddressConfirmedRes = getBoolOrError(ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
+  const clientHoldReleasedRes     = getBoolOrError(ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
+  const fulfillmentProgressRes    = getNumOrError(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE);
+  const clientAddressConfirmed = clientAddressConfirmedRes.value;
+  const clientHoldReleased     = clientHoldReleasedRes.value;
+  const fulfillmentProgress    = fulfillmentProgressRes.value;
 
   const orderNumber = getNum(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
   const amOrderNum  = getNum(ORDER_FIELD_IDS.AM_ORDER_NUMBER);
@@ -781,19 +819,39 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
     queueWrite(() => orderTable.updateRecordAsync(record, { [f.id]: value }).catch(console.error));
   }, [orderTable, record]);
 
-  // Pickup Readiness Gate — pickup_released may only be toggled manually, and only once all gates pass
+  // Unlike `save`, this does not swallow the write error — callers get a rejected promise
+  // so the UI can roll back the optimistic update and surface a save-failure message,
+  // per the Edge Case requirement that a release/confirm must not be shown as successful
+  // unless persistence actually succeeded.
+  const saveTracked = useCallback((fid: string, value: unknown): Promise<void> => {
+    const f = orderTable.getFieldIfExists(fid);
+    if (!f) return Promise.reject(new Error(`Field ${fid} not found`));
+    return queueWrite(() => orderTable.updateRecordAsync(record, { [f.id]: value }));
+  }, [orderTable, record]);
+
+  // Pickup Readiness Gate — pickup_released may only be toggled manually, and only once all gates pass.
+  // If any required check couldn't be read (broken/missing client or order link), fail safe: block
+  // release and surface a distinct "cannot verify" message instead of a specific check message.
+  const requiredChecksResolved = taxConfirmedRes.resolved && clientAddressConfirmedRes.resolved && clientHoldReleasedRes.resolved;
   const unmetReleaseReasons: string[] = [];
-  if (!taxConfirmed) unmetReleaseReasons.push('Tax not confirmed');
-  if (!clientAddressConfirmed) unmetReleaseReasons.push('Address not confirmed');
-  if (!clientHoldReleased) unmetReleaseReasons.push('Client is on hold');
+  if (!requiredChecksResolved) unmetReleaseReasons.push('Cannot verify readiness — data unavailable');
+  if (taxConfirmedRes.resolved && !taxConfirmed) unmetReleaseReasons.push('Tax not confirmed');
+  if (clientAddressConfirmedRes.resolved && !clientAddressConfirmed) unmetReleaseReasons.push('Address not confirmed');
+  if (clientHoldReleasedRes.resolved && !clientHoldReleased) unmetReleaseReasons.push('Client is on hold');
   if (payStatus === 'Unpaid') unmetReleaseReasons.push('Payment Status is Unpaid');
   const canRelease = unmetReleaseReasons.length === 0;
 
   const handleTogglePickupReleased = (v: boolean) => {
     if (v && !canRelease) { setReleaseError(`Cannot release pickup — ${unmetReleaseReasons.join(', ')}.`); return; }
     setReleaseError('');
+    const prior = pickupReleased;
     setPickupReleased(v);
-    save(ORDER_FIELD_IDS.PICKUP_RELEASED, v);
+    saveTracked(ORDER_FIELD_IDS.PICKUP_RELEASED, v)
+      .then(() => setReleaseError(''))
+      .catch(() => {
+        setPickupReleased(prior);
+        setReleaseError(`Could not save — pickup was not ${v ? 'released' : 'unreleased'}. Try again.`);
+      });
   };
 
   // Once confirmed, tax_confirmed is locked — the toggle itself is disabled when checked,
@@ -801,13 +859,24 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const handleToggleTaxConfirmed = (v: boolean) => {
     if (taxConfirmed) return;
     if (v) { setShowTaxConfirmPrompt(true); return; }
+    const prior = taxConfirmed;
     setTaxConfirmed(v);
-    save(ORDER_FIELD_IDS.TAX_CONFIRMED, v);
+    saveTracked(ORDER_FIELD_IDS.TAX_CONFIRMED, v)
+      .then(() => setReleaseError(''))
+      .catch(() => {
+        setTaxConfirmed(prior);
+        setReleaseError('Could not save — tax confirmation was not saved. Try again.');
+      });
   };
   const confirmTaxConfirmed = () => {
     setShowTaxConfirmPrompt(false);
     setTaxConfirmed(true);
-    save(ORDER_FIELD_IDS.TAX_CONFIRMED, true);
+    saveTracked(ORDER_FIELD_IDS.TAX_CONFIRMED, true)
+      .then(() => setReleaseError(''))
+      .catch(() => {
+        setTaxConfirmed(false);
+        setReleaseError('Could not save — tax was not confirmed. Try again.');
+      });
   };
 
   const delivMethodOpts  = useMemo(() => { const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD); return f?.options?.choices?.map((c: { name: string }) => c.name) ?? ['Pick Up in Store', 'Ship']; }, [orderTable]);
@@ -954,14 +1023,15 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
               <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Pickup Readiness</span>
               <div className="flex items-center gap-4 flex-wrap mb-3">
                 {([
-                  ['Tax', taxConfirmed],
-                  ['Address', clientAddressConfirmed],
-                  ['Hold', clientHoldReleased],
-                ] as [string, boolean][]).map(([label, passed]) => {
-                  const severity = getReadinessSeverity(passed, fulfillmentProgress);
+                  ['Tax', taxConfirmed, taxConfirmedRes.resolved],
+                  ['Address', clientAddressConfirmed, clientAddressConfirmedRes.resolved],
+                  ['Hold', clientHoldReleased, clientHoldReleasedRes.resolved],
+                ] as [string, boolean, boolean][]).map(([label, passed, checkResolved]) => {
+                  const severity = getReadinessSeverity(checkResolved, passed, fulfillmentProgressRes.resolved, fulfillmentProgress);
+                  const dotLabel = severity === 'unavailable' ? `${label}: ${READINESS_UNAVAILABLE_TOOLTIP}` : `${label}: ${passed ? 'Passed' : 'Failed'}`;
                   return (
                     <div key={label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10">
-                      <ReadinessDot severity={severity} label={`${label}: ${passed ? 'Passed' : 'Failed'}`} />
+                      <ReadinessDot severity={severity} label={dotLabel} />
                       <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{label}</span>
                     </div>
                   );
@@ -998,6 +1068,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                     <ToggleButton checked={taxConfirmed} disabled={taxConfirmed}
                       label={taxConfirmed ? 'Confirmed' : 'Not Confirmed'}
                       onChange={handleToggleTaxConfirmed} />
+                    {releaseError && <p className="text-xs text-red-500 dark:text-red-400 mt-1.5">{releaseError}</p>}
                   </div>
                 </div>
                 {isShip && (
@@ -1075,6 +1146,14 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     const f = fields[fid] ?? null; if (!f) return '';
     try { return record.getCellValueAsString(f) ?? ''; } catch { return ''; }
   }, [record, fields]);
+  const getBoolOrError = useCallback((fid: string): Resolved<boolean> => {
+    const f = fields[fid] ?? null; if (!f) return { value: false, resolved: false };
+    try { return resolveLookupBool(record.getCellValue(f)); } catch { return { value: false, resolved: false }; }
+  }, [record, fields]);
+  const getNumOrError = useCallback((fid: string): Resolved<number> => {
+    const f = fields[fid] ?? null; if (!f) return { value: 0, resolved: false };
+    try { return resolveLookupNum(record.getCellValue(f)); } catch { return { value: 0, resolved: false }; }
+  }, [record, fields]);
   const save = useCallback((fid: string, value: unknown) => {
     if (!clientsTable) return; const f = fields[fid]; if (!f) return;
     queueWrite(() => clientsTable.updateRecordAsync(record, { [f.id]: value }).catch(console.error));
@@ -1095,15 +1174,19 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   const shopifyAddr = getStr(FIELD_IDS.SHOPIFY_ADDRESS);
 
   // Pickup Readiness Gate — overall client-level readiness
-  const clientHoldReleased        = !!(get<boolean>(FIELD_IDS.HOLD_RELEASED));
-  const clientAllOrdersTaxConfirmed = !!(get<boolean>(FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED));
-  const clientProgress            = get<number>(FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
+  const addrConfirmedRes                = getBoolOrError(FIELD_IDS.ADDRESS_CONFIRMED);
+  const clientHoldReleasedRes           = getBoolOrError(FIELD_IDS.HOLD_RELEASED);
+  const clientAllOrdersTaxConfirmedRes  = getBoolOrError(FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED);
+  const clientProgressRes               = getNumOrError(FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS);
+  const clientHoldReleased          = clientHoldReleasedRes.value;
+  const clientAllOrdersTaxConfirmed = clientAllOrdersTaxConfirmedRes.value;
+  const clientChecksResolved = addrConfirmedRes.resolved && clientHoldReleasedRes.resolved && clientAllOrdersTaxConfirmedRes.resolved;
   const clientChecksPassed = addrConfirmed && clientHoldReleased && clientAllOrdersTaxConfirmed;
-  const clientSeverity = getReadinessSeverity(clientChecksPassed, clientProgress);
+  const clientSeverity = getReadinessSeverity(clientChecksResolved, clientChecksPassed, clientProgressRes.resolved, clientProgressRes.value);
   const clientTooltip = buildReadinessTooltip(clientSeverity, [
-    { label: 'Tax',     passed: clientAllOrdersTaxConfirmed },
-    { label: 'Address', passed: addrConfirmed },
-    { label: 'Hold',    passed: clientHoldReleased },
+    { label: 'Tax',     passed: clientAllOrdersTaxConfirmed, resolved: clientAllOrdersTaxConfirmedRes.resolved },
+    { label: 'Address', passed: addrConfirmed,               resolved: addrConfirmedRes.resolved },
+    { label: 'Hold',    passed: clientHoldReleased,          resolved: clientHoldReleasedRes.resolved },
   ]);
 
   const linkedOrderIds = useMemo(() => {
@@ -1123,9 +1206,15 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     if (!orderTable) return '—';
     try { const f = orderTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
   }, [orderTable]);
-  const getOrderBool = useCallback((r: AirtableRecord, fid: string): boolean => {
-    if (!orderTable) return false;
-    try { const f = orderTable.getFieldIfExists(fid); if (!f) return false; return !!(r.getCellValue(f) as boolean | null); } catch { return false; }
+  const getOrderBoolOrError = useCallback((r: AirtableRecord, fid: string): Resolved<boolean> => {
+    if (!orderTable) return { value: false, resolved: false };
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: false, resolved: false };
+    try { return resolveLookupBool(r.getCellValue(f)); } catch { return { value: false, resolved: false }; }
+  }, [orderTable]);
+  const getOrderNumOrError = useCallback((r: AirtableRecord, fid: string): Resolved<number> => {
+    if (!orderTable) return { value: 0, resolved: false };
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: 0, resolved: false };
+    try { return resolveLookupNum(r.getCellValue(f)); } catch { return { value: 0, resolved: false }; }
   }, [orderTable]);
 
   const hasAnyAdjustedTotal = useMemo(() =>
@@ -1145,23 +1234,24 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     const payV: PillVariant = pay === 'Paid' ? 'green' : pay.includes('Partial') ? 'yellow' : 'red';
 
     // Pickup Readiness Gate — this order's own three checks + its own fulfillment progress
-    const orderTaxConfirmed          = getOrderBool(r, ORDER_FIELD_IDS.TAX_CONFIRMED);
-    const orderClientAddrConfirmed   = getOrderBool(r, ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
-    const orderClientHoldReleased    = getOrderBool(r, ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
-    const orderProgress              = getOrderNum(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
-    const orderChecksPassed = orderTaxConfirmed && orderClientAddrConfirmed && orderClientHoldReleased;
-    const orderSeverity = getReadinessSeverity(orderChecksPassed, orderProgress);
+    const orderTaxConfirmedRes        = getOrderBoolOrError(r, ORDER_FIELD_IDS.TAX_CONFIRMED);
+    const orderClientAddrConfirmedRes = getOrderBoolOrError(r, ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
+    const orderClientHoldReleasedRes  = getOrderBoolOrError(r, ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
+    const orderProgressRes            = getOrderNumOrError(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE);
+    const orderChecksResolved = orderTaxConfirmedRes.resolved && orderClientAddrConfirmedRes.resolved && orderClientHoldReleasedRes.resolved;
+    const orderChecksPassed = orderTaxConfirmedRes.value && orderClientAddrConfirmedRes.value && orderClientHoldReleasedRes.value;
+    const orderSeverity = getReadinessSeverity(orderChecksResolved, orderChecksPassed, orderProgressRes.resolved, orderProgressRes.value);
     const orderTooltip = buildReadinessTooltip(orderSeverity, [
-      { label: 'Tax',     passed: orderTaxConfirmed },
-      { label: 'Address', passed: orderClientAddrConfirmed },
-      { label: 'Hold',    passed: orderClientHoldReleased },
+      { label: 'Tax',     passed: orderTaxConfirmedRes.value,        resolved: orderTaxConfirmedRes.resolved },
+      { label: 'Address', passed: orderClientAddrConfirmedRes.value, resolved: orderClientAddrConfirmedRes.resolved },
+      { label: 'Hold',    passed: orderClientHoldReleasedRes.value,  resolved: orderClientHoldReleasedRes.resolved },
     ]);
 
     const row: React.ReactNode[] = [
       <span className="font-medium">{num ? `#${num}` : '—'}</span>,
       <Pill variant={payV}>{pay || '—'}</Pill>,
       <span className="text-gray-500 dark:text-gray-400">{delivMethod || '—'}</span>,
-      <ProgressBar percentage={orderProgress} />,
+      <ProgressBar percentage={orderProgressRes.value} />,
       <ReadinessChip severity={orderSeverity} tooltip={orderTooltip} />,
       formatCurrency(total),
     ];
@@ -1393,27 +1483,32 @@ function FulfillmentApp(): React.ReactElement {
     const f = fields[fid] ?? null; if (!f) return null;
     try { return rec.getCellValue(f) as number | null; } catch { return null; }
   }, [fields]);
-  const getBool = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): boolean => {
-    const f = fields[fid] ?? null; if (!f) return false;
-    try { return !!(rec.getCellValue(f) as boolean | null); } catch { return false; }
+  const getBoolOrError = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): Resolved<boolean> => {
+    const f = fields[fid] ?? null; if (!f) return { value: false, resolved: false };
+    try { return resolveLookupBool(rec.getCellValue(f)); } catch { return { value: false, resolved: false }; }
+  }, [fields]);
+  const getNumOrError = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): Resolved<number> => {
+    const f = fields[fid] ?? null; if (!f) return { value: 0, resolved: false };
+    try { return resolveLookupNum(rec.getCellValue(f)); } catch { return { value: 0, resolved: false }; }
   }, [fields]);
 
   // Pickup Readiness Gate — client-level overall readiness, shared by the table row,
   // the Readiness Alert filter, and the "Needs Attention" summary tile.
   const getClientReadiness = useCallback((rec: NonNullable<typeof allRecords>[number]) => {
-    const addrConfirmed = getBool(rec, FIELD_IDS.ADDRESS_CONFIRMED);
-    const holdReleased  = getBool(rec, FIELD_IDS.HOLD_RELEASED);
-    const taxConfirmed  = getBool(rec, FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED);
-    const progress      = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
-    const checksPassed  = addrConfirmed && holdReleased && taxConfirmed;
-    const severity      = getReadinessSeverity(checksPassed, progress);
+    const addr = getBoolOrError(rec, FIELD_IDS.ADDRESS_CONFIRMED);
+    const hold = getBoolOrError(rec, FIELD_IDS.HOLD_RELEASED);
+    const tax  = getBoolOrError(rec, FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED);
+    const progress = getNumOrError(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS);
+    const checksResolved = addr.resolved && hold.resolved && tax.resolved;
+    const checksPassed   = addr.value && hold.value && tax.value;
+    const severity = getReadinessSeverity(checksResolved, checksPassed, progress.resolved, progress.value);
     const tooltip = buildReadinessTooltip(severity, [
-      { label: 'Tax',     passed: taxConfirmed },
-      { label: 'Address', passed: addrConfirmed },
-      { label: 'Hold',    passed: holdReleased },
+      { label: 'Tax',     passed: tax.value,  resolved: tax.resolved },
+      { label: 'Address', passed: addr.value, resolved: addr.resolved },
+      { label: 'Hold',    passed: hold.value, resolved: hold.resolved },
     ]);
     return { severity, tooltip };
-  }, [getBool, getNum]);
+  }, [getBoolOrError, getNumOrError]);
 
   // Background gate — always applied, not user-facing: only clients with sold items and
   // a wedding date on or after today belong in the fulfillment queue.
@@ -1611,7 +1706,7 @@ function FulfillmentApp(): React.ReactElement {
           <FilterDropdown label="Studio"    values={studioFilter}    options={uniqueStudios}       onChange={setStudioFilter} />
           <FilterDropdown label="Associate" values={associateFilter} options={uniqueAssociates}    onChange={setAssociateFilter} />
           <FilterDropdown label="Delivery Method" values={methodFilter} options={['Pick Up', 'Ship']} onChange={setMethodFilter} align="right" />
-          <FilterDropdown label="Readiness Alert" values={readinessFilter} options={['Ready', 'Pending', 'Attention']} onChange={setReadinessFilter} align="right" />
+          <FilterDropdown label="Readiness Alert" values={readinessFilter} options={['Ready', 'Pending', 'Attention', 'Unavailable']} onChange={setReadinessFilter} align="right" />
         </div>
       </div>
 
