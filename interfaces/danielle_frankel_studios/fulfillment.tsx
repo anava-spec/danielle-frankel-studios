@@ -304,20 +304,19 @@ function FilterDropdown({ label, values, options, onChange, align = 'left' }: Fi
                      : 'border-gray-300 dark:border-[#34312C] text-gray-400 dark:text-gray-500 hover:border-gray-400 dark:hover:border-gray-500'}`}>
           <span className="truncate">{display}</span>
           <span className="flex items-center gap-1 flex-shrink-0">
-            {hasValue && (
+            {hasValue ? (
               <XIcon
                 size={14}
                 className="text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 transition-colors"
                 onClick={e => { e.stopPropagation(); onChange([]); }}
               />
+            ) : (
+              <CaretDownIcon size={14} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
             )}
-            <CaretDownIcon size={14} className={`transition-transform ${hasValue ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400'} ${open ? 'rotate-180' : ''}`} />
           </span>
         </button>
         {open && (
           <div className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg max-h-[260px] overflow-y-auto w-[240px] py-1`}>
-            <button type="button" onClick={() => { onChange([]); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.length === 0 ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>All</button>
             {options.map(o => (
               <button key={o} type="button" onClick={() => toggle(o)}
                 className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${values.includes(o) ? 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o}</button>
