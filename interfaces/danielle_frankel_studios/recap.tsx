@@ -297,28 +297,24 @@ function fileExtension(filename: string): string {
   return idx >= 0 ? filename.slice(idx) : '';
 }
 
-// This interface runs inside an iframe (Airtable Interface Extension). The
-// browser's "Save as PDF" dialog takes its suggested filename from the
-// TOP-level document's title, not the iframe's own — setting only
-// `document.title` here renames this iframe's title, which the print
-// dialog never sees. Best effort: also reach up to window.top, which only
-// works if that frame happens to be same-origin; if it's cross-origin the
-// browser throws and we silently fall back to the (ineffective) local title.
+// This interface runs inside an iframe (Airtable Interface Extension), and
+// that iframe is cross-origin from the airtable.com tab — confirmed by
+// testing: attempting window.top.document.title throws (blocked by the
+// browser's same-origin policy), so the "Save as PDF" dialog's suggested
+// filename (read from the TOP-level document's title, not the iframe's)
+// can NEVER be set from code running in here. There is no further
+// JavaScript-side lever for this — document.title is kept purely for
+// same-origin/non-iframe contexts where it happens to work, but in the
+// actual deployment this print dialog will keep showing the browser tab's
+// own title. Users who need a specific filename must rename the saved PDF
+// themselves; the Download buttons for already-uploaded documents (see
+// ProposalAttachmentField) are the only place this app can truly control
+// the filename, via the `download` attribute.
 function setPrintDocumentTitle(name: string): void {
   document.title = name;
-  try {
-    if (window.top && window.top !== window) {
-      window.top.document.title = name;
-    }
-  } catch { /* cross-origin top frame — nothing more a page can do */ }
 }
 function restorePrintDocumentTitle(name: string): void {
   document.title = name;
-  try {
-    if (window.top && window.top !== window) {
-      window.top.document.title = name;
-    }
-  } catch { /* cross-origin top frame */ }
 }
 function parseFlexDate(s: string): Date|null {
   if (!s.trim()) return null;
