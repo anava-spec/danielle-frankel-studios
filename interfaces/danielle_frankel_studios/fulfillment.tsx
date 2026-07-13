@@ -779,6 +779,11 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
     const f = orderTable.getFieldIfExists(fid); if (!f) return { value: 0, resolved: false };
     try { return resolveLookupNum(record.getCellValue(f)); } catch { return { value: 0, resolved: false }; }
   };
+  const getSelOrError = (fid: string): Resolved<string> => {
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: '', resolved: false };
+    try { const v = record.getCellValue(f) as { name: string } | null; return { value: v?.name ?? '', resolved: true }; }
+    catch { return { value: '', resolved: false }; }
+  };
 
   const [trackingNum,  setTrackingNum]  = useState(() => getStr(ORDER_FIELD_IDS.TRACKING_NUMBER));
   const [carrier,      setCarrier]      = useState(() => getSel(ORDER_FIELD_IDS.CARRIER));
@@ -809,7 +814,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const taxes       = getNum(ORDER_FIELD_IDS.TAXES);
   const total       = getNum(ORDER_FIELD_IDS.TOTAL);
   const adjTotalField = getNum(ORDER_FIELD_IDS.ADJUSTED_TOTAL);
-  const payStatus   = getSel(ORDER_FIELD_IDS.PAYMENT_STATUS);
+  const payStatusRes = getSelOrError(ORDER_FIELD_IDS.PAYMENT_STATUS);
   const store       = getSel(ORDER_FIELD_IDS.STORE);
 
   const isShip = delivMethod.toLowerCase().includes('ship');
@@ -832,13 +837,13 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   // Pickup Readiness Gate — pickup_released may only be toggled manually, and only once all gates pass.
   // If any required check couldn't be read (broken/missing client or order link), fail safe: block
   // release and surface a distinct "cannot verify" message instead of a specific check message.
-  const requiredChecksResolved = taxConfirmedRes.resolved && clientAddressConfirmedRes.resolved && clientHoldReleasedRes.resolved;
+  const requiredChecksResolved = taxConfirmedRes.resolved && clientAddressConfirmedRes.resolved && clientHoldReleasedRes.resolved && payStatusRes.resolved;
   const unmetReleaseReasons: string[] = [];
   if (!requiredChecksResolved) unmetReleaseReasons.push('Cannot verify readiness — data unavailable');
   if (taxConfirmedRes.resolved && !taxConfirmed) unmetReleaseReasons.push('Tax not confirmed');
   if (clientAddressConfirmedRes.resolved && !clientAddressConfirmed) unmetReleaseReasons.push('Address not confirmed');
   if (clientHoldReleasedRes.resolved && !clientHoldReleased) unmetReleaseReasons.push('Client is on hold');
-  if (payStatus === 'Unpaid') unmetReleaseReasons.push('Payment Status is Unpaid');
+  if (payStatusRes.resolved && payStatusRes.value === 'Unpaid') unmetReleaseReasons.push('Payment Status is Unpaid');
   const canRelease = unmetReleaseReasons.length === 0;
 
   const handleTogglePickupReleased = (v: boolean) => {
@@ -997,7 +1002,10 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             </div>
             <div className="flex items-center gap-2">
               {store && <Pill variant="gray">{store}</Pill>}
-              {payStatus && <Pill variant={payStatus === 'Paid' ? 'green' : payStatus.includes('Partial') ? 'yellow' : 'red'}>{payStatus}</Pill>}
+              {!payStatusRes.resolved && <Pill variant="gray">Unavailable</Pill>}
+              {payStatusRes.resolved && payStatusRes.value && (
+                <Pill variant={payStatusRes.value === 'Paid' ? 'green' : payStatusRes.value.includes('Partial') ? 'yellow' : 'red'}>{payStatusRes.value}</Pill>
+              )}
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
