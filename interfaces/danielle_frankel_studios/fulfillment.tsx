@@ -1602,7 +1602,7 @@ function FulfillmentApp(): React.ReactElement {
           <div className="relative">
             <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search by name, email, phone, associate…"
+              placeholder="Search by name or email…"
               className="pl-9 pr-7 py-1.5 text-sm bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-[180px]" />
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery('')}
@@ -1613,7 +1613,7 @@ function FulfillmentApp(): React.ReactElement {
           </div>
           <FilterDropdown label="Studio"    values={studioFilter}    options={uniqueStudios}       onChange={setStudioFilter} />
           <FilterDropdown label="Associate" values={associateFilter} options={uniqueAssociates}    onChange={setAssociateFilter} />
-          <FilterDropdown label="Method"    values={methodFilter}    options={['Pick Up', 'Ship']} onChange={setMethodFilter} align="right" />
+          <FilterDropdown label="Delivery Method" values={methodFilter} options={['Pick Up', 'Ship']} onChange={setMethodFilter} align="right" />
           <FilterDropdown label="Readiness Alert" values={readinessFilter} options={['Ready', 'Pending', 'Attention']} onChange={setReadinessFilter} align="right" />
         </div>
       </div>
