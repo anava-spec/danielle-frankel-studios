@@ -187,6 +187,13 @@ function isFieldReadOnlyBySource(fieldId?: string): boolean {
 // ─── Attachment form URL (production) ─────────────────────────────────────────
 const ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMcjQwqo/form';
 
+// Same standalone form, but the SANDBOX copy — same pageId, different base.
+// Used for the Proposal attach step specifically, because this interface
+// still runs against sandbox (not yet published), so the Proposal record
+// that needs the attachment only exists there. Update to the production URL
+// once this interface is published and the Proposals table exists in prod.
+const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/app6Q4xMZ1ngJxiV8/pagRXpKT2IMcjQwqo/form';
+
 // ─── Customization status steps ───────────────────────────────────────────────
 const CUSTOM_STATUS_STEPS = [
   'Sent to Production',
@@ -418,7 +425,7 @@ function FieldLabel({ label, fieldId, className }: { label: string; fieldId?: st
   const source = fieldId ? FIELD_SOURCE[fieldId] : undefined;
   return (
     <div className={`flex items-center gap-1.5 mb-1.5 ${className ?? ''}`}>
-      <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium">{label}</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">{label}</span>
       {source && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${SOURCE_DOT_COLOR[source]}`} />}
     </div>
   );
@@ -737,7 +744,7 @@ function RushFeeBox() {
     <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 p-4">
       <div className="flex items-center gap-1.5 mb-1">
         <LightningIcon size={13} className="text-amber-600 dark:text-amber-300"/>
-        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">Rush Fee — Automated Calculation</span>
+        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 capitalize tracking-wider">Rush Fee — Automated Calculation</span>
       </div>
       <div className="text-sm text-amber-800 dark:text-amber-200">
         Rush fee can't be calculated yet because the wedding date isn't filled in.
@@ -752,7 +759,7 @@ function CustomizationStagePipeline({ currentStatus, onChange }: CStagePipelineP
   const idx = CUSTOM_STATUS_STEPS.indexOf(currentStatus as any);
   return (
     <div className="mb-5">
-      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-3">Stage</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-3">Stage</div>
       <div className="flex items-start overflow-x-auto pb-1">
         {CUSTOM_STATUS_STEPS.map((step, i) => {
           const isCurrent = i === idx;
@@ -893,10 +900,10 @@ function PricingLineItemsTable({
           <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
             <tr>
               <th className="px-3 py-2 w-8" />
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Customization</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Rate</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Pre-Approval</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Price</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Customization</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Rate</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Pre-Approval</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Price</th>
             </tr>
           </thead>
           <tbody>
@@ -1263,7 +1270,7 @@ function CustomizationModal({
   },[stylesRecords, favoriteStyleIds, styleId]);
   const embroideryOptions = [{id:'Light',label:'Light'},{id:'Medium',label:'Medium'},{id:'Full',label:'Full'}];
 
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
   return (
@@ -1340,8 +1347,8 @@ function CustomizationModal({
               <table className="w-full">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Style</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Base Price</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Style</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Base Price</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1462,7 +1469,6 @@ function CustomizationModal({
           saRecordId={saRecordId}
           customizationId={existingRecord.id}
           proposalsTable={proposalsTable}
-          baseId={base.id}
           onClose={()=>setShowProposalPreview(false)}
         />
       )}
@@ -1535,11 +1541,10 @@ interface ProposalPreviewModalProps {
   saRecordId: string | null;
   customizationId: string;
   proposalsTable: Table | null;
-  baseId: string;
   onClose: () => void;
 }
 function ProposalPreviewModal({
-  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, baseId, onClose,
+  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, onClose,
 }: ProposalPreviewModalProps) {
   const [countdown, setCountdown]     = useState(PROPOSAL_CLOSE_COUNTDOWN_SECONDS);
   // Not just set synchronously on click — the print dialog itself is async and
@@ -1614,12 +1619,21 @@ function ProposalPreviewModal({
     }
   };
 
-  const openRecordToAttach = () => {
-    if (!createdRecordId || !proposalsTable) return;
-    window.open(`https://airtable.com/${baseId}/${proposalsTable.id}/${createdRecordId}`, '_blank', 'noopener,noreferrer');
+  // Users generally don't have direct Airtable access, so instead of linking
+  // to the record itself, hand off to the same attachments form already used
+  // for Measurements/Appointment Photos — prefilled so the only thing left
+  // visible/actionable is the file picker. A sandbox-side automation (see
+  // automations/danielle_frankel_studios/proposal_attachment_router.js)
+  // copies the uploaded file onto this Proposal's unsigned_document.
+  const openAttachmentForm = () => {
+    const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
+    url.searchParams.set('prefill_client', clientId);
+    url.searchParams.set('prefill_customization_request', customizationId);
+    url.searchParams.set('prefill_type', 'Customization Proposal');
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
   };
 
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const orderSummaryRows: Array<{ label: string; amount: number; sub: string | null }> = [
     { label: 'Base Price',          amount: snapshot.basePriceNumber,  sub: null },
     { label: 'Customization Total', amount: snapshot.customizationTotal, sub: null },
@@ -1656,23 +1670,23 @@ function ProposalPreviewModal({
             <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
             <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Client</div><div className="text-sm font-medium">{clientName}</div></div>
-              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Sales Associate</div><div className="text-sm font-medium">{saName || '—'}</div></div>
-              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Style</div><div className="text-sm font-medium">{snapshot.styleName}</div></div>
-              <div><div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Amount of Embroidery/Paint/Lace</div><div className="text-sm font-medium">{snapshot.embroideryAmount}</div></div>
+              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Client</div><div className="text-sm font-medium">{clientName}</div></div>
+              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Sales Associate</div><div className="text-sm font-medium">{saName || '—'}</div></div>
+              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Style</div><div className="text-sm font-medium">{snapshot.styleName}</div></div>
+              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Amount of Embroidery/Paint/Lace</div><div className="text-sm font-medium">{snapshot.embroideryAmount}</div></div>
             </div>
 
             {/* Customizations — same invoice-style table as the Customization detail page */}
             <div className="mb-6">
-              <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Customizations</div>
+              <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Customizations</div>
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Customization</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Rate</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-left">Pre-Approval</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Price</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Rate</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Pre-Approval</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1695,7 +1709,7 @@ function ProposalPreviewModal({
             {/* Order Summary — flags (M2M/Alterations/Rush) only appear here, as
                 rows, exactly like the Customization detail page's own summary. */}
             <div className="mb-6">
-              <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Order Summary</div>
+              <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Order Summary</div>
               {orderSummaryRows.map(({ label, amount, sub }) => (
                 <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
                   <span className="text-sm text-gray-600">
@@ -1736,25 +1750,25 @@ function ProposalPreviewModal({
           {success && (
             <div className="pt-2 border-t border-gray-100 dark:border-white/5 space-y-3">
               <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">
-                Proposal saved. Last step: attach the printed PDF to the record in Airtable — file uploads can't happen from this window.
+                Proposal saved. Last step: attach the printed PDF using the upload form — it'll link back to this proposal automatically.
               </div>
-              <button type="button" onClick={openRecordToAttach}
+              <button type="button" onClick={openAttachmentForm}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
-                <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Open Record to Attach PDF
+                <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Open Upload Form
               </button>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-between items-center">
-          <button type="button" onClick={()=>window.print()}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
-            <PrinterIcon size={14} className="text-gray-500 dark:text-gray-400"/>Print
-          </button>
+        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end items-center gap-3">
           <button type="button" onClick={()=>{ if (closeEnabled) onClose(); }} disabled={!closeEnabled}
             className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             {closeEnabled ? 'Close' : `Close (${countdown})`}
+          </button>
+          <button type="button" onClick={()=>window.print()}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
+            <PrinterIcon size={14}/>Print
           </button>
         </div>
       </div>
@@ -2034,7 +2048,7 @@ function PostAppointmentModal({
   },[onClose]);
 
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const measInput = (label:string, val:string, set:(v:string)=>void, onBlur:()=>void, ph:string) => (
     <div>
       <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</div>
@@ -2196,7 +2210,7 @@ function PostAppointmentModal({
             {/* Stage-specific sidebar fields */}
             {showSidebarFields && (
               <div className="border-t border-gray-100 dark:border-white/5 pt-5 space-y-4">
-                <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">
+                <div className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-semibold">
                   {showPreApptFields ? 'Pre-Appointment Info' : 'Client Context'}
                 </div>
 
@@ -2688,7 +2702,7 @@ function AppointmentsApp(): React.ReactElement {
             <thead>
               <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 {['Time','Client','Studio','Wedding Date','Sales Associate','Favorite Styles','Measurements','Photos','Follow-Up','Customizations'].map(h=>(
-                  <th key={h} className="text-left px-3 py-2 text-xs text-gray-400 dark:text-gray-500 font-bold tracking-wider uppercase whitespace-nowrap">{h}</th>
+                  <th key={h} className="text-left px-3 py-2 text-xs text-gray-400 dark:text-gray-500 font-bold tracking-wider capitalize whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
