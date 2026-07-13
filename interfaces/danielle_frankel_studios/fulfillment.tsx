@@ -69,7 +69,6 @@ const FIELD_IDS = {
   WEDDING_DATE:         'fldbgknumKGS5W5WU',
   ITEMS_SOLD:           'fldEStULoGtNIjxPO',
   SHOPIFY_ORDERS:       'fldWSGqQW9czYdams',
-  PICKED_ROLLUP:        'fldkF1OvClIjPj9o7', // rollup avg picked % across orders
   DELIVERY_STATUS:      'fldElapbI1R2uyF5p', // rollup delivery status from orders
 } as const;
 
@@ -493,6 +492,38 @@ function MiniTable({ headers, rows, onRowClick }: {
   );
 }
 
+// ─── ConfirmDialog ────────────────────────────────────────────────────────────
+function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }: {
+  title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, [onCancel]);
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-6"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[380px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-5">
+          <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] mb-1.5">{title}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+        </div>
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
+          <button type="button" onClick={onCancel}
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm}
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors">
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── AddAdjustmentModal ───────────────────────────────────────────────────────
 function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
   adjTable: Table; orderRecord: AirtableRecord; onClose: () => void;
@@ -726,6 +757,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const [pickupReleased, setPickupReleased] = useState(() => getBool(ORDER_FIELD_IDS.PICKUP_RELEASED));
   const [releaseError,   setReleaseError]   = useState('');
   const [taxConfirmed,   setTaxConfirmed]   = useState(() => getBool(ORDER_FIELD_IDS.TAX_CONFIRMED));
+  const [showTaxConfirmPrompt, setShowTaxConfirmPrompt] = useState(false);
 
   // Pickup Readiness Gate — this order's own three checks + progress
   const clientAddressConfirmed = getBool(ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
@@ -768,9 +800,14 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   // and this guard backs that up in case it's ever invoked programmatically.
   const handleToggleTaxConfirmed = (v: boolean) => {
     if (taxConfirmed) return;
-    if (v && !window.confirm('Confirm tax for this order? This cannot be undone.')) return;
+    if (v) { setShowTaxConfirmPrompt(true); return; }
     setTaxConfirmed(v);
     save(ORDER_FIELD_IDS.TAX_CONFIRMED, v);
+  };
+  const confirmTaxConfirmed = () => {
+    setShowTaxConfirmPrompt(false);
+    setTaxConfirmed(true);
+    save(ORDER_FIELD_IDS.TAX_CONFIRMED, true);
   };
 
   const delivMethodOpts  = useMemo(() => { const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD); return f?.options?.choices?.map((c: { name: string }) => c.name) ?? ['Pick Up in Store', 'Ship']; }, [orderTable]);
@@ -858,6 +895,15 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
 
   return (
     <>
+      {showTaxConfirmPrompt && (
+        <ConfirmDialog
+          title="Confirm Tax"
+          message="Confirm tax for this order? This cannot be undone."
+          confirmLabel="Confirm"
+          onConfirm={confirmTaxConfirmed}
+          onCancel={() => setShowTaxConfirmPrompt(false)}
+        />
+      )}
       {showAddModal && adjTable && (
         <AddAdjustmentModal
           adjTable={adjTable}
@@ -1096,20 +1142,8 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
     const adjTotal    = getOrderNum(r, ORDER_FIELD_IDS.ADJUSTED_TOTAL);
     const pay         = getOrderSel(r, ORDER_FIELD_IDS.PAYMENT_STATUS);
     const delivMethod = getOrderSel(r, ORDER_FIELD_IDS.DELIVERY_METHOD);
-    const picked      = getOrderSel(r, ORDER_FIELD_IDS.PICKED_STATUS);
     const payV: PillVariant = pay === 'Paid' ? 'green' : pay.includes('Partial') ? 'yellow' : 'red';
-    const row: React.ReactNode[] = [
-      <span className="font-medium">{num ? `#${num}` : '—'}</span>,
-      <Pill variant={payV}>{pay || '—'}</Pill>,
-      <span className="text-gray-500 dark:text-gray-400">{delivMethod || '—'}</span>,
-      <span className="text-gray-500 dark:text-gray-400">{picked || '—'}</span>,
-      formatCurrency(total),
-    ];
-    if (hasAnyAdjustedTotal) {
-      row.push(adjTotal !== null
-        ? <span className="text-amber-600 dark:text-amber-400 font-medium">{formatCurrency(adjTotal)}</span>
-        : <span className="text-gray-300 dark:text-gray-600">—</span>);
-    }
+
     // Pickup Readiness Gate — this order's own three checks + its own fulfillment progress
     const orderTaxConfirmed          = getOrderBool(r, ORDER_FIELD_IDS.TAX_CONFIRMED);
     const orderClientAddrConfirmed   = getOrderBool(r, ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
@@ -1122,7 +1156,20 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
       { label: 'Address', passed: orderClientAddrConfirmed },
       { label: 'Hold',    passed: orderClientHoldReleased },
     ]);
-    row.push(<ReadinessChip severity={orderSeverity} tooltip={orderTooltip} />);
+
+    const row: React.ReactNode[] = [
+      <span className="font-medium">{num ? `#${num}` : '—'}</span>,
+      <Pill variant={payV}>{pay || '—'}</Pill>,
+      <span className="text-gray-500 dark:text-gray-400">{delivMethod || '—'}</span>,
+      <ProgressBar percentage={orderProgress} />,
+      <ReadinessChip severity={orderSeverity} tooltip={orderTooltip} />,
+      formatCurrency(total),
+    ];
+    if (hasAnyAdjustedTotal) {
+      row.push(adjTotal !== null
+        ? <span className="text-amber-600 dark:text-amber-400 font-medium">{formatCurrency(adjTotal)}</span>
+        : <span className="text-gray-300 dark:text-gray-600">—</span>);
+    }
     return row;
   });
 
@@ -1206,8 +1253,8 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                 <thead>
                   <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     {(hasAnyAdjustedTotal
-                      ? ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Adjusted Total', 'Readiness']
-                      : ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Readiness']
+                      ? ['Order #', 'Payment', 'Delivery', 'Picked/Shipped', 'Readiness', 'Total', 'Adjusted Total']
+                      : ['Order #', 'Payment', 'Delivery', 'Picked/Shipped', 'Readiness', 'Total']
                     ).map((h, i) => (
                       <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
                     ))}
@@ -1229,12 +1276,11 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                 {linkedOrders.length > 0 && (
                   <tfoot>
                     <tr className="border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
-                      <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wide">Total</td>
+                      <td colSpan={5} className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wide">Total</td>
                       <td className="px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(totalSum)}</td>
                       {hasAnyAdjustedTotal && (
                         <td className="px-3 py-2 text-sm font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(adjTotalSum)}</td>
                       )}
-                      <td />
                     </tr>
                   </tfoot>
                 )}
@@ -1580,8 +1626,8 @@ function FulfillmentApp(): React.ReactElement {
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[130px]">Sales Associate</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[100px]">Delivery</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Items</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[110px]">% Picked</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[100px]">Readiness</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Picked/Shipped</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[70px]">Hold</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[140px]">Status</th>
                 </tr>
@@ -1591,10 +1637,10 @@ function FulfillmentApp(): React.ReactElement {
                   const name         = getStr(rec, FIELD_IDS.FULL_NAME);
                   const wdVal        = fields[FIELD_IDS.WEDDING_DATE] ? (rec.getCellValue(fields[FIELD_IDS.WEDDING_DATE]!) as string | null) : null;
                   const wdDisplay    = wdVal ? new Date(wdVal).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-                  const pickedRollup = getNum(rec, FIELD_IDS.PICKED_ROLLUP);
+                  const pickedShipped = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS);
                   const delivStatus  = getSel(rec, FIELD_IDS.DELIVERY_STATUS);
                   const holdDate     = fields[FIELD_IDS.HOLD_SHIPMENT_DATE] ? rec.getCellValue(fields[FIELD_IDS.HOLD_SHIPMENT_DATE]!) as string | null : null;
-                  const pct          = Math.round((pickedRollup ?? 0) * 100);
+                  const pct          = Math.round((pickedShipped ?? 0) * 100);
                   // Pickup Readiness Gate — client-level overall readiness
                   const { severity: rSeverity, tooltip: rTooltip } = getClientReadiness(rec);
                   const hasHold      = !!holdDate;
@@ -1624,8 +1670,8 @@ function FulfillmentApp(): React.ReactElement {
                           : <span className="text-sm text-gray-400">—</span>}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{fItems ? <CellRenderer record={rec} field={fItems} /> : '—'}</td>
-                      <td className="px-3 py-2.5"><ProgressBar percentage={pickedRollup ?? 0} /></td>
                       <td className="px-3 py-2.5"><ReadinessChip severity={rSeverity} tooltip={rTooltip} /></td>
+                      <td className="px-3 py-2.5"><ProgressBar percentage={pickedShipped ?? 0} /></td>
                       <td className="px-3 py-2.5"><Pill variant={hasHold ? 'red' : 'green'}>{hasHold ? 'Yes' : 'No'}</Pill></td>
                       <td className="px-3 py-2.5"><Pill variant={statusVariant}>{statusText}</Pill></td>
                     </tr>
