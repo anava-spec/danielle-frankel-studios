@@ -1703,9 +1703,9 @@ function ProposalPreviewModal({
   ].filter(row => row.amount !== 0);
 
   return (
-    // No dim/blur behind this popup, per request — the overlay only exists to
-    // capture click-outside and center the panel.
+    // Blur only — no dark dim — behind this popup.
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 proposal-modal-chrome"
+      style={{ backdropFilter:'blur(4px)' }}
       onClick={e=>{ if (e.target===e.currentTarget && closeEnabled) onClose(); }}>
       <style>{`
         @media print {
@@ -1944,7 +1944,9 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
   };
 
   return (
+    // Blur only — no dark dim — behind this popup.
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
+      style={{ backdropFilter:'blur(4px)' }}
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
       <style>{`
         @media print {
