@@ -364,7 +364,7 @@ function ToggleButton({ checked, onChange, label, disabled = false }: { checked:
   return (
     <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-        disabled ? 'opacity-50 cursor-not-allowed' : ''} ${
+        disabled && !checked ? 'opacity-50' : ''} ${disabled ? 'cursor-not-allowed' : ''} ${
         checked ? 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/40 shadow-sm'
                 : 'bg-white dark:bg-[#1e1d1b] text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 shadow-sm hover:border-gray-300 dark:hover:border-white/20'}`}>
       {checked && <CheckCircleIcon size={13} />}{label}
@@ -725,9 +725,9 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   });
   const [pickupReleased, setPickupReleased] = useState(() => getBool(ORDER_FIELD_IDS.PICKUP_RELEASED));
   const [releaseError,   setReleaseError]   = useState('');
+  const [taxConfirmed,   setTaxConfirmed]   = useState(() => getBool(ORDER_FIELD_IDS.TAX_CONFIRMED));
 
   // Pickup Readiness Gate — this order's own three checks + progress
-  const taxConfirmed          = getBool(ORDER_FIELD_IDS.TAX_CONFIRMED);
   const clientAddressConfirmed = getBool(ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
   const clientHoldReleased     = getBool(ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
   const fulfillmentProgress    = getNum(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
@@ -762,6 +762,15 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
     setReleaseError('');
     setPickupReleased(v);
     save(ORDER_FIELD_IDS.PICKUP_RELEASED, v);
+  };
+
+  // Once confirmed, tax_confirmed is locked — the toggle itself is disabled when checked,
+  // and this guard backs that up in case it's ever invoked programmatically.
+  const handleToggleTaxConfirmed = (v: boolean) => {
+    if (taxConfirmed) return;
+    if (v && !window.confirm('Confirm tax for this order? This cannot be undone.')) return;
+    setTaxConfirmed(v);
+    save(ORDER_FIELD_IDS.TAX_CONFIRMED, v);
   };
 
   const delivMethodOpts  = useMemo(() => { const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD); return f?.options?.choices?.map((c: { name: string }) => c.name) ?? ['Pick Up in Store', 'Ship']; }, [orderTable]);
@@ -927,7 +936,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             <section>
               <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Fulfillment</span>
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <span className={lbl}>Delivery Method</span>
                     <SingleSelectDropdown value={delivMethod} options={delivMethodOpts} placeholder="—"
@@ -937,6 +946,12 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                     <span className={lbl}>Client Notified</span>
                     <ToggleButton checked={notified} label={notified ? 'Notified' : 'Not Notified'}
                       onChange={v => { setNotified(v); save(ORDER_FIELD_IDS.CLIENT_NOTIFIED, v); }} />
+                  </div>
+                  <div>
+                    <span className={lbl}>Tax Confirmed</span>
+                    <ToggleButton checked={taxConfirmed} disabled={taxConfirmed}
+                      label={taxConfirmed ? 'Confirmed' : 'Not Confirmed'}
+                      onChange={handleToggleTaxConfirmed} />
                   </div>
                 </div>
                 {isShip && (
