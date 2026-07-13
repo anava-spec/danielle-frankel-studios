@@ -8,20 +8,23 @@
 //          When the interface is published to production, recreate this
 //          automation there too, pointing at the production Proposals table.)
 // Trigger: "When record created" on the `attachments` table (tbli57E9YzWb5Qmku)
-// Node 2:  Condition — type is "Customization Proposal"
+// Node 2:  Condition — type is "Customization Proposal" OR "Signed Proposal"
 //          AND customization_request is not empty
 //          AND attachments is not empty
 // Node 3:  Run a script (this file) — input.config(): { recordId: <Attachments record ID from trigger> }
 //
 // Objective: the Recap interface can't upload a File directly into the
-// Proposals table's unsigned_document field (the Interface Extensions SDK
-// only accepts {url, filename} attachment values, not a browser File object).
-// So "Generate Proposal" instead sends the user to this same attachments
-// form (already used for Measurements / Appointment Photos) with type =
-// "Customization Proposal", prefilled with client + customization_request.
-// This script fires when that form submission lands, finds the matching
-// Proposal record (linked to the same Customization, still missing its
-// unsigned_document), and copies the just-uploaded attachment onto it.
+// Proposals table's unsigned_document/signed_document fields (the Interface
+// Extensions SDK only accepts {url, filename} attachment values, not a
+// browser File object). So both "Generate Proposal" and "Upload Signed
+// Document" instead send the user to this same attachments form (already
+// used for Measurements/Appointment Photos), prefilled with client +
+// customization_request and one of two type values:
+//   - "Customization Proposal" → the unsigned copy, right after generation
+//   - "Signed Proposal"        → the countersigned copy, uploaded later
+// This script fires when either submission lands, finds the matching
+// Proposal record (linked to the same Customization) at the right stage,
+// and copies the just-uploaded attachment onto the right field.
 //
 // Attachment values ARE safely copyable here, unlike the interface-extension
 // case above: an attachment already stored on an Airtable record has a real
@@ -30,11 +33,16 @@
 // scripts move attachments between tables. That's a different situation
 // from a local browser File object, which has no fetchable URL at all.
 //
-// Guard clause (kept in sync with the Condition node in Node 2):
-//   1. type must equal "Customization Proposal"
+// Guard clauses (kept in sync with the Condition node in Node 2):
+//   1. type must be "Customization Proposal" or "Signed Proposal"
 //   2. customization_request must be linked to exactly one Customization
 //   3. attachments must be non-empty
-//   4. exactly one matching, still-unsigned Proposal record must be found
+//   4. a matching Proposal record must exist at the right stage:
+//      - "Customization Proposal" → one with unsigned_document still empty
+//      - "Signed Proposal"        → one with unsigned_document already set
+//                                     and signed_document still empty (a
+//                                     signed copy can never be attached
+//                                     before the unsigned one exists)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TABLE_IDS = {
@@ -51,10 +59,14 @@ const FIELDS_ATTACHMENTS = {
 const FIELDS_PROPOSALS = {
   SOURCE_CUSTOMIZATION: 'fldeXnhSr8r6rw78k',
   UNSIGNED_DOCUMENT:    'fldlUFhODjgDyeOFg',
+  SIGNED_DOCUMENT:      'fld1Z37faYGD7jDia',
   STATUS:               'fldW0GbVWnhZGUAtv',
 };
 
-const CUSTOMIZATION_PROPOSAL_TYPE = 'Customization Proposal';
+const ATTACHMENT_TYPE = {
+  UNSIGNED: 'Customization Proposal',
+  SIGNED:   'Signed Proposal',
+};
 
 // ─── Logger ────────────────────────────────────────────────────────────────
 class Logger {
@@ -76,28 +88,53 @@ class AttachmentsRepository {
 class ProposalsRepository {
   constructor(table) { this.table = table; }
 
+  async _matchesForCustomization(customizationId) {
+    const result = await this.table.selectRecordsAsync({
+      fields: [FIELDS_PROPOSALS.SOURCE_CUSTOMIZATION, FIELDS_PROPOSALS.UNSIGNED_DOCUMENT, FIELDS_PROPOSALS.SIGNED_DOCUMENT],
+    });
+    return result.records.filter(r => {
+      const link = r.getCellValue(FIELDS_PROPOSALS.SOURCE_CUSTOMIZATION);
+      return Array.isArray(link) && link.some(l => l.id === customizationId);
+    });
+  }
+
   // Multiple Proposals can exist for the same Customization over time (a
   // proposal can be regenerated). The correct target is the most recently
   // created one that doesn't have unsigned_document yet — the one the user
-  // just generated and is now attaching a PDF to.
-  async findPendingBySourceCustomization(customizationId) {
-    const result = await this.table.selectRecordsAsync({
-      fields: [FIELDS_PROPOSALS.SOURCE_CUSTOMIZATION, FIELDS_PROPOSALS.UNSIGNED_DOCUMENT],
+  // just generated and is now attaching the printed PDF to.
+  // selectRecordsAsync returns records in creation order — last match wins.
+  async findPendingUnsigned(customizationId) {
+    const matches = (await this._matchesForCustomization(customizationId)).filter(r => {
+      const existing = r.getCellValue(FIELDS_PROPOSALS.UNSIGNED_DOCUMENT);
+      return !existing || existing.length === 0;
     });
-    const matches = result.records.filter(r => {
-      const link = r.getCellValue(FIELDS_PROPOSALS.SOURCE_CUSTOMIZATION);
-      const linked = Array.isArray(link) && link.some(l => l.id === customizationId);
-      if (!linked) return false;
-      const existingDoc = r.getCellValue(FIELDS_PROPOSALS.UNSIGNED_DOCUMENT);
-      return !existingDoc || existingDoc.length === 0;
+    return matches.length ? matches[matches.length - 1] : null;
+  }
+
+  // A signed copy can only ever belong to a Proposal that already has its
+  // unsigned_document (the countersigned version of that specific PDF) and
+  // doesn't have a signed_document yet.
+  async findPendingSigned(customizationId) {
+    const matches = (await this._matchesForCustomization(customizationId)).filter(r => {
+      const unsigned = r.getCellValue(FIELDS_PROPOSALS.UNSIGNED_DOCUMENT);
+      const signed = r.getCellValue(FIELDS_PROPOSALS.SIGNED_DOCUMENT);
+      const hasUnsigned = !!unsigned && unsigned.length > 0;
+      const hasSigned = !!signed && signed.length > 0;
+      return hasUnsigned && !hasSigned;
     });
-    // selectRecordsAsync returns records in creation order — last match is the most recent.
     return matches.length ? matches[matches.length - 1] : null;
   }
 
   async writeUnsignedDocument(recordId, attachments) {
     return this.table.updateRecordAsync(recordId, {
       [FIELDS_PROPOSALS.UNSIGNED_DOCUMENT]: attachments,
+    });
+  }
+
+  async writeSignedDocument(recordId, attachments) {
+    return this.table.updateRecordAsync(recordId, {
+      [FIELDS_PROPOSALS.SIGNED_DOCUMENT]: attachments,
+      [FIELDS_PROPOSALS.STATUS]: { name: 'Signed' },
     });
   }
 }
@@ -112,10 +149,11 @@ class ProposalAttachmentService {
 
   _validate(attachmentRecord) {
     const type = attachmentRecord.getCellValue(FIELDS_ATTACHMENTS.TYPE);
-    if (!type || type.name !== CUSTOMIZATION_PROPOSAL_TYPE) {
+    const typeName = type ? type.name : null;
+    if (typeName !== ATTACHMENT_TYPE.UNSIGNED && typeName !== ATTACHMENT_TYPE.SIGNED) {
       throw new Error(
-        `Guard clause: type is not "${CUSTOMIZATION_PROPOSAL_TYPE}" ` +
-        `(got "${type ? type.name : 'empty'}"). This automation only handles proposal uploads.`
+        `Guard clause: type is not "${ATTACHMENT_TYPE.UNSIGNED}" or "${ATTACHMENT_TYPE.SIGNED}" ` +
+        `(got "${typeName ?? 'empty'}"). This automation only handles proposal uploads.`
       );
     }
 
@@ -129,31 +167,45 @@ class ProposalAttachmentService {
       throw new Error('Guard clause: attachments is empty. Nothing was uploaded to attach.');
     }
 
-    this.logger.step(1, `Guard passed → customization: ${customizationLink[0].id} | files: ${files.length}`);
-    return { customizationId: customizationLink[0].id, files };
+    this.logger.step(1, `Guard passed → type: ${typeName} | customization: ${customizationLink[0].id} | files: ${files.length}`);
+    return { typeName, customizationId: customizationLink[0].id, files };
   }
 
   async run(attachmentRecordId) {
     const attachmentRecord = await this.attachmentsRepo.getById(attachmentRecordId);
     if (!attachmentRecord) throw new Error(`Attachment record ${attachmentRecordId} not found.`);
 
-    const { customizationId, files } = this._validate(attachmentRecord);
-
-    const proposal = await this.proposalsRepo.findPendingBySourceCustomization(customizationId);
-    if (!proposal) {
-      throw new Error(
-        `Guard clause: no pending Proposal found for customization ${customizationId} ` +
-        `(either none exists, or all matching Proposals already have unsigned_document set).`
-      );
-    }
-    this.logger.step(2, `Matched Proposal → ${proposal.id}`);
-
+    const { typeName, customizationId, files } = this._validate(attachmentRecord);
     // Airtable-hosted attachments have a real https url — safe to copy via
     // {url, filename}, unlike a local browser File (see header comment).
     const attachmentsToWrite = files.map(f => ({ url: f.url, filename: f.filename }));
-    await this.proposalsRepo.writeUnsignedDocument(proposal.id, attachmentsToWrite);
-    this.logger.step(3, `Wrote unsigned_document onto Proposal ${proposal.id}`);
 
+    if (typeName === ATTACHMENT_TYPE.UNSIGNED) {
+      const proposal = await this.proposalsRepo.findPendingUnsigned(customizationId);
+      if (!proposal) {
+        throw new Error(
+          `Guard clause: no pending Proposal found for customization ${customizationId} ` +
+          `(either none exists, or all matching Proposals already have unsigned_document set).`
+        );
+      }
+      this.logger.step(2, `Matched Proposal (unsigned) → ${proposal.id}`);
+      await this.proposalsRepo.writeUnsignedDocument(proposal.id, attachmentsToWrite);
+      this.logger.step(3, `Wrote unsigned_document onto Proposal ${proposal.id}`);
+      return proposal.id;
+    }
+
+    // ATTACHMENT_TYPE.SIGNED
+    const proposal = await this.proposalsRepo.findPendingSigned(customizationId);
+    if (!proposal) {
+      throw new Error(
+        `Guard clause: no Proposal for customization ${customizationId} is ready for a signed document ` +
+        `(a Proposal must already have unsigned_document, and not yet have signed_document, before a ` +
+        `signed copy can be attached).`
+      );
+    }
+    this.logger.step(2, `Matched Proposal (signed) → ${proposal.id}`);
+    await this.proposalsRepo.writeSignedDocument(proposal.id, attachmentsToWrite);
+    this.logger.step(3, `Wrote signed_document + status=Signed onto Proposal ${proposal.id}`);
     return proposal.id;
   }
 }

@@ -194,6 +194,24 @@ const ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMc
 // once this interface is published and the Proposals table exists in prod.
 const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/app6Q4xMZ1ngJxiV8/pagRXpKT2IMcjQwqo/form';
 
+// Used for both the unsigned copy (right after "Generate Proposal") and the
+// signed copy (from the Proposals list) — same form, different `type` value.
+// The automations/danielle_frankel_studios/proposal_attachment_router.js
+// automation reads customization_request + type to route the attachment onto
+// the right Proposal field. `hide_*` (paired with `prefill_*`) makes Airtable
+// hide that field on the form entirely, leaving only the file picker visible.
+type ProposalAttachmentType = 'Customization Proposal' | 'Signed Proposal';
+function buildProposalAttachmentFormUrl(clientId: string, customizationId: string, type: ProposalAttachmentType): string {
+  const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
+  url.searchParams.set('prefill_client', clientId);
+  url.searchParams.set('hide_client', 'true');
+  url.searchParams.set('prefill_customization_request', customizationId);
+  url.searchParams.set('hide_customization_request', 'true');
+  url.searchParams.set('prefill_type', type);
+  url.searchParams.set('hide_type', 'true');
+  return url.toString();
+}
+
 // ─── Customization status steps ───────────────────────────────────────────────
 const CUSTOM_STATUS_STEPS = [
   'Sent to Production',
@@ -1315,18 +1333,24 @@ function CustomizationModal({
               <span className={labelCls}>Proposals</span>
               <div className="flex flex-wrap gap-2">
                 {customizationProposals.map(p=>{
-                  const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
-                  const fStyleP  = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
-                  const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
-                  const styleStr  = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
-                  const isSigned  = statusStr === 'Signed';
+                  const fStatusP   = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
+                  const fStyleP    = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
+                  const fUnsignedP = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
+                  const statusStr  = fStatusP ? p.getCellValueAsString(fStatusP) : '';
+                  const styleStr   = fStyleP  ? p.getCellValueAsString(fStyleP)  : '';
+                  const isSigned   = statusStr === 'Signed';
+                  const hasUnsigned = fUnsignedP ? !!(p.getCellValue(fUnsignedP) as unknown[]|null)?.length : false;
+                  const disabled = isSigned || !hasUnsigned;
+                  const title = isSigned ? 'Already signed' : !hasUnsigned ? 'Waiting on the unsigned document to be attached first' : 'Upload signed document';
                   return (
-                    <button key={p.id} type="button" disabled={isSigned}
+                    <button key={p.id} type="button" disabled={disabled}
                       onClick={()=>setSignedUploadProposalId(p.id)}
-                      title={isSigned ? 'Already signed' : 'Upload signed document'}
+                      title={title}
                       className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
                         ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 cursor-default'
-                        : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
+                        : disabled
+                          ? 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-white/10 cursor-not-allowed'
+                          : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
                       {styleStr || 'Proposal'} — {statusStr || 'Generated'}
                     </button>
                   );
@@ -1477,7 +1501,6 @@ function CustomizationModal({
         <SignedDocumentUploadModal
           proposalRecord={proposalRecords?.find(r=>r.id===signedUploadProposalId) ?? null}
           proposalsTable={proposalsTable}
-          baseId={base.id}
           onClose={()=>setSignedUploadProposalId(null)}
         />
       )}
@@ -1626,11 +1649,7 @@ function ProposalPreviewModal({
   // automations/danielle_frankel_studios/proposal_attachment_router.js)
   // copies the uploaded file onto this Proposal's unsigned_document.
   const openAttachmentForm = () => {
-    const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
-    url.searchParams.set('prefill_client', clientId);
-    url.searchParams.set('prefill_customization_request', customizationId);
-    url.searchParams.set('prefill_type', 'Customization Proposal');
-    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    window.open(buildProposalAttachmentFormUrl(clientId, customizationId, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
   };
 
   // Zero-amount fees add no information on a client-facing proposal — skip them.
@@ -1771,56 +1790,37 @@ function ProposalPreviewModal({
 }
 
 // ─── SignedDocumentUploadModal ─────────────────────────────────────────────────
-// Separate action from proposal generation — opened from the client's existing
-// Proposals list to attach the signed PDF back onto that SAME record (never
-// creates a new one). The Interface Extensions SDK can't push a local File
-// into an attachment field (same limitation as ProposalPreviewModal — see the
-// comment there), so the file itself is dropped onto signed_document directly
-// on the record's own Airtable page, which has no such restriction; "Mark as
-// Signed" only flips the status field, which IS a normal writable field, via a
-// single atomic updateRecordAsync — if that call fails, nothing about the
-// record (including whatever's already in unsigned_document) changes.
+// Opened from the Proposals list once a Proposal already has unsigned_document
+// (see the gate in CustomizationModal's Proposals pill) — never available
+// before that. Same reasoning as ProposalPreviewModal: the SDK can't push a
+// local File into an attachment field, so this hands off to the same
+// attachments form with type = "Signed Proposal". The
+// proposal_attachment_router automation matches it back to this exact
+// Proposal (the one with unsigned_document set and signed_document still
+// empty) and sets status to "Signed" itself — nothing left to confirm here.
 interface SignedDocumentUploadModalProps {
   proposalRecord: AirtableRecord | null;
   proposalsTable: Table;
-  baseId: string;
   onClose: () => void;
 }
-function SignedDocumentUploadModal({ proposalRecord, proposalsTable, baseId, onClose }: SignedDocumentUploadModalProps) {
-  const [saving, setSaving]     = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string|null>(null);
-  const [signed, setSigned]     = useState(false);
-
+function SignedDocumentUploadModal({ proposalRecord, proposalsTable, onClose }: SignedDocumentUploadModalProps) {
   useEffect(()=>{
     const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[onClose]);
 
-  const openRecord = () => {
-    if (!proposalRecord) return;
-    window.open(`https://airtable.com/${baseId}/${proposalsTable.id}/${proposalRecord.id}`, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleMarkSigned = async () => {
-    if (!proposalRecord || saving) return;
-    setSaving(true);
-    setErrorMsg(null);
-    try {
-      await queueWrite(() => proposalsTable.updateRecordAsync(proposalRecord.id, {
-        [PROPOSAL.STATUS]: { name: 'Signed' },
-      }));
-      setSigned(true);
-    } catch (err) {
-      console.error('Failed to mark proposal as signed:', err);
-      setErrorMsg('Failed to update the status. The record is unchanged — try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   if (!proposalRecord) return null;
   const fStyleSnap = proposalsTable.getFieldIfExists(PROPOSAL.SNAPSHOT_STYLE);
-  const styleName = fStyleSnap ? proposalRecord.getCellValueAsString(fStyleSnap) : '';
+  const fClientP   = proposalsTable.getFieldIfExists(PROPOSAL.CLIENT);
+  const fSourceP   = proposalsTable.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION);
+  const styleName  = fStyleSnap ? proposalRecord.getCellValueAsString(fStyleSnap) : '';
+  const clientId   = fClientP ? ((proposalRecord.getCellValue(fClientP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+  const customizationId = fSourceP ? ((proposalRecord.getCellValue(fSourceP) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+
+  const openAttachmentForm = () => {
+    if (!clientId || !customizationId) return;
+    window.open(buildProposalAttachmentFormUrl(clientId, customizationId, 'Signed Proposal'), '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
@@ -1836,19 +1836,11 @@ function SignedDocumentUploadModal({ proposalRecord, proposalsTable, baseId, onC
         <div className="p-5 space-y-3">
           <div className="text-sm text-gray-500 dark:text-gray-400">{styleName || 'Proposal'}</div>
           <div className="text-sm text-gray-700 dark:text-gray-300">
-            File uploads can't happen from this window — open the record in Airtable and drop the signed PDF onto Signed Document there, then come back and confirm below.
+            Attach the countersigned PDF using the upload form — it'll link back to this proposal and mark it Signed automatically.
           </div>
-          <button type="button" onClick={openRecord}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
-            <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Open Record in Airtable
-          </button>
-          {errorMsg && <div className="text-sm text-red-600 dark:text-red-400">{errorMsg}</div>}
-          {signed && <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">Marked as Signed.</div>}
-        </div>
-        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end">
-          <button onClick={handleMarkSigned} disabled={saving || signed}
-            className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
-            {saving ? 'Saving…' : signed ? 'Signed' : 'Mark as Signed'}
+          <button type="button" onClick={openAttachmentForm} disabled={!clientId || !customizationId}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
+            <UploadIcon size={14}/>Open Upload Form
           </button>
         </div>
       </div>
