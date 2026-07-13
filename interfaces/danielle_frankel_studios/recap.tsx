@@ -1279,11 +1279,19 @@ function CustomizationModal({
   const customizationProposals = useMemo(() => {
     if (!proposalRecords || !existingRecord || !proposalsTable) return [];
     const fSourceP = proposalsTable.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION);
+    const fGeneratedAtP = proposalsTable.getFieldIfExists(PROPOSAL.GENERATED_AT);
     if (!fSourceP) return [];
-    return proposalRecords.filter(r => {
-      const lnk = r.getCellValue(fSourceP) as Array<{id:string}>|null;
-      return lnk?.some(l=>l.id===existingRecord.id) ?? false;
-    });
+    return proposalRecords
+      .filter(r => {
+        const lnk = r.getCellValue(fSourceP) as Array<{id:string}>|null;
+        return lnk?.some(l=>l.id===existingRecord.id) ?? false;
+      })
+      .sort((a, b) => {
+        if (!fGeneratedAtP) return 0;
+        const aTime = new Date((a.getCellValue(fGeneratedAtP) as string|null) ?? 0).getTime();
+        const bTime = new Date((b.getCellValue(fGeneratedAtP) as string|null) ?? 0).getTime();
+        return bTime - aTime; // latest first
+      });
   }, [proposalRecords, proposalsTable, existingRecord]);
 
   // ── Auto-save for edit mode ───────────────────────────────────────────────
@@ -1381,24 +1389,26 @@ function CustomizationModal({
             <CustomizationStagePipeline currentStatus={status} onChange={handleStatus}/>
           )}
 
-          {/* Proposals generated from this customization request — chip label
-              is the record's own primary field (proposal_id formula). */}
+          {/* Proposals generated from this customization request — inline
+              item rows (latest first), not chips. Label is the record's own
+              primary field (proposal_id formula). */}
           {mode === 'edit' && proposalsTable && customizationProposals.length > 0 && (
             <div>
               <span className={labelCls}>Proposals</span>
-              <div className="flex flex-wrap gap-2">
+              <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
                 {customizationProposals.map(p=>{
                   const fStatusP = proposalsTable.getFieldIfExists(PROPOSAL.STATUS);
                   const statusStr = fStatusP ? p.getCellValueAsString(fStatusP) : '';
                   const isSigned = statusStr === 'Signed';
                   return (
-                    <button key={p.id} type="button"
-                      onClick={()=>setViewProposalId(p.id)}
-                      title="View proposal"
-                      className={`rounded-full text-xs font-medium px-3 py-1 border transition-colors ${isSigned
-                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 hover:dark:bg-emerald-500/25'
-                        : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10'}`}>
-                      {p.name || 'Proposal'}
+                    <button key={p.id} type="button" onClick={()=>setViewProposalId(p.id)}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left border-b border-gray-100 dark:border-white/5 last:border-0 hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
+                      <span className="text-sm text-gray-900 dark:text-[#F3EFE6] truncate">{p.name || 'Proposal'}</span>
+                      <span className={`flex-shrink-0 rounded-full text-xs font-medium px-2 py-0.5 border ${isSigned
+                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30'
+                        : 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10'}`}>
+                        {statusStr || 'Generated'}
+                      </span>
                     </button>
                   );
                 })}
