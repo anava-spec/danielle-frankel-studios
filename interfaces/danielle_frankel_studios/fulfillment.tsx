@@ -19,6 +19,7 @@ import {
   X as XIcon,
   CheckCircle as CheckCircleIcon,
   WarningCircle as WarningCircleIcon,
+  Info as InfoIcon,
   ArrowLeft as ArrowLeftIcon,
   Plus as PlusIcon,
   ShoppingCart as ShoppingCartIcon,
@@ -1592,6 +1593,12 @@ function FulfillmentApp(): React.ReactElement {
           </button>
         </div>
         <div className="flex items-center gap-4">
+          <span
+            title="This queue always excludes clients with no items sold, and clients whose wedding date is blank or in the past — regardless of the filters below."
+            aria-label="This queue always excludes clients with no items sold, and clients whose wedding date is blank or in the past — regardless of the filters below."
+            className="inline-flex items-center text-gray-400 dark:text-gray-500 cursor-help">
+            <InfoIcon size={16} />
+          </span>
           <div className="relative">
             <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
