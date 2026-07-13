@@ -126,6 +126,7 @@ const ORDER_ITEMS_FIELD_IDS = {
   AM_ORDER_ITEM_ID:    'fldi7F9rPeWLNfarJ',
   ORDER:               'fldXrdBFm5SeGCTvq',
   STYLE:               'fldL9rj7ZeDnjnXiY',
+  STYLE_PHOTO:         'fldWORLRjBw3oMZOb', // lookup — attachment from DF Styles via style link
   ATTR_2:              'fldk3kg4OLToNqDbK',
   ATTR_3:              'fld5KHXDv1MekJp5U',
   SIZE:                'fldqihfODfR9L9Uxt',
@@ -788,6 +789,20 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
   const getStr = (fid: string): string => { try { return record.getCellValueAsString(itemsTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; } };
   const getNum = (fid: string): number | null => { try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
   const getDate = (fid: string): string | null => { try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as string | null; } catch { return null; } };
+  // Attachment lookups come back as an array of attachment arrays (one per linked record) —
+  // flatten one level and take the first attachment's url, whichever shape it arrives in.
+  const getAttachmentUrl = (fid: string): string | null => {
+    const f = itemsTable.getFieldIfExists(fid); if (!f) return null;
+    try {
+      const raw = record.getCellValue(f);
+      const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      for (const item of arr) {
+        const candidate = Array.isArray(item) ? item[0] : item;
+        if (candidate && typeof candidate === 'object' && 'url' in candidate) return (candidate as { url: string }).url;
+      }
+      return null;
+    } catch { return null; }
+  };
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -804,14 +819,16 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
   const qtyPicked      = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_PICKED);
   const qtyShipped     = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_SHIPPED);
   const qtyOpen        = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_OPEN);
+  const stylePhotoUrl  = getAttachmentUrl(ORDER_ITEMS_FIELD_IDS.STYLE_PHOTO);
 
   // Field labels below match the human-readable headers from order_items-axl.csv; all reads
-  // above use the hardcoded field IDs, never field names. "Style Photo (from DF Styles)" is
-  // in that CSV but no field ID was provided for it — flagged here rather than guessed.
+  // above use the hardcoded field IDs, never field names.
   const fieldsToShow: Array<[string, React.ReactNode]> = [
     ['AM Order Item ID', amId || '—'],
     ['Style', displayStyle],
-    ['Style Photo (from DF Styles)', <span className="text-gray-400 dark:text-gray-500 italic">Field ID not provided — pending</span>],
+    ['Style Photo (from DF Styles)', stylePhotoUrl
+      ? <img src={stylePhotoUrl} alt={displayStyle} className="w-16 h-16 rounded-lg object-cover border border-gray-200 dark:border-white/10" />
+      : <span className="text-gray-400 dark:text-gray-500">—</span>],
     ['Attr 2', getStr(ORDER_ITEMS_FIELD_IDS.ATTR_2) || '—'],
     ['Attr 3', getStr(ORDER_ITEMS_FIELD_IDS.ATTR_3) || '—'],
     ['Size', getStr(ORDER_ITEMS_FIELD_IDS.SIZE) || '—'],
