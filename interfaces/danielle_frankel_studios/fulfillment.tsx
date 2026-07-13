@@ -60,6 +60,9 @@ const FIELD_IDS = {
   CLIENT_NOTIFIED:      'fldxumxeRnrDQ3CIk',
   NOTIFIED_DATE:        'fldpKBaezlXf8XLWv',
   ADDRESS_CONFIRMED:    'fldksvLd6ZQabAoY1',
+  HOLD_RELEASED:               'fldJGBiv7TmKW7O91', // formula — true when no hold or hold date has passed
+  ALL_ORDERS_TAX_CONFIRMED:    'fldLoEjwZwcOz6oVV', // rollup — AND of tax_confirmed across linked orders
+  CLIENT_FULFILLMENT_PROGRESS: 'fld5Vxa5VnD6HqRF2', // rollup — overall fulfillment progress across linked orders
   TRACKING_NUMERAL:     'fldY0SvbuYeHUZa15',
   THREE_PL:             'fldSxZrcIbBlyJO6R',
   HOLD_SHIPMENT_DATE:   'fldVsDeVp6R6ytqlb',
@@ -89,6 +92,13 @@ const ORDER_FIELD_IDS = {
   STORE:                'fldGW9ECCrIEZnNQ5',
   ORDER_ADJUSTMENTS:    'fldI1GmVHGcZcEJab',
   ADJUSTED_TOTAL:       'fldK8iVktZl5Vg24Q',
+  TAX_CONFIRMED:                'fld8mrCQUnWlA7cgk',
+  CLIENT_ADDRESS_CONFIRMED:     'fldNJLMMdJvhWCCUn', // lookup — DF Clients.address_confirmed via client link
+  CLIENT_HOLD_RELEASED:         'fldDRkCyTlbqy83Te', // lookup — DF Clients.hold_released via client link
+  PICKUP_RELEASED:              'fldsFJgAKIlMP8Feu',
+  PARTIAL_PICKUP_RELEASED_AT:   'fldscs1ay8WNRv72Z',
+  FULL_PICKUP_RELEASED_AT:      'fld5IBGMJqGIJDFdU',
+  FULFILLMENT_PROGRESS_PERCENTAGE: 'fldKDT2x7wmZ2Suui',
 } as const;
 
 // ─── Constants — order_adjustments ───────────────────────────────────────────
@@ -350,14 +360,35 @@ function Pill({ children, variant }: { children: React.ReactNode; variant: PillV
 }
 
 // ─── ToggleButton ─────────────────────────────────────────────────────────────
-function ToggleButton({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function ToggleButton({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)}
+    <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+        disabled ? 'opacity-50 cursor-not-allowed' : ''} ${
         checked ? 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/40 shadow-sm'
                 : 'bg-white dark:bg-[#1e1d1b] text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 shadow-sm hover:border-gray-300 dark:hover:border-white/20'}`}>
       {checked && <CheckCircleIcon size={13} />}{label}
     </button>
+  );
+}
+
+// ─── Pickup Readiness Gate — shared helper ────────────────────────────────────
+type ReadinessSeverity = 'green' | 'yellow' | 'red';
+function getReadinessSeverity(checksPassed: boolean, progress: number): ReadinessSeverity {
+  if (checksPassed) return 'green';
+  return progress > 0 ? 'red' : 'yellow';
+}
+
+function ReadinessDot({ severity, label }: { severity: ReadinessSeverity; label: string }) {
+  const cls: Record<ReadinessSeverity, string> = {
+    green:  'bg-green-500',
+    yellow: 'bg-yellow-400',
+    red:    'bg-red-500',
+  };
+  return (
+    <span className="inline-flex items-center" title={label} aria-label={label} role="img">
+      <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${cls[severity]}`} />
+    </span>
   );
 }
 
@@ -647,6 +678,7 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const getStr = (fid: string): string => { try { return record.getCellValueAsString(orderTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; } };
   const getNum = (fid: string): number | null => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
   const getSel = (fid: string): string => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return ''; const v = record.getCellValue(f) as { name: string } | null; return v?.name ?? ''; } catch { return ''; } };
+  const getBool = (fid: string): boolean => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return false; return !!(record.getCellValue(f) as boolean | null); } catch { return false; } };
 
   const [trackingNum,  setTrackingNum]  = useState(() => getStr(ORDER_FIELD_IDS.TRACKING_NUMBER));
   const [carrier,      setCarrier]      = useState(() => getSel(ORDER_FIELD_IDS.CARRIER));
@@ -656,6 +688,14 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const [notified,     setNotified]     = useState(() => {
     try { const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.CLIENT_NOTIFIED); if (!f) return false; return !!(record.getCellValue(f) as boolean | null); } catch { return false; }
   });
+  const [pickupReleased, setPickupReleased] = useState(() => getBool(ORDER_FIELD_IDS.PICKUP_RELEASED));
+  const [releaseError,   setReleaseError]   = useState('');
+
+  // Pickup Readiness Gate — this order's own three checks + progress
+  const taxConfirmed          = getBool(ORDER_FIELD_IDS.TAX_CONFIRMED);
+  const clientAddressConfirmed = getBool(ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
+  const clientHoldReleased     = getBool(ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
+  const fulfillmentProgress    = getNum(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
 
   const orderNumber = getNum(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
   const amOrderNum  = getNum(ORDER_FIELD_IDS.AM_ORDER_NUMBER);
@@ -673,6 +713,21 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
     const f = orderTable.getFieldIfExists(fid); if (!f) return;
     queueWrite(() => orderTable.updateRecordAsync(record, { [f.id]: value }).catch(console.error));
   }, [orderTable, record]);
+
+  // Pickup Readiness Gate — pickup_released may only be toggled manually, and only once all gates pass
+  const unmetReleaseReasons: string[] = [];
+  if (!taxConfirmed) unmetReleaseReasons.push('Tax not confirmed');
+  if (!clientAddressConfirmed) unmetReleaseReasons.push('Address not confirmed');
+  if (!clientHoldReleased) unmetReleaseReasons.push('Client is on hold');
+  if (payStatus === 'Unpaid') unmetReleaseReasons.push('Payment Status is Unpaid');
+  const canRelease = unmetReleaseReasons.length === 0;
+
+  const handleTogglePickupReleased = (v: boolean) => {
+    if (v && !canRelease) { setReleaseError(`Cannot release pickup — ${unmetReleaseReasons.join(', ')}.`); return; }
+    setReleaseError('');
+    setPickupReleased(v);
+    save(ORDER_FIELD_IDS.PICKUP_RELEASED, v);
+  };
 
   const delivMethodOpts  = useMemo(() => { const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD); return f?.options?.choices?.map((c: { name: string }) => c.name) ?? ['Pick Up in Store', 'Ship']; }, [orderTable]);
   const delivStatusOpts  = useMemo(() => { const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_STATUS); return f?.options?.choices?.map((c: { name: string }) => c.name) ?? []; }, [orderTable]);
@@ -806,6 +861,35 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             </section>
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium block mb-3">Pickup Readiness</span>
+              <div className="flex items-center gap-4 flex-wrap mb-3">
+                {([
+                  ['Tax', taxConfirmed],
+                  ['Address', clientAddressConfirmed],
+                  ['Hold', clientHoldReleased],
+                ] as [string, boolean][]).map(([label, passed]) => {
+                  const severity = getReadinessSeverity(passed, fulfillmentProgress);
+                  return (
+                    <div key={label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10">
+                      <ReadinessDot severity={severity} label={`${label}: ${passed ? 'Passed' : 'Failed'}`} />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">Pickup Released</span>
+                <ToggleButton checked={pickupReleased} disabled={!canRelease && !pickupReleased}
+                  label={pickupReleased ? 'Released' : 'Not Released'}
+                  onChange={handleTogglePickupReleased} />
+              </div>
+              {!canRelease && (
+                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1.5">Blocked: {unmetReleaseReasons.join(', ')}.</p>
+              )}
+              {releaseError && <p className="text-xs text-red-500 dark:text-red-400 mt-1.5">{releaseError}</p>}
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
               <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium block mb-3">Fulfillment</span>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -914,6 +998,18 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   const acuityAddr  = getStr(FIELD_IDS.ACUITY_ADDRESS);
   const shopifyAddr = getStr(FIELD_IDS.SHOPIFY_ADDRESS);
 
+  // Pickup Readiness Gate — overall client-level readiness
+  const clientHoldReleased        = !!(get<boolean>(FIELD_IDS.HOLD_RELEASED));
+  const clientAllOrdersTaxConfirmed = !!(get<boolean>(FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED));
+  const clientProgress            = get<number>(FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
+  const clientChecksPassed = addrConfirmed && clientHoldReleased && clientAllOrdersTaxConfirmed;
+  const clientSeverity = getReadinessSeverity(clientChecksPassed, clientProgress);
+  const clientFailing: string[] = [];
+  if (!addrConfirmed) clientFailing.push('Address not confirmed');
+  if (!clientHoldReleased) clientFailing.push('On hold');
+  if (!clientAllOrdersTaxConfirmed) clientFailing.push('Tax pending on 1+ order');
+  const clientReadinessLabel = clientChecksPassed ? 'Pickup Ready' : clientFailing.join(' · ');
+
   const linkedOrderIds = useMemo(() => {
     try {
       const f = fields[FIELD_IDS.SHOPIFY_ORDERS]; if (!f) return new Set<string>();
@@ -930,6 +1026,10 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   const getOrderSel = useCallback((r: AirtableRecord, fid: string): string => {
     if (!orderTable) return '—';
     try { const f = orderTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
+  }, [orderTable]);
+  const getOrderBool = useCallback((r: AirtableRecord, fid: string): boolean => {
+    if (!orderTable) return false;
+    try { const f = orderTable.getFieldIfExists(fid); if (!f) return false; return !!(r.getCellValue(f) as boolean | null); } catch { return false; }
   }, [orderTable]);
 
   const hasAnyAdjustedTotal = useMemo(() =>
@@ -960,6 +1060,19 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
         ? <span className="text-amber-600 dark:text-amber-400 font-medium">{formatCurrency(adjTotal)}</span>
         : <span className="text-gray-300 dark:text-gray-600">—</span>);
     }
+    // Pickup Readiness Gate — this order's own three checks + its own fulfillment progress
+    const orderTaxConfirmed          = getOrderBool(r, ORDER_FIELD_IDS.TAX_CONFIRMED);
+    const orderClientAddrConfirmed   = getOrderBool(r, ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
+    const orderClientHoldReleased    = getOrderBool(r, ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
+    const orderProgress              = getOrderNum(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
+    const orderChecksPassed = orderTaxConfirmed && orderClientAddrConfirmed && orderClientHoldReleased;
+    const orderSeverity = getReadinessSeverity(orderChecksPassed, orderProgress);
+    const orderFailing: string[] = [];
+    if (!orderTaxConfirmed) orderFailing.push('Tax pending on this order');
+    if (!orderClientAddrConfirmed) orderFailing.push('Address not confirmed');
+    if (!orderClientHoldReleased) orderFailing.push('On hold');
+    const orderReadinessLabel = orderChecksPassed ? 'Ready' : orderFailing.join(' · ');
+    row.push(<ReadinessDot severity={orderSeverity} label={orderReadinessLabel} />);
     return row;
   });
 
@@ -998,13 +1111,15 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
             <input className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] bg-transparent border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-amber-500 dark:focus:border-amber-400 outline-none w-full transition-colors pb-0.5"
               value={fullName} onChange={e => setFullName(e.target.value)} onBlur={() => save(FIELD_IDS.FULL_NAME, fullName)} />
             {/* Studio badge — sourced from studio_name rollup (fldIenJoxseeHmfIv) */}
-            {studioName ? (
-              <div className="mt-1 mb-3">
+            <div className="mt-1 mb-3 flex items-center gap-2">
+              {studioName && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">{studioName}</span>
-              </div>
-            ) : (
-              <div className="mb-3" />
-            )}
+              )}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10">
+                <ReadinessDot severity={clientSeverity} label={clientReadinessLabel} />
+                {clientReadinessLabel}
+              </span>
+            </div>
             <div className="grid grid-cols-4 gap-x-4">
               <div className="min-w-0">
                 <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide block mb-1">Phone</span>
@@ -1044,8 +1159,8 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                 <thead>
                   <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                     {(hasAnyAdjustedTotal
-                      ? ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Adjusted Total']
-                      : ['Order #', 'Payment', 'Delivery', 'Picked', 'Total']
+                      ? ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Adjusted Total', 'Readiness']
+                      : ['Order #', 'Payment', 'Delivery', 'Picked', 'Total', 'Readiness']
                     ).map((h, i) => (
                       <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
                     ))}
@@ -1053,7 +1168,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                 </thead>
                 <tbody>
                   {linkedOrders.length === 0 ? (
-                    <tr><td colSpan={hasAnyAdjustedTotal ? 6 : 5} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                    <tr><td colSpan={hasAnyAdjustedTotal ? 7 : 6} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
                   ) : orderRows.map((row, i) => (
                     <tr key={i}
                       onClick={() => setSelectedOrderId(linkedOrders[i]?.id ?? null)}
@@ -1072,6 +1187,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
                       {hasAnyAdjustedTotal && (
                         <td className="px-3 py-2 text-sm font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(adjTotalSum)}</td>
                       )}
+                      <td />
                     </tr>
                   </tfoot>
                 )}
@@ -1182,6 +1298,10 @@ function FulfillmentApp(): React.ReactElement {
   const getNum = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): number | null => {
     const f = fields[fid] ?? null; if (!f) return null;
     try { return rec.getCellValue(f) as number | null; } catch { return null; }
+  }, [fields]);
+  const getBool = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): boolean => {
+    const f = fields[fid] ?? null; if (!f) return false;
+    try { return !!(rec.getCellValue(f) as boolean | null); } catch { return false; }
   }, [fields]);
 
   const fulfillmentRecords = useMemo(() => {
@@ -1372,7 +1492,7 @@ function FulfillmentApp(): React.ReactElement {
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[100px]">Delivery</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[160px]">Items</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[110px]">% Picked</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[160px]">Shipping Address</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[100px]">Readiness</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[70px]">Hold</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-[140px]">Status</th>
                 </tr>
@@ -1385,11 +1505,19 @@ function FulfillmentApp(): React.ReactElement {
                   const pickedRollup = getNum(rec, FIELD_IDS.PICKED_ROLLUP);
                   const delivStatus  = getSel(rec, FIELD_IDS.DELIVERY_STATUS);
                   const holdDate     = fields[FIELD_IDS.HOLD_SHIPMENT_DATE] ? rec.getCellValue(fields[FIELD_IDS.HOLD_SHIPMENT_DATE]!) as string | null : null;
-                  const acuity       = getStr(rec, FIELD_IDS.ACUITY_ADDRESS);
-                  const shopify      = getStr(rec, FIELD_IDS.SHOPIFY_ADDRESS);
-                  const other        = getStr(rec, FIELD_IDS.OTHER_ADDRESS);
-                  const addr         = acuity || shopify || other || '';
                   const pct          = Math.round((pickedRollup ?? 0) * 100);
+                  // Pickup Readiness Gate — client-level overall readiness
+                  const rAddrConfirmed  = getBool(rec, FIELD_IDS.ADDRESS_CONFIRMED);
+                  const rHoldReleased   = getBool(rec, FIELD_IDS.HOLD_RELEASED);
+                  const rTaxConfirmed   = getBool(rec, FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED);
+                  const rProgress       = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
+                  const rChecksPassed   = rAddrConfirmed && rHoldReleased && rTaxConfirmed;
+                  const rSeverity       = getReadinessSeverity(rChecksPassed, rProgress);
+                  const rFailing: string[] = [];
+                  if (!rAddrConfirmed) rFailing.push('Address not confirmed');
+                  if (!rHoldReleased)  rFailing.push('On hold');
+                  if (!rTaxConfirmed)  rFailing.push('Tax pending on 1+ order');
+                  const rReadinessLabel = rChecksPassed ? 'Ready' : rFailing.join(' · ');
                   const hasHold      = !!holdDate;
                   const delivVariant: PillVariant =
                     delivStatus === 'Fulfilled'         ? 'green' :
@@ -1418,14 +1546,7 @@ function FulfillmentApp(): React.ReactElement {
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{fItems ? <CellRenderer record={rec} field={fItems} /> : '—'}</td>
                       <td className="px-3 py-2.5"><ProgressBar percentage={pickedRollup ?? 0} /></td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">
-                        {addr ? (
-                          <div className="flex items-center gap-1">
-                            <MapPinIcon size={13} className="text-gray-400 flex-shrink-0" />
-                            <span className="truncate max-w-[140px] block">{addr}</span>
-                          </div>
-                        ) : '—'}
-                      </td>
+                      <td className="px-3 py-2.5"><ReadinessDot severity={rSeverity} label={rReadinessLabel} /></td>
                       <td className="px-3 py-2.5"><Pill variant={hasHold ? 'red' : 'green'}>{hasHold ? 'Yes' : 'No'}</Pill></td>
                       <td className="px-3 py-2.5"><Pill variant={statusVariant}>{statusText}</Pill></td>
                     </tr>
