@@ -296,6 +296,30 @@ function fileExtension(filename: string): string {
   const idx = filename.lastIndexOf('.');
   return idx >= 0 ? filename.slice(idx) : '';
 }
+
+// This interface runs inside an iframe (Airtable Interface Extension). The
+// browser's "Save as PDF" dialog takes its suggested filename from the
+// TOP-level document's title, not the iframe's own — setting only
+// `document.title` here renames this iframe's title, which the print
+// dialog never sees. Best effort: also reach up to window.top, which only
+// works if that frame happens to be same-origin; if it's cross-origin the
+// browser throws and we silently fall back to the (ineffective) local title.
+function setPrintDocumentTitle(name: string): void {
+  document.title = name;
+  try {
+    if (window.top && window.top !== window) {
+      window.top.document.title = name;
+    }
+  } catch { /* cross-origin top frame — nothing more a page can do */ }
+}
+function restorePrintDocumentTitle(name: string): void {
+  document.title = name;
+  try {
+    if (window.top && window.top !== window) {
+      window.top.document.title = name;
+    }
+  } catch { /* cross-origin top frame */ }
+}
 function parseFlexDate(s: string): Date|null {
   if (!s.trim()) return null;
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1628,17 +1652,16 @@ function ProposalPreviewModal({
     return () => clearInterval(t);
   }, []);
 
-  // document.title is the only lever a web page has over the "Save as PDF"
-  // dialog's suggested filename — set it just before printing, restore it
-  // once the dialog closes.
+  // See setPrintDocumentTitle — set right before printing, restored once
+  // the dialog closes.
   const originalTitleRef = useRef(document.title);
   useEffect(() => {
-    const h = () => { setPrinted(true); document.title = originalTitleRef.current; };
+    const h = () => { setPrinted(true); restorePrintDocumentTitle(originalTitleRef.current); };
     window.addEventListener('afterprint', h);
     return () => window.removeEventListener('afterprint', h);
   }, []);
   const handlePrint = () => {
-    document.title = buildProposalFilename(clientName, snapshot.styleName, generatedAt);
+    setPrintDocumentTitle(buildProposalFilename(clientName, snapshot.styleName, generatedAt));
     window.print();
   };
 
@@ -1920,17 +1943,16 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
   const signed   = fSigned   ? ((proposalRecord.getCellValue(fSigned)   as ProposalFile[]|null) ?? []) : [];
   const hasUnsigned = unsigned.length > 0;
 
-  // document.title is the only lever a web page has over the "Save as PDF"
-  // dialog's suggested filename — set it just before printing, restore it
-  // once the dialog closes.
+  // See setPrintDocumentTitle — set right before printing, restored once
+  // the dialog closes.
   const originalTitleRef = useRef(document.title);
   useEffect(() => {
-    const h = () => { document.title = originalTitleRef.current; };
+    const h = () => { restorePrintDocumentTitle(originalTitleRef.current); };
     window.addEventListener('afterprint', h);
     return () => window.removeEventListener('afterprint', h);
   }, []);
   const handlePrint = () => {
-    document.title = downloadBaseName;
+    setPrintDocumentTitle(downloadBaseName);
     window.print();
   };
 
