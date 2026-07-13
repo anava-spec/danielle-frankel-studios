@@ -265,6 +265,14 @@ function fmtFriendly(s: string|null|undefined): string {
   const ord = (['th','st','nd','rd'][(v-20)%10]??['th','st','nd','rd'][v]??'th');
   return `${month} ${day}${ord}, ${d.getFullYear()}`;
 }
+// Same as fmtFriendly but without the ordinal suffix — "July 4, 2026".
+function fmtUSDate(s: string|null|undefined): string {
+  if (!s) return '—';
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const d = m ? new Date(+m[1]!, +m[2]!-1, +m[3]!) : new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return new Intl.DateTimeFormat('en-US', { month:'long', day:'numeric', year:'numeric' }).format(d);
+}
 function parseFlexDate(s: string): Date|null {
   if (!s.trim()) return null;
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1885,6 +1893,16 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .proposal-print-area, .proposal-print-area * { visibility: visible !important; }
+          .proposal-print-area {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 32px;
+            background: #ffffff !important; color: #111111 !important;
+          }
+        }
+      `}</style>
       <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
         onClick={e=>e.stopPropagation()}>
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
@@ -1895,7 +1913,7 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
+          <div className="proposal-print-area bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
             <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
             <div className="grid grid-cols-2 gap-4 mb-6">
@@ -1913,9 +1931,20 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
             </div>
           </div>
 
-          <ProposalAttachmentField label="Unsigned Proposal" files={unsigned} onUpload={openUnsignedUploadForm}/>
-          <ProposalAttachmentField label="Signed Proposal" files={signed} onUpload={openSignedUploadForm}
-            uploadDisabledReason={!hasUnsigned ? 'Attach the unsigned proposal first' : undefined}/>
+          {/* While unsigned isn't attached yet, offer Print here too — same
+              document, in case it wasn't printed/saved during generation. */}
+          {!hasUnsigned && (
+            <button type="button" onClick={()=>window.print()}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
+              <PrinterIcon size={14}/>Print
+            </button>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <ProposalAttachmentField label="Unsigned Proposal" files={unsigned} onUpload={openUnsignedUploadForm}/>
+            <ProposalAttachmentField label="Signed Proposal" files={signed} onUpload={openSignedUploadForm}
+              uploadDisabledReason={!hasUnsigned ? 'Attach the unsigned proposal first' : undefined}/>
+          </div>
         </div>
 
         <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end">
@@ -1969,7 +1998,6 @@ function PostAppointmentModal({
 }: PostApptModalProps) {
   const [openCustomizationAdd, setOpenCustomizationAdd] = useState(false);
   const [editCustomizationId, setEditCustomizationId]   = useState<string|null>(null);
-  const [viewProposalId, setViewProposalId]             = useState<string|null>(null);
 
   const fClientLink = apptTable.getFieldIfExists(APPT.CLIENT_LINK);
   const fTypeField  = apptTable.getFieldIfExists(APPT.TYPE);
@@ -2329,7 +2357,7 @@ function PostAppointmentModal({
                         <tr key={row.id} onClick={()=>setEditCustomizationId(row.id)}
                           className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
                           <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6] w-64">{row.styleName}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtFriendly(row.dateRequested) : '—'}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtUSDate(row.dateRequested) : '—'}</td>
                           <td className="px-3 py-2.5">
                             {flagParts.length > 0 ? (
                               <div className="flex gap-1 flex-wrap">
@@ -2339,19 +2367,7 @@ function PostAppointmentModal({
                               </div>
                             ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
                           </td>
-                          <td className="px-3 py-2.5">
-                            {row.proposals.length > 0 ? (
-                              <div className="flex gap-1 flex-wrap">
-                                {row.proposals.map(p=>(
-                                  <button key={p.id} type="button"
-                                    onClick={e=>{ e.stopPropagation(); setViewProposalId(p.id); }}
-                                    className="bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-100 hover:dark:bg-white/10 rounded-full text-xs font-medium px-2 py-0.5 transition-colors">
-                                    {p.name || 'Proposal'}
-                                  </button>
-                                ))}
-                              </div>
-                            ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                          </td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">{row.proposals.length > 0 ? row.proposals.length : '—'}</td>
                           <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(row.grandTotal)}</td>
                         </tr>
                       );
@@ -2515,20 +2531,6 @@ function PostAppointmentModal({
           onClose={()=>setEditCustomizationId(null)}
         />
       )}
-
-      {viewProposalId && proposalsTable && (() => {
-        const rec = proposalRecords?.find(r=>r.id===viewProposalId) ?? null;
-        if (!rec) return null;
-        return (
-          <ProposalDetailModal
-            proposalRecord={rec}
-            proposalsTable={proposalsTable}
-            clientName={clientName || 'Unknown Client'}
-            saName={saName}
-            onClose={()=>setViewProposalId(null)}
-          />
-        );
-      })()}
     </>
   );
 }
