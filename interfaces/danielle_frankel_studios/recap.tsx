@@ -1959,22 +1959,82 @@ function PostAppointmentModal({
 
   const clientWeddingIso = weddingIso || null;
 
-  // Customization pill label from ID_FORMULA
-  const fmtCustomizationPill = useCallback((c:{id:string;name:string}): string => {
-    if (!customizationRecords) return c.name || 'Customization';
-    const rec = customizationRecords.find(r=>r.id===c.id);
-    if (!rec || !customizationsTable) return c.name || 'Customization';
-    const idFormulaField = customizationsTable.getFieldIfExists(CUSTOM.ID_FORMULA);
-    if (idFormulaField) {
-      const label = rec.getCellValueAsString(idFormulaField);
-      if (label) return label;
-    }
-    const styleField  = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE);
-    const statusField = customizationsTable.getFieldIfExists(CUSTOM.STATUS);
-    const styleName   = styleField  ? rec.getCellValueAsString(styleField)  : '';
-    const statusStr   = statusField ? rec.getCellValueAsString(statusField) : '';
-    return [styleName||'Style', statusStr].filter(Boolean).join(' — ') || c.name || 'Customization';
-  }, [customizationRecords, customizationsTable]);
+  // Line-item view of this client's Customization Requests — same grand-total
+  // math as CustomizationModal's own Order Summary, so the Total Price column
+  // here always agrees with what that modal shows for the same record.
+  interface CustomizationRow {
+    id: string;
+    styleName: string;
+    dateRequested: string;
+    m2m: boolean;
+    alts: boolean;
+    rush: boolean;
+    proposalsCount: number;
+    grandTotal: number;
+  }
+  const customizationRows = useMemo<CustomizationRow[]>(() => {
+    if (!customizationsTable) return [];
+    const fStyled     = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE);
+    const fPricing    = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_PRICING);
+    const fDateReq    = customizationsTable.getFieldIfExists(CUSTOM.DATE_OF_REQUEST);
+    const fEmbroidery = customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT);
+    const fM2m        = customizationsTable.getFieldIfExists(CUSTOM.M2M);
+    const fAlts       = customizationsTable.getFieldIfExists(CUSTOM.ALTERATIONS);
+    const fRush       = customizationsTable.getFieldIfExists(CUSTOM.RUSH);
+    const fSourceP    = proposalsTable?.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION) ?? null;
+    const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
+
+    return linkedCustomizations
+      .map((c): CustomizationRow | null => {
+        const rec = customizationRecords?.find(r=>r.id===c.id);
+        if (!rec) return null;
+
+        const styleId  = fStyled ? ((rec.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
+        const styleRec = styleId ? (stylesRecords?.find(r=>r.id===styleId) ?? null) : null;
+        const styleName = styleRec?.name ?? c.name;
+
+        const dateRequested = fDateReq ? (rec.getCellValueAsString(fDateReq) || '') : '';
+
+        const m2m  = fM2m  ? !!(rec.getCellValue(fM2m)  as boolean|null) : false;
+        const alts = fAlts ? !!(rec.getCellValue(fAlts) as boolean|null) : false;
+        const rush = fRush ? !!(rec.getCellValue(fRush) as boolean|null) : false;
+
+        const proposalsCount = (fSourceP && proposalRecords)
+          ? proposalRecords.filter(p => {
+              const link = p.getCellValue(fSourceP) as Array<{id:string}>|null;
+              return link?.some(l=>l.id===rec.id) ?? false;
+            }).length
+          : 0;
+
+        const embroideryStr = fEmbroidery ? (rec.getCellValueAsString(fEmbroidery) || '') : '';
+        const basePriceNumber = (styleRec && stylesBasePriceField)
+          ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
+          : 0;
+        const selfUsageValue = selfUsageField ? parseCurrencyString(rec.getCellValueAsString(selfUsageField)) : 0;
+        const multiplierFactor = computeMultiplierFactor(selfUsageValue, embroideryStr || null);
+        const pricingIds = fPricing ? ((rec.getCellValue(fPricing) as Array<{id:string}>|null)?.map(x=>x.id) ?? []) : [];
+        const customizationTotal = pricingIds.reduce((sum, id) => {
+          const r = pricingRecords?.find(pr => pr.id === id);
+          if (!r) return sum;
+          return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor).amount;
+        }, 0);
+        const altsM2mAmount = computeAltsM2mAmount(m2m, alts);
+        const proposedTotal = basePriceNumber + customizationTotal;
+        const leadtimeWeeks = leadtimeWeeksField
+          ? (parseCurrencyString(rec.getCellValueAsString(leadtimeWeeksField)) || null)
+          : weeksUntil(clientWeddingIso);
+        const rushEstimate = computeRushFeeTier(leadtimeWeeks, proposedTotal);
+        const rushFeeAmount = rush
+          ? (rushFeeProposedField ? parseCurrencyString(rec.getCellValueAsString(rushFeeProposedField)) : rushEstimate.feeAmount)
+          : 0;
+        const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
+
+        return { id: c.id, styleName, dateRequested, m2m, alts, rush, proposalsCount, grandTotal };
+      })
+      .filter((r): r is CustomizationRow => r !== null);
+  }, [linkedCustomizations, customizationRecords, customizationsTable, stylesRecords, pricingRecords, pricingTable,
+      stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, rushFeeProposedField,
+      leadtimeWeeksField, proposalsTable, proposalRecords, clientWeddingIso]);
 
   // Sales associate has no linked Staff record anywhere else in this file — it's
   // a plain name field on both Appointments and Clients. Resolved against the
@@ -2171,19 +2231,48 @@ function PostAppointmentModal({
               <AttachmentSection label="Upload Appointment Photo" type="Appointment Photo" existing={existingApptPhotos} clientId={clientId}/>
             </div>
 
-            {/* Customization Requests */}
+            {/* Customization Requests — invoice-style line-item table */}
             <div>
               <span className={labelCls}>Customization Requests</span>
-              {linkedCustomizations.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {linkedCustomizations.map(c=>(
-                    <button key={c.id} type="button" onClick={()=>setEditCustomizationId(c.id)}
-                      className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-3 py-1 hover:bg-[#FDE68A] dark:hover:bg-[#4A3B18] transition-colors text-left">
-                      {fmtCustomizationPill(c)}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden mb-3">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                    <tr>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Style</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Date of Request</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Flags</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Generated Proposals</th>
+                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Total Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customizationRows.map(row=>{
+                      const flagParts = [row.m2m && 'M2M', row.alts && 'Alts', row.rush && 'Rush'].filter(Boolean) as string[];
+                      return (
+                        <tr key={row.id} onClick={()=>setEditCustomizationId(row.id)}
+                          className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
+                          <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{row.styleName}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtFriendly(row.dateRequested) : '—'}</td>
+                          <td className="px-3 py-2.5">
+                            {flagParts.length > 0 ? (
+                              <div className="flex gap-1 flex-wrap">
+                                {flagParts.map(f=>(
+                                  <span key={f} className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-2 py-0.5">{f}</span>
+                                ))}
+                              </div>
+                            ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">{row.proposalsCount > 0 ? row.proposalsCount : '—'}</td>
+                          <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(row.grandTotal)}</td>
+                        </tr>
+                      );
+                    })}
+                    {customizationRows.length === 0 && (
+                      <tr><td colSpan={5} className="px-3 py-5 text-center text-gray-400 dark:text-gray-500 text-sm">No customization requests yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
               <button type="button" onClick={()=>setOpenCustomizationAdd(true)}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
                 <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Add Customization Request
