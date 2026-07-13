@@ -119,6 +119,31 @@ const CHANGE_TYPE_OPTIONS = [
 ];
 const DIRECTION_OPTIONS = ['Charge', 'Credit', 'Unknown'];
 
+// ─── Constants — order_items ──────────────────────────────────────────────────
+// Data synced from Apparel Magic — read only in this interface.
+const ORDER_ITEMS_TABLE_ID = 'tblWOBS5nX0GZokaU';
+const ORDER_ITEMS_FIELD_IDS = {
+  AM_ORDER_ITEM_ID:    'fldi7F9rPeWLNfarJ',
+  ORDER:               'fldXrdBFm5SeGCTvq',
+  STYLE:               'fldL9rj7ZeDnjnXiY',
+  ATTR_2:              'fldk3kg4OLToNqDbK',
+  ATTR_3:              'fld5KHXDv1MekJp5U',
+  SIZE:                'fldqihfODfR9L9Uxt',
+  WAREHOUSE:           'fldjWnmiwj3ZGNFNI',
+  AMOUNT:              'fldLT05tO5ep0WkyP',
+  UNIT_PRICE:          'fldLPnjHK9WWyJEEE',
+  QUANTITY:            'fldLZ0kD0QwzEA1J6',
+  QUANTITY_ALLOCATED:  'fldktKHqf8C5oL9OA',
+  QUANTITY_PICKED:     'fldNmj9AMDG3gvlEc',
+  QUANTITY_SHIPPED:    'fldhapPEGU3CVjVye',
+  QUANTITY_OPEN:       'fldvU2sU8b6V0wTlG',
+  NOTES:               'fldQykWjUOzMGOmpN',
+  DUE_DATE:            'fld2Rp7eQXoPnOZNo',
+  DESCRIPTION:         'fldEoDIghGigaujp0',
+  NAME_IF_NO_STYLE:    'fld2Hzmni4fGcKAgh',
+  ORDER_DATE:          'fld7jjtQvCDZQlDNL',
+} as const;
+
 // ─── Reference tables ─────────────────────────────────────────────────────────
 const STUDIOS_TABLE_ID = 'tblYM02GzeYdYk23v';
 const STUDIOS_FIELD_IDS = { NAME: 'fldA1F8Hx7cOyI6lu', IS_ACTIVE: 'fldFyn3fKsxajrvsy' } as const;
@@ -755,12 +780,93 @@ function AdjustmentDetailModal({ record, adjTable, onClose }: {
   );
 }
 
+// ─── OrderItemDetailModal ─────────────────────────────────────────────────────
+// Read-only — order_items is synced from Apparel Magic and is never edited from this interface.
+function OrderItemDetailModal({ record, itemsTable, onClose }: {
+  record: AirtableRecord; itemsTable: Table; onClose: () => void;
+}) {
+  const getStr = (fid: string): string => { try { return record.getCellValueAsString(itemsTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; } };
+  const getNum = (fid: string): number | null => { try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
+  const getDate = (fid: string): string | null => { try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as string | null; } catch { return null; } };
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const amId          = getStr(ORDER_ITEMS_FIELD_IDS.AM_ORDER_ITEM_ID);
+  const styleName     = getStr(ORDER_ITEMS_FIELD_IDS.STYLE);
+  const nameIfNoStyle = getStr(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE);
+  const displayStyle  = styleName || nameIfNoStyle || '—';
+  const amount        = getNum(ORDER_ITEMS_FIELD_IDS.AMOUNT);
+  const quantity       = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY);
+  const qtyAllocated   = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_ALLOCATED);
+  const qtyPicked      = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_PICKED);
+  const qtyShipped     = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_SHIPPED);
+  const qtyOpen        = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_OPEN);
+
+  // Field labels below match the human-readable headers from order_items-axl.csv; all reads
+  // above use the hardcoded field IDs, never field names. "Style Photo (from DF Styles)" is
+  // in that CSV but no field ID was provided for it — flagged here rather than guessed.
+  const fieldsToShow: Array<[string, React.ReactNode]> = [
+    ['AM Order Item ID', amId || '—'],
+    ['Style', displayStyle],
+    ['Style Photo (from DF Styles)', <span className="text-gray-400 dark:text-gray-500 italic">Field ID not provided — pending</span>],
+    ['Attr 2', getStr(ORDER_ITEMS_FIELD_IDS.ATTR_2) || '—'],
+    ['Attr 3', getStr(ORDER_ITEMS_FIELD_IDS.ATTR_3) || '—'],
+    ['Size', getStr(ORDER_ITEMS_FIELD_IDS.SIZE) || '—'],
+    ['Amount', formatCurrency(amount)],
+    ['Quantity', quantity ?? '—'],
+    ['Quantity Allocated', qtyAllocated ?? '—'],
+    ['Quantity Picked', qtyPicked ?? '—'],
+    ['Quantity Shipped', qtyShipped ?? '—'],
+    ['Quantity Open', qtyOpen ?? '—'],
+    ['Due Date', formatDate(getDate(ORDER_ITEMS_FIELD_IDS.DUE_DATE))],
+    ['Description', getStr(ORDER_ITEMS_FIELD_IDS.DESCRIPTION) || '—'],
+    ['Order Date', formatDate(getDate(ORDER_ITEMS_FIELD_IDS.ORDER_DATE))],
+  ];
+
+  const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order Item</p>
+            <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{amId || 'Item Detail'}</p>
+          </div>
+        </div>
+        <div className="px-5 py-2.5 border-b border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 flex items-center gap-2">
+          <InfoIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+          <p className="text-xs text-gray-500 dark:text-gray-400">Data synced from Apparel Magic — read only.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid grid-cols-2 gap-4">
+            {fieldsToShow.map(([label, value]) => (
+              <div key={label}>
+                <span className={lbl}>{label}</span>
+                <p className="text-sm text-gray-700 dark:text-gray-200">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── OrderDetailModal ─────────────────────────────────────────────────────────
-function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }: {
+function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable, itemsRecords, onClose }: {
   record: AirtableRecord; orderTable: Table;
-  adjTable: Table | null; adjRecords: AirtableRecord[]; onClose: () => void;
+  adjTable: Table | null; adjRecords: AirtableRecord[];
+  itemsTable: Table | null; itemsRecords: AirtableRecord[]; onClose: () => void;
 }) {
   const [selectedAdjId,   setSelectedAdjId]   = useState<string | null>(null);
+  const [selectedItemId,  setSelectedItemId]  = useState<string | null>(null);
   const [showAddModal,    setShowAddModal]     = useState(false);
   const [localAdjs, setLocalAdjs] = useState<AirtableRecord[]>([]);
   const [optimisticAdjs, setOptimisticAdjs] = useState<Array<{
@@ -913,6 +1019,56 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
     try { const f = adjTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
   };
 
+  // order_items has no reverse link on Orders (unlike order_adjustments), so instead of
+  // reading a link field on `record` to gather a Set of ids, we check each item's own
+  // `order` link for membership of this order's id — same linked-record-Set pattern as
+  // linkedAdjIds above, just applied from the child side since that's the only link available.
+  const linkedItems = useMemo(() => {
+    if (!itemsTable) return [];
+    const f = itemsTable.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER); if (!f) return [];
+    return itemsRecords.filter(r => {
+      try { const links = r.getCellValue(f) as Array<{ id: string }> | null; return (links ?? []).some(l => l.id === record.id); }
+      catch { return false; }
+    });
+  }, [itemsRecords, itemsTable, record]);
+
+  const getItemStr = (r: AirtableRecord, fid: string): string => {
+    if (!itemsTable) return '';
+    try { return r.getCellValueAsString(itemsTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; }
+  };
+  const getItemNum = (r: AirtableRecord, fid: string): number | null => {
+    if (!itemsTable) return null;
+    try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  };
+
+  const itemRows: Array<Array<React.ReactNode>> = linkedItems.map(r => {
+    const amId         = getItemStr(r, ORDER_ITEMS_FIELD_IDS.AM_ORDER_ITEM_ID);
+    const styleName    = getItemStr(r, ORDER_ITEMS_FIELD_IDS.STYLE);
+    const nameIfNoStyle = getItemStr(r, ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE);
+    const displayStyle = styleName || nameIfNoStyle || '—';
+    const amount        = getItemNum(r, ORDER_ITEMS_FIELD_IDS.AMOUNT);
+    const quantity       = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY);
+    const qtyPicked      = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY_PICKED);
+    const qtyShipped     = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY_SHIPPED);
+    const qtyOpen        = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY_OPEN);
+    // quantity_open === 0 is the more direct source of truth for "fully accounted for" — use
+    // it whenever it resolves; only fall back to summing picked+shipped against quantity when
+    // quantity_open itself didn't resolve (null), rather than always summing.
+    const isFulfilled = qtyOpen !== null
+      ? qtyOpen === 0
+      : ((quantity ?? 0) > 0 && (qtyPicked ?? 0) + (qtyShipped ?? 0) >= (quantity ?? 0));
+    return [
+      amId || '—',
+      displayStyle,
+      formatCurrency(amount),
+      quantity ?? '—',
+      <Pill variant={isFulfilled ? 'green' : 'yellow'}>{isFulfilled ? 'Fulfilled' : 'Pending'}</Pill>,
+    ];
+  });
+
+  const handleItemRowClick = (i: number) => setSelectedItemId(linkedItems[i]?.id ?? null);
+  const selectedItem = useMemo(() => selectedItemId ? linkedItems.find(r => r.id === selectedItemId) ?? null : null, [selectedItemId, linkedItems]);
+
   const realAdjTotal = useMemo(() => localAdjs.reduce((sum, r) => sum + (getAdjNum(r, ADJ_FIELD_IDS.SIGNED_AMOUNT) ?? 0), 0), [localAdjs]);
   const optimisticTotal = optimisticAdjs.reduce((sum, o) => sum + o.signedAmount, 0);
   const totalAdjustments = realAdjTotal + optimisticTotal;
@@ -920,9 +1076,9 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
   const selectedAdj = useMemo(() => selectedAdjId ? localAdjs.find(r => r.id === selectedAdjId) ?? null : null, [selectedAdjId, localAdjs]);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedAdj && !showAddModal) onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedAdj && !selectedItem && !showAddModal) onClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onClose, selectedAdj, showAddModal]);
+  }, [onClose, selectedAdj, selectedItem, showAddModal]);
 
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
@@ -965,6 +1121,9 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
 
   if (selectedAdj && adjTable) {
     return <AdjustmentDetailModal record={selectedAdj} adjTable={adjTable} onClose={() => setSelectedAdjId(null)} />;
+  }
+  if (selectedItem && itemsTable) {
+    return <OrderItemDetailModal record={selectedItem} itemsTable={itemsTable} onClose={() => setSelectedItemId(null)} />;
   }
 
   return (
@@ -1010,26 +1169,8 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
           </div>
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             <section>
-              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Financials</span>
-              <div className="grid grid-cols-4 gap-3">
-                {([['Subtotal', subtotal], ['Shipping', shipping], ['Taxes', taxes], ['Total', total]] as [string, number | null][]).map(([label, val]) => (
-                  <div key={label} className="bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2.5">
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</p>
-                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(val)}</p>
-                  </div>
-                ))}
-              </div>
-              {adjTotalField !== null && (
-                <div className="mt-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-2.5 flex items-center justify-between">
-                  <span className="text-sm text-amber-700 dark:text-amber-300">Adjusted Total</span>
-                  <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(adjTotalField)}</span>
-                </div>
-              )}
-            </section>
-            <div className="border-t border-gray-100 dark:border-white/5" />
-            <section>
               <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Pickup Readiness</span>
-              <div className="flex items-center gap-4 flex-wrap mb-3">
+              <div className="flex items-center gap-4 flex-wrap">
                 {([
                   ['Tax', taxConfirmed, taxConfirmedRes.resolved],
                   ['Address', clientAddressConfirmed, clientAddressConfirmedRes.resolved],
@@ -1044,12 +1185,12 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                     </div>
                   );
                 })}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide">Pickup Released</span>
-                <ToggleButton checked={pickupReleased} disabled={!canRelease && !pickupReleased}
-                  label={pickupReleased ? 'Released' : 'Not Released'}
-                  onChange={handleTogglePickupReleased} />
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide">Pickup Released</span>
+                  <ToggleButton checked={pickupReleased} disabled={!canRelease && !pickupReleased}
+                    label={pickupReleased ? 'Released' : 'Not Released'}
+                    onChange={handleTogglePickupReleased} />
+                </div>
               </div>
               {!canRelease && (
                 <p className="text-xs text-orange-600 dark:text-orange-400 mt-1.5">Blocked: {unmetReleaseReasons.join(', ')}.</p>
@@ -1110,6 +1251,18 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
               <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">Order Items</span>
+                {linkedItems.length > 0 && <span className="text-xs text-gray-400 dark:text-gray-500">({linkedItems.length})</span>}
+              </div>
+              <MiniTable
+                headers={['AM ID', 'Style', 'Amount', 'Quantity', 'Picked/Shipped']}
+                rows={itemRows}
+                onRowClick={handleItemRowClick}
+              />
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">Order Adjustments</span>
                   {(localAdjs.length + optimisticAdjs.length) > 0 && (
@@ -1129,6 +1282,24 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, onClose }:
                 onRowClick={handleAdjRowClick}
               />
             </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Financials</span>
+              <div className="grid grid-cols-4 gap-3">
+                {([['Subtotal', subtotal], ['Shipping', shipping], ['Taxes', taxes], ['Total', total]] as [string, number | null][]).map(([label, val]) => (
+                  <div key={label} className="bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2.5">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</p>
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(val)}</p>
+                  </div>
+                ))}
+              </div>
+              {adjTotalField !== null && (
+                <div className="mt-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-amber-700 dark:text-amber-300">Adjusted Total</span>
+                  <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(adjTotalField)}</span>
+                </div>
+              )}
+            </section>
           </div>
         </div>
       </div>
@@ -1142,8 +1313,9 @@ interface ModalProps {
   clientsTable: Table | null; onClose: () => void;
   orderTable: Table | null; adjTable: Table | null;
   adjRecords: AirtableRecord[]; orderRecords: AirtableRecord[];
+  itemsTable: Table | null; itemsRecords: AirtableRecord[];
 }
-function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTable, adjRecords, orderRecords }: ModalProps) {
+function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTable, adjRecords, orderRecords, itemsTable, itemsRecords }: ModalProps) {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const get = useCallback(<T,>(fid: string): T | null => {
@@ -1283,6 +1455,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
       <OrderDetailModal
         record={selectedOrder} orderTable={orderTable}
         adjTable={adjTable} adjRecords={adjRecords}
+        itemsTable={itemsTable} itemsRecords={itemsRecords}
         onClose={() => setSelectedOrderId(null)}
       />
     );
@@ -1468,6 +1641,7 @@ function FulfillmentApp(): React.ReactElement {
   const studiosTable = base.getTableByIdIfExists(STUDIOS_TABLE_ID);
   const orderTable   = base.getTableByIdIfExists(ORDER_TABLE_ID);
   const adjTable     = base.getTableByIdIfExists(ADJ_TABLE_ID);
+  const itemsTable   = base.getTableByIdIfExists(ORDER_ITEMS_TABLE_ID);
 
   const fields = useMemo<Record<string, Field | null>>(() => {
     if (!clientsTable) return {};
@@ -1478,6 +1652,7 @@ function FulfillmentApp(): React.ReactElement {
   const studiosRecords = useRecords(studiosTable ?? null);
   const orderRecords   = useRecords(orderTable ?? null);
   const adjRecords     = useRecords(adjTable ?? null);
+  const itemsRecords   = useRecords(itemsTable ?? null);
 
   const getSel = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): { name: string } | null => {
     const f = fields[fid] ?? null; if (!f) return null;
@@ -1661,6 +1836,7 @@ function FulfillmentApp(): React.ReactElement {
           onClose={() => setSelectedRecordId(null)}
           orderTable={orderTable} adjTable={adjTable}
           adjRecords={adjRecords ?? []} orderRecords={orderRecords ?? []}
+          itemsTable={itemsTable} itemsRecords={itemsRecords ?? []}
         />
       )}
 
