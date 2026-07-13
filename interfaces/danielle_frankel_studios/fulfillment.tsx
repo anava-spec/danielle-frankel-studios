@@ -1318,6 +1318,7 @@ function FulfillmentApp(): React.ReactElement {
   const [studioFilter,     setStudioFilter]      = useState<string[]>([]);
   const [associateFilter,  setAssociateFilter]   = useState<string[]>([]);
   const [methodFilter,     setMethodFilter]      = useState<string[]>([]);
+  const [readinessFilter,  setReadinessFilter]   = useState<string[]>([]);
 
   const clientsTable = customPropertyValueByKey.clientsTable as Table | undefined ?? null;
   const studiosTable = base.getTableByIdIfExists(STUDIOS_TABLE_ID);
@@ -1350,6 +1351,23 @@ function FulfillmentApp(): React.ReactElement {
     const f = fields[fid] ?? null; if (!f) return false;
     try { return !!(rec.getCellValue(f) as boolean | null); } catch { return false; }
   }, [fields]);
+
+  // Pickup Readiness Gate — client-level overall readiness, shared by the table row,
+  // the Readiness Alert filter, and the "Needs Attention" summary tile.
+  const getClientReadiness = useCallback((rec: NonNullable<typeof allRecords>[number]) => {
+    const addrConfirmed = getBool(rec, FIELD_IDS.ADDRESS_CONFIRMED);
+    const holdReleased  = getBool(rec, FIELD_IDS.HOLD_RELEASED);
+    const taxConfirmed  = getBool(rec, FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED);
+    const progress      = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
+    const checksPassed  = addrConfirmed && holdReleased && taxConfirmed;
+    const severity      = getReadinessSeverity(checksPassed, progress);
+    const tooltip = buildReadinessTooltip(severity, [
+      { label: 'Tax',     passed: taxConfirmed },
+      { label: 'Address', passed: addrConfirmed },
+      { label: 'Hold',    passed: holdReleased },
+    ]);
+    return { severity, tooltip };
+  }, [getBool, getNum]);
 
   // Background gate — always applied, not user-facing: only clients with sold items and
   // a wedding date on or after today belong in the fulfillment queue.
@@ -1409,6 +1427,8 @@ function FulfillmentApp(): React.ReactElement {
       const m = getSel(r, FIELD_IDS.FULFILLMENT_METHOD)?.name?.toLowerCase() ?? '';
       return methodFilter.some(mf => mf === 'Pick Up' ? m.includes('pick up') : m.includes('ship'));
     });
+    if (readinessFilter.length) recs = recs.filter(r =>
+      readinessFilter.includes(READINESS_SEVERITY_TEXT[getClientReadiness(r).severity]));
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       recs = recs.filter(r => {
@@ -1432,19 +1452,20 @@ function FulfillmentApp(): React.ReactElement {
       if (!wa && !wb) return 0; if (!wa) return 1; if (!wb) return -1;
       return new Date(wa).getTime() - new Date(wb).getTime();
     });
-  }, [fulfillmentRecords, studioFilter, associateFilter, methodFilter, searchQuery, showPickUp, showShip, showOnHold, getSel, getStr, fields]);
+  }, [fulfillmentRecords, studioFilter, associateFilter, methodFilter, readinessFilter, searchQuery, showPickUp, showShip, showOnHold, getSel, getStr, fields, getClientReadiness]);
 
   const summaryStats = useMemo(() => {
-    let pickup = 0, ship = 0, hold = 0;
+    let pickup = 0, ship = 0, hold = 0, attention = 0;
     fulfillmentRecords.forEach(r => {
       const m  = getSel(r, FIELD_IDS.FULFILLMENT_METHOD)?.name?.toLowerCase() ?? '';
       const hd = fields[FIELD_IDS.HOLD_SHIPMENT_DATE] ? r.getCellValue(fields[FIELD_IDS.HOLD_SHIPMENT_DATE]!) : null;
       if (m.includes('pick up')) pickup++;
       if (m.includes('ship'))   ship++;
       if (hd)                   hold++;
+      if (getClientReadiness(r).severity === 'red') attention++;
     });
-    return { pickup, ship, hold };
-  }, [fulfillmentRecords, getSel, fields]);
+    return { pickup, ship, hold, attention };
+  }, [fulfillmentRecords, getSel, fields, getClientReadiness]);
 
   const toggleFlagFilter = useCallback((flag: 'pickup' | 'ship' | 'hold') => {
     const np = flag === 'pickup' ? !showPickUp : showPickUp;
@@ -1518,6 +1539,12 @@ function FulfillmentApp(): React.ReactElement {
                          : 'bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-300 border-amber-300 dark:border-amber-700'}`}>
             <WarningCircleIcon size={14} />On Hold: {summaryStats.hold}
           </button>
+          <button onClick={() => setReadinessFilter(prev => prev.includes('Attention') ? prev.filter(v => v !== 'Attention') : [...prev, 'Attention'])}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-colors border-2 ${
+              readinessFilter.includes('Attention') ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200 border-red-600 dark:border-red-400'
+                         : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-300 border-red-300 dark:border-red-700'}`}>
+            <WarningCircleIcon size={14} />Needs Attention: {summaryStats.attention}
+          </button>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -1535,6 +1562,7 @@ function FulfillmentApp(): React.ReactElement {
           <FilterDropdown label="Studio"    values={studioFilter}    options={uniqueStudios}       onChange={setStudioFilter} />
           <FilterDropdown label="Associate" values={associateFilter} options={uniqueAssociates}    onChange={setAssociateFilter} />
           <FilterDropdown label="Method"    values={methodFilter}    options={['Pick Up', 'Ship']} onChange={setMethodFilter} align="right" />
+          <FilterDropdown label="Readiness Alert" values={readinessFilter} options={['Ready', 'Pending', 'Attention']} onChange={setReadinessFilter} align="right" />
         </div>
       </div>
 
@@ -1568,17 +1596,7 @@ function FulfillmentApp(): React.ReactElement {
                   const holdDate     = fields[FIELD_IDS.HOLD_SHIPMENT_DATE] ? rec.getCellValue(fields[FIELD_IDS.HOLD_SHIPMENT_DATE]!) as string | null : null;
                   const pct          = Math.round((pickedRollup ?? 0) * 100);
                   // Pickup Readiness Gate — client-level overall readiness
-                  const rAddrConfirmed  = getBool(rec, FIELD_IDS.ADDRESS_CONFIRMED);
-                  const rHoldReleased   = getBool(rec, FIELD_IDS.HOLD_RELEASED);
-                  const rTaxConfirmed   = getBool(rec, FIELD_IDS.ALL_ORDERS_TAX_CONFIRMED);
-                  const rProgress       = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS) ?? 0;
-                  const rChecksPassed   = rAddrConfirmed && rHoldReleased && rTaxConfirmed;
-                  const rSeverity       = getReadinessSeverity(rChecksPassed, rProgress);
-                  const rTooltip = buildReadinessTooltip(rSeverity, [
-                    { label: 'Tax',     passed: rTaxConfirmed },
-                    { label: 'Address', passed: rAddrConfirmed },
-                    { label: 'Hold',    passed: rHoldReleased },
-                  ]);
+                  const { severity: rSeverity, tooltip: rTooltip } = getClientReadiness(rec);
                   const hasHold      = !!holdDate;
                   const delivVariant: PillVariant =
                     delivStatus === 'Fulfilled'         ? 'green' :
