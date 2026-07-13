@@ -1477,13 +1477,10 @@ function FulfillmentApp(): React.ReactElement {
       readinessFilter.includes(READINESS_SEVERITY_TEXT[getClientReadiness(r).severity]));
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      recs = recs.filter(r => {
-        const saF = fields[FIELD_IDS.SALES_ASSOCIATE_NAME];
-        return getStr(r, FIELD_IDS.FULL_NAME).toLowerCase().includes(q)
+      recs = recs.filter(r =>
+        getStr(r, FIELD_IDS.FULL_NAME).toLowerCase().includes(q)
           || getStr(r, FIELD_IDS.EMAIL).toLowerCase().includes(q)
-          || getStr(r, FIELD_IDS.PHONE).toLowerCase().includes(q)
-          || (saF ? (r.getCellValueAsString(saF) ?? '').toLowerCase().includes(q) : false);
-      });
+          || getStr(r, FIELD_IDS.PHONE).toLowerCase().includes(q));
     }
     if (showPickUp || showShip || showOnHold) {
       recs = recs.filter(r => {
@@ -1602,7 +1599,7 @@ function FulfillmentApp(): React.ReactElement {
           <div className="relative">
             <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search by name or email…"
+              placeholder="Search by name, email, or phone number…"
               className="pl-9 pr-7 py-1.5 text-sm bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors w-[180px]" />
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery('')}
