@@ -1276,7 +1276,7 @@ function CustomizationModal({
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
-      style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
+      style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)' }}
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
         onClick={e=>e.stopPropagation()}>
@@ -1291,7 +1291,7 @@ function CustomizationModal({
             {mode === 'edit' && (
               <button type="button" disabled={!canGenerateProposal} onClick={()=>setShowProposalPreview(true)}
                 title={canGenerateProposal ? 'Generate Proposal' : `Missing: ${proposalMissing.join(', ')}`}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                 <FileTextIcon size={14}/>Generate Proposal
               </button>
             )}
@@ -1633,13 +1633,13 @@ function ProposalPreviewModal({
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
   };
 
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  // Zero-amount fees add no information on a client-facing proposal — skip them.
   const orderSummaryRows: Array<{ label: string; amount: number; sub: string | null }> = [
     { label: 'Base Price',          amount: snapshot.basePriceNumber,  sub: null },
     { label: 'Customization Total', amount: snapshot.customizationTotal, sub: null },
     ...((snapshot.m2m || snapshot.alts) ? [{ label: 'M2M / Alterations', amount: snapshot.altsM2mAmount, sub: null }] : []),
     ...(snapshot.rush ? [{ label: 'Rush Fee', amount: snapshot.rushFeeAmount, sub: snapshot.rushFeePercentDisplay || null }] : []),
-  ];
+  ].filter(row => row.amount !== 0);
 
   return (
     // No dim/blur behind this popup, per request — the overlay only exists to
@@ -1665,41 +1665,32 @@ function ProposalPreviewModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Document — the only thing that survives @media print */}
-          <div className="proposal-print-area bg-white text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
+          {/* Document — the only thing that survives @media print. On-screen it
+              uses the app's own background tint; print forces plain white
+              paper regardless (see @media print above). */}
+          <div className="proposal-print-area bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
             <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Client</div><div className="text-sm font-medium">{clientName}</div></div>
-              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Sales Associate</div><div className="text-sm font-medium">{saName || '—'}</div></div>
-              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Style</div><div className="text-sm font-medium">{snapshot.styleName}</div></div>
-              <div><div className="text-xs capitalize tracking-wide text-gray-400 mb-1">Amount of Embroidery/Paint/Lace</div><div className="text-sm font-medium">{snapshot.embroideryAmount}</div></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Client: </span><span className="font-medium">{clientName}</span></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Sales Associate: </span><span className="font-medium">{saName || '—'}</span></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{snapshot.styleName}</span></div>
+              <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{snapshot.embroideryAmount}</span></div>
             </div>
 
-            {/* Customizations — same invoice-style table as the Customization detail page */}
+            {/* Customizations — name + price only, no field title above the table */}
             <div className="mb-6">
-              <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Customizations</div>
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Rate</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Pre-Approval</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
-                    </tr>
-                  </thead>
                   <tbody>
                     {snapshot.lineItems.map(item=>(
                       <tr key={item.id} className="border-b border-gray-100 last:border-0">
                         <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
-                        <td className="px-3 py-2.5 text-xs font-medium text-gray-500">{item.label ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-700">{item.approval || '—'}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
                       </tr>
                     ))}
                     {snapshot.lineItems.length===0 && (
-                      <tr><td colSpan={4} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
+                      <tr><td colSpan={2} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1728,48 +1719,51 @@ function ProposalPreviewModal({
             <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
           </div>
 
-          {/* Confirm step — only appears once `afterprint` fires, i.e. a print/
-              save actually happened. Independent of the Close countdown. */}
-          {printed && !success && (
-            <div className="pt-2 border-t border-gray-100 dark:border-white/5">
-              <span className={labelCls}>Save the Proposal</span>
-              {errorMsg && <div className="text-sm text-red-600 dark:text-red-400 mb-2">{errorMsg}</div>}
-              <button type="button" onClick={handleConfirmSave} disabled={saving}
-                className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
-                {saving ? 'Saving…' : errorMsg ? 'Retry' : 'Confirm & Save'}
-              </button>
-            </div>
-          )}
-
           {!printed && (
             <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
               Print (or save as PDF) to unlock saving the proposal.
             </div>
           )}
 
+          {printed && !success && errorMsg && (
+            <div className="text-sm text-red-600 dark:text-red-400 pt-2 border-t border-gray-100 dark:border-white/5">{errorMsg}</div>
+          )}
+
           {success && (
-            <div className="pt-2 border-t border-gray-100 dark:border-white/5 space-y-3">
+            <div className="pt-2 border-t border-gray-100 dark:border-white/5">
               <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3">
-                Proposal saved. Last step: attach the printed PDF using the upload form — it'll link back to this proposal automatically.
+                Proposal saved. Click "Upload Generated Proposal" below to attach the printed PDF — it'll link back to this proposal automatically.
               </div>
-              <button type="button" onClick={openAttachmentForm}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
-                <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Open Upload Form
-              </button>
             </div>
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer — Close/Print/Confirm & Save while pending; once saved,
+            those three disappear and only Upload Generated Proposal remains. */}
         <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end items-center gap-3">
-          <button type="button" onClick={()=>{ if (closeEnabled) onClose(); }} disabled={!closeEnabled}
-            className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            {closeEnabled ? 'Close' : `Close (${countdown})`}
-          </button>
-          <button type="button" onClick={()=>window.print()}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
-            <PrinterIcon size={14}/>Print
-          </button>
+          {success ? (
+            <button type="button" onClick={openAttachmentForm}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors">
+              <UploadIcon size={14}/>Upload Generated Proposal
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={()=>{ if (closeEnabled) onClose(); }} disabled={!closeEnabled}
+                className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {closeEnabled ? 'Close' : `Close (${countdown})`}
+              </button>
+              <button type="button" onClick={()=>window.print()}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
+                <PrinterIcon size={14}/>Print
+              </button>
+              {printed && (
+                <button type="button" onClick={handleConfirmSave} disabled={saving}
+                  className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
+                  {saving ? 'Saving…' : errorMsg ? 'Retry' : 'Confirm & Save'}
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -2066,7 +2060,7 @@ function PostAppointmentModal({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
-        style={{ backgroundColor:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)' }}
+        style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)' }}
         onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
         <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
           onClick={e=>e.stopPropagation()}>
