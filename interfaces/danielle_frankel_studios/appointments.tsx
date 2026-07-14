@@ -512,6 +512,20 @@ function MissingDataPill(): React.ReactElement {
   );
 }
 
+function isBlockTime(record: Record, clientLinkField: Field | null | undefined): boolean {
+  if (!clientLinkField) return false;
+  const linked = record.getCellValue(clientLinkField) as Array<{ id: string }> | null;
+  return linked == null || linked.length === 0;
+}
+
+function BlockTimePill(): React.ReactElement {
+  return (
+    <span className="inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A] whitespace-nowrap">
+      Block Time
+    </span>
+  );
+}
+
 const STAGE_PILL_CLASSES: Record<string, string> = {
   'Pre-Appointment': 'bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
   'Deliberating': 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
@@ -1521,6 +1535,7 @@ function CalendarCardCompact({
   onClear,
   onPickUp,
 }: CalendarCardCompactProps) {
+  const isBlock = isBlockTime(record, appointmentFields.clientField);
   const clientLinked = appointmentFields.clientField
     ? (record.getCellValue(appointmentFields.clientField) as Array<{ id: string }> | null)
     : null;
@@ -1560,45 +1575,56 @@ function CalendarCardCompact({
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
     >
       {/* Stage pill: top-right */}
-      {clientStage && (
+      {!isBlock && clientStage && (
         <span className={`absolute top-2.5 right-2.5 inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight border text-[10px] ${stagePillClasses}`}>
           {clientStage}
         </span>
       )}
 
       {/* Client name */}
-      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-24">{clientName}</div>
+      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-24">
+        {isBlock ? <BlockTimePill /> : clientName}
+      </div>
 
       {/* Appointment type — bold */}
       <div className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
 
       {/* Fields */}
-      <div className="space-y-0.5">
-        {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
-        {showAltLead && (
-          <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
-            Alt Lead: {altLeadValue || 'missing'}
-          </div>
-        )}
-        {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
-      </div>
+      {!isBlock && (
+        <div className="space-y-0.5">
+          {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
+          {showAltLead && (
+            <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
+              Alt Lead: {altLeadValue || 'missing'}
+            </div>
+          )}
+          {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
+        </div>
+      )}
+      {isBlock && roomValue && (
+        <div className="space-y-0.5">
+          <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>
+        </div>
+      )}
 
-      <CalendarActionButtons
-        record={record}
-        appointmentsTable={appointmentsTable}
-        checkInField={checkInField}
-        clearedField={clearedField}
-        pickedUpField={pickedUpField}
-        isClearingByRecord={isClearingByRecord}
-        clearErrorByRecord={clearErrorByRecord}
-        onCheckIn={onCheckIn}
-        onClear={onClear}
-        onPickUp={onPickUp}
-        apptTypeLabel={typeValue}
-        hasRequiredData={hasRequiredData}
-        showCheckInButton={showCheckInButton}
-        showClearButton={showClearButton}
-      />
+      {!isBlock && (
+        <CalendarActionButtons
+          record={record}
+          appointmentsTable={appointmentsTable}
+          checkInField={checkInField}
+          clearedField={clearedField}
+          pickedUpField={pickedUpField}
+          isClearingByRecord={isClearingByRecord}
+          clearErrorByRecord={clearErrorByRecord}
+          onCheckIn={onCheckIn}
+          onClear={onClear}
+          onPickUp={onPickUp}
+          apptTypeLabel={typeValue}
+          hasRequiredData={hasRequiredData}
+          showCheckInButton={showCheckInButton}
+          showClearButton={showClearButton}
+        />
+      )}
     </div>
   );
 }
@@ -2022,6 +2048,50 @@ function DetailDrawer({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [roomOptions, roomRecords, roomsTable, appointmentsTable, record]);
+
+  const isBlock = isBlockTime(record, clientLinkField);
+
+  if (isBlock) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-[#25211A]">
+        <style>{GLOBAL_STYLES}</style>
+        <div className="p-5 border-b border-gray-200 dark:border-[#38322A]">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-base font-semibold text-gray-500 dark:text-gray-400 flex-shrink-0">
+              —
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <BlockTimePill />
+                {studioName && <span className="text-base text-gray-500 dark:text-gray-400">{studioName}</span>}
+              </div>
+            </div>
+          </div>
+          {errorMsg && <div className="mt-2 text-sm text-red-600">{errorMsg}</div>}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 mt-2">
+            Appointment details
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5">
+            <DetailRow label="Time" fieldId={FIELD_IDS.APPT_TIME}>
+              <div className="text-base text-gray-800 dark:text-[#F3EFE6] font-medium">{timeDisplay}</div>
+            </DetailRow>
+            <DetailRow label="Room">
+              <EditableLinkedRecord
+                value={roomValue}
+                recordId={roomRecordId}
+                onSave={handleSaveRoom}
+                options={filteredRoomOptions}
+                canEdit={canUpdate}
+              />
+            </DetailRow>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-[#25211A]">
@@ -2517,11 +2587,6 @@ function AppointmentsApp(): React.ReactElement {
         return formatDateForComparison(new Date(t)) === dateStr;
       })
       .filter((r) => {
-        if (!clientLinkField) return true;
-        const linked = r.getCellValue(clientLinkField) as Array<{ id: string }> | null;
-        return linked != null && linked.length > 0;
-      })
-      .filter((r) => {
         if (!selectedSA.length || !saNameField) return true;
         return selectedSA.includes(r.getCellValueAsString(saNameField));
       })
@@ -2953,6 +3018,7 @@ function AppointmentsApp(): React.ReactElement {
                       : null;
                     const linkedClientId = linkedClients?.[0]?.id ?? null;
                     const clientStage = linkedClientId ? (clientStageById.get(linkedClientId) ?? null) : null;
+                    const isBlock = isBlockTime(record, clientLinkField);
 
                     const category = getAppointmentCategory(typeValue);
                     const hasRequiredData = !!(
@@ -2985,12 +3051,14 @@ function AppointmentsApp(): React.ReactElement {
                           {timeValue ? renderTimeCell(timeValue) : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-base font-medium whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
-                          {clientLinkField && record.getCellValueAsString(clientLinkField)
-                            ? record.getCellValueAsString(clientLinkField)
-                            : <MissingDataPill />}
+                          {isBlock
+                            ? <BlockTimePill />
+                            : clientLinkField && record.getCellValueAsString(clientLinkField)
+                              ? record.getCellValueAsString(clientLinkField)
+                              : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5">
-                          <StagePill stage={clientStage} />
+                          {isBlock ? null : <StagePill stage={clientStage} />}
                         </td>
                         <td className="px-3 py-2.5">
                           {apptNameEntry
@@ -3001,30 +3069,34 @@ function AppointmentsApp(): React.ReactElement {
                           {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
+                          {isBlock ? '—' : saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {altLeadValue
-                            ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
-                            : isAlterationsAppt ? <MissingDataPill /> : '—'}
+                          {isBlock
+                            ? '—'
+                            : altLeadValue
+                              ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
+                              : isAlterationsAppt ? <MissingDataPill /> : '—'}
                         </td>
                         <td className="px-3 py-2.5">
-                          <ActionButtons
-                            record={record}
-                            appointmentsTable={appointmentsTable}
-                            checkInField={checkInField}
-                            clearedField={clearedField}
-                            pickedUpField={pickedUpField}
-                            isClearingByRecord={isClearingByRecord}
-                            clearErrorByRecord={clearErrorByRecord}
-                            onCheckIn={handleCheckIn}
-                            onClear={handleClear}
-                            onPickUp={handlePickUp}
-                            apptTypeLabel={typeValue}
-                            hasRequiredData={hasRequiredData}
-                            showCheckInButton={showCheckInButton}
-                            showClearButton={showClearButton}
-                          />
+                          {isBlock ? null : (
+                            <ActionButtons
+                              record={record}
+                              appointmentsTable={appointmentsTable}
+                              checkInField={checkInField}
+                              clearedField={clearedField}
+                              pickedUpField={pickedUpField}
+                              isClearingByRecord={isClearingByRecord}
+                              clearErrorByRecord={clearErrorByRecord}
+                              onCheckIn={handleCheckIn}
+                              onClear={handleClear}
+                              onPickUp={handlePickUp}
+                              apptTypeLabel={typeValue}
+                              hasRequiredData={hasRequiredData}
+                              showCheckInButton={showCheckInButton}
+                              showClearButton={showClearButton}
+                            />
+                          )}
                         </td>
                       </tr>
                     );
