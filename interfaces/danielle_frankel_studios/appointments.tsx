@@ -61,63 +61,6 @@ const GLOBAL_STYLES = `
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-  .pill-switch {
-    position: relative;
-    display: inline-flex;
-    background: #FFFFFF;
-    border: 1px solid #E9E0CE;
-    border-radius: 0.5rem;
-    overflow: hidden;
-  }
-  .dark .pill-switch {
-    background: #25211A;
-    border-color: #38322A;
-  }
-  .pill-switch-track {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    background: #D97706;
-    border-radius: 0.5rem;
-    transition: transform 0.2s ease;
-    pointer-events: none;
-  }
-  .dark .pill-switch-track {
-    background: #FBBF24;
-  }
-  .pill-switch-btn {
-    position: relative;
-    z-index: 1;
-    cursor: pointer;
-    padding: 0.375rem 0;
-    font-size: 0.875rem;
-    line-height: 1.25rem;
-    font-weight: 500;
-    border: none;
-    background: transparent;
-    transition: color 0.15s ease;
-    white-space: nowrap;
-    text-align: center;
-  }
-  .pill-switch-btn.active {
-    color: #FFFFFF;
-  }
-  .dark .pill-switch-btn.active {
-    color: #1B1813;
-  }
-  .pill-switch-btn.inactive {
-    color: #6B6357;
-  }
-  .dark .pill-switch-btn.inactive {
-    color: #B8AF9F;
-  }
-  .pill-switch-btn.inactive:hover {
-    color: #1A1612;
-  }
-  .dark .pill-switch-btn.inactive:hover {
-    color: #F3EFE6;
-  }
 `;
 
 const FIELD_IDS = {
@@ -829,6 +772,57 @@ function FilterDropdown({ label, values, options, onChange }: FilterDropdownProp
   );
 }
 
+interface StudioDropdownProps {
+  value: string;
+  options: string[];
+  onChange: (studio: string) => void;
+}
+
+// Standard-length single-select dropdown (matches FilterDropdown's min-w-[160px] sizing)
+function StudioDropdown({ value, options, onChange }: StudioDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative min-w-[160px]">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+      >
+        <span className="truncate">{value || 'Studio'}</span>
+        <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1 no-scrollbar" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          {options.map(studio => {
+            const sel = studio === value;
+            return (
+              <button
+                key={studio}
+                type="button"
+                onClick={() => { onChange(studio); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-sm transition-colors truncate ${sel ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#B45F04] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                title={studio}
+              >
+                {studio}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface NotificationModalProps {
   content: React.ReactNode;
   onClose: () => void;
@@ -1121,7 +1115,7 @@ function LayoutToggle({
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const btnWidth = 88; // px, sized to match other dropdown triggers
+  const btnWidth = 160; // px, standard dropdown length (matches FilterDropdown min-w)
 
   useEffect(() => {
     const handle = (e: MouseEvent) => {
@@ -1139,9 +1133,9 @@ function LayoutToggle({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full inline-flex items-center justify-center gap-2 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
       >
-        <span className="text-center truncate">{layoutLabel(value)}</span>
+        <span className="truncate">{layoutLabel(value)}</span>
         <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -2957,29 +2951,13 @@ function AppointmentsApp(): React.ReactElement {
         />
 
         {/* Studio Selector */}
-        {studioOptions.length > 0 && (() => {
-          const activeIdx = studioOptions.indexOf(selectedStudio);
-          const btnW = 136; // px, equal for all studios
-          return (
-            <div className="pill-switch" style={{ width: btnW * studioOptions.length }}>
-              <div
-                className="pill-switch-track"
-                style={{ width: btnW, transform: `translateX(${Math.max(0, activeIdx) * btnW}px)` }}
-              />
-              {studioOptions.map((studio) => (
-                <button
-                  key={studio}
-                  onClick={() => setSelectedStudio(studio)}
-                  className={`pill-switch-btn truncate ${selectedStudio === studio ? 'active' : 'inactive'}`}
-                  style={{ width: btnW }}
-                  title={studio}
-                >
-                  {studio}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
+        {studioOptions.length > 0 && (
+          <StudioDropdown
+            value={selectedStudio}
+            options={studioOptions}
+            onChange={setSelectedStudio}
+          />
+        )}
 
         {/* Layout Selector */}
         <LayoutToggle value={layoutMode} onChange={setLayoutMode} />
