@@ -99,6 +99,21 @@ const ORDER_FIELD_IDS = {
   PARTIAL_PICKUP_RELEASED_AT:   'fldscs1ay8WNRv72Z',
   FULL_PICKUP_RELEASED_AT:      'fld5IBGMJqGIJDFdU',
   FULFILLMENT_PROGRESS_PERCENTAGE: 'fldKDT2x7wmZ2Suui',
+  HOLD_REASON:                  'fld2MAllXcFTSIOVZ', // lookup — DF Clients.hold_reason via client link
+  HOLD_SHIPMENT_DATE:           'fldsJ8LJdNHBKJhC0', // lookup — DF Clients.hold_shipment_date via client link
+  ORDER_SYNC_CHANGELOG:         'fldq0X1wdBJlOYVn8',
+} as const;
+
+// ─── Constants — order_sync_changelog ────────────────────────────────────────
+// Data synced from Shopify/AM automations — read only in this interface.
+const SYNC_LOG_TABLE_ID = 'tblOCgG5WDP51FB2n';
+const SYNC_LOG_FIELD_IDS = {
+  ORDER:          'fldpDncgR9ImfR7Ax',
+  FIELD_CHANGED:  'fldhvCRFHDiWrtR53',
+  PREVIOUS_VALUE: 'fldCk1aXfztfWsnLs',
+  NEW_VALUE:      'fldeKvrtoczn1b3a2',
+  REASON:         'fldy5nEQjWEd6cTBW',
+  CHANGED_AT:     'fldI2iA0qIJLsvmoY',
 } as const;
 
 // ─── Constants — order_adjustments ───────────────────────────────────────────
@@ -190,6 +205,11 @@ function formatDate(val: string | null): string {
 function formatCurrency(val: number | null | undefined): string {
   if (val === null || val === undefined) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+}
+function formatDateTime(val: string | null): string {
+  if (!val) return '—';
+  try { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(val)); }
+  catch { return '—'; }
 }
 
 // ─── Calendar utilities ───────────────────────────────────────────────────────
@@ -877,10 +897,11 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
 }
 
 // ─── OrderDetailModal ─────────────────────────────────────────────────────────
-function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable, itemsRecords, onClose }: {
+function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable, itemsRecords, syncLogTable, syncLogRecords, onClose }: {
   record: AirtableRecord; orderTable: Table;
   adjTable: Table | null; adjRecords: AirtableRecord[];
-  itemsTable: Table | null; itemsRecords: AirtableRecord[]; onClose: () => void;
+  itemsTable: Table | null; itemsRecords: AirtableRecord[];
+  syncLogTable: Table | null; syncLogRecords: AirtableRecord[]; onClose: () => void;
 }) {
   const [selectedAdjId,   setSelectedAdjId]   = useState<string | null>(null);
   const [selectedItemId,  setSelectedItemId]  = useState<string | null>(null);
@@ -939,6 +960,8 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
   const adjTotalField = getNum(ORDER_FIELD_IDS.ADJUSTED_TOTAL);
   const payStatusRes = getSelOrError(ORDER_FIELD_IDS.PAYMENT_STATUS);
   const store       = getSel(ORDER_FIELD_IDS.STORE);
+  const holdReason     = getStr(ORDER_FIELD_IDS.HOLD_REASON);
+  const holdShipDate   = getStr(ORDER_FIELD_IDS.HOLD_SHIPMENT_DATE);
 
   const isShip = delivMethod.toLowerCase().includes('ship');
 
@@ -1021,6 +1044,38 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
   }, [record, orderTable]);
 
   const linkedAdjs = useMemo(() => adjRecords.filter(r => linkedAdjIds.has(r.id)), [adjRecords, linkedAdjIds]);
+
+  // Sync Change Log — read only, populated by the Shopify/AM sync automation, not staff.
+  const linkedSyncLogIds = useMemo(() => {
+    try {
+      const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.ORDER_SYNC_CHANGELOG); if (!f) return new Set<string>();
+      const links = record.getCellValue(f) as Array<{ id: string }> | null;
+      return new Set((links ?? []).map(l => l.id));
+    } catch { return new Set<string>(); }
+  }, [record, orderTable]);
+
+  const linkedSyncLogs = useMemo(() => {
+    const getChangedAt = (r: AirtableRecord): string => {
+      if (!syncLogTable) return '';
+      try { const f = syncLogTable.getFieldIfExists(SYNC_LOG_FIELD_IDS.CHANGED_AT); if (!f) return ''; return (r.getCellValue(f) as string | null) ?? ''; } catch { return ''; }
+    };
+    return syncLogRecords
+      .filter(r => linkedSyncLogIds.has(r.id))
+      .sort((a, b) => getChangedAt(b).localeCompare(getChangedAt(a)));
+  }, [syncLogRecords, linkedSyncLogIds, syncLogTable]);
+
+  const getSyncLogStr = (r: AirtableRecord, fid: string): string => {
+    if (!syncLogTable) return '';
+    try { return r.getCellValueAsString(syncLogTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; }
+  };
+  const getSyncLogNum = (r: AirtableRecord, fid: string): number | null => {
+    if (!syncLogTable) return null;
+    try { const f = syncLogTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  };
+  const getSyncLogSel = (r: AirtableRecord, fid: string): string => {
+    if (!syncLogTable) return '—';
+    try { const f = syncLogTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
+  };
 
   useEffect(() => {
     setLocalAdjs(linkedAdjs);
@@ -1213,6 +1268,12 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
                 <p className="text-xs text-orange-600 dark:text-orange-400 mt-1.5">Blocked: {unmetReleaseReasons.join(', ')}.</p>
               )}
               {releaseError && <p className="text-xs text-red-500 dark:text-red-400 mt-1.5">{releaseError}</p>}
+              {clientHoldReleasedRes.resolved && !clientHoldReleased && (
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <Pill variant="red">On hold until {holdShipDate ? formatDate(holdShipDate) : '—'}</Pill>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{holdReason || 'No reason provided'}</span>
+                </div>
+              )}
             </section>
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
@@ -1301,6 +1362,35 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
             </section>
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Sync Change Log</span>
+              {linkedSyncLogs.length === 0 ? (
+                <p className="text-xs text-gray-400 dark:text-gray-500 italic">No synced price changes yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {linkedSyncLogs.map(r => {
+                    const fieldChanged = getSyncLogSel(r, SYNC_LOG_FIELD_IDS.FIELD_CHANGED);
+                    const prevVal      = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.PREVIOUS_VALUE);
+                    const newVal       = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.NEW_VALUE);
+                    const reason       = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.REASON);
+                    const changedAt    = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.CHANGED_AT);
+                    return (
+                      <div key={r.id} className="rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{fieldChanged || '—'}</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-300 tabular-nums">
+                            {formatCurrency(prevVal)} <span className="text-gray-400 dark:text-gray-500">→</span> {formatCurrency(newVal)}
+                          </span>
+                        </div>
+                        {reason && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{reason}</p>}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{formatDateTime(changedAt)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
               <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Financials</span>
               <div className="grid grid-cols-4 gap-3">
                 {([['Subtotal', subtotal], ['Shipping', shipping], ['Taxes', taxes], ['Total', total]] as [string, number | null][]).map(([label, val]) => (
@@ -1331,8 +1421,9 @@ interface ModalProps {
   orderTable: Table | null; adjTable: Table | null;
   adjRecords: AirtableRecord[]; orderRecords: AirtableRecord[];
   itemsTable: Table | null; itemsRecords: AirtableRecord[];
+  syncLogTable: Table | null; syncLogRecords: AirtableRecord[];
 }
-function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTable, adjRecords, orderRecords, itemsTable, itemsRecords }: ModalProps) {
+function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTable, adjRecords, orderRecords, itemsTable, itemsRecords, syncLogTable, syncLogRecords }: ModalProps) {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const get = useCallback(<T,>(fid: string): T | null => {
@@ -1473,6 +1564,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
         record={selectedOrder} orderTable={orderTable}
         adjTable={adjTable} adjRecords={adjRecords}
         itemsTable={itemsTable} itemsRecords={itemsRecords}
+        syncLogTable={syncLogTable} syncLogRecords={syncLogRecords}
         onClose={() => setSelectedOrderId(null)}
       />
     );
@@ -1659,6 +1751,7 @@ function FulfillmentApp(): React.ReactElement {
   const orderTable   = base.getTableByIdIfExists(ORDER_TABLE_ID);
   const adjTable     = base.getTableByIdIfExists(ADJ_TABLE_ID);
   const itemsTable   = base.getTableByIdIfExists(ORDER_ITEMS_TABLE_ID);
+  const syncLogTable = base.getTableByIdIfExists(SYNC_LOG_TABLE_ID);
 
   const fields = useMemo<Record<string, Field | null>>(() => {
     if (!clientsTable) return {};
@@ -1670,6 +1763,7 @@ function FulfillmentApp(): React.ReactElement {
   const orderRecords   = useRecords(orderTable ?? null);
   const adjRecords     = useRecords(adjTable ?? null);
   const itemsRecords   = useRecords(itemsTable ?? null);
+  const syncLogRecords = useRecords(syncLogTable ?? null);
 
   const getSel = useCallback((rec: NonNullable<typeof allRecords>[number], fid: string): { name: string } | null => {
     const f = fields[fid] ?? null; if (!f) return null;
@@ -1854,6 +1948,7 @@ function FulfillmentApp(): React.ReactElement {
           orderTable={orderTable} adjTable={adjTable}
           adjRecords={adjRecords ?? []} orderRecords={orderRecords ?? []}
           itemsTable={itemsTable} itemsRecords={itemsRecords ?? []}
+          syncLogTable={syncLogTable} syncLogRecords={syncLogRecords ?? []}
         />
       )}
 
