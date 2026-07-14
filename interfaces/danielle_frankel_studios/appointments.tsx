@@ -1564,12 +1564,12 @@ function CalendarCardCompact({
         draggable
         onDragStart={() => onDragStart(record.id)}
         onClick={() => onSelectRecord(record.id)}
-        className="bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-[#38322A] rounded-lg p-3 cursor-move transition-shadow relative min-h-[120px] flex flex-col items-center justify-center"
+        className="bg-gray-200 dark:bg-white/15 border border-gray-300 dark:border-[#38322A] rounded-lg p-3 cursor-move transition-shadow relative min-h-[120px] flex flex-col items-center justify-center"
         style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
       >
-        <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 text-center">Blocked Time</div>
+        <div className="text-lg font-semibold text-gray-600 dark:text-gray-400 text-center">Blocked Time</div>
       </div>
     );
   }
@@ -3027,14 +3027,14 @@ function AppointmentsApp(): React.ReactElement {
                         <tr
                           key={record.id}
                           onClick={() => handleRowClick(record.id)}
-                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 ${
+                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-gray-200 dark:bg-white/15 hover:bg-gray-300 dark:hover:bg-white/20 ${
                             isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
                           }`}
                         >
                           <td className="px-3 py-2.5 text-base whitespace-nowrap text-gray-600 dark:text-gray-400">
                             {timeValue ? renderTimeCell(timeValue) : '—'}
                           </td>
-                          <td colSpan={6} className="px-3 py-2.5 text-base font-medium text-center text-gray-600 dark:text-gray-400">
+                          <td colSpan={7} className="px-3 py-2.5 text-lg font-medium text-center text-gray-600 dark:text-gray-400">
                             Blocked Time
                           </td>
                         </tr>
