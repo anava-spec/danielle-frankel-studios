@@ -1115,7 +1115,6 @@ function LayoutToggle({
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const btnWidth = 160; // px, standard dropdown length (matches FilterDropdown min-w)
 
   useEffect(() => {
     const handle = (e: MouseEvent) => {
@@ -1126,30 +1125,32 @@ function LayoutToggle({
   }, []);
 
   const layoutLabel = (layout: 'list' | 'calendar') => (layout === 'list' ? 'List' : 'Calendar');
-  const otherOptions = LAYOUT_OPTIONS.filter((layout) => layout !== value);
 
   return (
-    <div ref={containerRef} className="relative" style={{ width: btnWidth }}>
+    <div ref={containerRef} className="relative min-w-[160px]">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+        className="w-full inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-white/15 rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
       >
         <span className="truncate">{layoutLabel(value)}</span>
         <CaretDownIcon size={14} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg py-1 no-scrollbar" style={{ width: btnWidth, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
-          {otherOptions.map((layout) => (
-            <button
-              key={layout}
-              type="button"
-              onClick={() => { onChange(layout); setOpen(false); }}
-              className="w-full text-center px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-            >
-              {layoutLabel(layout)}
-            </button>
-          ))}
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg max-h-[260px] overflow-y-auto w-[240px] py-1 no-scrollbar" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          {LAYOUT_OPTIONS.map((layout) => {
+            const sel = layout === value;
+            return (
+              <button
+                key={layout}
+                type="button"
+                onClick={() => { onChange(layout); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-sm transition-colors truncate ${sel ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#B45F04] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}
+              >
+                {layoutLabel(layout)}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1564,7 +1565,7 @@ function CalendarCardCompact({
         draggable
         onDragStart={() => onDragStart(record.id)}
         onClick={() => onSelectRecord(record.id)}
-        className="bg-gray-200 dark:bg-white/15 border border-gray-300 dark:border-[#38322A] rounded-lg p-3 cursor-move transition-shadow relative min-h-[120px] flex flex-col items-center justify-center"
+        className="bg-[#F8F5EE] dark:bg-[#1B1813] border border-gray-300 dark:border-[#38322A] rounded-lg p-3 cursor-move transition-shadow relative min-h-[120px] flex flex-col items-center justify-center"
         style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
@@ -2473,7 +2474,14 @@ function AppointmentsApp(): React.ReactElement {
       const val = r.getCellValueAsString(studioNameField);
       if (val) values.add(val);
     });
-    return Array.from(values).sort();
+    // New York Studio is the default and always appears first in the dropdown.
+    return Array.from(values).sort((a, b) => {
+      const aIsNY = a.toLowerCase().includes('new york');
+      const bIsNY = b.toLowerCase().includes('new york');
+      if (aIsNY && !bIsNY) return -1;
+      if (bIsNY && !aIsNY) return 1;
+      return a.localeCompare(b);
+    });
   }, [appointmentRecords, studioNameField]);
 
   const categoryOptions = ['Sales', 'Alterations', 'Fulfillment'];
@@ -3027,7 +3035,7 @@ function AppointmentsApp(): React.ReactElement {
                         <tr
                           key={record.id}
                           onClick={() => handleRowClick(record.id)}
-                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-gray-200 dark:bg-white/15 hover:bg-gray-300 dark:hover:bg-white/20 ${
+                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-[#F8F5EE] dark:bg-[#1B1813] hover:bg-gray-100 dark:hover:bg-white/5 ${
                             isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
                           }`}
                         >
