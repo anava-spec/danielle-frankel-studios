@@ -188,12 +188,14 @@ function isFieldReadOnlyBySource(fieldId?: string): boolean {
 // ─── Attachment form URL (production) ─────────────────────────────────────────
 const ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMcjQwqo/form';
 
-// Same standalone form, but the SANDBOX copy — same pageId, different base.
-// Used for the Proposal attach step specifically, because this interface
-// still runs against sandbox (not yet published), so the Proposal record
-// that needs the attachment only exists there. Update to the production URL
-// once this interface is published and the Proposals table exists in prod.
-const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/app6Q4xMZ1ngJxiV8/pagRXpKT2IMcjQwqo/form';
+// Production form. NOTE: this interface itself still runs against the
+// SANDBOX base (app6Q4xMZ1ngJxiV8) — the Proposal record this form's
+// submission needs to reach only exists there. Pointing this at production
+// only works once the attachment_router automation (and the
+// customization_proposals table it targets) also exist in production —
+// otherwise the routing will fail exactly like the sandbox-side mismatch
+// this project hit earlier, just mirrored.
+const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMcjQwqo/form';
 
 // Used for both the unsigned copy (right after "Generate Proposal") and the
 // signed copy (from the Proposals list) — same form, different `type` value.
