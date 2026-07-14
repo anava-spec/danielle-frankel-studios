@@ -3035,7 +3035,7 @@ function AppointmentsApp(): React.ReactElement {
                         <tr
                           key={record.id}
                           onClick={() => handleRowClick(record.id)}
-                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-[#F8F5EE] dark:bg-[#1B1813] hover:bg-gray-100 dark:hover:bg-white/5 ${
+                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-[#FCFAF4] dark:bg-[#211D17] hover:bg-gray-100 dark:hover:bg-white/5 ${
                             isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
                           }`}
                         >
