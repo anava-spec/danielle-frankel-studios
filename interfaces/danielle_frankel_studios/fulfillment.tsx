@@ -532,10 +532,11 @@ function SingleSelectDropdown({ value, options, onChange, placeholder = '—' }:
 }
 
 // ─── MiniTable ────────────────────────────────────────────────────────────────
-function MiniTable({ headers, rows, onRowClick }: {
+function MiniTable({ headers, rows, onRowClick, emptyText = 'None' }: {
   headers: string[];
   rows: Array<Array<React.ReactNode>>;
   onRowClick?: (i: number) => void;
+  emptyText?: string;
 }) {
   return (
     <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
@@ -549,7 +550,7 @@ function MiniTable({ headers, rows, onRowClick }: {
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={headers.length} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+            <tr><td colSpan={headers.length} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">{emptyText}</td></tr>
           ) : rows.map((row, i) => (
             <tr key={i} onClick={() => onRowClick?.(i)}
               className={`border-b border-gray-100 dark:border-white/5 last:border-0 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors' : ''}`}>
@@ -1191,6 +1192,21 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
     if (i < localAdjs.length) setSelectedAdjId(localAdjs[i]?.id ?? null);
   };
 
+  const syncLogRows: Array<Array<React.ReactNode>> = linkedSyncLogs.map(r => {
+    const fieldChanged = getSyncLogSel(r, SYNC_LOG_FIELD_IDS.FIELD_CHANGED);
+    const prevVal      = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.PREVIOUS_VALUE);
+    const newVal       = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.NEW_VALUE);
+    const reason       = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.REASON);
+    const changedAt    = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.CHANGED_AT);
+    return [
+      fieldChanged || '—',
+      formatCurrency(prevVal),
+      formatCurrency(newVal),
+      reason ? <span className="text-gray-500 dark:text-gray-400">{reason}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>,
+      <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(changedAt)}</span>,
+    ];
+  });
+
   if (selectedAdj && adjTable) {
     return <AdjustmentDetailModal record={selectedAdj} adjTable={adjTable} onClose={() => setSelectedAdjId(null)} />;
   }
@@ -1362,35 +1378,6 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
             </section>
             <div className="border-t border-gray-100 dark:border-white/5" />
             <section>
-              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Sync Change Log</span>
-              {linkedSyncLogs.length === 0 ? (
-                <p className="text-xs text-gray-400 dark:text-gray-500 italic">No synced price changes yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {linkedSyncLogs.map(r => {
-                    const fieldChanged = getSyncLogSel(r, SYNC_LOG_FIELD_IDS.FIELD_CHANGED);
-                    const prevVal      = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.PREVIOUS_VALUE);
-                    const newVal       = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.NEW_VALUE);
-                    const reason       = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.REASON);
-                    const changedAt    = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.CHANGED_AT);
-                    return (
-                      <div key={r.id} className="rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{fieldChanged || '—'}</span>
-                          <span className="text-sm text-gray-600 dark:text-gray-300 tabular-nums">
-                            {formatCurrency(prevVal)} <span className="text-gray-400 dark:text-gray-500">→</span> {formatCurrency(newVal)}
-                          </span>
-                        </div>
-                        {reason && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{reason}</p>}
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{formatDateTime(changedAt)}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-            <div className="border-t border-gray-100 dark:border-white/5" />
-            <section>
               <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Financials</span>
               <div className="grid grid-cols-4 gap-3">
                 {([['Subtotal', subtotal], ['Shipping', shipping], ['Taxes', taxes], ['Total', total]] as [string, number | null][]).map(([label, val]) => (
@@ -1406,6 +1393,15 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
                   <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(adjTotalField)}</span>
                 </div>
               )}
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Sync Change Log</span>
+              <MiniTable
+                headers={['Field', 'Previous', 'New', 'Reason', 'Changed At']}
+                rows={syncLogRows}
+                emptyText="No synced price changes yet"
+              />
             </section>
           </div>
         </div>
