@@ -1564,6 +1564,22 @@ function CalendarCardCompact({
   // Stage pill color class
   const stagePillClasses = STAGE_PILL_CLASSES[clientStage ?? ''] ?? 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
 
+  if (isBlock) {
+    return (
+      <div
+        draggable
+        onDragStart={() => onDragStart(record.id)}
+        onClick={() => onSelectRecord(record.id)}
+        className="bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-[#38322A] rounded-lg p-3 cursor-move transition-shadow relative min-h-[120px] flex flex-col items-center justify-center"
+        style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
+      >
+        <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 text-center">Blocked Time</div>
+      </div>
+    );
+  }
+
   return (
     <div
       draggable
@@ -1575,56 +1591,45 @@ function CalendarCardCompact({
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
     >
       {/* Stage pill: top-right */}
-      {!isBlock && clientStage && (
+      {clientStage && (
         <span className={`absolute top-2.5 right-2.5 inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight border text-[10px] ${stagePillClasses}`}>
           {clientStage}
         </span>
       )}
 
       {/* Client name */}
-      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-24">
-        {isBlock ? <BlockTimePill /> : clientName}
-      </div>
+      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-24">{clientName}</div>
 
       {/* Appointment type — bold */}
       <div className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
 
       {/* Fields */}
-      {!isBlock && (
-        <div className="space-y-0.5">
-          {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
-          {showAltLead && (
-            <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
-              Alt Lead: {altLeadValue || 'missing'}
-            </div>
-          )}
-          {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
-        </div>
-      )}
-      {isBlock && roomValue && (
-        <div className="space-y-0.5">
-          <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>
-        </div>
-      )}
+      <div className="space-y-0.5">
+        {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
+        {showAltLead && (
+          <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
+            Alt Lead: {altLeadValue || 'missing'}
+          </div>
+        )}
+        {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
+      </div>
 
-      {!isBlock && (
-        <CalendarActionButtons
-          record={record}
-          appointmentsTable={appointmentsTable}
-          checkInField={checkInField}
-          clearedField={clearedField}
-          pickedUpField={pickedUpField}
-          isClearingByRecord={isClearingByRecord}
-          clearErrorByRecord={clearErrorByRecord}
-          onCheckIn={onCheckIn}
-          onClear={onClear}
-          onPickUp={onPickUp}
-          apptTypeLabel={typeValue}
-          hasRequiredData={hasRequiredData}
-          showCheckInButton={showCheckInButton}
-          showClearButton={showClearButton}
-        />
-      )}
+      <CalendarActionButtons
+        record={record}
+        appointmentsTable={appointmentsTable}
+        checkInField={checkInField}
+        clearedField={clearedField}
+        pickedUpField={pickedUpField}
+        isClearingByRecord={isClearingByRecord}
+        clearErrorByRecord={clearErrorByRecord}
+        onCheckIn={onCheckIn}
+        onClear={onClear}
+        onPickUp={onPickUp}
+        apptTypeLabel={typeValue}
+        hasRequiredData={hasRequiredData}
+        showCheckInButton={showCheckInButton}
+        showClearButton={showClearButton}
+      />
     </div>
   );
 }
