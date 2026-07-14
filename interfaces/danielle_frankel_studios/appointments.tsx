@@ -3039,6 +3039,25 @@ function AppointmentsApp(): React.ReactElement {
                     const saValue = saNameField ? record.getCellValueAsString(saNameField) : null;
                     const altLeadValue = altLeadLinkField ? record.getCellValueAsString(altLeadLinkField) : null;
 
+                    if (isBlock) {
+                      return (
+                        <tr
+                          key={record.id}
+                          onClick={() => handleRowClick(record.id)}
+                          className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 ${
+                            isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
+                          }`}
+                        >
+                          <td className="px-3 py-2.5 text-base whitespace-nowrap text-gray-600 dark:text-gray-400">
+                            {timeValue ? renderTimeCell(timeValue) : '—'}
+                          </td>
+                          <td colSpan={6} className="px-3 py-2.5 text-base font-medium text-center text-gray-600 dark:text-gray-400">
+                            Blocked Time
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     return (
                       <tr
                         key={record.id}
@@ -3051,14 +3070,12 @@ function AppointmentsApp(): React.ReactElement {
                           {timeValue ? renderTimeCell(timeValue) : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-base font-medium whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
-                          {isBlock
-                            ? <BlockTimePill />
-                            : clientLinkField && record.getCellValueAsString(clientLinkField)
-                              ? record.getCellValueAsString(clientLinkField)
-                              : <MissingDataPill />}
+                          {clientLinkField && record.getCellValueAsString(clientLinkField)
+                            ? record.getCellValueAsString(clientLinkField)
+                            : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5">
-                          {isBlock ? null : <StagePill stage={clientStage} />}
+                          <StagePill stage={clientStage} />
                         </td>
                         <td className="px-3 py-2.5">
                           {apptNameEntry
@@ -3069,34 +3086,30 @@ function AppointmentsApp(): React.ReactElement {
                           {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {isBlock ? '—' : saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
+                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {isBlock
-                            ? '—'
-                            : altLeadValue
-                              ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
-                              : isAlterationsAppt ? <MissingDataPill /> : '—'}
+                          {altLeadValue
+                            ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
+                            : isAlterationsAppt ? <MissingDataPill /> : '—'}
                         </td>
                         <td className="px-3 py-2.5">
-                          {isBlock ? null : (
-                            <ActionButtons
-                              record={record}
-                              appointmentsTable={appointmentsTable}
-                              checkInField={checkInField}
-                              clearedField={clearedField}
-                              pickedUpField={pickedUpField}
-                              isClearingByRecord={isClearingByRecord}
-                              clearErrorByRecord={clearErrorByRecord}
-                              onCheckIn={handleCheckIn}
-                              onClear={handleClear}
-                              onPickUp={handlePickUp}
-                              apptTypeLabel={typeValue}
-                              hasRequiredData={hasRequiredData}
-                              showCheckInButton={showCheckInButton}
-                              showClearButton={showClearButton}
-                            />
-                          )}
+                          <ActionButtons
+                            record={record}
+                            appointmentsTable={appointmentsTable}
+                            checkInField={checkInField}
+                            clearedField={clearedField}
+                            pickedUpField={pickedUpField}
+                            isClearingByRecord={isClearingByRecord}
+                            clearErrorByRecord={clearErrorByRecord}
+                            onCheckIn={handleCheckIn}
+                            onClear={handleClear}
+                            onPickUp={handlePickUp}
+                            apptTypeLabel={typeValue}
+                            hasRequiredData={hasRequiredData}
+                            showCheckInButton={showCheckInButton}
+                            showClearButton={showClearButton}
+                          />
                         </td>
                       </tr>
                     );
