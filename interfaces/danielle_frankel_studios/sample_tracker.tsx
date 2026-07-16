@@ -2,8 +2,9 @@ import {
   initializeBlock,
   useBase,
   useRecords,
+  useColorScheme,
 } from '@airtable/blocks/interface/ui';
-import type { Table, Record } from '@airtable/blocks/interface/models';
+import type { Table, Record, Field } from '@airtable/blocks/interface/models';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   CaretDown as CaretDownIcon,
@@ -72,14 +73,9 @@ const DARK = {
 type Tok = typeof LIGHT;
 
 function useTheme() {
-  const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const h = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mq.addEventListener('change', h);
-    return () => mq.removeEventListener('change', h);
-  }, []);
-  return isDark ? DARK : LIGHT;
+  // Reads Airtable's own light/dark preference, not the OS/browser setting.
+  const { colorScheme } = useColorScheme();
+  return colorScheme === 'dark' ? DARK : LIGHT;
 }
 
 // ─── FIELD / TABLE IDS ────────────────────────────────────────────────────────
@@ -91,7 +87,8 @@ const FIELD_IDS = {
     LOCATION:  'fldPHYcHjncDy3JTG', // singleSelect
     TYPE:      'fld00hfqAy5lUGote', // singleSelect: Garment, Shoes, Accessories
     NOTES:     'fldDOwmisGyOOKN7O', // multilineText
-    STATUS:    'fldjLf5XSWEwsmdYh', // formula: In Studio / Trunk Show / Away
+    LOCATION_BUCKET: 'fldjLf5XSWEwsmdYh', // formula: In Studio / Trunk Show / Away — displayed as the "Location" badge
+    STATUS:    'fldGUFM9bxpEGrwtj', // singleSelect — real Status field, editable
   },
   APPT: {
     APPOINTMENT_TIME: 'fldL7kYvgkmyhGniX',
@@ -164,6 +161,36 @@ function getLocationValue(r: Record): string | null {
   if (typeof v === 'object' && 'name' in (v as object)) return (v as any).name;
   return null;
 }
+// Airtable color token → saturated accent hex. Read live from the Status
+// field's own choices, so the chip stays correct if options/colors change.
+const AIRTABLE_COLOR_HEX: Record<string, string> = {
+  blueBright: '#2D7FF9',   blueLight1: '#2D7FF9',   blueLight2: '#2D7FF9',   blueDark1: '#1D4FBC',
+  cyanBright: '#18BFFF',   cyanLight1: '#18BFFF',   cyanLight2: '#18BFFF',   cyanDark1: '#0D8EBD',
+  tealBright: '#06A09B',   tealLight1: '#06A09B',   tealLight2: '#06A09B',   tealDark1: '#06A09B',
+  greenBright: '#0B7D2C',  greenLight1: '#0B7D2C',  greenLight2: '#0B7D2C',  greenDark1: '#0B7D2C',
+  yellowBright: '#B87503', yellowLight1: '#B87503', yellowLight2: '#B87503', yellowDark1: '#B87503',
+  orangeBright: '#CC3D00', orangeLight1: '#CC3D00', orangeLight2: '#CC3D00', orangeDark1: '#CC3D00',
+  redBright: '#BA1E45',    redLight1: '#BA1E45',    redLight2: '#BA1E45',    redDark1: '#BA1E45',
+  pinkBright: '#B2158B',   pinkLight1: '#B2158B',   pinkLight2: '#B2158B',   pinkDark1: '#B2158B',
+  purpleBright: '#6B1FBF', purpleLight1: '#6B1FBF', purpleLight2: '#6B1FBF', purpleDark1: '#6B1FBF',
+  grayBright: '#444466',   grayLight1: '#444466',   grayLight2: '#444466',   grayDark1: '#444466',
+};
+function getFieldChoices(field: Field | null | undefined): Array<{ name: string; color?: string }> {
+  if (!field) return [];
+  try {
+    return ((field as unknown as { options?: { choices?: Array<{ name: string; color?: string }> } })
+      .options?.choices ?? []);
+  } catch { return []; }
+}
+function getChoiceColorMap(field: Field | null | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const c of getFieldChoices(field)) map[c.name] = c.color ? (AIRTABLE_COLOR_HEX[c.color] ?? '#9CA3AF') : '#9CA3AF';
+  return map;
+}
+function getChoiceNames(field: Field | null | undefined): string[] {
+  return getFieldChoices(field).map(c => c.name);
+}
+
 function truncate(s: string, n: number) { return s.length <= n ? s : s.slice(0, n - 1) + '…'; }
 function fmtDate(raw: string) {
   return new Date(raw).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -202,7 +229,8 @@ interface FilterDropdownProps {
   minWidth?: number;
   accentOnActive?: boolean; // false keeps the trigger neutral-colored even when a value is applied
 }
-function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130, accentOnActive = true }: FilterDropdownProps) {
+const FILTER_MIN_WIDTH = 140; // uniform width for every filter dropdown (except the search box)
+function FilterDropdown({ label, values, options, onChange, tok, minWidth = FILTER_MIN_WIDTH, accentOnActive = true }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -216,10 +244,7 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130,
     onChange(values.includes(opt) ? values.filter(v => v !== opt) : [...values, opt]);
   };
 
-  const display = values.length === 0
-    ? 'All'
-    : values.length === 1 ? (values[0] ?? 'All')
-    : `${values.length} selected`;
+  const display = values.length === 1 ? values[0] : `${values.length} selected`;
 
   const isActive = values.length > 0;
   const showAccent = isActive && accentOnActive;
@@ -265,20 +290,6 @@ function FilterDropdown({ label, values, options, onChange, tok, minWidth = 130,
             borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
             minWidth: Math.max(minWidth, 160), padding: '4px 0',
           }}>
-            {/* All */}
-            <div
-              onClick={() => { onChange([]); setOpen(false); }}
-              style={{
-                padding: '7px 12px', cursor: 'pointer', fontSize: '13px',
-                background: !isActive ? tok.accent_subtle : 'transparent',
-                color: !isActive ? tok.accent : tok.text_primary,
-                fontWeight: !isActive ? 600 : 400,
-              }}
-            >
-              All
-            </div>
-            <div style={{ height: '1px', background: tok.border, margin: '2px 0' }} />
-
             {/* Options */}
             {options.map(opt => {
               const checked = values.includes(opt);
@@ -317,7 +328,7 @@ interface SingleSelectDropdownProps {
   baselineKey?: string; // key that represents "no filter applied" (shows label as placeholder)
   accentOnActive?: boolean; // false keeps the trigger neutral-colored even when a value is applied
 }
-function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth = 110, baselineKey, accentOnActive = true }: SingleSelectDropdownProps) {
+function SingleSelectDropdown({ label, value, options, onChange, tok, minWidth = FILTER_MIN_WIDTH, baselineKey, accentOnActive = true }: SingleSelectDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -495,6 +506,119 @@ function InlineSelect({ value, options, onChange, placeholder = 'Select…', tok
   );
 }
 
+// ─── STATUS CHIP (table) — editable, colors read live from the field's own
+// choices so it stays correct if options/colors change in Airtable later ──
+function StatusChip({ value, options, colorMap, canWrite, onChange, tok }: {
+  value: string | null; options: string[]; colorMap: Record<string, string>;
+  canWrite: boolean; onChange: (v: string) => void; tok: Tok;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const hex = value ? (colorMap[value] ?? '#9CA3AF') : null;
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }} onClick={e => e.stopPropagation()}>
+      <span
+        onClick={() => canWrite && setOpen(o => !o)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '999px',
+          background: hex ? hex + '20' : tok.badge_away, color: hex ?? tok.badge_away_text,
+          fontSize: '11px', fontWeight: 600, border: `1px solid ${hex ? hex + '55' : 'transparent'}`,
+          cursor: canWrite ? 'pointer' : 'default',
+        }}
+      >
+        {value || '—'}
+      </span>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30,
+          background: tok.surface, border: `1px solid ${tok.border}`, borderRadius: '8px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '4px 0', minWidth: '120px',
+        }}>
+          {options.map(opt => {
+            const optHex = colorMap[opt] ?? '#9CA3AF';
+            return (
+              <div key={opt} onClick={() => { onChange(opt); setOpen(false); }}
+                style={{ padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+              >
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: optHex, flexShrink: 0 }} />
+                <span style={{ color: tok.text_primary }}>{opt}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── STATUS FILLED SELECT (detail page) — same box style as other fields,
+// but the choice's color fills the whole control ─────────────────────────────
+function StatusFilledSelect({ value, options, colorMap, onChange, tok }: {
+  value: string | null; options: string[]; colorMap: Record<string, string>;
+  onChange: (v: string) => void; tok: Tok;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const hex = value ? (colorMap[value] ?? '#9CA3AF') : null;
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
+          width: '100%', padding: '7px 10px', cursor: 'pointer',
+          background: hex ?? tok.surface,
+          border: `1px solid ${hex ?? tok.input_border}`,
+          borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+          color: hex ? '#FFFFFF' : tok.text_muted,
+          transition: 'border-color 0.15s',
+        }}
+      >
+        <span>{value ?? 'Select…'}</span>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 20,
+          background: tok.surface, border: `1px solid ${tok.border}`,
+          borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '3px 0',
+        }}>
+          {options.map(opt => {
+            const optHex = colorMap[opt] ?? '#9CA3AF';
+            const isSel = opt === value;
+            return (
+              <div key={opt} onClick={() => { onChange(opt); setOpen(false); }}
+                style={{
+                  padding: '7px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                  color: '#FFFFFF', background: optHex, margin: '2px 6px', borderRadius: '6px',
+                  opacity: isSel ? 1 : 0.85,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = isSel ? '1' : '0.85'; }}
+              >
+                {opt}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── LOCATION BADGE ───────────────────────────────────────────────────────────
 function LocationBadge({ status, tok }: { status: LocationStatus; tok: Tok }) {
   const map: Record<LocationStatus, { bg: string; color: string; label: string }> = {
@@ -518,10 +642,12 @@ function LocationBadge({ status, tok }: { status: LocationStatus; tok: Tok }) {
 interface SampleDetailModalProps {
   record: Record;
   sampleTable: Table;
+  statusFieldOptions: string[];
+  statusColorMap: Record<string, string>;
   onClose: () => void;
   tok: Tok;
 }
-function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailModalProps) {
+function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColorMap, onClose, tok }: SampleDetailModalProps) {
   // ── Read initial values ──
   const getStr = (fid: string) => record.getCellValueAsString(fid) || '';
   const getSingleSelectName = (fid: string): string | null => {
@@ -538,6 +664,7 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
   const [type,      setType]      = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.TYPE));
   const [locVal,    setLocVal]    = useState<string | null>(getLocationValue(record));
   const [notes,     setNotes]     = useState(getStr(FIELD_IDS.SAMPLE.NOTES));
+  const [statusVal, setStatusVal] = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.STATUS));
 
   const canWrite = sampleTable.hasPermissionToUpdateRecords?.() ?? true;
 
@@ -557,6 +684,10 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
   const handleType = (val: string) => {
     setType(val);
     save({ [FIELD_IDS.SAMPLE.TYPE]: { name: val } });
+  };
+  const handleStatus = (val: string) => {
+    setStatusVal(val);
+    save({ [FIELD_IDS.SAMPLE.STATUS]: { name: val } });
   };
   const handleStyleName = () => {
     save({ [FIELD_IDS.SAMPLE.STYLE_NAME]: styleName || null });
@@ -580,7 +711,7 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
   const FieldLabel = ({ children }: { children: React.ReactNode }) => (
     <div style={{
       fontSize: '11px', fontWeight: 700, color: tok.text_muted,
-      textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '5px',
+      letterSpacing: '0.07em', marginBottom: '5px',
     }}>
       {children}
     </div>
@@ -612,7 +743,7 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
         }}>
           <div style={{
             fontSize: '11px', fontWeight: 700, color: tok.text_muted,
-            textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px',
+            letterSpacing: '0.07em', marginBottom: '6px',
           }}>
             Sample
           </div>
@@ -628,36 +759,45 @@ function SampleDetailModal({ record, sampleTable, onClose, tok }: SampleDetailMo
         {/* Body */}
         <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          {/* Style Name + Location — row 0 */}
+          {/* Style Name — full-width row */}
+          <div>
+            <FieldLabel>Style Name</FieldLabel>
+            {canWrite ? (
+              <input
+                type="text"
+                value={styleName}
+                onChange={e => setStyleName(e.target.value)}
+                onBlur={e => {
+                  (e.target as HTMLInputElement).style.borderColor = tok.input_border;
+                  handleStyleName();
+                }}
+                onFocus={e => { (e.target as HTMLInputElement).style.borderColor = tok.input_focus; }}
+                placeholder="Style name…"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '7px 10px', borderRadius: '8px',
+                  border: `1px solid ${tok.input_border}`,
+                  background: tok.surface, color: tok.text_primary,
+                  fontSize: '13px', outline: 'none', fontFamily: 'inherit',
+                }}
+              />
+            ) : (
+              <div style={{ fontSize: '13px', color: tok.text_primary }}>{styleName || '—'}</div>
+            )}
+          </div>
+
+          {/* Status + Location — row 2 */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <FieldLabel>Style Name</FieldLabel>
-              {canWrite ? (
-                <input
-                  type="text"
-                  value={styleName}
-                  onChange={e => setStyleName(e.target.value)}
-                  onBlur={e => {
-                    (e.target as HTMLInputElement).style.borderColor = tok.input_border;
-                    handleStyleName();
-                  }}
-                  onFocus={e => { (e.target as HTMLInputElement).style.borderColor = tok.input_focus; }}
-                  placeholder="Style name…"
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    padding: '7px 10px', borderRadius: '8px',
-                    border: `1px solid ${tok.input_border}`,
-                    background: tok.surface, color: tok.text_primary,
-                    fontSize: '13px', outline: 'none', fontFamily: 'inherit',
-                  }}
-                />
-              ) : (
-                <div style={{ fontSize: '13px', color: tok.text_primary }}>{styleName || '—'}</div>
-              )}
+              <FieldLabel>Status</FieldLabel>
+              {canWrite
+                ? <StatusFilledSelect value={statusVal} options={statusFieldOptions} colorMap={statusColorMap} onChange={handleStatus} tok={tok} />
+                : <div style={{ fontSize: '13px', color: tok.text_primary }}>{statusVal ?? '—'}</div>
+              }
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Location</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.07em' }}>Location</div>
                 {locVal && (
                   <span style={{ fontSize: '11px', color: tok.text_muted }}>
                     {status === 'in-studio' ? '· Available' : status === 'at trunk show' ? '· Trunk Show' : '· Away'}
@@ -741,21 +881,37 @@ function SampleTracker() {
   const apptRecords   = useRecords(apptTable ?? null);
   const clientRecords = useRecords(clientTable ?? null);
 
+  // ── Status field (real singleSelect) — options/colors read live so the
+  // chip and filter stay correct if choices are added/recolored later ──
+  const statusField = useMemo(() => sampleTable ? sampleTable.getFieldIfExists(FIELD_IDS.SAMPLE.STATUS) : null, [sampleTable]);
+  const statusColorMap = useMemo(() => getChoiceColorMap(statusField), [statusField]);
+  const statusFieldOptions = useMemo(() => getChoiceNames(statusField), [statusField]);
+  const canWriteTable = sampleTable?.hasPermissionToUpdateRecords?.() ?? true;
+  const handleStatusChange = useCallback((record: Record, val: string) => {
+    if (!sampleTable) return;
+    queueWrite(() => sampleTable.updateRecordAsync(record.id, { [FIELD_IDS.SAMPLE.STATUS]: { name: val } }))
+      .catch(err => console.error('[SampleTracker] status update error:', err));
+  }, [sampleTable]);
+
   // ── Filter state ──
   const [locationFilter, setLocationFilter] = useState<string[]>([]);
   const [typeFilter,     setTypeFilter]     = useState<string[]>([]);
-  const [statusFilter,   setStatusFilter]   = useState<string[]>([]);
+  const [sampleStatusFilter, setSampleStatusFilter] = useState<string[]>([]);
   const [search,         setSearch]         = useState('');
   const [timePeriod,     setTimePeriod]     = useState<TimePeriod>('7');
   const [saFilter,       setSaFilter]       = useState<string[]>([]);
   const [alertTypeFilter, setAlertTypeFilter] = useState<string[]>([]);
   const [selectedSample, setSelectedSample] = useState<Record | null>(null);
 
-  // ── Inventory filter options ──
+  // ── Inventory filter options — "Location" filters the derived
+  // In Studio / Trunk Show / Away bucket (same field the badge reads) ──
   const locationOptions = useMemo(() => {
     if (!sampleRecords) return [];
     const s = new Set<string>();
-    for (const r of sampleRecords) { const v = getLocationValue(r); if (v) s.add(v); }
+    for (const r of sampleRecords) {
+      const v = r.getCellValueAsString(FIELD_IDS.SAMPLE.LOCATION_BUCKET);
+      if (v) s.add(v);
+    }
     return Array.from(s).sort();
   }, [sampleRecords]);
 
@@ -763,17 +919,6 @@ function SampleTracker() {
     if (!sampleRecords) return [];
     const s = new Set<string>();
     for (const r of sampleRecords) { const v = r.getCellValueAsString(FIELD_IDS.SAMPLE.TYPE); if (v) s.add(v); }
-    return Array.from(s).sort();
-  }, [sampleRecords]);
-
-  // ── Status options from formula field ──
-  const statusOptions = useMemo(() => {
-    if (!sampleRecords) return [];
-    const s = new Set<string>();
-    for (const r of sampleRecords) {
-      const v = r.getCellValueAsString(FIELD_IDS.SAMPLE.STATUS);
-      if (v) s.add(v);
-    }
     return Array.from(s).sort();
   }, [sampleRecords]);
 
@@ -801,15 +946,16 @@ function SampleTracker() {
     if (!sampleRecords) return [];
     return sampleRecords
       .filter(r => {
-        const locVal    = getLocationValue(r);
-        const typeVal   = r.getCellValueAsString(FIELD_IDS.SAMPLE.TYPE);
-        const styleName = r.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME);
+        const locVal      = getLocationValue(r);
+        const locationVal = r.getCellValueAsString(FIELD_IDS.SAMPLE.LOCATION_BUCKET);
+        const typeVal     = r.getCellValueAsString(FIELD_IDS.SAMPLE.TYPE);
+        const styleName   = r.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME);
 
-        if (locationFilter.length > 0 && (!locVal || !locationFilter.includes(locVal))) return false;
+        if (locationFilter.length > 0 && !locationFilter.includes(locationVal)) return false;
         if (typeFilter.length > 0 && !typeFilter.includes(typeVal)) return false;
-        if (statusFilter.length > 0) {
+        if (sampleStatusFilter.length > 0) {
           const statusVal = r.getCellValueAsString(FIELD_IDS.SAMPLE.STATUS);
-          if (!statusFilter.includes(statusVal)) return false;
+          if (!sampleStatusFilter.includes(statusVal)) return false;
         }
         if (search) {
           const q = search.toLowerCase();
@@ -825,7 +971,7 @@ function SampleTracker() {
         return a.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME)
           .localeCompare(b.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME));
       });
-  }, [sampleRecords, locationFilter, typeFilter, statusFilter, search]);
+  }, [sampleRecords, locationFilter, typeFilter, sampleStatusFilter, search]);
 
   // ── Pre-index in-studio samples by normalized style name (avoids O(N²) scan) ──
   const inStudioByStyle = useMemo(() => {
@@ -996,7 +1142,7 @@ function SampleTracker() {
     paddingLeft: '32px', paddingRight: '10px', paddingTop: '6px', paddingBottom: '6px',
     borderRadius: '8px', border: `1px solid ${search ? tok.accent : tok.border}`,
     background: tok.surface, color: tok.text_primary,
-    fontSize: '12px', width: '170px', outline: 'none',
+    fontSize: '12px', width: '221px', outline: 'none',
     transition: 'border-color 0.15s',
   };
 
@@ -1037,16 +1183,16 @@ function SampleTracker() {
             )}
           </div>
 
-          <FilterDropdown label="Location" values={locationFilter} options={locationOptions} onChange={setLocationFilter} tok={tok} />
-          <FilterDropdown label="Type"     values={typeFilter}     options={typeOptions}     onChange={setTypeFilter}     tok={tok} minWidth={100} />
-          <FilterDropdown label="Status"   values={statusFilter}   options={statusOptions}   onChange={setStatusFilter}   tok={tok} minWidth={100} />
+          <FilterDropdown label="Location" values={locationFilter}     options={locationOptions}     onChange={setLocationFilter}     tok={tok} />
+          <FilterDropdown label="Status"   values={sampleStatusFilter} options={statusFieldOptions}  onChange={setSampleStatusFilter} tok={tok} />
+          <FilterDropdown label="Type"     values={typeFilter}         options={typeOptions}         onChange={setTypeFilter}         tok={tok} />
         </div>
 
         {/* Right 30%: alert filters — aligned with Sample Alerts panel */}
         <div style={{ width: '30%', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <FilterDropdown       label="Sales Associate" values={saFilter}        options={saOptions}         onChange={setSaFilter}        tok={tok} minWidth={140} accentOnActive={false} />
-          <FilterDropdown       label="Alert Type"       values={alertTypeFilter} options={ALERT_TYPE_OPTIONS} onChange={setAlertTypeFilter} tok={tok} minWidth={140} accentOnActive={false} />
-          <SingleSelectDropdown label="Period"            value={timePeriod}      options={TIME_OPTIONS}       onChange={v => setTimePeriod(v as TimePeriod)} tok={tok} minWidth={110} baselineKey="all" accentOnActive={false} />
+          <FilterDropdown       label="Sales Associate" values={saFilter}        options={saOptions}         onChange={setSaFilter}        tok={tok} accentOnActive={false} />
+          <FilterDropdown       label="Alert Type"       values={alertTypeFilter} options={ALERT_TYPE_OPTIONS} onChange={setAlertTypeFilter} tok={tok} accentOnActive={false} />
+          <SingleSelectDropdown label="Period"            value={timePeriod}      options={TIME_OPTIONS}       onChange={v => setTimePeriod(v as TimePeriod)} tok={tok} baselineKey="all" accentOnActive={false} />
         </div>
       </div>
 
@@ -1064,7 +1210,7 @@ function SampleTracker() {
             padding: '9px 14px 7px', borderBottom: `1px solid ${tok.border}`,
             flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
           }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.07em' }}>
               Sample Inventory
             </span>
             <span style={{ fontSize: '11px', color: tok.text_muted }}>·</span>
@@ -1075,10 +1221,10 @@ function SampleTracker() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ background: tok.surface_alt, position: 'sticky', top: 0, zIndex: 10 }}>
-                  {['Style', 'Status', 'Size', 'Type', 'Location', 'Notes'].map(col => (
+                  {['Style', 'Location', 'Size', 'Type', 'Status', 'Notes'].map(col => (
                     <th key={col} style={{
                       padding: '7px 12px', textAlign: 'left', fontWeight: 600, fontSize: '11px',
-                      color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.05em',
+                      color: tok.text_muted, letterSpacing: '0.05em',
                       borderBottom: `1px solid ${tok.border}`, whiteSpace: 'nowrap',
                     }}>{col}</th>
                   ))}
@@ -1113,8 +1259,15 @@ function SampleTracker() {
                       <td style={{ padding: '7px 12px', color: tok.text_secondary }}>
                         {record.getCellValueAsString(FIELD_IDS.SAMPLE.TYPE) || '—'}
                       </td>
-                      <td style={{ padding: '7px 12px', color: tok.text_secondary, maxWidth: '140px' }}>
-                        {truncate(locVal || '—', 22)}
+                      <td style={{ padding: '7px 12px' }}>
+                        <StatusChip
+                          value={record.getCellValueAsString(FIELD_IDS.SAMPLE.STATUS) || null}
+                          options={statusFieldOptions}
+                          colorMap={statusColorMap}
+                          canWrite={canWriteTable}
+                          onChange={val => handleStatusChange(record, val)}
+                          tok={tok}
+                        />
                       </td>
                       <td style={{ padding: '7px 12px', color: tok.text_muted, fontSize: '12px', maxWidth: '180px' }}>
                         {record.getCellValueAsString(FIELD_IDS.SAMPLE.NOTES)
@@ -1139,7 +1292,7 @@ function SampleTracker() {
             padding: '9px 12px 8px', borderBottom: `1px solid ${tok.border}`,
             flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px',
           }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.07em' }}>
               Sample Alerts
             </span>
             <span style={{ fontSize: '11px', color: tok.text_muted }}>·</span>
@@ -1179,6 +1332,8 @@ function SampleTracker() {
         <SampleDetailModal
           record={selectedSample}
           sampleTable={sampleTable}
+          statusFieldOptions={statusFieldOptions}
+          statusColorMap={statusColorMap}
           onClose={() => setSelectedSample(null)}
           tok={tok}
         />
@@ -1236,7 +1391,7 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
       {/* Expanded: style coverage */}
       {expanded && (
         <div style={{ borderTop: `1px solid ${tok.border}`, padding: '9px 11px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.05em', marginBottom: '5px' }}>
             Style Coverage
           </div>
           {alert.missingData === 'no-styles' ? (

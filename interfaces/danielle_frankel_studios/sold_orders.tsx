@@ -3,6 +3,7 @@ import {
   initializeBlock,
   useBase,
   useRecords,
+  useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import {
   CaretDown as CaretDownIcon,
@@ -48,19 +49,12 @@ const FIELD_IDS = {
 
 // ─── Theme (auto-detects OS/Airtable color scheme) ─────────────────────────────
 function useTheme(): 'light' | 'dark' {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  );
+  // Reads Airtable's own light/dark preference, not the OS/browser setting.
+  const { colorScheme } = useColorScheme();
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const h = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
-    mq.addEventListener('change', h);
-    return () => mq.removeEventListener('change', h);
-  }, []);
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-  return theme;
+    document.documentElement.classList.toggle('dark', colorScheme === 'dark');
+  }, [colorScheme]);
+  return colorScheme;
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────

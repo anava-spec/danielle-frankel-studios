@@ -5,6 +5,7 @@ import {
   useRecords,
   useCustomProperties,
   CellRenderer,
+  useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import type { Table, Field, Record as AirtableRecord } from '@airtable/blocks/interface/models';
 import {
@@ -126,15 +127,9 @@ const COLORS = {
 };
 
 function useTheme() {
-  const [isDark, setIsDark] = useState(false);
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setIsDark(mediaQuery.matches);
-    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
-  return isDark ? COLORS.DARK : COLORS.LIGHT;
+  // Reads Airtable's own light/dark preference, not the OS/browser setting.
+  const { colorScheme } = useColorScheme();
+  return colorScheme === 'dark' ? COLORS.DARK : COLORS.LIGHT;
 }
 
 function parseDate(dateStr: string | null | undefined): Date | null {

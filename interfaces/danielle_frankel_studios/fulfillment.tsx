@@ -5,6 +5,7 @@ import {
   useRecords,
   useCustomProperties,
   CellRenderer,
+  useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import type { Field, Table, Record as AirtableRecord } from '@airtable/blocks/interface/models';
 import {
@@ -27,20 +28,13 @@ import {
 
 // ─── Dark mode ────────────────────────────────────────────────────────────────
 function useTheme(): 'light' | 'dark' {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const h = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
-    mq.addEventListener('change', h);
-    return () => mq.removeEventListener('change', h);
-  }, []);
+  // Reads Airtable's own light/dark preference, not the OS/browser setting.
+  const { colorScheme } = useColorScheme();
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
-  }, [theme]);
-  return theme;
+    if (colorScheme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
+  }, [colorScheme]);
+  return colorScheme;
 }
 
 // ─── Constants — DF Clients ───────────────────────────────────────────────────
