@@ -13,6 +13,8 @@ import {
   ArrowCounterClockwise as ArrowCounterClockwiseIcon,
   ArrowLeft as ArrowLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
+  Trash as TrashIcon,
+  Warning as WarningIcon,
 } from '@phosphor-icons/react';
 import type { Table, Record as AirtableRecord, Field } from '@airtable/blocks/interface/models';
 import { FieldType } from '@airtable/blocks/interface/models';
@@ -633,6 +635,70 @@ function LineItemsTable({
   );
 }
 
+// ─── DeleteConfirmModal ────────────────────────────────────────────────────────
+// Standard centered modal (backdrop + rounded-2xl container). The Delete button
+// stays disabled behind a 5-second countdown so an accidental click can't
+// immediately fire an irreversible delete.
+function DeleteConfirmModal({ clientName, onConfirm, onClose }: {
+  clientName: string; onConfirm: () => void; onClose: () => void;
+}) {
+  const [countdown, setCountdown] = useState(5);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    await onConfirm();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-5"
+      style={{ backgroundColor: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(3px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[440px] overflow-hidden flex flex-col shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
+          <div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-0.5">Delete request</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF]">Are you sure?</p>
+          </div>
+          <button onClick={onClose} disabled={deleting}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0 disabled:opacity-50">
+            <XIcon size={18} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3">
+            <WarningIcon size={18} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700 dark:text-red-300">
+              This will permanently delete the customization request for <strong>{clientName}</strong>. This action cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
+          <button type="button" onClick={onClose} disabled={deleting}
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={handleConfirm} disabled={countdown > 0 || deleting}
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            {deleting ? 'Deleting…' : countdown > 0 ? `Delete permanently (${countdown})` : 'Delete permanently'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── RecordDetailPage ─────────────────────────────────────────────────────────
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, preApprovalField,
@@ -680,6 +746,16 @@ function RecordDetailPage({
   const [counterNotes, setCounterNotes] = useState(fDetail ? record.getCellValueAsString(fDetail) : '');
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const canDelete = table.hasPermissionToDeleteRecords();
+
+  const handleDelete = async () => {
+    try {
+      await queueWrite(() => table.deleteRecordAsync(record.id));
+      setShowDeleteModal(false);
+      onBack();
+    } catch (e) { setError('Failed to delete request.'); setShowDeleteModal(false); }
+  };
 
   // ── Concurrent-edit detection ──────────────────────────────────────────────
   // Hash the editable fields we care about so we can detect external changes.
@@ -925,8 +1001,22 @@ function RecordDetailPage({
             )}
           </div>
         )}
+          {canDelete && (
+            <button type="button" onClick={() => setShowDeleteModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex-shrink-0">
+              <TrashIcon size={15} /> Delete
+            </button>
+          )}
         </div>{/* end ml-auto wrapper */}
       </div>
+
+      {showDeleteModal && (
+        <DeleteConfirmModal
+          clientName={clientName}
+          onConfirm={handleDelete}
+          onClose={() => setShowDeleteModal(false)}
+        />
+      )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Concurrent-edit warning */}
