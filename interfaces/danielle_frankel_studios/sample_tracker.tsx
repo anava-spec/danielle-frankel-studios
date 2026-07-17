@@ -161,16 +161,33 @@ function getLocationValue(r: Record): string | null {
   if (typeof v === 'object' && 'name' in (v as object)) return (v as any).name;
   return null;
 }
-// Status choice names are read live from the field itself (not hardcoded),
-// so the filter/chip options stay correct if choices are added later.
-// Colors are intentionally NOT read from Airtable — chips always use the
-// brand accent color regardless of how each choice is colored in Airtable.
+// Status choice names/colors are read live from the field itself (not
+// hardcoded), so they stay correct if choices are added/recolored later.
+// The SELECTED chip shows the choice's real Airtable color; the open
+// dropdown list itself is always brand-colored, regardless of choice.
+const AIRTABLE_COLOR_HEX: Record<string, string> = {
+  blueBright: '#2D7FF9',   blueLight1: '#2D7FF9',   blueLight2: '#2D7FF9',   blueDark1: '#1D4FBC',
+  cyanBright: '#18BFFF',   cyanLight1: '#18BFFF',   cyanLight2: '#18BFFF',   cyanDark1: '#0D8EBD',
+  tealBright: '#06A09B',   tealLight1: '#06A09B',   tealLight2: '#06A09B',   tealDark1: '#06A09B',
+  greenBright: '#0B7D2C',  greenLight1: '#0B7D2C',  greenLight2: '#0B7D2C',  greenDark1: '#0B7D2C',
+  yellowBright: '#B87503', yellowLight1: '#B87503', yellowLight2: '#B87503', yellowDark1: '#B87503',
+  orangeBright: '#CC3D00', orangeLight1: '#CC3D00', orangeLight2: '#CC3D00', orangeDark1: '#CC3D00',
+  redBright: '#BA1E45',    redLight1: '#BA1E45',    redLight2: '#BA1E45',    redDark1: '#BA1E45',
+  pinkBright: '#B2158B',   pinkLight1: '#B2158B',   pinkLight2: '#B2158B',   pinkDark1: '#B2158B',
+  purpleBright: '#6B1FBF', purpleLight1: '#6B1FBF', purpleLight2: '#6B1FBF', purpleDark1: '#6B1FBF',
+  grayBright: '#444466',   grayLight1: '#444466',   grayLight2: '#444466',   grayDark1: '#444466',
+};
 function getFieldChoices(field: Field | null | undefined): Array<{ name: string; color?: string }> {
   if (!field) return [];
   try {
     return ((field as unknown as { options?: { choices?: Array<{ name: string; color?: string }> } })
       .options?.choices ?? []);
   } catch { return []; }
+}
+function getChoiceColorMap(field: Field | null | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const c of getFieldChoices(field)) map[c.name] = c.color ? (AIRTABLE_COLOR_HEX[c.color] ?? '#9CA3AF') : '#9CA3AF';
+  return map;
 }
 function getChoiceNames(field: Field | null | undefined): string[] {
   return getFieldChoices(field).map(c => c.name);
@@ -491,10 +508,11 @@ function InlineSelect({ value, options, onChange, placeholder = 'Select…', tok
   );
 }
 
-// ─── STATUS CHIP (table) — editable, text-only, always brand-colored ─────────
-// (no per-choice color from Airtable — keeps red/green off the UI)
-function StatusChip({ value, options, canWrite, onChange, tok }: {
-  value: string | null; options: string[];
+// ─── STATUS CHIP (table) — editable. The SELECTED chip uses the choice's
+// real Airtable color; the open dropdown list itself is always brand-colored
+// (text only, no color dots) regardless of each choice's Airtable color ─────
+function StatusChip({ value, options, colorMap, canWrite, onChange, tok }: {
+  value: string | null; options: string[]; colorMap: Record<string, string>;
   canWrite: boolean; onChange: (v: string) => void; tok: Tok;
 }) {
   const [open, setOpen] = useState(false);
@@ -504,7 +522,7 @@ function StatusChip({ value, options, canWrite, onChange, tok }: {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const hex = value ? tok.accent : null;
+  const hex = value ? (colorMap[value] ?? '#9CA3AF') : null;
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }} onClick={e => e.stopPropagation()}>
       <span
@@ -524,25 +542,33 @@ function StatusChip({ value, options, canWrite, onChange, tok }: {
           background: tok.surface, border: `1px solid ${tok.border}`, borderRadius: '8px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '4px 0', minWidth: '120px',
         }}>
-          {options.map(opt => (
-            <div key={opt} onClick={() => { onChange(opt); setOpen(false); }}
-              style={{ padding: '6px 10px', cursor: 'pointer', fontSize: '12px', color: tok.text_primary }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-            >
-              {opt}
-            </div>
-          ))}
+          {options.map(opt => {
+            const isSel = opt === value;
+            return (
+              <div key={opt} onClick={() => { onChange(opt); setOpen(false); }}
+                style={{
+                  padding: '6px 10px', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                  color: tok.accent, background: isSel ? tok.accent + '20' : 'transparent',
+                  margin: '2px 6px', borderRadius: '6px',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.accent + '20'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isSel ? tok.accent + '20' : 'transparent'; }}
+              >
+                {opt}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-// ─── STATUS FILLED SELECT (detail page) — same box style as other fields,
-// same brand color treatment as the table chip (no per-choice colors) ────────
-function StatusFilledSelect({ value, options, onChange, tok }: {
-  value: string | null; options: string[];
+// ─── STATUS FILLED SELECT (detail page) — same box style as other fields.
+// The SELECTED value uses the choice's real Airtable color; the open
+// dropdown list itself is always brand-colored, regardless of choice ────────
+function StatusFilledSelect({ value, options, colorMap, onChange, tok }: {
+  value: string | null; options: string[]; colorMap: Record<string, string>;
   onChange: (v: string) => void; tok: Tok;
 }) {
   const [open, setOpen] = useState(false);
@@ -552,7 +578,7 @@ function StatusFilledSelect({ value, options, onChange, tok }: {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const hex = value ? tok.accent : null;
+  const hex = value ? (colorMap[value] ?? '#9CA3AF') : null;
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
@@ -623,10 +649,11 @@ interface SampleDetailModalProps {
   record: Record;
   sampleTable: Table;
   statusFieldOptions: string[];
+  statusColorMap: Record<string, string>;
   onClose: () => void;
   tok: Tok;
 }
-function SampleDetailModal({ record, sampleTable, statusFieldOptions, onClose, tok }: SampleDetailModalProps) {
+function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColorMap, onClose, tok }: SampleDetailModalProps) {
   // ── Read initial values ──
   const getStr = (fid: string) => record.getCellValueAsString(fid) || '';
   const getSingleSelectName = (fid: string): string | null => {
@@ -770,7 +797,7 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, onClose, t
             <div>
               <FieldLabel>Status</FieldLabel>
               {canWrite
-                ? <StatusFilledSelect value={statusVal} options={statusFieldOptions} onChange={handleStatus} tok={tok} />
+                ? <StatusFilledSelect value={statusVal} options={statusFieldOptions} colorMap={statusColorMap} onChange={handleStatus} tok={tok} />
                 : <div style={{ fontSize: '13px', color: tok.text_primary }}>{statusVal ?? '—'}</div>
               }
             </div>
@@ -860,11 +887,11 @@ function SampleTracker() {
   const apptRecords   = useRecords(apptTable ?? null);
   const clientRecords = useRecords(clientTable ?? null);
 
-  // ── Status field (real singleSelect) — options read live so the chip
-  // and filter stay correct if choices are added in Airtable later. Colors
-  // are not read from the field: chips always use the brand accent. ──
+  // ── Status field (real singleSelect) — options/colors read live so the
+  // selected chip stays correct if choices are added/recolored later ──
   const statusField = useMemo(() => sampleTable ? sampleTable.getFieldIfExists(FIELD_IDS.SAMPLE.STATUS) : null, [sampleTable]);
   const statusFieldOptions = useMemo(() => getChoiceNames(statusField), [statusField]);
+  const statusColorMap = useMemo(() => getChoiceColorMap(statusField), [statusField]);
   const canWriteTable = sampleTable?.hasPermissionToUpdateRecords?.() ?? true;
   const handleStatusChange = useCallback((record: Record, val: string) => {
     if (!sampleTable) return;
@@ -1242,6 +1269,7 @@ function SampleTracker() {
                         <StatusChip
                           value={record.getCellValueAsString(FIELD_IDS.SAMPLE.STATUS) || null}
                           options={statusFieldOptions}
+                          colorMap={statusColorMap}
                           canWrite={canWriteTable}
                           onChange={val => handleStatusChange(record, val)}
                           tok={tok}
@@ -1311,6 +1339,7 @@ function SampleTracker() {
           record={selectedSample}
           sampleTable={sampleTable}
           statusFieldOptions={statusFieldOptions}
+          statusColorMap={statusColorMap}
           onClose={() => setSelectedSample(null)}
           tok={tok}
         />
