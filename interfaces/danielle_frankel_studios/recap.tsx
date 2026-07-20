@@ -3388,10 +3388,16 @@ function AppointmentsApp(): React.ReactElement {
       const type = fType ? r.getCellValueAsString(fType!) : '';
       if (!isConsultation(type)) return false;
       return true;
+    }).sort((a,b)=>{
+      if (!fTime) return 0;
+      const ta = a.getCellValue(fTime) as string|null;
+      const tb = b.getCellValue(fTime) as string|null;
+      if (!ta) return 1; if (!tb) return -1;
+      return new Date(tb).getTime()-new Date(ta).getTime(); // most recent first
     });
     setSearchResults(m.slice(0,10));
     setShowSearchDrop(m.length>0);
-  },[clientSearch, appointmentRecords, fClient, fStatus, fType]);
+  },[clientSearch, appointmentRecords, fClient, fStatus, fType, fTime]);
 
   const today    = useMemo(()=>{ const d=new Date(); d.setHours(0,0,0,0); return d; },[]);
   const todayStr = fmtDateKey(today);
