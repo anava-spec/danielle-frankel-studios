@@ -2011,7 +2011,7 @@ function CustomizationModal({
             const [t1, t2] = hybridSectionTotals;
             return (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-4">
                   <HybridSectionFields
                     title="Style 1"
                     value={hybridSections[0]}
