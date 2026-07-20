@@ -256,27 +256,35 @@ function formatStageCount(count: number): string {
 function extractFirstLookupString(record: AirtableRecord, field: Field | null | undefined): string | null {
   if (!field) return null;
   try {
-    const str = record.getCellValueAsString(field);
-    if (str && str.trim()) return str.trim();
+    // Prefer the raw cell value (ISO 8601 for date/dateTime lookups) over
+    // getCellValueAsString — the latter renders using the field's configured
+    // display format (often "local", i.e. the viewer's locale), which for
+    // ambiguous day/month dates like 6/12 vs 12/6 can silently swap day and
+    // month depending on whose browser renders it. Raw ISO values sidestep
+    // that ambiguity entirely.
     const raw = record.getCellValue(field);
-    if (raw === null || raw === undefined) return null;
-    if (Array.isArray(raw)) {
-      if (raw.length === 0) return null;
-      const first = raw[0];
-      if (first === null || first === undefined) return null;
-      if (typeof first === 'string') return first;
-      if (first instanceof Date) return first.toISOString();
-      if (typeof first === 'object') {
-        const obj = first as Record<string, unknown>;
-        if (typeof obj.value === 'string') return obj.value;
-        if (obj.value instanceof Date) return (obj.value as Date).toISOString();
-        if (typeof obj.name === 'string') return obj.name;
-      }
-      return String(first);
+    if (raw !== null && raw !== undefined) {
+      if (Array.isArray(raw)) {
+        if (raw.length > 0) {
+          const first = raw[0];
+          if (first !== null && first !== undefined) {
+            if (typeof first === 'string') return first;
+            if (first instanceof Date) return first.toISOString();
+            if (typeof first === 'object') {
+              const obj = first as Record<string, unknown>;
+              if (typeof obj.value === 'string') return obj.value;
+              if (obj.value instanceof Date) return (obj.value as Date).toISOString();
+              if (typeof obj.name === 'string') return obj.name;
+            }
+            return String(first);
+          }
+        }
+      } else if (typeof raw === 'string') return raw;
+      else if (raw instanceof Date) return raw.toISOString();
+      else return String(raw);
     }
-    if (typeof raw === 'string') return raw;
-    if (raw instanceof Date) return raw.toISOString();
-    return String(raw);
+    const str = record.getCellValueAsString(field);
+    return str && str.trim() ? str.trim() : null;
   } catch { return null; }
 }
 
