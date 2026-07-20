@@ -2755,9 +2755,6 @@ function PostAppointmentModal({
           <div className="p-5 border-b border-gray-100 dark:border-white/5">
             <div className="flex items-start gap-6 flex-wrap">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0 text-xl font-bold text-gray-500 dark:text-gray-400">
-                  {clientName ? clientName.charAt(0).toUpperCase() : '?'}
-                </div>
                 <div className="min-w-0">
                   <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] truncate">{clientName || 'Unknown Client'}</div>
                   <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{shortType}</div>

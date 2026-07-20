@@ -535,30 +535,6 @@ function formatFriendlyDate(dateStr: string | null | undefined): string {
   return `${month} ${day}${ordinal}, ${year}`;
 }
 
-function getInitials(
-  firstName: string | null,
-  lastName: string | null,
-  fullNameAcuity: string | null,
-  displayName: string | null
-): string {
-  if (firstName && lastName) {
-    return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase();
-  }
-  if (fullNameAcuity) {
-    const parts = fullNameAcuity.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return ((parts[0]?.charAt(0) ?? '') + (parts[parts.length - 1]?.charAt(0) ?? '')).toUpperCase();
-    }
-    if (parts.length === 1 && parts[0]) {
-      return parts[0].substring(0, 2).toUpperCase();
-    }
-  }
-  if (displayName) {
-    return displayName.substring(0, 2).toUpperCase();
-  }
-  return '??';
-}
-
 interface MiniCalendarProps {
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
@@ -1892,8 +1868,6 @@ function DetailDrawer({
     displayName = fullNameAcuity;
   }
 
-  const initials = getInitials(firstName, lastName, fullNameAcuity, displayName);
-
   const apptTime = apptTimeField ? (record.getCellValue(apptTimeField) as string | null) : null;
   let timeDisplay = '—';
   if (apptTime) {
@@ -2056,9 +2030,6 @@ function DetailDrawer({
         <style>{GLOBAL_STYLES}</style>
         <div className="p-5 border-b border-gray-200 dark:border-[#38322A]">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-base font-semibold text-gray-500 dark:text-gray-400 flex-shrink-0">
-              —
-            </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <BlockTimePill />
@@ -2097,9 +2068,6 @@ function DetailDrawer({
       <style>{GLOBAL_STYLES}</style>
       <div className="p-5 border-b border-gray-200 dark:border-[#38322A]">
         <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-full bg-[#FEF3C7] dark:bg-[#3A2E12] flex items-center justify-center text-base font-semibold text-[#B45F04] dark:text-[#FBBF24] flex-shrink-0">
-            {initials}
-          </div>
           <div className="flex-1 min-w-0">
             {/* Row 1: Name + Studio + Stage pill */}
             <div className="flex items-center gap-2 flex-wrap">

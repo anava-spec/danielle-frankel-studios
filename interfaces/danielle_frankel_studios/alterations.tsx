@@ -313,10 +313,6 @@ function splitMultiValue(value: string | null | undefined): string[] {
   return value.split(',').map(v => v.trim()).filter(Boolean);
 }
 
-function getInitials(firstName: string | null | undefined, lastName: string | null | undefined): string {
-  return (firstName?.[0]?.toUpperCase() ?? '') + (lastName?.[0]?.toUpperCase() ?? '') || '?';
-}
-
 function getCellValueSafe<T>(record: AirtableRecord, field: Field | null | undefined): T | null {
   if (!field) return null;
   try { return record.getCellValue(field) as T; } catch { return null; }
@@ -414,7 +410,6 @@ interface ClientData {
   // Meta
   displayName: string;
   weddingDisplay: string;
-  initials: string;
   isOnBoard: boolean;
   timelineBucket: string;
 }
@@ -861,9 +856,6 @@ const SummaryProfileModal = React.memo(function SummaryProfileModal({
 
         {/* Header */}
         <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center text-base font-semibold flex-shrink-0 bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24]">
-            {client.initials}
-          </div>
           <div className="min-w-0 flex-1">
             <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">{client.displayName}</div>
             <div className="flex items-center gap-3 mt-2">
@@ -1069,9 +1061,6 @@ const FullProfileModal = React.memo(function FullProfileModal({ client, stageCol
         <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg p-5">
           <div className="flex items-start gap-6 flex-wrap">
             <div className="flex items-start gap-3">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0 bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24]">
-                {client.initials}
-              </div>
               <div className="min-w-0">
                 <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{client.displayName}</div>
                 <div className="flex items-center gap-3 mt-2">
@@ -1447,7 +1436,6 @@ function Pipeline(): React.ReactElement {
       const weddingDisplay        = weddingDate ? formatFullDate(weddingDate) : weddingDateIfNotSet || '—';
       const formattedPhone        = formatPhone(phone);
       const formattedSAPhone      = formatPhone(salesAssociatePhone);
-      const initials              = getInitials(firstName, lastName);
       const totalSpendFormatted   = totalSpend != null ? `$${totalSpend.toLocaleString()}` : '';
       const fmLower               = fulfillmentMethod.toLowerCase();
       const fulfillmentLabel      = fmLower.includes('pick') ? 'Pick Up' : fmLower.includes('ship') ? 'Ship' : fulfillmentMethod || '—';
@@ -1473,7 +1461,7 @@ function Pipeline(): React.ReactElement {
         fulfillmentMethod, fulfillmentLabel, fulfillmentNotes, trackingNumber, threePL,
         holdShipmentDate, clientNotifiedFulfillment, addressConfirmed, taxShippingDisplay,
         alterationNotes, flagFollowUp, flagNoMeasurements, flagNoPhotos, flagCount,
-        activeFlagLabels, displayName, weddingDisplay, initials, isOnBoard, timelineBucket,
+        activeFlagLabels, displayName, weddingDisplay, isOnBoard, timelineBucket,
       };
     });
   }, [clientRecords, fields]);

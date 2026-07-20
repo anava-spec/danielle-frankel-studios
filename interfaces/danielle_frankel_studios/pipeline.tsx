@@ -407,10 +407,6 @@ function getTimelineBucket(lastPhaseChange: string | null | undefined): string {
   return 'All Time';
 }
 
-function getInitials(firstName: string | null | undefined, lastName: string | null | undefined): string {
-  return (firstName?.[0]?.toUpperCase() ?? '') + (lastName?.[0]?.toUpperCase() ?? '') || '?';
-}
-
 function getCellValueSafe<T>(record: AirtableRecord, field: Field | null | undefined): T | null {
   if (!field) return null;
   try { return record.getCellValue(field) as T; } catch { return null; }
@@ -510,7 +506,6 @@ interface ClientData {
   activeFlagLabels: string[];
   displayName: string;
   weddingDisplay: string;
-  initials: string;
   isOnBoard: boolean;
   timelineBucket: string;
   salesNotes: string;
@@ -2687,7 +2682,6 @@ function Pipeline(): React.ReactElement {
       const weddingDisplay        = weddingDate ? formatFullDate(weddingDate) : weddingDateIfNotSet || '—';
       const formattedPhone        = formatPhone(phone);
       const formattedSAPhone      = formatPhone(salesAssociatePhone);
-      const initials              = getInitials(firstName, lastName);
       const totalSpendFormatted   = totalSpend != null ? `$${totalSpend.toLocaleString()}` : '';
       const fmLower               = fulfillmentMethod.toLowerCase();
       const fulfillmentLabel      = fmLower.includes('pick') ? 'Pick Up' : fmLower.includes('ship') ? 'Ship' : fulfillmentMethod || '—';
@@ -2725,7 +2719,7 @@ function Pipeline(): React.ReactElement {
         alterationNotes, flagFollowUp, flagNoMeasurements, flagNoPhotos,
         flagCount: effectiveFlagCount,
         activeFlagLabels: effectiveFlagLabels,
-        displayName, weddingDisplay, initials, isOnBoard, timelineBucket,
+        displayName, weddingDisplay, isOnBoard, timelineBucket,
         salesNotes, dueDate, customizationNotes, firstAlterationsAppt,
         taxes, shippingCost, taxesFormatted, shippingCostFormatted,
         lastPhaseChange, studioName, acuityAddress, otherAddress, alterationsApptCount,

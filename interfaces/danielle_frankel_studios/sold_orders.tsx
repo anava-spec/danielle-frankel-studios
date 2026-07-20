@@ -121,13 +121,6 @@ function getStageColor(s: string | null | undefined): string {
   }
 }
 
-function getInitials(name: string | null | undefined): string {
-  if (!name) return '??';
-  const p = name.trim().split(/\s+/);
-  if (p.length === 1) return (p[0]?.substring(0, 2) ?? '??').toUpperCase();
-  return ((p[0]?.[0] ?? '') + (p[p.length - 1]?.[0] ?? '')).toUpperCase();
-}
-
 function getLookupString(v: unknown): string {
   if (!v) return '';
   if (typeof v === 'string') return v;
@@ -291,9 +284,6 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
         {/* Header */}
         <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100 dark:border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#FEF3C7] dark:bg-[#3A2E12] flex items-center justify-center text-[#D97706] dark:text-[#FBBF24] font-semibold text-sm flex-shrink-0">
-              {getInitials(data.clientName)}
-            </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-gray-900 dark:text-[#F3EFE6]">{data.clientName || '—'}</h2>
