@@ -1193,15 +1193,26 @@ function HybridSectionFields({
         </table>
       </div>
 
-      <div>
-        <span className={labelCls}>Embroidery Amount</span>
-        <div className="flex gap-2">
-          {embroideryOptions.map(o => (
-            <button key={o.id} type="button" onClick={() => onChange({ embroidery: value.embroidery === o.id ? null : o.id })}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${value.embroidery === o.id ? 'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24] text-white' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-              {o.label}
-            </button>
-          ))}
+      <div className="flex gap-4">
+        <div className="w-2/3">
+          <span className={labelCls}>Embroidery Amount</span>
+          <div className="flex gap-2">
+            {embroideryOptions.map(o => (
+              <button key={o.id} type="button" onClick={() => onChange({ embroidery: value.embroidery === o.id ? null : o.id })}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${value.embroidery === o.id ? 'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24] text-white' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="w-1/3">
+          <span className={labelCls}>Hybrid Price Weight</span>
+          <div className="flex items-center gap-1">
+            <input type="number" min={0} max={maxWeightPercent} value={value.weightPercent ?? ''}
+              onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(maxWeightPercent, Number(e.target.value))) })}
+              placeholder="e.g. 50" className={inputCls} />
+            <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">%</span>
+          </div>
         </div>
       </div>
 
@@ -1237,13 +1248,6 @@ function HybridSectionFields({
           ))}
         </div>
         {value.rush && showRushBox && <RushFeeBox />}
-      </div>
-
-      <div>
-        <span className={labelCls}>Hybrid Price Weight %</span>
-        <input type="number" min={0} max={maxWeightPercent} value={value.weightPercent ?? ''}
-          onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(maxWeightPercent, Number(e.target.value))) })}
-          placeholder="e.g. 50" className={inputCls} />
       </div>
 
       <div>
@@ -1795,7 +1799,7 @@ function CustomizationModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
       style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)' }}
       onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full ${isHybridMode ? 'max-w-[960px]' : 'max-w-[680px]'} max-h-[90vh] overflow-hidden flex flex-col shadow-2xl`}
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
@@ -2009,9 +2013,35 @@ function CustomizationModal({
 
           {isHybridMode && (() => {
             const [t1, t2] = hybridSectionTotals;
+            const missingChildren = mode === 'edit' && hybridChildRecords.length < 2;
+            const summarySection = (label: string, t: ReturnType<typeof computeHybridSectionTotals>) => (
+              <div className="pt-3 border-t border-gray-100 dark:border-white/5 first:pt-0 first:border-t-0">
+                <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">{label}</div>
+                {([
+                  { l: 'Base Price', a: t.basePriceNumber },
+                  { l: 'Customization Total', a: t.customizationTotal },
+                  ...(t.altsM2mAmount ? [{ l: 'M2M / Alterations', a: t.altsM2mAmount }] : []),
+                  ...(t.rushFeeAmount ? [{ l: 'Rush Fee', a: t.rushFeeAmount }] : []),
+                ]).map(({ l, a }) => (
+                  <div key={l} className="flex justify-between items-center py-1">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{l}</span>
+                    <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(a)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center text-xs font-semibold text-gray-900 dark:text-[#F3EFE6] pt-1">
+                  <span>Weighted Total</span>
+                  <span>{formatCurrency(t.weightedTotal)}</span>
+                </div>
+              </div>
+            );
             return (
-              <>
-                <div className="flex flex-col gap-4">
+              <div className="flex gap-6 items-start">
+                <div className="w-[60%] min-w-0 space-y-4">
+                  {missingChildren && (
+                    <div className="text-sm text-red-500 dark:text-red-400">
+                      Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
+                    </div>
+                  )}
                   <HybridSectionFields
                     title="Style 1"
                     value={hybridSections[0]}
@@ -2048,37 +2078,19 @@ function CustomizationModal({
                   />
                 </div>
 
-                {/* Order Summary — Style 1 | Style 2 | Hybrid, one section, three columns */}
-                <div className="pt-2">
-                  <span className={labelCls}>Order Summary</span>
-                  <div className="grid grid-cols-3 gap-4">
-                    {([{ label: 'Style 1', t: t1 }, { label: 'Style 2', t: t2 }] as const).map(({ label, t }) => (
-                      <div key={label}>
-                        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2">{label}</div>
-                        {([
-                          { l: 'Base Price', a: t.basePriceNumber },
-                          { l: 'Customization Total', a: t.customizationTotal },
-                          ...(t.altsM2mAmount ? [{ l: 'M2M / Alterations', a: t.altsM2mAmount }] : []),
-                          ...(t.rushFeeAmount ? [{ l: 'Rush Fee', a: t.rushFeeAmount }] : []),
-                        ]).map(({ l, a }) => (
-                          <div key={l} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
-                            <span className="text-xs text-gray-600 dark:text-gray-400">{l}</span>
-                            <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(a)}</span>
-                          </div>
-                        ))}
-                        <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
-                          <span className="text-xs">Weighted Total</span>
-                          <span className="text-xs">{formatCurrency(t.weightedTotal)}</span>
-                        </div>
-                      </div>
-                    ))}
-                    <div>
-                      <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2">Hybrid</div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                {/* Summary — one panel, Style 1 / Style 2 / Hybrid stacked vertically inside it */}
+                <div className="w-[40%] shrink-0 sticky top-0">
+                  <div className="p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                    <span className={labelCls}>Order Summary</span>
+                    {summarySection('Style 1', t1)}
+                    {summarySection('Style 2', t2)}
+                    <div className="pt-3 border-t border-gray-100 dark:border-white/5">
+                      <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Hybrid</div>
+                      <div className="flex justify-between items-center py-1">
                         <span className="text-xs text-gray-600 dark:text-gray-400">Style 1 (weighted)</span>
                         <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t1.weightedTotal)}</span>
                       </div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                      <div className="flex justify-between items-center py-1">
                         <span className="text-xs text-gray-600 dark:text-gray-400">Style 2 (weighted)</span>
                         <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t2.weightedTotal)}</span>
                       </div>
@@ -2087,14 +2099,14 @@ function CustomizationModal({
                         <span className="text-xs">{formatCurrency(t1.weightedTotal + t2.weightedTotal)}</span>
                       </div>
                     </div>
+                    {!hybridWeightValid && (
+                      <div className="pt-2 text-xs font-semibold text-red-600 dark:text-red-400">
+                        Error: Hybrid Price Weight % must add up to exactly 100% across both styles (currently {Math.round(hybridWeightSum)}%{hybridWeightSum > 100 ? ' — exceeds 100%' : ''}).
+                      </div>
+                    )}
                   </div>
-                  {!hybridWeightValid && (
-                    <div className="mt-2 text-xs font-semibold text-red-600 dark:text-red-400">
-                      Error: Hybrid Price Weight % must add up to exactly 100% across both styles (currently {Math.round(hybridWeightSum)}%{hybridWeightSum > 100 ? ' — exceeds 100%' : ''}).
-                    </div>
-                  )}
                 </div>
-              </>
+              </div>
             );
           })()}
         </div>
@@ -2752,6 +2764,7 @@ function PostAppointmentModal({
     const fM2m        = customizationsTable.getFieldIfExists(CUSTOM.M2M);
     const fAlts       = customizationsTable.getFieldIfExists(CUSTOM.ALTERATIONS);
     const fRush       = customizationsTable.getFieldIfExists(CUSTOM.RUSH);
+    const fIsHybrid   = customizationsTable.getFieldIfExists(CUSTOM.IS_HYBRID);
     const fSourceP    = proposalsTable?.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION) ?? null;
     const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
 
@@ -2760,9 +2773,10 @@ function PostAppointmentModal({
         const rec = customizationRecords?.find(r=>r.id===c.id);
         if (!rec) return null;
 
+        const isHybrid = fIsHybrid ? rec.getCellValueAsString(fIsHybrid) === 'Hybrid' : false;
         const styleId  = fStyled ? ((rec.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
         const styleRec = styleId ? (stylesRecords?.find(r=>r.id===styleId) ?? null) : null;
-        const styleName = styleRec?.name ?? c.name;
+        const styleName = isHybrid ? 'Style 1 & Style 2' : (styleRec?.name ?? c.name);
 
         const dateRequested = fDateReq ? (rec.getCellValueAsString(fDateReq) || '') : '';
 
@@ -2890,7 +2904,8 @@ function PostAppointmentModal({
       <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
         style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)' }}
         onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-        <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        {/* +20% over the previous 680px */}
+        <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[816px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
           onClick={e=>e.stopPropagation()}>
 
           {/* Header */}
