@@ -2996,7 +2996,8 @@ function AppointmentsApp(): React.ReactElement {
                 const t = fTime ? (rec.getCellValue(fTime!) as string|null) : null;
                 return (
                   <button key={rec.id} onClick={()=>{setSelectedRecordId(rec.id);setShowSearchDrop(false);setClientSearch('');}}
-                    className="w-full text-left px-4 py-2 hover:bg-[#FEF3C7] dark:bg-[#3A2E12] transition-colors border-b border-gray-100 dark:border-white/5 last:border-b-0">
+                    className="w-full text-left px-4 py-2 hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors border-b border-gray-100 dark:border-white/5 last:border-b-0">
+                    <div className="text-sm text-gray-900 dark:text-[#F3EFE6] font-medium">{name || '—'}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{t?`${fmtDisplay(new Date(t))} at ${fmtNYTime(new Date(t))}`:''}</div>
                   </button>
                 );
