@@ -3358,6 +3358,7 @@ function AppointmentsApp(): React.ReactElement {
   const [clientSearch, setClientSearch]         = useState('');
   const [searchResults, setSearchResults]       = useState<AirtableRecord[]>([]);
   const [showSearchDrop, setShowSearchDrop]     = useState(false);
+  const [searchHighlight, setSearchHighlight]   = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(()=>{
@@ -3395,8 +3396,9 @@ function AppointmentsApp(): React.ReactElement {
       if (!ta) return 1; if (!tb) return -1;
       return new Date(tb).getTime()-new Date(ta).getTime(); // most recent first
     });
-    setSearchResults(m.slice(0,10));
+    setSearchResults(m);
     setShowSearchDrop(m.length>0);
+    setSearchHighlight(m.length>0 ? 0 : -1);
   },[clientSearch, appointmentRecords, fClient, fStatus, fType, fTime]);
 
   const today    = useMemo(()=>{ const d=new Date(); d.setHours(0,0,0,0); return d; },[]);
@@ -3528,6 +3530,16 @@ function AppointmentsApp(): React.ReactElement {
           <input type="text" placeholder="Search by client name…" value={clientSearch}
             onChange={e=>setClientSearch(e.target.value)}
             onFocus={()=>{ if(searchResults.length>0) setShowSearchDrop(true); }}
+            onKeyDown={e=>{
+              if (!showSearchDrop || searchResults.length===0) return;
+              if (e.key==='ArrowDown') { e.preventDefault(); setSearchHighlight(i=>(i+1)%searchResults.length); }
+              else if (e.key==='ArrowUp') { e.preventDefault(); setSearchHighlight(i=>(i-1+searchResults.length)%searchResults.length); }
+              else if (e.key==='Enter') {
+                e.preventDefault();
+                const rec = searchResults[searchHighlight] ?? searchResults[0];
+                if (rec) { setSelectedRecordId(rec.id); setShowSearchDrop(false); setClientSearch(''); }
+              } else if (e.key==='Escape') { setShowSearchDrop(false); }
+            }}
             className="pl-9 pr-8 py-1.5 text-sm bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] w-[200px]"/>
           {clientSearch && (
             <button type="button" onClick={()=>{setClientSearch('');setShowSearchDrop(false);}}
@@ -3537,12 +3549,13 @@ function AppointmentsApp(): React.ReactElement {
           )}
           {showSearchDrop && searchResults.length>0 && (
             <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-lg w-[280px] max-h-[300px] overflow-y-auto">
-              {searchResults.map(rec=>{
+              {searchResults.map((rec,i)=>{
                 const name = fClient ? rec.getCellValueAsString(fClient!) : '';
                 const t = fTime ? (rec.getCellValue(fTime!) as string|null) : null;
                 return (
                   <button key={rec.id} onClick={()=>{setSelectedRecordId(rec.id);setShowSearchDrop(false);setClientSearch('');}}
-                    className="w-full text-left px-4 py-2 hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors border-b border-gray-100 dark:border-white/5 last:border-b-0">
+                    onMouseEnter={()=>setSearchHighlight(i)}
+                    className={`w-full text-left px-4 py-2 transition-colors border-b border-gray-100 dark:border-white/5 last:border-b-0 ${i===searchHighlight?'bg-[#FEF3C7] dark:bg-[#3A2E12]':'hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12]'}`}>
                     <div className="text-sm text-gray-900 dark:text-[#F3EFE6] font-medium">{name || '—'}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{t?`${fmtDisplay(new Date(t))} at ${fmtNYTime(new Date(t))}`:''}</div>
                   </button>
