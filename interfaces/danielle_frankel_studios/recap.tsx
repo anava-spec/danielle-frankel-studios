@@ -146,6 +146,8 @@ const CUSTOM = {
   IS_HYBRID:             'fld1stC4sHuPT4pT4',
   HYBRID_LINK:           'fldewS0eFvZsoS30g',
   HYBRID_WEIGHT:         'fldIQdVmgJzBwYbwl',
+  HYBRID_STYLE_NAMES:    'fldMHwhsQ7rmvjqBb', // rollup — already-formatted "Style A & Style B"
+  HYBRID_TOTAL_PRICE:    'fldunhb83qALkU71Y', // rollup — SUM of both children's proposed_total_custom_price
 } as const;
 
 const PRICING = {
@@ -1054,42 +1056,44 @@ function PricingLineItemsTable({
           </div>
         )}
       </div>
-      <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-            <tr>
-              <th className="px-3 py-2 w-8" />
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Customization</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Rate</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Pre-Approval</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {selectedItems.map(item=>(
-              <tr key={item.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
-                <td className="px-3 py-2.5">
-                  <button type="button" onClick={()=>remove(item.id)} aria-label={`Remove ${item.name}`} className="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
-                    <XIcon size={13}/>
-                  </button>
-                </td>
-                <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{item.name}</td>
-                <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
-                <td className="px-3 py-2.5"><ApprovalPill status={item.approval} colorMap={preApprovalColorMap}/></td>
-                <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
+      {/* Nothing selected yet — a customization isn't always needed (e.g. a
+          Hybrid request that's simply combining two styles), so don't show
+          an empty invoice table; just the search bar above is enough. */}
+      {selectedItems.length > 0 && (
+        <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+              <tr>
+                <th className="px-3 py-2 w-8" />
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Customization</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Rate</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Pre-Approval</th>
+                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Price</th>
               </tr>
-            ))}
-            {selectedItems.length===0 && (
-              <tr><td colSpan={5} className="px-3 py-5 text-center text-gray-400 dark:text-gray-500 text-sm">No customizations added yet.</td></tr>
-            )}
-            <tr className="border-t border-gray-200 dark:border-white/10">
-              <td className="px-3 py-2.5"/>
-              <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6]">Customization Total</td>
-              <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(totalAmount)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {selectedItems.map(item=>(
+                <tr key={item.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                  <td className="px-3 py-2.5">
+                    <button type="button" onClick={()=>remove(item.id)} aria-label={`Remove ${item.name}`} className="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
+                      <XIcon size={13}/>
+                    </button>
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{item.name}</td>
+                  <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
+                  <td className="px-3 py-2.5"><ApprovalPill status={item.approval} colorMap={preApprovalColorMap}/></td>
+                  <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-200 dark:border-white/10">
+                <td className="px-3 py-2.5"/>
+                <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6]">Customization Total</td>
+                <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(totalAmount)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -1137,15 +1141,8 @@ function StyleSelectSingle({ value, options, placeholder, onChange }: StyleSelec
 }
 
 // ─── HybridSectionFields ───────────────────────────────────────────────────────
-// Every field a Regular customization asks for (Customized Style, Embroidery
-// Amount, Customizations, Flags, Customization Detail), plus the section's
-// own Hybrid Price Weight % — repeated once per style in a Hybrid request.
-// Used identically while composing a new Hybrid request (local-only state,
-// no record yet) and while viewing/editing an already-created one (state
-// bound to that child's own record via onChange), so the two flows can never
-// visually drift apart.
 interface HybridSectionFieldsProps {
-  title: string;
+  title?: string;
   value: HybridSectionValue;
   onChange: (patch: Partial<HybridSectionValue>) => void;
   onDetailBlur?: () => void;
@@ -1159,60 +1156,37 @@ interface HybridSectionFieldsProps {
   basePriceNumber: number;
   multiplierFactor: number;
   showRushBox: boolean;
-  maxWeightPercent: number;
+  showWeight?: boolean;
+  maxWeightPercent?: number;
 }
+// Every field a customization request asks for — Style, Embroidery Amount,
+// Customizations, Flags, Additional Details — plus, only for a Hybrid
+// section, its own Price Weight %. Shared between the single Regular style
+// and each of a Hybrid request's two Style sections, so the two flows can
+// never visually drift apart. Style and Embroidery share one row (each
+// half-width); Flags and Price Weight share the next (Flags alone, full
+// width, when there's no weight to show).
 function HybridSectionFields({
   title, value, onChange, onDetailBlur,
   styleOptions, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
-  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor, showRushBox, maxWeightPercent,
+  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor, showRushBox,
+  showWeight = true, maxWeightPercent = 100,
 }: HybridSectionFieldsProps) {
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
   const embroideryOptions = [{ id: 'Light', label: 'Light' }, { id: 'Medium', label: 'Medium' }, { id: 'Full', label: 'Full' }];
   return (
     <div className="border border-gray-200 dark:border-white/10 rounded-xl p-4 space-y-4">
-      <div className="font-bold text-sm text-gray-900 dark:text-[#F3EFE6]">{title}</div>
-
-      <div>
-        <span className={labelCls}>Customized Style</span>
-        <table className="w-full">
-          <thead>
-            <tr>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Style</th>
-              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Base Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="px-3 py-2.5">
-                <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
-              </td>
-              <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(basePriceNumber)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {title && <div className="font-semibold text-base text-gray-900 dark:text-[#F3EFE6]">{title}</div>}
 
       <div className="flex gap-4">
-        <div className="w-2/3">
-          <span className={labelCls}>Embroidery Amount</span>
-          <div className="flex gap-2">
-            {embroideryOptions.map(o => (
-              <button key={o.id} type="button" onClick={() => onChange({ embroidery: value.embroidery === o.id ? null : o.id })}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${value.embroidery === o.id ? 'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24] text-white' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-                {o.label}
-              </button>
-            ))}
-          </div>
+        <div className="w-1/2">
+          <span className={labelCls}>Style</span>
+          <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
         </div>
-        <div className="w-1/3">
-          <span className={labelCls}>Hybrid Price Weight</span>
-          <div className="flex items-center gap-1">
-            <input type="number" min={0} max={maxWeightPercent} value={value.weightPercent ?? ''}
-              onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(maxWeightPercent, Number(e.target.value))) })}
-              placeholder="e.g. 50" className={inputCls} />
-            <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">%</span>
-          </div>
+        <div className="w-1/2">
+          <span className={labelCls}>Embroidery Amount</span>
+          <StyleSelectSingle value={value.embroidery} options={embroideryOptions} placeholder="Select…" onChange={id => onChange({ embroidery: id })} />
         </div>
       </div>
 
@@ -1232,26 +1206,39 @@ function HybridSectionFields({
         />
       </div>
 
-      <div>
-        <span className={labelCls}>Flags</span>
-        <div className="flex gap-2 mb-3">
-          {([
-            { label: 'M2M', active: value.m2m, toggle: () => onChange({ m2m: !value.m2m }), color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
-            { label: 'Alterations', active: value.alts, toggle: () => onChange({ alts: !value.alts }), color: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
-            { label: 'Rush', active: value.rush, toggle: () => onChange({ rush: !value.rush }), color: 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
-          ] as const).map(f => (
-            <button key={f.label} type="button" onClick={f.toggle}
-              className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active ? f.color : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 bg-white dark:bg-[#25211A] hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-              {f.active && <CheckIcon size={11} weight="bold" />}
-              {f.label}
-            </button>
-          ))}
+      <div className="flex gap-4">
+        <div className={showWeight ? 'w-1/2' : 'w-full'}>
+          <span className={labelCls}>Flags</span>
+          <div className="flex gap-2 mb-3">
+            {([
+              { label: 'M2M', active: value.m2m, toggle: () => onChange({ m2m: !value.m2m }), color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
+              { label: 'Alterations', active: value.alts, toggle: () => onChange({ alts: !value.alts }), color: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
+              { label: 'Rush', active: value.rush, toggle: () => onChange({ rush: !value.rush }), color: 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
+            ] as const).map(f => (
+              <button key={f.label} type="button" onClick={f.toggle}
+                className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active ? f.color : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 bg-white dark:bg-[#25211A] hover:bg-gray-50 hover:dark:bg-white/5'}`}>
+                {f.active && <CheckIcon size={11} weight="bold" />}
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {value.rush && showRushBox && <RushFeeBox />}
         </div>
-        {value.rush && showRushBox && <RushFeeBox />}
+        {showWeight && (
+          <div className="w-1/2">
+            <span className={labelCls}>Price Weight</span>
+            <div className="flex items-center gap-1">
+              <input type="number" min={0} max={maxWeightPercent} value={value.weightPercent ?? ''}
+                onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(maxWeightPercent, Number(e.target.value))) })}
+                placeholder="e.g. 50" className={inputCls} />
+              <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">%</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div>
-        <span className={labelCls}>Customization Detail</span>
+        <span className={labelCls}>Additional Details</span>
         <textarea value={value.detail} onChange={e => onChange({ detail: e.target.value })} onBlur={onDetailBlur}
           placeholder="Describe the specific customization — e.g., 'Spaghetti → wide straps, deep V-neck to scoop, champagne colorway'"
           rows={3} className={`${inputCls} resize-none`} />
@@ -1586,7 +1573,7 @@ function CustomizationModal({
   const proposalMissing = useMemo(() => {
     if (mode !== 'edit') return [];
     const missing: string[] = [];
-    if (!styleName) missing.push('Customized Style');
+    if (!styleName) missing.push('Style');
     if (pricingIds.length === 0) missing.push('at least one selected customization');
     if (!embroidery) missing.push('Amount of Embroidery/Paint/Lace');
     if (grandTotal <= 0) missing.push('a calculated price greater than $0');
@@ -1650,13 +1637,11 @@ function CustomizationModal({
     const [t1, t2] = hybridSectionTotals;
     const style1Name = hybridSections[0].styleId ? (stylesRecords?.find(r => r.id === hybridSections[0].styleId)?.name ?? '') : '';
     const style2Name = hybridSections[1].styleId ? (stylesRecords?.find(r => r.id === hybridSections[1].styleId)?.name ?? '') : '';
-    if (!style1Name) missing.push('Style 1 Customized Style');
-    if (!style2Name) missing.push('Style 2 Customized Style');
-    if (hybridSections[0].pricingIds.length === 0) missing.push('at least one Style 1 customization');
-    if (hybridSections[1].pricingIds.length === 0) missing.push('at least one Style 2 customization');
-    if (!hybridSections[0].embroidery) missing.push('Style 1 Amount of Embroidery/Paint/Lace');
-    if (!hybridSections[1].embroidery) missing.push('Style 2 Amount of Embroidery/Paint/Lace');
-    if (!hybridWeightValid) missing.push('Hybrid Price Weight % summing to 100%');
+    // Customizations and Embroidery Amount are optional for Hybrid — the
+    // "customization" is sometimes just combining two styles, nothing more.
+    if (!style1Name) missing.push('Style 1');
+    if (!style2Name) missing.push('Style 2');
+    if (!hybridWeightValid) missing.push('Price Weight % summing to 100%');
     if ((t1.weightedTotal + t2.weightedTotal) <= 0) missing.push('a calculated price greater than $0');
     if (!linkedClientId) missing.push('client');
     if (!saName) missing.push('sales associate');
@@ -1792,11 +1777,17 @@ function CustomizationModal({
     const base = favoriteStyleIds.length > 0
       ? all.filter(r=>favoriteStyleIds.includes(r.id) || r.id===styleId)
       : all;
-    return base.map(r=>({id:r.id, label:r.name})).sort((a,b)=>a.label.localeCompare(b.label));
-  },[stylesRecords, favoriteStyleIds, styleId]);
-  const embroideryOptions = [{id:'Light',label:'Light'},{id:'Medium',label:'Medium'},{id:'Full',label:'Full'}];
+    // Base Price is folded into the option label itself (both the closed/
+    // selected view and each dropdown row use `label` as-is) so the price
+    // shows inside the Style picker instead of as a separate column.
+    return base.map(r=>{
+      const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
+      return { id:r.id, label:`${r.name} — ${formatCurrency(price)}` };
+    }).sort((a,b)=>a.label.localeCompare(b.label));
+  },[stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
 
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
   return (
@@ -1804,7 +1795,10 @@ function CustomizationModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
       style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)', opacity: isVisible?1:0 }}
       onClick={e=>{ if (e.target===e.currentTarget) requestClose(); }}>
-      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full ${isHybridMode ? 'max-w-[960px]' : 'max-w-[680px]'} max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out`}
+      {/* Both Regular and Hybrid now share the same fields-left/summary-right
+          layout, so both use the wider width — Regular at 680px looked
+          cramped once it adopted the same two-column split. */}
+      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[960px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out`}
         style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e=>e.stopPropagation()}>
 
@@ -1903,119 +1897,61 @@ function CustomizationModal({
             </div>
           )}
 
-          {isRegularBody && <>
-          {/* Customized Style — invoice-style row; Base Price is a lookup off
-              the selected style. No overflow-hidden on the wrapper: the style
-              picker's dropdown is absolutely positioned and pops out below
-              the row, so clipping the container would clip and break it. */}
-          <div>
-            <span className={labelCls}>Customized Style</span>
-            {/* No background/border here — this is a single fixed row, not an
-                invoice table, so nothing implies more than one row could exist. */}
-            <div>
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Style</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Base Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="px-3 py-2.5">
-                      <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId}/>
-                    </td>
-                    <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(basePriceNumber)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Embroidery Amount */}
-          <div>
-            <span className={labelCls}>Embroidery Amount</span>
-            <div className="flex gap-2">
-              {embroideryOptions.map(o=>(
-                <button key={o.id} type="button" onClick={()=>handleEmbroidery(embroidery===o.id?null:o.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${embroidery===o.id?'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24] text-white':'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Customizations — invoice-style, searchable breakdown table */}
-          <div>
-            <span className={labelCls}>Customizations</span>
-            <PricingLineItemsTable
-              selected={pricingIds}
-              pricingRecords={pricingRecords}
-              pricingTable={pricingTable}
-              onChange={handlePricing}
-              preApprovalField={preApprovalField}
-              preApprovalColorMap={preApprovalColorMap}
-              percentField={pricingPercentField}
-              multipleField={pricingMultipleField}
-              basisAmount={basePriceNumber}
-              multiplierFactor={multiplierFactor}
-            />
-          </div>
-
-          {/* Flags */}
-          <div>
-            <span className={labelCls}>Flags</span>
-            <div className="flex gap-2 mb-3">
-              {([
-                { label:'M2M',         active:m2m,  toggle:()=>handleM2m(!m2m),   color:'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
-                { label:'Alterations', active:alts, toggle:()=>handleAlts(!alts), color:'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
-                { label:'Rush',        active:rush, toggle:()=>handleRush(!rush), color:'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
-              ] as const).map(f=>(
-                <button key={f.label} type="button" onClick={f.toggle}
-                  className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active?f.color:'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 bg-white dark:bg-[#25211A] hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-                  {f.active && <CheckIcon size={11} weight="bold"/>}
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Rush fee calculation — only shown when leadtime genuinely
-                can't be determined yet (no wedding date). Once it can, the
-                Order Summary's "Rush Fee (X%)" line covers it. */}
-            {rush && leadtimeWeeks === null && <RushFeeBox />}
-          </div>
-
-          {/* Order Summary — Base Price + every section above, folded into one Grand Total */}
-          <div className="pt-2">
-            <span className={labelCls}>Order Summary</span>
-            {([
-              { label: 'Base Price',          amount: basePriceNumber, sub: null as string | null },
-              { label: 'Customization Total', amount: customizationTotal, sub: null },
-              ...((m2m || alts) ? [{ label: 'M2M / Alterations', amount: altsM2mAmount, sub: null }] : []),
-              ...(rush ? [{ label: 'Rush Fee', amount: rushFeeAmount, sub: rushFeePercentDisplay || null }] : []),
-            ]).map(({ label, amount, sub }) => (
-              <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5">
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {label}
-                  {sub && <span className="text-xs font-medium text-gray-400 dark:text-gray-500"> ({sub})</span>}
-                </span>
-                <span className="text-sm text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(amount)}</span>
+          {isRegularBody && (
+            <div className="flex gap-6 items-start">
+              <div className="w-[60%] min-w-0">
+                <HybridSectionFields
+                  value={{ styleId, pricingIds, embroidery, m2m, alts, rush, detail, weightPercent: null }}
+                  onChange={patch => {
+                    if ('styleId' in patch) handleStyleId(patch.styleId ?? null);
+                    if ('embroidery' in patch) handleEmbroidery(patch.embroidery ?? null);
+                    if ('pricingIds' in patch) handlePricing(patch.pricingIds ?? []);
+                    if ('m2m' in patch) handleM2m(!!patch.m2m);
+                    if ('alts' in patch) handleAlts(!!patch.alts);
+                    if ('rush' in patch) handleRush(!!patch.rush);
+                    if ('detail' in patch) setDetail(patch.detail ?? '');
+                  }}
+                  onDetailBlur={handleDetail}
+                  styleOptions={styleOptions}
+                  pricingRecords={pricingRecords}
+                  pricingTable={pricingTable}
+                  preApprovalField={preApprovalField}
+                  preApprovalColorMap={preApprovalColorMap}
+                  pricingPercentField={pricingPercentField}
+                  pricingMultipleField={pricingMultipleField}
+                  basePriceNumber={basePriceNumber}
+                  multiplierFactor={multiplierFactor}
+                  showRushBox={rush && leadtimeWeeks === null}
+                  showWeight={false}
+                />
               </div>
-            ))}
-            <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-2">
-              <span className="text-sm">Grand Total</span>
-              <span className="text-sm">{formatCurrency(grandTotal)}</span>
-            </div>
-          </div>
 
-          {/* Customization Detail */}
-          <div>
-            <span className={labelCls}>Customization Detail</span>
-            <textarea value={detail} onChange={e=>setDetail(e.target.value)} onBlur={handleDetail}
-              placeholder="Describe the specific customization — e.g., 'Spaghetti → wide straps, deep V-neck to scoop, champagne colorway'"
-              rows={3} className={`${inputCls} resize-none`}/>
-          </div>
-          </>}
+              {/* Order Summary — sticky, stays in place while the fields column scrolls */}
+              <div className="w-[40%] shrink-0 sticky top-0">
+                <div className="p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                  <span className={labelCls}>Order Summary</span>
+                  {([
+                    { label: 'Base Price',          amount: basePriceNumber, sub: null as string | null },
+                    { label: 'Customization Total', amount: customizationTotal, sub: null },
+                    ...((m2m || alts) ? [{ label: 'M2M / Alterations', amount: altsM2mAmount, sub: null }] : []),
+                    ...(rush ? [{ label: 'Rush Fee', amount: rushFeeAmount, sub: rushFeePercentDisplay || null }] : []),
+                  ]).map(({ label, amount, sub }) => (
+                    <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        {label}
+                        {sub && <span className="text-xs font-medium text-gray-400 dark:text-gray-500"> ({sub})</span>}
+                      </span>
+                      <span className="text-sm text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
+                    <span className="text-sm">Grand Total</span>
+                    <span className="text-sm">{formatCurrency(grandTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {isHybridMode && (() => {
             const [t1, t2] = hybridSectionTotals;
@@ -2769,6 +2705,7 @@ function PostAppointmentModal({
     id: string;
     styleName: string;
     dateRequested: string;
+    isHybrid: boolean;
     m2m: boolean;
     alts: boolean;
     rush: boolean;
@@ -2785,6 +2722,8 @@ function PostAppointmentModal({
     const fAlts       = customizationsTable.getFieldIfExists(CUSTOM.ALTERATIONS);
     const fRush       = customizationsTable.getFieldIfExists(CUSTOM.RUSH);
     const fIsHybrid   = customizationsTable.getFieldIfExists(CUSTOM.IS_HYBRID);
+    const fHybridStyleNames = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_STYLE_NAMES);
+    const fHybridTotalPrice = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_TOTAL_PRICE);
     const fSourceP    = proposalsTable?.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION) ?? null;
     const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
 
@@ -2796,9 +2735,15 @@ function PostAppointmentModal({
         const isHybrid = fIsHybrid ? rec.getCellValueAsString(fIsHybrid) === 'Hybrid' : false;
         const styleId  = fStyled ? ((rec.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id ?? null) : null;
         const styleRec = styleId ? (stylesRecords?.find(r=>r.id===styleId) ?? null) : null;
-        const styleName = isHybrid ? 'Style 1 & Style 2' : (styleRec?.name ?? c.name);
+        const styleName = isHybrid
+          ? (fHybridStyleNames ? (rec.getCellValueAsString(fHybridStyleNames) || 'Hybrid') : 'Hybrid')
+          : (styleRec?.name ?? c.name);
 
-        const dateRequested = fDateReq ? (rec.getCellValueAsString(fDateReq) || '') : '';
+        // Raw getCellValue (ISO) instead of getCellValueAsString — the latter
+        // renders using the field's configured display format (locale-
+        // dependent), which produced inconsistent-looking dates here for the
+        // same reason Appointment Time did elsewhere in this file.
+        const dateRequested = fDateReq ? ((rec.getCellValue(fDateReq) as string | null) ?? '') : '';
 
         const m2m  = fM2m  ? !!(rec.getCellValue(fM2m)  as boolean|null) : false;
         const alts = fAlts ? !!(rec.getCellValue(fAlts) as boolean|null) : false;
@@ -2810,6 +2755,11 @@ function PostAppointmentModal({
               return link?.some(l=>l.id===rec.id) ?? false;
             })
           : [];
+
+        if (isHybrid) {
+          const grandTotal = fHybridTotalPrice ? parseCurrencyString(rec.getCellValueAsString(fHybridTotalPrice)) : 0;
+          return { id: c.id, styleName, dateRequested, isHybrid, m2m, alts, rush, proposals, grandTotal };
+        }
 
         const embroideryStr = fEmbroidery ? (rec.getCellValueAsString(fEmbroidery) || '') : '';
         const basePriceNumber = (styleRec && stylesBasePriceField)
@@ -2834,9 +2784,14 @@ function PostAppointmentModal({
           : 0;
         const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
 
-        return { id: c.id, styleName, dateRequested, m2m, alts, rush, proposals, grandTotal };
+        return { id: c.id, styleName, dateRequested, isHybrid, m2m, alts, rush, proposals, grandTotal };
       })
-      .filter((r): r is CustomizationRow => r !== null);
+      .filter((r): r is CustomizationRow => r !== null)
+      .sort((a, b) => {
+        if (!a.dateRequested) return 1;
+        if (!b.dateRequested) return -1;
+        return new Date(b.dateRequested).getTime() - new Date(a.dateRequested).getTime(); // most recent first
+      });
   }, [linkedCustomizations, customizationRecords, customizationsTable, stylesRecords, pricingRecords, pricingTable,
       stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, rushFeeProposedField,
       leadtimeWeeksField, proposalsTable, proposalRecords, clientWeddingIso]);
@@ -2904,10 +2859,11 @@ function PostAppointmentModal({
   },[requestClose]);
 
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
-  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const measInput = (label:string, val:string, set:(v:string)=>void, onBlur:()=>void, ph:string) => (
     <div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</div>
+      <div className="text-sm text-gray-400 dark:text-gray-500 mb-1">{label}</div>
       <input value={val} onChange={e=>set(e.target.value)} onBlur={onBlur} placeholder={ph}
         className={`${inputCls} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
         style={{ MozAppearance:'textfield' } as React.CSSProperties} type="number"/>
@@ -3054,17 +3010,27 @@ function PostAppointmentModal({
                   </thead>
                   <tbody>
                     {customizationRows.map(row=>{
-                      const flagParts = [row.m2m && 'M2M', row.alts && 'Alts', row.rush && 'Rush'].filter(Boolean) as string[];
+                      // Same colors as the Flags buttons in CustomizationModal/
+                      // HybridSectionFields, so a flag reads identically here and
+                      // in the detail page. Hybrid gets its own color (matches
+                      // Airtable's own purpleLight1 for the Hybrid choice) and
+                      // only ever shows for hybrid requests.
+                      const flagChips = [
+                        row.isHybrid && { label: 'Hybrid', color: 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-500/30' },
+                        row.m2m && { label: 'M2M', color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
+                        row.alts && { label: 'Alterations', color: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
+                        row.rush && { label: 'Rush', color: 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
+                      ].filter(Boolean) as { label: string; color: string }[];
                       return (
                         <tr key={row.id} onClick={()=>setEditCustomizationId(row.id)}
                           className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
                           <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6] w-64">{row.styleName}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtUSDate(row.dateRequested) : '—'}</td>
                           <td className="px-3 py-2.5">
-                            {flagParts.length > 0 ? (
+                            {flagChips.length > 0 ? (
                               <div className="flex gap-1 flex-wrap">
-                                {flagParts.map(f=>(
-                                  <span key={f} className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-2 py-0.5">{f}</span>
+                                {flagChips.map(f=>(
+                                  <span key={f.label} className={`${f.color} border rounded-full text-xs font-medium px-2 py-0.5`}>{f.label}</span>
                                 ))}
                               </div>
                             ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
