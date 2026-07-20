@@ -3378,10 +3378,20 @@ function AppointmentsApp(): React.ReactElement {
   useEffect(()=>{
     if (!clientSearch.trim()||!appointmentRecords||!fClient) { setSearchResults([]); setShowSearchDrop(false); return; }
     const q = clientSearch.toLowerCase();
-    const m = appointmentRecords.filter(r=>r.getCellValueAsString(fClient!).toLowerCase().includes(q));
+    // Same hidden filters as filterAndSort below (Consultation only, not
+    // Cancelled, must have a linked client) — otherwise a name search could
+    // surface fittings/pickups or cancelled appointments the rest of this
+    // interface never shows.
+    const m = appointmentRecords.filter(r=>{
+      if (!r.getCellValueAsString(fClient!).toLowerCase().includes(q)) return false;
+      if (fStatus && r.getCellValueAsString(fStatus!)==='Cancelled') return false;
+      const type = fType ? r.getCellValueAsString(fType!) : '';
+      if (!isConsultation(type)) return false;
+      return true;
+    });
     setSearchResults(m.slice(0,10));
     setShowSearchDrop(m.length>0);
-  },[clientSearch, appointmentRecords, fClient]);
+  },[clientSearch, appointmentRecords, fClient, fStatus, fType]);
 
   const today    = useMemo(()=>{ const d=new Date(); d.setHours(0,0,0,0); return d; },[]);
   const todayStr = fmtDateKey(today);
