@@ -139,6 +139,13 @@ const CUSTOM = {
   SEND_TO_SLACK:         'fldG6tV91xqwh36P8',
   BASE_PRICE:            'fldLBXbdD3SUfXSgL',
   WEDDING_DATE:          'fldO0Lalw1SkwAf4D',
+  // Hybrid customizations (two styles combined into one request) — the
+  // is_hybrid_customization single-select lives on the parent record only;
+  // children are created as 'Regular' by default and never exposed as a
+  // form question. hybrid_customization is a self-link, parent -> children.
+  IS_HYBRID:             'fld1stC4sHuPT4pT4',
+  HYBRID_LINK:           'fldewS0eFvZsoS30g',
+  HYBRID_WEIGHT:         'fldIQdVmgJzBwYbwl',
 } as const;
 
 const PRICING = {
@@ -831,6 +838,61 @@ function computeAltsM2mAmount(m2m: boolean, alts: boolean): number {
   return 0;
 }
 
+// ─── Hybrid customizations ─────────────────────────────────────────────────────
+// A Hybrid request combines exactly two styles into one Customization Request:
+// two child Customizations records (one per style, each carrying its own
+// Hybrid Price Weight %) plus a parent record (is_hybrid_customization =
+// Hybrid) whose Hybrid Component Customizations links to both children.
+// Airtable's own proposed_total_custom_price formula already multiplies each
+// child's total by its own weight (no-op when the weight is blank), and
+// hybrid_proposed_total_custom_price on the parent SUMs the two children's
+// totals — this client-side math only needs to mirror that for the live
+// on-screen preview, both while composing a new request and while viewing an
+// already-created one.
+interface HybridSectionValue {
+  styleId: string | null;
+  pricingIds: string[];
+  embroidery: string | null;
+  m2m: boolean;
+  alts: boolean;
+  rush: boolean;
+  detail: string;
+  weightPercent: number | null; // 0-100 as typed by the user; Airtable's percent field stores the 0-1 fraction
+}
+function emptyHybridSection(): HybridSectionValue {
+  return { styleId: null, pricingIds: [], embroidery: null, m2m: false, alts: false, rush: false, detail: '', weightPercent: null };
+}
+function computeHybridSectionTotals(
+  section: HybridSectionValue,
+  stylesRecords: AirtableRecord[] | null,
+  stylesBasePriceField: ReturnType<Table['getFieldIfExists']>,
+  stylesSelfUsageField: ReturnType<Table['getFieldIfExists']>,
+  pricingRecords: AirtableRecord[] | null,
+  pPriceField: ReturnType<Table['getFieldIfExists']>,
+  pricingPercentField: ReturnType<Table['getFieldIfExists']>,
+  pricingMultipleField: ReturnType<Table['getFieldIfExists']>,
+  clientWeddingIso: string | null,
+) {
+  const styleRec = section.styleId ? (stylesRecords?.find(r => r.id === section.styleId) ?? null) : null;
+  const basePriceNumber = styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
+  const selfUsageValue = styleRec && stylesSelfUsageField ? parseCurrencyString(styleRec.getCellValueAsString(stylesSelfUsageField)) : 0;
+  const multiplierFactor = computeMultiplierFactor(selfUsageValue, section.embroidery);
+  const customizationTotal = section.pricingIds.reduce((sum, id) => {
+    const r = pricingRecords?.find(pr => pr.id === id);
+    if (!r) return sum;
+    return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor).amount;
+  }, 0);
+  const altsM2mAmount = computeAltsM2mAmount(section.m2m, section.alts);
+  const rawTotal = basePriceNumber + customizationTotal;
+  const leadtimeWeeks = weeksUntil(clientWeddingIso);
+  const rushEstimate = computeRushFeeTier(leadtimeWeeks, rawTotal);
+  const rushFeeAmount = section.rush ? rushEstimate.feeAmount : 0;
+  const grandTotal = rawTotal + altsM2mAmount + rushFeeAmount;
+  const weightFraction = section.weightPercent != null ? section.weightPercent / 100 : null;
+  const weightedTotal = weightFraction != null ? grandTotal * weightFraction : grandTotal;
+  return { basePriceNumber, multiplierFactor, customizationTotal, altsM2mAmount, leadtimeWeeks, rushFeeAmount, rushFeePercent: rushEstimate.percent, grandTotal, weightedTotal };
+}
+
 // ─── RushFeeBox ───────────────────────────────────────────────────────────────
 // Only ever rendered when leadtimeWeeks is null (see the call site) — once a
 // leadtime is available, the Order Summary's own "Rush Fee (X%)" line
@@ -1074,6 +1136,125 @@ function StyleSelectSingle({ value, options, placeholder, onChange }: StyleSelec
   );
 }
 
+// ─── HybridSectionFields ───────────────────────────────────────────────────────
+// Every field a Regular customization asks for (Customized Style, Embroidery
+// Amount, Customizations, Flags, Customization Detail), plus the section's
+// own Hybrid Price Weight % — repeated once per style in a Hybrid request.
+// Used identically while composing a new Hybrid request (local-only state,
+// no record yet) and while viewing/editing an already-created one (state
+// bound to that child's own record via onChange), so the two flows can never
+// visually drift apart.
+interface HybridSectionFieldsProps {
+  title: string;
+  value: HybridSectionValue;
+  onChange: (patch: Partial<HybridSectionValue>) => void;
+  onDetailBlur?: () => void;
+  styleOptions: { id: string; label: string }[];
+  pricingRecords: AirtableRecord[] | null;
+  pricingTable: Table | null;
+  preApprovalField: ReturnType<Table['getFieldIfExists']>;
+  preApprovalColorMap: Record<string, string>;
+  pricingPercentField: ReturnType<Table['getFieldIfExists']>;
+  pricingMultipleField: ReturnType<Table['getFieldIfExists']>;
+  basePriceNumber: number;
+  multiplierFactor: number;
+  showRushBox: boolean;
+}
+function HybridSectionFields({
+  title, value, onChange, onDetailBlur,
+  styleOptions, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
+  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor, showRushBox,
+}: HybridSectionFieldsProps) {
+  const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
+  const embroideryOptions = [{ id: 'Light', label: 'Light' }, { id: 'Medium', label: 'Medium' }, { id: 'Full', label: 'Full' }];
+  return (
+    <div className="border border-gray-200 dark:border-white/10 rounded-xl p-4 space-y-4">
+      <div className="font-bold text-sm text-gray-900 dark:text-[#F3EFE6]">{title}</div>
+
+      <div>
+        <span className={labelCls}>Customized Style</span>
+        <table className="w-full">
+          <thead>
+            <tr>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Style</th>
+              <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Base Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="px-3 py-2.5">
+                <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
+              </td>
+              <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(basePriceNumber)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <span className={labelCls}>Embroidery Amount</span>
+        <div className="flex gap-2">
+          {embroideryOptions.map(o => (
+            <button key={o.id} type="button" onClick={() => onChange({ embroidery: value.embroidery === o.id ? null : o.id })}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${value.embroidery === o.id ? 'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24] text-white' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <span className={labelCls}>Customizations</span>
+        <PricingLineItemsTable
+          selected={value.pricingIds}
+          pricingRecords={pricingRecords}
+          pricingTable={pricingTable}
+          onChange={ids => onChange({ pricingIds: ids })}
+          preApprovalField={preApprovalField}
+          preApprovalColorMap={preApprovalColorMap}
+          percentField={pricingPercentField}
+          multipleField={pricingMultipleField}
+          basisAmount={basePriceNumber}
+          multiplierFactor={multiplierFactor}
+        />
+      </div>
+
+      <div>
+        <span className={labelCls}>Flags</span>
+        <div className="flex gap-2 mb-3">
+          {([
+            { label: 'M2M', active: value.m2m, toggle: () => onChange({ m2m: !value.m2m }), color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
+            { label: 'Alterations', active: value.alts, toggle: () => onChange({ alts: !value.alts }), color: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
+            { label: 'Rush', active: value.rush, toggle: () => onChange({ rush: !value.rush }), color: 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
+          ] as const).map(f => (
+            <button key={f.label} type="button" onClick={f.toggle}
+              className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active ? f.color : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 bg-white dark:bg-[#25211A] hover:bg-gray-50 hover:dark:bg-white/5'}`}>
+              {f.active && <CheckIcon size={11} weight="bold" />}
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {value.rush && showRushBox && <RushFeeBox />}
+      </div>
+
+      <div>
+        <span className={labelCls}>Hybrid Price Weight %</span>
+        <input type="number" min={0} max={100} value={value.weightPercent ?? ''}
+          onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(100, Number(e.target.value))) })}
+          placeholder="e.g. 50" className={inputCls} />
+      </div>
+
+      <div>
+        <span className={labelCls}>Customization Detail</span>
+        <textarea value={value.detail} onChange={e => onChange({ detail: e.target.value })} onBlur={onDetailBlur}
+          placeholder="Describe the specific customization — e.g., 'Spaghetti → wide straps, deep V-neck to scoop, champagne colorway'"
+          rows={3} className={`${inputCls} resize-none`} />
+      </div>
+    </div>
+  );
+}
+
 // ─── CustomizationModal ───────────────────────────────────────────────────────
 interface CustomizationModalProps {
   mode: 'add'|'edit';
@@ -1098,6 +1279,9 @@ interface CustomizationModalProps {
   saRecordId: string | null;
   proposalsTable: Table | null;
   proposalRecords: AirtableRecord[] | null;
+  // All Customizations records (base-wide) — needed only to resolve a Hybrid
+  // parent's two linked child records by id (see hybrid_customization).
+  allCustomizationRecords: AirtableRecord[] | null;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
 }
@@ -1107,7 +1291,7 @@ function CustomizationModal({
   stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, stylesSelfUsageField,
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField,
   linkedClientId, favoriteStyleIds, clientWeddingIso,
-  clientName, saName, saRecordId, proposalsTable, proposalRecords,
+  clientName, saName, saRecordId, proposalsTable, proposalRecords, allCustomizationRecords,
   base, onClose
 }: CustomizationModalProps) {
   const custTable = customizationsTable ?? base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATIONS);
@@ -1123,6 +1307,135 @@ function CustomizationModal({
   const fRush       = custTable?.getFieldIfExists(CUSTOM.RUSH)                  ?? null;
   const fClient     = custTable?.getFieldIfExists(CUSTOM.CLIENT)                ?? null;
   const fSlack      = custTable?.getFieldIfExists(CUSTOM.SEND_TO_SLACK)         ?? null;
+  const fIsHybrid   = custTable?.getFieldIfExists(CUSTOM.IS_HYBRID)            ?? null;
+  const fHybridLink = custTable?.getFieldIfExists(CUSTOM.HYBRID_LINK)          ?? null;
+  const fHybridWeight = custTable?.getFieldIfExists(CUSTOM.HYBRID_WEIGHT)      ?? null;
+
+  // ── Hybrid ────────────────────────────────────────────────────────────────
+  const existingIsHybrid = !!(existingRecord && fIsHybrid && existingRecord.getCellValueAsString(fIsHybrid) === 'Hybrid');
+
+  // The two child records of an already-created Hybrid parent — resolved by
+  // id from the base-wide records list, not fetched separately.
+  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
+    if (!existingIsHybrid || !existingRecord || !fHybridLink || !allCustomizationRecords) return [];
+    const ids = ((existingRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+  }, [existingIsHybrid, existingRecord, fHybridLink, allCustomizationRecords]);
+
+  const sectionFromRecord = useCallback((rec: AirtableRecord | undefined): HybridSectionValue => {
+    if (!rec) return emptyHybridSection();
+    return {
+      styleId: fStyled ? ((rec.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null) : null,
+      pricingIds: fPricing ? ((rec.getCellValue(fPricing) as Array<{ id: string }> | null)?.map(x => x.id) ?? []) : [],
+      embroidery: fEmbroidery ? (rec.getCellValueAsString(fEmbroidery) || null) : null,
+      m2m: fM2m ? !!(rec.getCellValue(fM2m) as boolean | null) : false,
+      alts: fAlts ? !!(rec.getCellValue(fAlts) as boolean | null) : false,
+      rush: fRush ? !!(rec.getCellValue(fRush) as boolean | null) : false,
+      detail: fDetail ? rec.getCellValueAsString(fDetail) : '',
+      weightPercent: fHybridWeight ? (() => {
+        const raw = rec.getCellValue(fHybridWeight);
+        return typeof raw === 'number' ? Math.round(raw * 100) : null;
+      })() : null,
+    };
+  }, [fStyled, fPricing, fEmbroidery, fM2m, fAlts, fRush, fDetail, fHybridWeight]);
+
+  // "add" mode: two independent local-only sections, no record yet.
+  const [addKind, setAddKind] = useState<'Hybrid' | 'Regular' | null>(null);
+  const [hybridAddSections, setHybridAddSections] = useState<[HybridSectionValue, HybridSectionValue]>([emptyHybridSection(), emptyHybridSection()]);
+  const updateHybridAddSection = (idx: 0 | 1, patch: Partial<HybridSectionValue>) => {
+    setHybridAddSections(prev => {
+      const next: [HybridSectionValue, HybridSectionValue] = [prev[0], prev[1]];
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+  };
+
+  // "edit" mode: two sections bound to the already-created child records,
+  // each auto-saving straight to its own record (mirrors the top-level
+  // autoSave pattern below, just targeting a different record id).
+  const [hybridEditSections, setHybridEditSections] = useState<[HybridSectionValue, HybridSectionValue]>(() => [
+    sectionFromRecord(hybridChildRecords[0]), sectionFromRecord(hybridChildRecords[1]),
+  ]);
+  useEffect(() => {
+    if (existingIsHybrid) setHybridEditSections([sectionFromRecord(hybridChildRecords[0]), sectionFromRecord(hybridChildRecords[1])]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hybridChildRecords[0]?.id, hybridChildRecords[1]?.id]);
+
+  const updateHybridEditSection = (idx: 0 | 1, patch: Partial<HybridSectionValue>) => {
+    setHybridEditSections(prev => {
+      const next: [HybridSectionValue, HybridSectionValue] = [prev[0], prev[1]];
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+    const childRecord = hybridChildRecords[idx];
+    if (!childRecord || !custTable) return;
+    const fieldPatch: Record<string, unknown> = {};
+    if ('styleId' in patch && fStyled) fieldPatch[fStyled.id] = patch.styleId ? [{ id: patch.styleId }] : null;
+    if ('pricingIds' in patch && fPricing) fieldPatch[fPricing.id] = (patch.pricingIds ?? []).map(id => ({ id }));
+    if ('embroidery' in patch && fEmbroidery) fieldPatch[fEmbroidery.id] = patch.embroidery ? { name: patch.embroidery } : null;
+    if ('m2m' in patch && fM2m) fieldPatch[fM2m.id] = !!patch.m2m;
+    if ('alts' in patch && fAlts) fieldPatch[fAlts.id] = !!patch.alts;
+    if ('rush' in patch && fRush) fieldPatch[fRush.id] = !!patch.rush;
+    if ('weightPercent' in patch && fHybridWeight) fieldPatch[fHybridWeight.id] = patch.weightPercent != null ? patch.weightPercent / 100 : null;
+    if (Object.keys(fieldPatch).length > 0) {
+      queueWrite(() => custTable!.updateRecordAsync(childRecord.id, fieldPatch)).catch(err => console.error('Hybrid child auto-save failed:', err));
+    }
+  };
+  const handleHybridEditDetailBlur = (idx: 0 | 1) => {
+    const childRecord = hybridChildRecords[idx];
+    if (!childRecord || !custTable || !fDetail) return;
+    queueWrite(() => custTable!.updateRecordAsync(childRecord.id, { [fDetail.id]: hybridEditSections[idx].detail || null }))
+      .catch(err => console.error('Hybrid child auto-save failed:', err));
+  };
+
+  const isHybridMode = (mode === 'add' && addKind === 'Hybrid') || (mode === 'edit' && existingIsHybrid);
+  const isRegularBody = (mode === 'add' && addKind === 'Regular') || (mode === 'edit' && !existingIsHybrid);
+  const showHybridChooser = mode === 'add' && addKind === null;
+
+  const hybridSections = mode === 'edit' ? hybridEditSections : hybridAddSections;
+  const updateHybridSection = mode === 'edit' ? updateHybridEditSection : updateHybridAddSection;
+
+  const hybridSectionTotals = useMemo(() => {
+    const pPriceFieldForHybrid = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
+    return hybridSections.map(section => computeHybridSectionTotals(
+      section, stylesRecords, stylesBasePriceField, stylesSelfUsageField,
+      pricingRecords, pPriceFieldForHybrid, pricingPercentField, pricingMultipleField, clientWeddingIso,
+    )) as [ReturnType<typeof computeHybridSectionTotals>, ReturnType<typeof computeHybridSectionTotals>];
+  }, [hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField, pricingRecords, pricingTable, pricingPercentField, pricingMultipleField, clientWeddingIso]);
+
+  const [hybridSaving, setHybridSaving] = useState(false);
+  const handleHybridSave = async () => {
+    if (!custTable || mode !== 'add') return;
+    setHybridSaving(true);
+    try {
+      const buildChildFields = (s: HybridSectionValue): Record<string, unknown> => {
+        const fields: Record<string, unknown> = {};
+        if (fStatus) fields[CUSTOM.STATUS] = { name: 'Sent to Production' };
+        if (fIsHybrid) fields[CUSTOM.IS_HYBRID] = { name: 'Regular' };
+        if (fStyled && s.styleId) fields[CUSTOM.CUSTOMIZED_STYLE] = [{ id: s.styleId }];
+        if (fPricing && s.pricingIds.length) fields[CUSTOM.CUSTOMIZATION_PRICING] = s.pricingIds.map(id => ({ id }));
+        if (fDetail) fields[CUSTOM.CUSTOMIZATION_DETAIL] = s.detail || null;
+        if (fEmbroidery && s.embroidery) fields[CUSTOM.EMBROIDERY_AMOUNT] = { name: s.embroidery };
+        if (fM2m) fields[CUSTOM.M2M] = s.m2m;
+        if (fAlts) fields[CUSTOM.ALTERATIONS] = s.alts;
+        if (fRush) fields[CUSTOM.RUSH] = s.rush;
+        if (fClient && linkedClientId) fields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
+        if (fHybridWeight && s.weightPercent != null) fields[CUSTOM.HYBRID_WEIGHT] = s.weightPercent / 100;
+        return fields;
+      };
+      const child1Id = await queueWrite(() => custTable!.createRecordAsync(buildChildFields(hybridAddSections[0])));
+      const child2Id = await queueWrite(() => custTable!.createRecordAsync(buildChildFields(hybridAddSections[1])));
+      const parentFields: Record<string, unknown> = {};
+      if (fIsHybrid) parentFields[CUSTOM.IS_HYBRID] = { name: 'Hybrid' };
+      if (fHybridLink) parentFields[CUSTOM.HYBRID_LINK] = [{ id: child1Id }, { id: child2Id }];
+      if (fClient && linkedClientId) parentFields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
+      if (fStatus) parentFields[CUSTOM.STATUS] = { name: 'Sent to Production' };
+      if (fSlack) parentFields[CUSTOM.SEND_TO_SLACK] = true;
+      await queueWrite(() => custTable!.createRecordAsync(parentFields));
+      onClose();
+    } catch (err) { console.error('Failed to add hybrid customization:', err); }
+    finally { setHybridSaving(false); }
+  };
 
   // ── State ─────────────────────────────────────────────────────────────────
   const initStyle = () => {
@@ -1398,8 +1711,10 @@ function CustomizationModal({
             <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
               <ArrowLeftIcon size={18}/>
             </button>
-            <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">{mode==='add'?'Add Customization Request':'Edit Customization'}</div>
-            {mode === 'edit' && (
+            <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">
+              {mode==='add' ? (showHybridChooser ? 'Add Customization Request' : (addKind==='Hybrid' ? 'Add Hybrid Customization' : 'Add Customization Request')) : (existingIsHybrid ? 'Edit Hybrid Customization' : 'Edit Customization')}
+            </div>
+            {mode === 'edit' && !isHybridMode && (
               <button type="button" disabled={!canGenerateProposal} onClick={()=>setShowProposalPreview(true)}
                 title={canGenerateProposal ? 'Generate Proposal' : `Missing: ${proposalMissing.join(', ')}`}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
@@ -1407,13 +1722,30 @@ function CustomizationModal({
               </button>
             )}
           </div>
-          {mode === 'edit' && !canGenerateProposal && (
+          {mode === 'edit' && !isHybridMode && !canGenerateProposal && (
             <div className="px-5 pb-3 -mt-2 text-[11px] text-red-500 dark:text-red-400">
               Missing for proposal: {proposalMissing.join(', ')}
             </div>
           )}
         </div>
 
+        {showHybridChooser ? (
+          <div className="flex-1 overflow-y-auto p-5">
+            <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">Is this a Hybrid customization (two styles combined) or a Regular one?</div>
+            <div className="grid grid-cols-2 gap-4">
+              <button type="button" onClick={()=>setAddKind('Regular')}
+                className="text-left border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-[#D97706] hover:dark:border-[#FBBF24] transition-colors">
+                <div className="font-bold text-gray-900 dark:text-[#F3EFE6] mb-1">Regular</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">A single style, customized as usual.</div>
+              </button>
+              <button type="button" onClick={()=>setAddKind('Hybrid')}
+                className="text-left border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-[#D97706] hover:dark:border-[#FBBF24] transition-colors">
+                <div className="font-bold text-gray-900 dark:text-[#F3EFE6] mb-1">Hybrid</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Two styles combined into one request, each with its own price weight.</div>
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Stage pipeline — edit mode only */}
           {mode === 'edit' && (
@@ -1421,8 +1753,9 @@ function CustomizationModal({
           )}
 
           {/* Proposals generated from this customization request — invoice-
-              style inline table (latest first). */}
-          {mode === 'edit' && proposalsTable && customizationProposals.length > 0 && (
+              style inline table (latest first). Not yet wired for Hybrid
+              requests, since a Hybrid parent has no style/pricing of its own. */}
+          {mode === 'edit' && !isHybridMode && proposalsTable && customizationProposals.length > 0 && (
             <div>
               <span className={labelCls}>Proposals</span>
               <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
@@ -1467,6 +1800,7 @@ function CustomizationModal({
             </div>
           )}
 
+          {isRegularBody && <>
           {/* Customized Style — invoice-style row; Base Price is a lookup off
               the selected style. No overflow-hidden on the wrapper: the style
               picker's dropdown is absolutely positioned and pops out below
@@ -1578,17 +1912,118 @@ function CustomizationModal({
               placeholder="Describe the specific customization — e.g., 'Spaghetti → wide straps, deep V-neck to scoop, champagne colorway'"
               rows={3} className={`${inputCls} resize-none`}/>
           </div>
+          </>}
+
+          {isHybridMode && (() => {
+            const [t1, t2] = hybridSectionTotals;
+            const weightSum = (hybridSections[0].weightPercent ?? 0) + (hybridSections[1].weightPercent ?? 0);
+            const showWeightWarning = (hybridSections[0].weightPercent != null || hybridSections[1].weightPercent != null) && Math.round(weightSum) !== 100;
+            return (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <HybridSectionFields
+                    title="Style 1"
+                    value={hybridSections[0]}
+                    onChange={patch => updateHybridSection(0, patch)}
+                    onDetailBlur={mode === 'edit' ? () => handleHybridEditDetailBlur(0) : undefined}
+                    styleOptions={styleOptions}
+                    pricingRecords={pricingRecords}
+                    pricingTable={pricingTable}
+                    preApprovalField={preApprovalField}
+                    preApprovalColorMap={preApprovalColorMap}
+                    pricingPercentField={pricingPercentField}
+                    pricingMultipleField={pricingMultipleField}
+                    basePriceNumber={t1.basePriceNumber}
+                    multiplierFactor={t1.multiplierFactor}
+                    showRushBox={t1.leadtimeWeeks === null}
+                  />
+                  <HybridSectionFields
+                    title="Style 2"
+                    value={hybridSections[1]}
+                    onChange={patch => updateHybridSection(1, patch)}
+                    onDetailBlur={mode === 'edit' ? () => handleHybridEditDetailBlur(1) : undefined}
+                    styleOptions={styleOptions}
+                    pricingRecords={pricingRecords}
+                    pricingTable={pricingTable}
+                    preApprovalField={preApprovalField}
+                    preApprovalColorMap={preApprovalColorMap}
+                    pricingPercentField={pricingPercentField}
+                    pricingMultipleField={pricingMultipleField}
+                    basePriceNumber={t2.basePriceNumber}
+                    multiplierFactor={t2.multiplierFactor}
+                    showRushBox={t2.leadtimeWeeks === null}
+                  />
+                </div>
+
+                {/* Order Summary — Style 1 | Style 2 | Hybrid, one section, three columns */}
+                <div className="pt-2">
+                  <span className={labelCls}>Order Summary</span>
+                  <div className="grid grid-cols-3 gap-4">
+                    {([{ label: 'Style 1', t: t1 }, { label: 'Style 2', t: t2 }] as const).map(({ label, t }) => (
+                      <div key={label}>
+                        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2">{label}</div>
+                        {([
+                          { l: 'Base Price', a: t.basePriceNumber },
+                          { l: 'Customization Total', a: t.customizationTotal },
+                          ...(t.altsM2mAmount ? [{ l: 'M2M / Alterations', a: t.altsM2mAmount }] : []),
+                          ...(t.rushFeeAmount ? [{ l: 'Rush Fee', a: t.rushFeeAmount }] : []),
+                        ]).map(({ l, a }) => (
+                          <div key={l} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                            <span className="text-xs text-gray-600 dark:text-gray-400">{l}</span>
+                            <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(a)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
+                          <span className="text-xs">Weighted Total</span>
+                          <span className="text-xs">{formatCurrency(t.weightedTotal)}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div>
+                      <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2">Hybrid</div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-xs text-gray-600 dark:text-gray-400">Style 1 (weighted)</span>
+                        <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t1.weightedTotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-xs text-gray-600 dark:text-gray-400">Style 2 (weighted)</span>
+                        <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t2.weightedTotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
+                        <span className="text-xs">Grand Total</span>
+                        <span className="text-xs">{formatCurrency(t1.weightedTotal + t2.weightedTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {showWeightWarning && (
+                    <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      Heads up: Hybrid Price Weight % should add up to 100% across both styles (currently {Math.round(weightSum)}%).
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
+        )}
 
         {/* Footer */}
+        {!showHybridChooser && (
         <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end items-center">
-          {mode==='add' && (
+          {mode==='add' && addKind==='Regular' && (
             <button onClick={handleSave} disabled={saving || !styleId}
               className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
               {saving?'Adding…':'Add Customization'}
             </button>
           )}
+          {mode==='add' && addKind==='Hybrid' && (
+            <button onClick={handleHybridSave} disabled={hybridSaving || !hybridAddSections[0].styleId || !hybridAddSections[1].styleId}
+              className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
+              {hybridSaving?'Adding…':'Add Hybrid Customization'}
+            </button>
+          )}
         </div>
+        )}
       </div>
     </div>
 
@@ -2636,6 +3071,7 @@ function PostAppointmentModal({
           saRecordId={saRecord?.id ?? null}
           proposalsTable={proposalsTable}
           proposalRecords={proposalRecords}
+          allCustomizationRecords={customizationRecords}
           base={base}
           onClose={()=>setOpenCustomizationAdd(false)}
         />
@@ -2665,6 +3101,7 @@ function PostAppointmentModal({
           saRecordId={saRecord?.id ?? null}
           proposalsTable={proposalsTable}
           proposalRecords={proposalRecords}
+          allCustomizationRecords={customizationRecords}
           base={base}
           onClose={()=>setEditCustomizationId(null)}
         />

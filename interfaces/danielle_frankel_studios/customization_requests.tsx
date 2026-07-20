@@ -73,6 +73,17 @@ const FIELD_IDS = {
   STAFF_ROLE_NAME:             'fld1P7ZjPabKLrlPG',
   STAFF_IS_ACTIVE:             'fldB6rPTjxATp7uMf',
   STYLE_NAME:                  'fldEs3chQAeplPc1w',
+  // Hybrid customizations — is_hybrid_customization lives on the parent
+  // record only (children default to 'Regular'). hybrid_customization is a
+  // self-link parent -> children; HYBRID_LINK_INVERSE is Airtable's own
+  // auto-generated symmetric reverse of that link (children -> parent) — a
+  // record is a hybrid CHILD iff this reverse field is non-empty, no
+  // cross-query needed to identify it.
+  IS_HYBRID:                   'fld1stC4sHuPT4pT4',
+  HYBRID_LINK:                 'fldewS0eFvZsoS30g',
+  HYBRID_LINK_INVERSE:         'fldm2oHXY3MgjAFiz',
+  HYBRID_WEIGHT:               'fldIQdVmgJzBwYbwl',
+  HYBRID_TOTAL_PRICE:          'fldunhb83qALkU71Y',
 } as const;
 
 // Shared with getCustomProperties() below, so both the direct table lookup
@@ -629,6 +640,155 @@ function LineItemsTable({
   );
 }
 
+// ─── HybridChildColumn ──────────────────────────────────────────────────────────
+// One of a Hybrid parent's two child Customizations records — same fields as
+// the single-style RecordDetailPage body (Customized Style, Embroidery,
+// Customizations, Additional Fees, Customization Detail), scoped to just this
+// child and auto-saving straight to its own record id. Weighted Total reads
+// the child's own proposed_total_custom_price formula directly (Airtable
+// already multiplies it by this child's Hybrid Price Weight % when set), so
+// this view never re-derives that math client-side.
+function HybridChildColumn({
+  title, childRecord, table, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
+  rushFeeProposedField, rushFeePercentField, selfUsageField, styleOptions, canUpdate,
+}: {
+  title: string; childRecord: AirtableRecord; table: Table;
+  pricingRecords: AirtableRecord[]; pricingTable: Table | null; preApprovalField: Field | null;
+  preApprovalColorMap: Record<string, string>; rushFeeProposedField: Field | null; rushFeePercentField: Field | null;
+  selfUsageField: Field | null; styleOptions: { id: string; label: string }[]; canUpdate: boolean;
+}) {
+  const fStyled     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
+  const fPricing    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
+  const fDetail     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
+  const fEmbroidery = table.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
+  const fBasePrice  = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
+  const fAltsM2m    = table.getFieldIfExists(FIELD_IDS.ALTS_M2M);
+  const fWeight     = table.getFieldIfExists(FIELD_IDS.HYBRID_WEIGHT);
+  const fProposedTotal = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
+
+  const [styleId,    setStyleId]    = useState<string | null>(() => (fStyled ? (childRecord.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null : null));
+  const [pricingIds, setPricingIds] = useState<string[]>(() => (fPricing ? (childRecord.getCellValue(fPricing) as Array<{ id: string }> | null)?.map(x => x.id) ?? [] : []));
+  const [detail,     setDetail]     = useState(fDetail ? childRecord.getCellValueAsString(fDetail) : '');
+  const [embroidery, setEmbroidery] = useState<string | null>(fEmbroidery ? childRecord.getCellValueAsString(fEmbroidery) || null : null);
+
+  const autoSave = useCallback((patch: Record<string, unknown>) => {
+    queueWrite(() => table.updateRecordAsync(childRecord.id, patch)).catch(err => console.error('Hybrid child auto-save failed:', err));
+  }, [table, childRecord.id]);
+  const handleStyleId    = (id: string | null) => { setStyleId(id); if (fStyled) autoSave({ [fStyled.id]: id ? [{ id }] : null }); };
+  const handlePricing    = (ids: string[])     => { setPricingIds(ids); if (fPricing) autoSave({ [fPricing.id]: ids.map(id => ({ id })) }); };
+  const handleEmbroidery = (v: string | null)  => { setEmbroidery(v); if (fEmbroidery) autoSave({ [fEmbroidery.id]: v ? { name: v } : null }); };
+  const addLineItem    = (id: string) => handlePricing([...pricingIds, id]);
+  const removeLineItem = (id: string) => handlePricing(pricingIds.filter(x => x !== id));
+
+  const basePriceNumber = fBasePrice ? parseCurrencyString(childRecord.getCellValueAsString(fBasePrice)) : 0;
+  const rushFeeAmount = rushFeeProposedField ? parseCurrencyString(childRecord.getCellValueAsString(rushFeeProposedField)) : 0;
+  const rushFeePercentDisplay = rushFeePercentField ? childRecord.getCellValueAsString(rushFeePercentField) : '';
+  const altsM2mDisplay = fAltsM2m ? childRecord.getCellValueAsString(fAltsM2m) || '—' : '—';
+  const weightDisplay = fWeight ? (childRecord.getCellValueAsString(fWeight) || '—') : '—';
+
+  const selfUsageValue = selfUsageField ? parseCurrencyString(childRecord.getCellValueAsString(selfUsageField)) : 0;
+  const multiplierFactor = computeMultiplierFactor(selfUsageValue, embroidery);
+  const priceableFields = useMemo(() => ({
+    priceField: pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null,
+    percentField: pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null,
+    multiField: pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null,
+  }), [pricingTable]);
+  const pTypeField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_CUSTOMIZATION_TYPE) ?? null;
+  const pActiveField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_IS_ACTIVE) ?? null;
+
+  const selectedItems = useMemo(() => {
+    if (!pTypeField) return [];
+    return pricingIds.map(id => {
+      const r = pricingRecords.find(pr => pr.id === id);
+      if (!r) return null;
+      const { amount, label } = resolvePricingRow(r, priceableFields, basePriceNumber, multiplierFactor);
+      return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
+    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
+  }, [pricingIds, pricingRecords, pTypeField, priceableFields, basePriceNumber, multiplierFactor, preApprovalField]);
+
+  const suggestions = useMemo(() => {
+    if (!pTypeField) return [];
+    return pricingRecords
+      .filter(r => !pricingIds.includes(r.id))
+      .filter(r => !pActiveField || r.getCellValue(pActiveField) === true)
+      .map(r => {
+        const { amount, label } = resolvePricingRow(r, priceableFields, basePriceNumber, multiplierFactor);
+        return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount };
+      });
+  }, [pricingRecords, pricingIds, pTypeField, pActiveField, priceableFields, basePriceNumber, multiplierFactor]);
+
+  const totalCustomizationCost = useMemo(() => selectedItems.reduce((sum, i) => sum + i.amount, 0), [selectedItems]);
+  const weightedTotal = fProposedTotal
+    ? parseCurrencyString(childRecord.getCellValueAsString(fProposedTotal))
+    : basePriceNumber + totalCustomizationCost + rushFeeAmount + parseCurrencyString(altsM2mDisplay === '—' ? '' : altsM2mDisplay);
+
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+
+  return (
+    <div className="border border-gray-200 dark:border-[#38322A] rounded-xl p-4 space-y-4">
+      <div className="font-bold text-gray-900 dark:text-gray-100">{title}</div>
+
+      <div>
+        <span className={labelCls}>Customized Style</span>
+        <table className="w-full">
+          <thead><tr>
+            <th className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Style</th>
+            <th className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Base Price</th>
+          </tr></thead>
+          <tbody><tr>
+            <td className="px-3 py-2.5"><StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId} disabled={!canUpdate} /></td>
+            <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-gray-100 text-right">{formatCurrency(basePriceNumber)}</td>
+          </tr></tbody>
+        </table>
+      </div>
+
+      <div>
+        <span className={labelCls}>Embroidery Amount</span>
+        <div className="flex gap-2">
+          {(['Light', 'Medium', 'Full'] as const).map(o => (
+            <button key={o} type="button" onClick={() => canUpdate && handleEmbroidery(embroidery === o ? null : o)} disabled={!canUpdate}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${embroidery === o ? 'bg-amber-600 dark:bg-amber-400 border-amber-600 dark:border-amber-400 text-white dark:text-gray-900' : 'border-gray-300 dark:border-[#38322A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>{o}</button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <span className={labelCls}>Customizations</span>
+        <LineItemsTable
+          selectedItems={selectedItems} suggestions={suggestions} onAdd={addLineItem} onRemove={removeLineItem}
+          preApprovalColorMap={preApprovalColorMap} totalAmount={totalCustomizationCost} disabled={!canUpdate}
+        />
+      </div>
+
+      <div className="pt-2">
+        <span className={labelCls}>Additional Fees</span>
+        {[
+          { label: 'Rush Fee', display: formatCurrency(rushFeeAmount), sub: rushFeePercentDisplay || null },
+          { label: 'M2M / Alterations', display: altsM2mDisplay, sub: null },
+          { label: 'Hybrid Price Weight', display: weightDisplay, sub: null },
+        ].map(({ label, display, sub }) => (
+          <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5">
+            <span className="text-sm text-gray-600 dark:text-gray-400">{label}{sub && <span className="text-sm font-medium text-gray-400 dark:text-gray-500"> ({sub})</span>}</span>
+            <span className="text-sm text-gray-900 dark:text-gray-200">{display}</span>
+          </div>
+        ))}
+        <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-2">
+          <span className="text-sm">Weighted Total</span>
+          <span className="text-sm">{formatCurrency(weightedTotal)}</span>
+        </div>
+      </div>
+
+      <div>
+        <span className={labelCls}>Customization Detail</span>
+        <textarea value={detail} onChange={e => setDetail(e.target.value)}
+          onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
+          disabled={!canUpdate} placeholder="Describe the specific customization…"
+          rows={3} className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors resize-none" />
+      </div>
+    </div>
+  );
+}
+
 // ─── DeleteConfirmModal ────────────────────────────────────────────────────────
 // Standard centered modal (backdrop + rounded-2xl container). The Delete button
 // stays disabled behind a 5-second countdown so an accidental click can't
@@ -697,12 +857,13 @@ function DeleteConfirmModal({ clientName, onConfirm, onClose }: {
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, preApprovalField,
   rushFeeProposedField, rushFeePercentField, selfUsageField,
-  clientRecords, favoriteStylesApptField, onBack,
+  clientRecords, favoriteStylesApptField, allCustomizationRecords, onBack,
 }: {
   record: AirtableRecord; table: Table; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   stylesRecords: AirtableRecord[]; preApprovalField: Field | null;
   rushFeeProposedField: Field | null; rushFeePercentField: Field | null; selfUsageField: Field | null;
   clientRecords: AirtableRecord[]; favoriteStylesApptField: Field | null;
+  allCustomizationRecords: AirtableRecord[];
   onBack: () => void;
 }) {
   const canUpdate = table.hasPermissionToUpdateRecords();
@@ -710,6 +871,16 @@ function RecordDetailPage({
   const fApprStatus = table.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS);
   const fStyled     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
   const fPricing    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
+  const fIsHybrid   = table.getFieldIfExists(FIELD_IDS.IS_HYBRID);
+  const fHybridLink = table.getFieldIfExists(FIELD_IDS.HYBRID_LINK);
+  const fHybridTotalPrice = table.getFieldIfExists(FIELD_IDS.HYBRID_TOTAL_PRICE);
+  const isHybrid = !!(fIsHybrid && record.getCellValueAsString(fIsHybrid) === 'Hybrid');
+  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
+    if (!isHybrid || !fHybridLink) return [];
+    const ids = ((record.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+  }, [isHybrid, fHybridLink, record, allCustomizationRecords]);
+  const hybridTotalDisplay = fHybridTotalPrice ? (record.getCellValueAsString(fHybridTotalPrice) || formatCurrency(0)) : formatCurrency(0);
   const fDetail     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
   const fEmbroidery = table.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fBasePrice  = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
@@ -1028,6 +1199,7 @@ function RecordDetailPage({
         <div className="flex-1 overflow-y-auto py-5">
           <div className="mx-auto space-y-5" style={{ width: '60%' }}>
 
+            {!isHybrid && <>
             {/* Customized Style — a single fixed row, not an invoice table: no
                 background/border chrome, so nothing implies more than one row
                 could exist here. No overflow-hidden on the wrapper (unlike the
@@ -1120,6 +1292,47 @@ function RecordDetailPage({
                 placeholder="Describe the specific customization…"
                 rows={3} className={`${inputCls} resize-none`} />
             </div>
+            </>}
+
+            {/* Hybrid breakdown — Style 1 | Style 2 | Hybrid, same visual
+                style as the regular sections above, in three columns within
+                one section. Each child auto-saves to its own record; the
+                Hybrid column reads the parent's own hybrid_proposed_total_
+                custom_price rollup (already a live SUM of both children). */}
+            {isHybrid && (
+              <div className="grid grid-cols-3 gap-4">
+                {hybridChildRecords[0] && (
+                  <HybridChildColumn
+                    title="Style 1" childRecord={hybridChildRecords[0]} table={table}
+                    pricingRecords={pricingRecords} pricingTable={pricingTable}
+                    preApprovalField={preApprovalField} preApprovalColorMap={preApprovalColorMap}
+                    rushFeeProposedField={rushFeeProposedField} rushFeePercentField={rushFeePercentField}
+                    selfUsageField={selfUsageField} styleOptions={styleOptions} canUpdate={canUpdate}
+                  />
+                )}
+                {hybridChildRecords[1] && (
+                  <HybridChildColumn
+                    title="Style 2" childRecord={hybridChildRecords[1]} table={table}
+                    pricingRecords={pricingRecords} pricingTable={pricingTable}
+                    preApprovalField={preApprovalField} preApprovalColorMap={preApprovalColorMap}
+                    rushFeeProposedField={rushFeeProposedField} rushFeePercentField={rushFeePercentField}
+                    selfUsageField={selfUsageField} styleOptions={styleOptions} canUpdate={canUpdate}
+                  />
+                )}
+                {hybridChildRecords.length < 2 && (
+                  <div className="text-sm text-red-500 dark:text-red-400">
+                    Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
+                  </div>
+                )}
+                <div className="border border-gray-200 dark:border-[#38322A] rounded-xl p-4">
+                  <div className="font-bold text-gray-900 dark:text-gray-100 mb-3">Hybrid</div>
+                  <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-2">
+                    <span className="text-sm">Grand Total</span>
+                    <span className="text-sm">{hybridTotalDisplay}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Manager-level approval — replaces the old Slack-based approval step.
                 Locks once Approved is picked; Pending/Rejected stay editable. */}
@@ -1241,6 +1454,8 @@ function CustomizationApp(): React.ReactElement {
       weddingDate:              customizationsTable.getFieldIfExists(FIELD_IDS.WEDDING_DATE),
       proposedTotalCustomPrice: customizationsTable.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE),
       approvedPricing:          customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING),
+      isHybrid:                 customizationsTable.getFieldIfExists(FIELD_IDS.IS_HYBRID),
+      hybridLinkInverse:        customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK_INVERSE),
     };
   }, [customizationsTable]);
 
@@ -1249,6 +1464,15 @@ function CustomizationApp(): React.ReactElement {
   const filteredRecords = useMemo(() => {
     if (!fields) return [];
     return allCustomizationRecords.filter(record => {
+      // A hybrid's two child Customizations (one per style) only ever exist
+      // to feed the parent's price — they're never their own row here, only
+      // embedded inside the parent's detail page. Airtable's own auto-
+      // generated reverse of the hybrid_customization self-link (children ->
+      // parent) identifies a child directly: non-empty means "I'm a child".
+      const isHybridChild = fields.hybridLinkInverse
+        ? ((record.getCellValue(fields.hybridLinkInverse) as Array<{ id: string }> | null)?.length ?? 0) > 0
+        : false;
+      if (isHybridChild) return false;
       const saValue     = fields.salesAssociate   ? record.getCellValueAsString(fields.salesAssociate) : '';
       const styleRaw    = fields.customizedStyle  ? record.getCellValue(fields.customizedStyle)        : null;
       const styleValue  = getLinkedRecordName(styleRaw);
@@ -1301,6 +1525,7 @@ function CustomizationApp(): React.ReactElement {
         selfUsageField={selfUsageField}
         clientRecords={clientRecords}
         favoriteStylesApptField={favoriteStylesApptField}
+        allCustomizationRecords={allCustomizationRecords}
         onBack={() =>
           viewState.previousRecordId
             ? setViewState({ layer: 2, recordId: viewState.previousRecordId })
