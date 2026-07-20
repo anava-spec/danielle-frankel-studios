@@ -1151,7 +1151,7 @@ function NewRequestModal({
           )}
 
           {clientId && kind === 'Regular' && (
-            <div className="flex gap-6 items-start">
+            <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0">
                 <DraftSectionFields
                   value={regularSection} onChange={patch => setRegularSection(prev => ({ ...prev, ...patch }))}
@@ -1161,9 +1161,9 @@ function NewRequestModal({
                   showWeight={false} maxWeightPercent={100}
                 />
               </div>
-              <div className="w-[40%] shrink-0 sticky top-0">
-                <div className="p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Order Summary</span>
+              <div className="w-[40%] shrink-0">
+                <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Summary</span>
                   {[
                     { l: 'Base Price', a: regularTotals.basePriceNumber },
                     { l: 'Customization Total', a: regularTotals.customizationTotal },
@@ -1187,7 +1187,7 @@ function NewRequestModal({
           )}
 
           {clientId && kind === 'Hybrid' && (
-            <div className="flex gap-6 items-start">
+            <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-4">
                 <DraftSectionFields
                   title="Style 1" value={hybridSections[0]}
@@ -1206,9 +1206,9 @@ function NewRequestModal({
                   showWeight maxWeightPercent={100 - (hybridSections[0].weightPercent ?? 0)}
                 />
               </div>
-              <div className="w-[40%] shrink-0 sticky top-0">
-                <div className="p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Order Summary</span>
+              <div className="w-[40%] shrink-0">
+                <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Summary</span>
                   {(['Style 1', 'Style 2'] as const).map((label, i) => (
                     <div key={label} className="pt-3 border-t border-gray-100 dark:border-white/5 first:pt-0 first:border-t-0">
                       <div className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-1.5">{label}</div>

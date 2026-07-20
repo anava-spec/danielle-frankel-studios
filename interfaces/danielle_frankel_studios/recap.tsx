@@ -148,6 +148,10 @@ const CUSTOM = {
   HYBRID_WEIGHT:         'fldIQdVmgJzBwYbwl',
   HYBRID_STYLE_NAMES:    'fldMHwhsQ7rmvjqBb', // rollup — already-formatted "Style A & Style B"
   HYBRID_TOTAL_PRICE:    'fldunhb83qALkU71Y', // rollup — SUM of both children's proposed_total_custom_price
+  // Airtable's own auto-generated reverse of the hybrid_customization self-
+  // link (child -> parent). Non-empty means "I'm a hybrid child" — no
+  // cross-query needed to exclude children from any list.
+  HYBRID_LINK_INVERSE:   'fldm2oHXY3MgjAFiz',
 } as const;
 
 const PRICING = {
@@ -1678,6 +1682,19 @@ function CustomizationModal({
         .filter((x): x is ProposalLineItem => x !== null);
     };
 
+    const styleSection = (section: HybridSectionValue, weight: number, t: ReturnType<typeof computeHybridSectionTotals>, styleName: string, tag: string): ProposalStyleSection => ({
+      styleName: styleName || 'Style TBD',
+      embroideryAmount: section.embroidery ?? '—',
+      lineItems: lineItemsFor(section, weight, tag),
+      summaryRows: ([
+        { label: 'Base Price', amount: t.basePriceNumber * weight, sub: null as string | null },
+        { label: 'Customization Total', amount: t.customizationTotal * weight, sub: null },
+        ...(t.altsM2mAmount ? [{ label: 'M2M / Alterations', amount: t.altsM2mAmount * weight, sub: null }] : []),
+        ...(section.rush && t.rushFeeAmount ? [{ label: 'Rush Fee', amount: t.rushFeeAmount * weight, sub: t.rushFeePercent != null ? `${Math.round(t.rushFeePercent * 100)}%` : null }] : []),
+      ]).filter(row => row.amount !== 0),
+      sectionTotal: t.weightedTotal,
+    });
+
     return {
       styleName: [style1Name, style2Name].filter(Boolean).join(' + ') || 'Hybrid',
       lineItems: [...lineItemsFor(hybridSections[0], w1, 'Style 1'), ...lineItemsFor(hybridSections[1], w2, 'Style 2')],
@@ -1694,6 +1711,10 @@ function CustomizationModal({
         hybridSections[1].rush && t2.rushFeePercent != null ? `Style 2: ${Math.round(t2.rushFeePercent * 100)}%` : null,
       ].filter(Boolean).join(' / '),
       grandTotal: t1.weightedTotal + t2.weightedTotal,
+      hybridBreakdown: {
+        style1: styleSection(hybridSections[0], w1, t1, style1Name, 'Style 1'),
+        style2: styleSection(hybridSections[1], w2, t2, style2Name, 'Style 2'),
+      },
     };
   }, [hybridSectionTotals, hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField,
       pTypeField, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField, preApprovalField]);
@@ -1898,7 +1919,7 @@ function CustomizationModal({
           )}
 
           {isRegularBody && (
-            <div className="flex gap-6 items-start">
+            <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0">
                 <HybridSectionFields
                   value={{ styleId, pricingIds, embroidery, m2m, alts, rush, detail, weightPercent: null }}
@@ -1926,10 +1947,15 @@ function CustomizationModal({
                 />
               </div>
 
-              {/* Order Summary — sticky, stays in place while the fields column scrolls */}
-              <div className="w-[40%] shrink-0 sticky top-0">
-                <div className="p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
-                  <span className={labelCls}>Order Summary</span>
+              {/* Summary — sticky, stays in place while the fields column
+                  scrolls. items-stretch on the row above (not items-start)
+                  is required for this: sticky only has room to "stick"
+                  while its containing block is taller than its own content,
+                  which only happens once this column stretches to match
+                  the fields column's height. */}
+              <div className="w-[40%] shrink-0">
+                <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                  <span className={labelCls}>Summary</span>
                   {([
                     { label: 'Base Price',          amount: basePriceNumber, sub: null as string | null },
                     { label: 'Customization Total', amount: customizationTotal, sub: null },
@@ -1977,7 +2003,7 @@ function CustomizationModal({
               </div>
             );
             return (
-              <div className="flex gap-6 items-start">
+              <div className="flex gap-6 items-stretch">
                 <div className="w-[60%] min-w-0 space-y-4">
                   {missingChildren && (
                     <div className="text-sm text-red-500 dark:text-red-400">
@@ -2020,10 +2046,12 @@ function CustomizationModal({
                   />
                 </div>
 
-                {/* Summary — one panel, Style 1 / Style 2 / Hybrid stacked vertically inside it */}
-                <div className="w-[40%] shrink-0 sticky top-0">
-                  <div className="p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
-                    <span className={labelCls}>Order Summary</span>
+                {/* Summary — one panel, Style 1 / Style 2 / Hybrid stacked
+                    vertically inside it. Sticky lives on the inner card, not
+                    this wrapper — see the Regular block above for why. */}
+                <div className="w-[40%] shrink-0">
+                  <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                    <span className={labelCls}>Summary</span>
                     {summarySection('Style 1', t1)}
                     {summarySection('Style 2', t2)}
                     <div className="pt-3 border-t border-gray-100 dark:border-white/5">
@@ -2132,6 +2160,23 @@ interface ProposalSnapshot {
   rushFeeAmount: number;
   rushFeePercentDisplay: string;
   grandTotal: number;
+  // Only set for a Hybrid request's snapshot — lets ProposalDocument render
+  // Style 1 and Style 2 as two clearly separate, vertically stacked
+  // sections, each ending in its own weighted summary, with one final
+  // combined Grand Total at the end of the whole document. The flat fields
+  // above stay populated too (combined totals, prefixed line items) so
+  // anything reading this snapshot without hybrid-awareness still works.
+  hybridBreakdown?: {
+    style1: ProposalStyleSection;
+    style2: ProposalStyleSection;
+  };
+}
+interface ProposalStyleSection {
+  styleName: string;
+  embroideryAmount: string;
+  lineItems: ProposalLineItem[];
+  summaryRows: Array<{ label: string; amount: number; sub: string | null }>;
+  sectionTotal: number;
 }
 
 // ─── ProposalDocument ───────────────────────────────────────────────────────
@@ -2155,59 +2200,121 @@ function ProposalDocument({ clientName, saName, snapshot, generatedAt }: Proposa
     ...(snapshot.rush ? [{ label: 'Rush Fee', amount: snapshot.rushFeeAmount, sub: snapshot.rushFeePercentDisplay || null }] : []),
   ].filter(row => row.amount !== 0);
 
+  const hb = snapshot.hybridBreakdown;
+
   return (
     <div className="proposal-print-area bg-[#F8F5EE] text-[#111111] rounded-xl border border-gray-200 dark:border-white/10 p-6">
       <div className="text-2xl font-bold mb-1">Danielle Frankel Studios</div>
-      <div className="text-sm text-gray-500 mb-6">Customization Proposal</div>
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="text-sm text-gray-500 mb-4">Customization Proposal</div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="text-sm"><span className="capitalize text-gray-500">Client: </span><span className="font-medium">{clientName}</span></div>
         <div className="text-sm"><span className="capitalize text-gray-500">Sales Associate: </span><span className="font-medium">{saName || '—'}</span></div>
-        <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{snapshot.styleName}</span></div>
-        <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{snapshot.embroideryAmount}</span></div>
+        {!hb && (
+          <>
+            <div className="text-sm"><span className="capitalize text-gray-500">Style: </span><span className="font-medium">{snapshot.styleName}</span></div>
+            <div className="text-sm"><span className="capitalize text-gray-500">Amount of Embroidery/Paint/Lace: </span><span className="font-medium">{snapshot.embroideryAmount}</span></div>
+          </>
+        )}
       </div>
 
-      {/* Customizations — invoice-style table, headers included */}
-      <div className="mb-6">
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshot.lineItems.map(item=>(
-                <tr key={item.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
-                  <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
-                </tr>
+      {hb ? (
+        <>
+          {/* Hybrid — Style 1 and Style 2 as two clearly separate, stacked
+              sections, each ending in its own weighted total; kept compact
+              (tighter padding/margins than the Regular layout below) so the
+              whole document — both styles plus the final Grand Total —
+              still fits on one printed page. */}
+          {([{ label: 'Style 1', s: hb.style1 }, { label: 'Style 2', s: hb.style2 }] as const).map(({ label, s }) => (
+            <div key={label} className="mb-4">
+              <div className="text-base font-bold mb-1">{label}: {s.styleName}</div>
+              <div className="text-sm text-gray-600 mb-2"><span className="text-gray-500">Amount of Embroidery/Paint/Lace: </span>{s.embroideryAmount}</div>
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-2">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-1.5 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
+                      <th className="px-3 py-1.5 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {s.lineItems.map(item => (
+                      <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                        <td className="px-3 py-1.5 text-sm text-gray-900">{item.name}</td>
+                        <td className="px-3 py-1.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
+                      </tr>
+                    ))}
+                    {s.lineItems.length === 0 && (
+                      <tr><td colSpan={2} className="px-3 py-3 text-center text-gray-400 text-sm">No customizations added.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {/* This style's own summary ends its section */}
+              {s.summaryRows.map(({ label: rl, amount, sub }) => (
+                <div key={rl} className="flex justify-between items-center py-1 border-b border-gray-100">
+                  <span className="text-sm text-gray-600">{rl}{sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}</span>
+                  <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
+                </div>
               ))}
-              {snapshot.lineItems.length===0 && (
-                <tr><td colSpan={2} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-1.5">
+                <span className="text-sm">{label} Total</span>
+                <span className="text-sm">{formatCurrency(s.sectionTotal)}</span>
+              </div>
+            </div>
+          ))}
 
-      {/* Order Summary — flags (M2M/Alterations/Rush) only appear here, as rows */}
-      <div className="mb-6">
-        <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Order Summary</div>
-        {orderSummaryRows.map(({ label, amount, sub }) => (
-          <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
-            <span className="text-sm text-gray-600">
-              {label}
-              {sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}
-            </span>
-            <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
+          {/* The combined total ends the whole document */}
+          <div className="flex justify-between items-center font-bold text-gray-900 border-t-2 border-gray-400 pt-2 mb-4">
+            <span className="text-base">Grand Total</span>
+            <span className="text-base">{formatCurrency(snapshot.grandTotal)}</span>
           </div>
-        ))}
-        <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-2">
-          <span className="text-sm">Grand Total</span>
-          <span className="text-sm">{formatCurrency(snapshot.grandTotal)}</span>
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          {/* Customizations — invoice-style table, headers included */}
+          <div className="mb-6">
+            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.lineItems.map(item=>(
+                    <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">{item.name}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
+                    </tr>
+                  ))}
+                  {snapshot.lineItems.length===0 && (
+                    <tr><td colSpan={2} className="px-3 py-5 text-center text-gray-400 text-sm">No customizations added.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Order Summary — flags (M2M/Alterations/Rush) only appear here, as rows */}
+          <div className="mb-6">
+            <div className="text-xs capitalize tracking-wide text-gray-400 mb-2">Order Summary</div>
+            {orderSummaryRows.map(({ label, amount, sub }) => (
+              <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100">
+                <span className="text-sm text-gray-600">
+                  {label}
+                  {sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}
+                </span>
+                <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-2">
+              <span className="text-sm">Grand Total</span>
+              <span className="text-sm">{formatCurrency(snapshot.grandTotal)}</span>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="text-xs text-gray-400">Generated {fmtDisplay(generatedAt)}</div>
     </div>
@@ -2687,9 +2794,17 @@ function PostAppointmentModal({
     if (!customizationRecords || !clientId || !customizationsTable) return [];
     const clientField = customizationsTable.getFieldIfExists(CUSTOM.CLIENT);
     const styleField  = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE);
+    const hybridLinkInverseField = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_LINK_INVERSE);
     if (!clientField || !styleField) return [];
     return customizationRecords
       .filter(r => {
+        // A hybrid's two child Customizations only exist to feed the
+        // parent's price — never their own row, only embedded in the
+        // parent's detail page.
+        const isHybridChild = hybridLinkInverseField
+          ? ((r.getCellValue(hybridLinkInverseField) as Array<{id:string}>|null)?.length ?? 0) > 0
+          : false;
+        if (isHybridChild) return false;
         const lnk = r.getCellValue(clientField) as Array<{id:string}>|null;
         return lnk?.some(l=>l.id===clientId) ?? false;
       })
