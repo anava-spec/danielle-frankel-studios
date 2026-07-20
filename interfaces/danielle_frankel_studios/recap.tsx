@@ -4,6 +4,7 @@ import {
   useBase,
   useRecords,
   useCustomProperties,
+  useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import type { Table, Record as AirtableRecord } from '@airtable/blocks/interface/models';
 import {
@@ -22,6 +23,16 @@ import {
   Printer as PrinterIcon,
   FileText as FileTextIcon,
 } from '@phosphor-icons/react';
+
+// ─── Dark mode ────────────────────────────────────────────────────────────────
+function useTheme(): 'light' | 'dark' {
+  // Reads Airtable's own light/dark preference, not the OS/browser setting.
+  const { colorScheme } = useColorScheme();
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', colorScheme === 'dark');
+  }, [colorScheme]);
+  return colorScheme;
+}
 
 // ─── Write queue ──────────────────────────────────────────────────────────────
 let _writeQueue = Promise.resolve();
@@ -2774,6 +2785,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
 
 // ─── AppointmentsApp ──────────────────────────────────────────────────────────
 function AppointmentsApp(): React.ReactElement {
+  useTheme();
   const base = useBase();
   const { errorState, customPropertyValueByKey } = useCustomProperties(getCustomProperties);
   const stylesBasePriceField = (customPropertyValueByKey?.stylesBasePriceField as ReturnType<Table['getFieldIfExists']>) ?? null;
