@@ -2866,42 +2866,38 @@ function PostAppointmentModal({
                     <tr>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left w-64">Style</th>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Date of Request</th>
-                      <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Flags</th>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Proposals</th>
                       <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Total Price</th>
                     </tr>
                   </thead>
                   <tbody>
                     {customizationRows.map(row=>{
-                      // M2M/Alterations/Rush flags were removed from customization
-                      // requests entirely (per Julia, 2026-07-20 demo feedback —
-                      // those now live only on the Draft Order). Hybrid is the
-                      // only flag left, matching Airtable's own purpleLight1 for
-                      // that choice.
-                      const flagChips = [
-                        row.isHybrid && { label: 'Hybrid', color: 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-500/30' },
-                      ].filter(Boolean) as { label: string; color: string }[];
                       return (
                         <tr key={row.id} onClick={()=>setEditCustomizationId(row.id)}
                           className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-[#FEF3C7] hover:dark:bg-[#3A2E12] transition-colors">
-                          <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6] w-64">{row.styleName}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtUSDate(row.dateRequested) : '—'}</td>
-                          <td className="px-3 py-2.5">
-                            {flagChips.length > 0 ? (
-                              <div className="flex gap-1 flex-wrap">
-                                {flagChips.map(f=>(
-                                  <span key={f.label} className={`${f.color} border rounded-full text-xs font-medium px-2 py-0.5`}>{f.label}</span>
-                                ))}
-                              </div>
-                            ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                          <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6] w-64">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{row.styleName}</span>
+                              {/* M2M/Alterations/Rush flags were removed from
+                                  customization requests entirely (per Julia,
+                                  2026-07-20 demo feedback — those now live
+                                  only on the Draft Order). Hybrid is no
+                                  longer its own Flags column — it's shown
+                                  inline next to the style name, only when
+                                  the request is actually Hybrid. */}
+                              {row.isHybrid && (
+                                <span className="bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-500/30 border rounded-full text-xs font-medium px-2 py-0.5 flex-shrink-0">Hybrid</span>
+                              )}
+                            </div>
                           </td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">{row.dateRequested ? fmtUSDate(row.dateRequested) : '—'}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300">{row.proposals.length > 0 ? row.proposals.length : '—'}</td>
                           <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(row.grandTotal)}</td>
                         </tr>
                       );
                     })}
                     {customizationRows.length === 0 && (
-                      <tr><td colSpan={5} className="px-3 py-5 text-center text-gray-400 dark:text-gray-500 text-sm">No customization requests yet.</td></tr>
+                      <tr><td colSpan={4} className="px-3 py-5 text-center text-gray-400 dark:text-gray-500 text-sm">No customization requests yet.</td></tr>
                     )}
                   </tbody>
                 </table>
