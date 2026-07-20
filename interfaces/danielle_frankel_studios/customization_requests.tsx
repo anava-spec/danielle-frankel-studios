@@ -79,7 +79,7 @@ const FIELD_IDS = {
   STAFF_IS_ACTIVE:             'fldB6rPTjxATp7uMf',
   STYLE_NAME:                  'fldEs3chQAeplPc1w',
   STYLE_BASE_PRICE:            'flduZuxPxxMqXzNxD',
-  // Hybrid customizations — is_hybrid_customization lives on the parent
+  // Hybrid customizations — customization_type (formerly is_hybrid_customization) lives on the parent
   // record only (children default to 'Regular'). hybrid_customization is a
   // self-link parent -> children; HYBRID_LINK_INVERSE is Airtable's own
   // auto-generated symmetric reverse of that link (children -> parent) — a
@@ -91,6 +91,11 @@ const FIELD_IDS = {
   HYBRID_WEIGHT:               'fldIQdVmgJzBwYbwl',
   HYBRID_TOTAL_PRICE:          'fldunhb83qALkU71Y',
   HYBRID_STYLE_NAMES:          'fldMHwhsQ7rmvjqBb', // rollup — already-formatted "Style A & Style B"
+  // Client name rollup through hybrid_customization — resolves correctly for
+  // both Regular and Hybrid parent rows (unlike CLIENT, which isn't always
+  // populated directly on a Hybrid parent), so the main list table reads
+  // this for its Client column instead.
+  HYBRID_CUSTOMIZATION_CLIENT: 'fldW1QVWXgwqI0cJu',
 } as const;
 
 // Shared with getCustomProperties() below, so both the direct table lookup
@@ -104,11 +109,18 @@ const CLIENT_FAV_STYLES_APPT_FIELD_ID = 'fldVw8wCgPKvxN1jD';
 
 const SA_ROLES = ['Client Specialist', 'General Manager', 'Account Manager', 'Client Relationships Director'];
 
-const APPROVAL_STATUS_STEPS = [
-  'Request', 'SA Draft', 'Sent to Production', 'Approved', 'Denied', 'Counter-Proposed', 'Proposed to Client', 'Purchased',
-] as const;
-
-const APPROVAL_STATUS_OPTIONS = [...APPROVAL_STATUS_STEPS];
+// Reads a singleSelect field's current choice names straight off the field's
+// own options — never hardcode a status list, since choices get renamed/
+// added over time (this replaced a stale hardcoded list that caused the
+// Production Status column/filter to compare against choice names that no
+// longer existed on the field).
+function getFieldChoiceNames(field: unknown): string[] {
+  if (!field) return [];
+  try {
+    const choices = ((field as { options?: { choices?: Array<{ name: string }> } }).options?.choices ?? []);
+    return choices.map(c => c.name);
+  } catch { return []; }
+}
 
 // ─── External Field Sources ───────────────────────────────────────────────────
 // Maps field IDs that are populated by external integrations to their source.
@@ -384,6 +396,70 @@ function StyleSelectSingle({ value, options, placeholder, onChange, disabled }: 
   );
 }
 
+// A search-as-you-type client picker (distinct from StyleSelectSingle, which
+// is click-to-open) — the input itself is always visible, filters options as
+// the user types, and supports arrow-key navigation + Enter to select.
+function ClientSearchBar({ value, options, placeholder, onChange, widthPercent = 30 }: {
+  value: string | null; options: { id: string; label: string }[]; placeholder: string;
+  onChange: (id: string | null) => void; widthPercent?: number;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.id === value) ?? null;
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? options.filter(o => o.label.toLowerCase().includes(q)) : options;
+  }, [options, query]);
+
+  useEffect(() => { setActiveIdx(0); }, [query, open]);
+
+  const commit = (id: string) => {
+    onChange(id);
+    setQuery(options.find(o => o.id === id)?.label ?? '');
+    setOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!open) { if (e.key === 'ArrowDown') setOpen(true); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) commit(filtered[activeIdx].id); }
+    else if (e.key === 'Escape') { setOpen(false); }
+  };
+
+  return (
+    <div ref={ref} className="relative" style={{ width: `${widthPercent}%` }}>
+      <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+      <input type="text"
+        value={open ? query : (selected?.label ?? query)}
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (value) onChange(null); }}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-[#1B1813] border border-gray-300 dark:border-[#38322A] rounded-lg outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-gray-900 dark:text-gray-100" />
+      {open && filtered.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-xl shadow-xl max-h-[240px] overflow-y-auto">
+          {filtered.map((o, i) => (
+            <button key={o.id} type="button" onClick={() => commit(o.id)}
+              className={`w-full text-left px-4 py-2 text-sm transition-colors ${i === activeIdx ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Pricing math ──────────────────────────────────────────────────────────────
 // A Customization Pricing row prices itself one of three ways, in priority order:
 // a flat dollar amount, a percentage of `basisAmount` (stored as a 0–1 fraction,
@@ -612,10 +688,10 @@ function LineItemsTable({
             <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
               <tr>
                 {!disabled && <th className="px-3 py-2 w-8" />}
-                <th className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Customization</th>
-                <th className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Rate</th>
-                <th className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left">Pre-Approval</th>
-                <th className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Price</th>
+                <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left">Customization</th>
+                <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left">Rate</th>
+                <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left">Pre-Approval</th>
+                <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-right">Price</th>
               </tr>
             </thead>
             <tbody>
@@ -665,7 +741,6 @@ function HybridChildColumn({
 }) {
   const fStyled    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
   const fDetail    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
-  const fBasePrice = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
 
   const [styleId, setStyleId] = useState<string | null>(() => (fStyled ? (childRecord.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null : null));
   const [detail,  setDetail]  = useState(fDetail ? childRecord.getCellValueAsString(fDetail) : '');
@@ -675,8 +750,7 @@ function HybridChildColumn({
   }, [table, childRecord.id]);
   const handleStyleId = (id: string | null) => { setStyleId(id); if (fStyled) autoSave({ [fStyled.id]: id ? [{ id }] : null }); };
 
-  const basePriceNumber = fBasePrice ? parseCurrencyString(childRecord.getCellValueAsString(fBasePrice)) : 0;
-  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
 
   return (
     <div className="border border-gray-200 dark:border-[#38322A] rounded-xl p-4 space-y-4">
@@ -685,11 +759,6 @@ function HybridChildColumn({
       <div>
         <span className={labelCls}>Style</span>
         <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId} disabled={!canUpdate} />
-      </div>
-
-      <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5">
-        <span className="text-base text-gray-600 dark:text-gray-400">Base Price</span>
-        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(basePriceNumber)}</span>
       </div>
 
       <div>
@@ -740,7 +809,7 @@ function DeleteConfirmModal({ clientName, onConfirm, onClose }: {
       >
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
           <div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-0.5">Delete request</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Delete request</p>
             <p className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF]">Are you sure?</p>
           </div>
           <button onClick={requestClose} disabled={deleting}
@@ -796,7 +865,7 @@ function DraftSectionFields({
   preApprovalField: Field | null; preApprovalColorMap: Record<string, string>;
   basePriceNumber: number; multiplierFactor: number; showCustomizations?: boolean; embroideryApplicable?: boolean;
 }) {
-  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
 
   const pTypeField    = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_CUSTOMIZATION_TYPE) ?? null;
@@ -897,6 +966,9 @@ function NewRequestModal({
 
   const [clientId, setClientId] = useState<string | null>(null);
   const [kind, setKind] = useState<'Hybrid' | 'Regular' | null>(null);
+  // 'select': Client + Regular/Hybrid chooser, both visible at once.
+  // 'form': the field-editing form, reached via Continue.
+  const [stage, setStage] = useState<'select' | 'form'>('select');
   const [regularSection, setRegularSection] = useState<DraftSectionValue>(emptyDraftSection());
   const [hybridSections, setHybridSections] = useState<[DraftSectionValue, DraftSectionValue]>([emptyDraftSection(), emptyDraftSection()]);
   const [saving, setSaving] = useState(false);
@@ -988,45 +1060,65 @@ function NewRequestModal({
     }
   };
 
+  // Past the select stage, clicking outside or "back" returns to the
+  // Client/kind menu instead of closing the modal outright — only the
+  // select stage itself closes on dismiss (per Julia's 2026-07-20 feedback).
+  const handleDismiss = () => {
+    if (stage === 'form') { setStage('select'); setKind(null); }
+    else requestClose();
+  };
+
+  const modalTitle = kind === 'Hybrid' ? 'New Hybrid Customization'
+    : kind === 'Regular' ? 'New Regular Customization'
+    : 'New Customization Request';
+  const selectedClientLabel = clientOptions.find(o => o.id === clientId)?.label ?? '';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
       style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
-      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[960px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
-        style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
+      onClick={e => { if (e.target === e.currentTarget) handleDismiss(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform,max-width] duration-200 ease-out"
+        style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)', maxWidth: stage === 'select' ? '480px' : '960px' }}
         onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-          <div className="font-bold text-xl text-gray-900 dark:text-[#F5F3EF] flex-1">New Customization Request</div>
-          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-xl text-gray-900 dark:text-[#F5F3EF] truncate">{modalTitle}</div>
+            {stage === 'form' && selectedClientLabel && (
+              <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{selectedClientLabel}</div>
+            )}
+          </div>
+          <button onClick={handleDismiss} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
             <XIcon size={18} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div>
-            <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Client</span>
-            <StyleSelectSingle value={clientId} options={clientOptions} placeholder="Select a client…" onChange={setClientId} />
-          </div>
-
-          {clientId && kind === null && (
-            <div>
-              <div className="text-sm text-gray-500 dark:text-gray-400 mb-3">Is this a Hybrid customization (two styles combined) or a Regular one?</div>
-              <div className="grid grid-cols-2 gap-4">
-                <button type="button" onClick={() => setKind('Regular')}
-                  className="text-left border border-gray-200 dark:border-[#38322A] rounded-xl p-5 hover:border-amber-400 transition-colors">
-                  <div className="font-bold text-gray-900 dark:text-gray-100 mb-1">Regular</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">A single style, customized as usual.</div>
-                </button>
-                <button type="button" onClick={() => setKind('Hybrid')}
-                  className="text-left border border-gray-200 dark:border-[#38322A] rounded-xl p-5 hover:border-amber-400 transition-colors">
-                  <div className="font-bold text-gray-900 dark:text-gray-100 mb-1">Hybrid</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Two styles combined into one request, priced at 85% over the higher Base Price.</div>
-                </button>
+          {stage === 'select' && (
+            <>
+              <div>
+                <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Client</span>
+                <ClientSearchBar value={clientId} options={clientOptions} placeholder="Search clients…" onChange={setClientId} widthPercent={30} />
               </div>
-            </div>
+
+              <div>
+                <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-3">Is this a Regular or Hybrid customization?</div>
+                <div className="space-y-3">
+                  <button type="button" onClick={() => setKind('Regular')}
+                    className={`w-full text-left border rounded-xl p-4 transition-colors ${kind === 'Regular' ? 'border-amber-400' : 'border-gray-200 dark:border-[#38322A] hover:border-amber-400'}`}>
+                    <div className="font-bold text-gray-900 dark:text-gray-100 mb-0.5">Regular</div>
+                    <div className="text-[13px] text-gray-500 dark:text-gray-400 whitespace-nowrap">A single style, customized as usual.</div>
+                  </button>
+                  <button type="button" onClick={() => setKind('Hybrid')}
+                    className={`w-full text-left border rounded-xl p-4 transition-colors ${kind === 'Hybrid' ? 'border-amber-400' : 'border-gray-200 dark:border-[#38322A] hover:border-amber-400'}`}>
+                    <div className="font-bold text-gray-900 dark:text-gray-100 mb-0.5">Hybrid</div>
+                    <div className="text-[13px] text-gray-500 dark:text-gray-400 whitespace-nowrap">Two styles combined into one request.</div>
+                  </button>
+                </div>
+              </div>
+            </>
           )}
 
-          {clientId && kind === 'Regular' && (
+          {stage === 'form' && kind === 'Regular' && (
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0">
                 <DraftSectionFields
@@ -1039,7 +1131,7 @@ function NewRequestModal({
               </div>
               <div className="w-[40%] shrink-0">
                 <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Summary</span>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Summary</span>
                   {[
                     { l: 'Base Price', a: regularTotals.basePriceNumber },
                     { l: 'Customization Total', a: regularTotals.customizationTotal },
@@ -1058,7 +1150,7 @@ function NewRequestModal({
             </div>
           )}
 
-          {clientId && kind === 'Hybrid' && (
+          {stage === 'form' && kind === 'Hybrid' && (
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-4">
                 <DraftSectionFields
@@ -1080,7 +1172,7 @@ function NewRequestModal({
               </div>
               <div className="w-[40%] shrink-0">
                 <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block">Summary</span>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Summary</span>
                   {(() => {
                     const higherIsStyle1 = hybridTotals[0].basePriceNumber >= hybridTotals[1].basePriceNumber;
                     return (
@@ -1113,10 +1205,16 @@ function NewRequestModal({
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
-          <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
-            Cancel
+          <button type="button" onClick={handleDismiss} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            {stage === 'form' ? 'Back' : 'Cancel'}
           </button>
-          {kind !== null && (
+          {stage === 'select' && (
+            <button type="button" onClick={() => setStage('form')} disabled={!clientId || !kind}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-amber-600 dark:bg-amber-400 text-white dark:text-gray-900 hover:bg-amber-700 dark:hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+              Continue
+            </button>
+          )}
+          {stage === 'form' && kind !== null && (
             <button type="button" onClick={handleSubmit} disabled={!canSubmit || saving}
               className="px-5 py-2 text-sm font-semibold rounded-lg bg-amber-600 dark:bg-amber-400 text-white dark:text-gray-900 hover:bg-amber-700 dark:hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
               {saving ? 'Creating…' : 'Create Request'}
@@ -1255,9 +1353,9 @@ function RecordDetailPage({
       // field (see below) — a separate concern from this production-review
       // Approve/Deny flow, so it's no longer touched here as a side effect.
       await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved' },
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved by Production' },
       }));
-      setApprovalStatus('Approved');
+      setApprovalStatus('Approved by Production');
     } catch (e) { setError('Failed to approve.'); }
     finally { setSaving(false); }
   };
@@ -1266,9 +1364,9 @@ function RecordDetailPage({
     setSaving(true);
     try {
       await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' },
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied by Production' },
       }));
-      setApprovalStatus('Denied');
+      setApprovalStatus('Denied by Production');
     } catch (e) { setError('Failed to deny.'); }
     finally { setSaving(false); }
   };
@@ -1318,7 +1416,7 @@ function RecordDetailPage({
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
 
-  const isProductionReview = approvalStatus === 'Sent to Production';
+  const isProductionReview = approvalStatus === 'Under Production Review';
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
   // Base Price is shown as-is from its stored field. Total Customization
@@ -1373,13 +1471,17 @@ function RecordDetailPage({
 
   const grandTotal = basePriceNumber + totalCustomizationCost;
 
-  const hybridCombinedTotal = useMemo(() => {
-    if (!isHybrid || !fBasePrice) return 0;
+  const hybridChildBasePrices = useMemo<[number, number]>(() => {
+    if (!isHybrid || !fBasePrice) return [0, 0];
     const [c1, c2] = hybridChildRecords;
     const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fBasePrice)) : 0;
     const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fBasePrice)) : 0;
-    return computeHybridCombinedTotal(b1, b2);
+    return [b1, b2];
   }, [isHybrid, fBasePrice, hybridChildRecords]);
+  const hybridCombinedTotal = useMemo(
+    () => computeHybridCombinedTotal(hybridChildBasePrices[0], hybridChildBasePrices[1]),
+    [hybridChildBasePrices]
+  );
 
   const embroideryApplicable = useMemo(() => {
     if (!pIsEmbroideryField || !pricingRecords) return false;
@@ -1389,7 +1491,7 @@ function RecordDetailPage({
     });
   }, [pIsEmbroideryField, pricingRecords, pricingIds]);
 
-  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium mb-1.5 block';
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
 
   return (
@@ -1402,7 +1504,7 @@ function RecordDetailPage({
           Go back
         </button>
         <span className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] truncate">{clientName}</span>
-        {/* Approval Status chip — non-editable, colors from field choices */}
+        {/* Production Status chip — non-editable, colors from field choices */}
         {approvalStatus && (
           <ApprovalStatusPill status={approvalStatus} colorMap={approvalColorMap} size="header" />
         )}
@@ -1481,98 +1583,127 @@ function RecordDetailPage({
         <div className="flex-1 overflow-y-auto py-5">
           <div className="mx-auto space-y-5" style={{ width: '60%' }}>
 
-            {!isHybrid && <>
-            <div>
-              <span className={labelCls}>Style</span>
-              <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                onChange={handleStyleId} disabled={!canUpdate} />
-            </div>
-
-            <div>
-              <span className={labelCls}>Customizations</span>
-              <LineItemsTable
-                selectedItems={selectedItems}
-                suggestions={suggestions}
-                onAdd={addLineItem}
-                onRemove={removeLineItem}
-                preApprovalColorMap={preApprovalColorMap}
-                totalAmount={totalCustomizationCost}
-                disabled={!canUpdate}
-              />
-            </div>
-
-            {embroideryApplicable && (
-              <div>
-                <span className={labelCls}>Embroidery Amount</span>
-                <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
-                  onChange={handleEmbroidery} disabled={!canUpdate} />
-              </div>
-            )}
-
-            {/* Summary */}
-            <div className="pt-5">
-              <span className={labelCls}>Summary</span>
-              {[
-                { label: 'Base Price',         display: formatCurrency(basePriceNumber) },
-                { label: 'Customization Total', display: formatCurrency(totalCustomizationCost) },
-              ].map(({ label, display }) => (
-                <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5">
-                  <span className="text-base text-gray-600 dark:text-gray-400">{label}</span>
-                  <span className="text-base text-gray-900 dark:text-gray-200">{display}</span>
+            {/* Fields (60%) + sticky Summary (40%) — same split as recap.tsx's
+                edit-mode layout, for both Regular and Hybrid (parity: the two
+                interfaces share one field layout, only the page chrome
+                around it differs — modal in recap.tsx, full page here). */}
+            {!isHybrid && (
+            <div className="flex gap-6 items-stretch">
+              <div className="w-[60%] min-w-0 space-y-5">
+                <div>
+                  <span className={labelCls}>Style</span>
+                  <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
+                    onChange={handleStyleId} disabled={!canUpdate} />
                 </div>
-              ))}
-              <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-2">
-                <span className="text-lg">Grand Total</span>
-                <span className="text-lg">{formatCurrency(grandTotal)}</span>
-              </div>
-            </div>
 
-            {/* Additional Details */}
-            <div>
-              <span className={labelCls}>Additional Details</span>
-              <textarea value={detail} onChange={e => setDetail(e.target.value)}
-                onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
-                disabled={!canUpdate}
-                placeholder="Describe the specific customization…"
-                rows={3} className={`${inputCls} resize-none`} />
-            </div>
-            </>}
+                <div>
+                  <span className={labelCls}>Customizations</span>
+                  <LineItemsTable
+                    selectedItems={selectedItems}
+                    suggestions={suggestions}
+                    onAdd={addLineItem}
+                    onRemove={removeLineItem}
+                    preApprovalColorMap={preApprovalColorMap}
+                    totalAmount={totalCustomizationCost}
+                    disabled={!canUpdate}
+                  />
+                </div>
 
-            {/* Hybrid breakdown — Style 1 | Style 2 | Hybrid, same visual
-                style as the regular sections above, in three columns within
-                one section. Each child auto-saves to its own record; the
-                Hybrid Grand Total is 85% over the higher of the two Base
-                Prices, computed client-side (per Julia's 2026-07-20 demo
-                feedback), not the stale hybrid_proposed_total_custom_price
-                rollup, which still reflects the old per-child-weight formula. */}
-            {isHybrid && (
-              <div className="grid grid-cols-3 gap-4">
-                {hybridChildRecords[0] && (
-                  <HybridChildColumn
-                    title="Style 1" childRecord={hybridChildRecords[0]} table={table}
-                    styleOptions={styleOptions} canUpdate={canUpdate}
-                  />
-                )}
-                {hybridChildRecords[1] && (
-                  <HybridChildColumn
-                    title="Style 2" childRecord={hybridChildRecords[1]} table={table}
-                    styleOptions={styleOptions} canUpdate={canUpdate}
-                  />
-                )}
-                {hybridChildRecords.length < 2 && (
-                  <div className="text-sm text-red-500 dark:text-red-400">
-                    Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
+                {embroideryApplicable && (
+                  <div>
+                    <span className={labelCls}>Embroidery Amount</span>
+                    <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
+                      onChange={handleEmbroidery} disabled={!canUpdate} />
                   </div>
                 )}
-                <div className="border border-gray-200 dark:border-[#38322A] rounded-xl p-4">
-                  <div className="font-bold text-gray-900 dark:text-gray-100 mb-3">Hybrid</div>
-                  <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-2">
+
+                <div>
+                  <span className={labelCls}>Additional Details</span>
+                  <textarea value={detail} onChange={e => setDetail(e.target.value)}
+                    onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
+                    disabled={!canUpdate}
+                    placeholder="Describe the specific customization…"
+                    rows={3} className={`${inputCls} resize-none`} />
+                </div>
+              </div>
+
+              <div className="w-[40%] shrink-0">
+                <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
+                  <span className={labelCls}>Summary</span>
+                  {[
+                    { label: 'Base Price',         display: formatCurrency(basePriceNumber) },
+                    { label: 'Customization Total', display: formatCurrency(totalCustomizationCost) },
+                  ].map(({ label, display }) => (
+                    <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                      <span className="text-base text-gray-600 dark:text-gray-400">{label}</span>
+                      <span className="text-base text-gray-900 dark:text-gray-200">{display}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
                     <span className="text-lg">Grand Total</span>
-                    <span className="text-lg">{formatCurrency(hybridCombinedTotal)}</span>
+                    <span className="text-lg">{formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
               </div>
+            </div>
             )}
+
+            {/* Hybrid: Style 1 / Style 2 stacked in the 60% column, one
+                sticky Summary panel in the 40% column — mirrors recap.tsx's
+                isHybridMode block exactly. Each child auto-saves to its own
+                record; the Hybrid Grand Total is 85% over the higher of the
+                two Base Prices, computed client-side (per Julia's 2026-07-20
+                demo feedback), not the stale hybrid_proposed_total_custom_price
+                rollup, which still reflects the old per-child-weight formula. */}
+            {isHybrid && (() => {
+              const [b1, b2] = hybridChildBasePrices;
+              const higherIsStyle1 = b1 >= b2;
+              return (
+                <div className="flex gap-6 items-stretch">
+                  <div className="w-[60%] min-w-0 space-y-4">
+                    {hybridChildRecords.length < 2 && (
+                      <div className="text-sm text-red-500 dark:text-red-400">
+                        Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
+                      </div>
+                    )}
+                    {hybridChildRecords[0] && (
+                      <HybridChildColumn
+                        title="Style 1" childRecord={hybridChildRecords[0]} table={table}
+                        styleOptions={styleOptions} canUpdate={canUpdate}
+                      />
+                    )}
+                    {hybridChildRecords[1] && (
+                      <HybridChildColumn
+                        title="Style 2" childRecord={hybridChildRecords[1]} table={table}
+                        styleOptions={styleOptions} canUpdate={canUpdate}
+                      />
+                    )}
+                  </div>
+
+                  <div className="w-[40%] shrink-0">
+                    <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
+                      <span className={labelCls}>Summary</span>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">Style 1 Base Price{higherIsStyle1 && ' (higher)'}</span>
+                        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(b1)}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">Style 2 Base Price{!higherIsStyle1 && ' (higher)'}</span>
+                        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(b2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">+85% Surcharge</span>
+                        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(Math.max(b1, b2) * 0.85)}</span>
+                      </div>
+                      <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
+                        <span className="text-lg">Grand Total</span>
+                        <span className="text-lg">{formatCurrency(hybridCombinedTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Manager-level approval — replaces the old Slack-based approval step.
                 Locks once Approved is picked; Pending/Rejected stay editable. */}
@@ -1609,17 +1740,17 @@ function RecordDetailPage({
                 Production has counter-proposed. Review the revised price above.
               </div>
             )}
-            {approvalStatus === 'Denied' && (
+            {(approvalStatus === 'Denied by Production' || approvalStatus === 'Denied by Client') && (
               <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 This customization request was denied.
               </div>
             )}
-            {approvalStatus === 'Purchased' && (
+            {approvalStatus === 'Order Purchased' && (
               <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
                 Finalized and purchased.
               </div>
             )}
-            {(approvalStatus === 'Approved' || approvalStatus === 'Counter-Proposed' || approvalStatus === 'Purchased') && fApproved && (
+            {(approvalStatus === 'Approved by Production' || approvalStatus === 'Approved by Client' || approvalStatus === 'Counter-Proposed' || approvalStatus === 'Order Purchased') && fApproved && (
               <div>
                 <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Counter-Proposed Price' : 'Approved Price'}</span>
                 <div className="text-sm text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
@@ -1690,6 +1821,7 @@ function CustomizationApp(): React.ReactElement {
     if (!customizationsTable) return null;
     return {
       client:                   customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT),
+      hybridCustomizationClient: customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_CUSTOMIZATION_CLIENT),
       customizedStyle:          customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE),
       approvalStatus:           customizationsTable.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS),
       salesAssociate:           customizationsTable.getFieldIfExists(FIELD_IDS.SALES_ASSOCIATE),
@@ -1706,6 +1838,7 @@ function CustomizationApp(): React.ReactElement {
   }, [customizationsTable]);
 
   const approvalChoiceColors = useMemo(() => getChoiceColorMap(fields?.approvalStatus ?? null), [fields]);
+  const approvalStatusOptions = useMemo(() => getFieldChoiceNames(fields?.approvalStatus ?? null), [fields]);
 
   const filteredRecords = useMemo(() => {
     if (!fields) return [];
@@ -1795,7 +1928,7 @@ function CustomizationApp(): React.ReactElement {
         </div>
         <FilterDropdown label="Sales Associate" values={filterSA}             options={saOptions}               onChange={setFilterSA} />
         <FilterDropdown label="Style"           values={filterStyle}          options={styleOptions}            onChange={setFilterStyle} searchable />
-        <FilterDropdown label="Approval Status" values={filterApprovalStatus} options={APPROVAL_STATUS_OPTIONS}  onChange={setFilterApprovalStatus} />
+        <FilterDropdown label="Production Status" values={filterApprovalStatus} options={approvalStatusOptions}  onChange={setFilterApprovalStatus} />
         <button type="button" onClick={() => setShowNewRequest(true)}
           className="ml-auto flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-600 dark:bg-amber-400 dark:text-gray-900 rounded-lg hover:bg-amber-700 dark:hover:bg-amber-300 transition-colors">
           <PlusIcon size={14} />New Customization Request
@@ -1808,8 +1941,8 @@ function CustomizationApp(): React.ReactElement {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
               <tr>
-                {['Client', 'Style', 'Approval Status', 'Sales Associate', 'Date of Request', 'Wedding Date', 'Proposed Total', 'Approved Price'].map(h => (
-                  <th key={h} className="px-3 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left whitespace-nowrap">{h}</th>
+                {['Client', 'Style', 'Production Status', 'Sales Associate', 'Date of Request', 'Wedding Date', 'Proposed Total', 'Approved Price'].map(h => (
+                  <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1817,7 +1950,12 @@ function CustomizationApp(): React.ReactElement {
               {filteredRecords.map(record => {
                 const isHybridRow = fields.isHybrid ? record.getCellValueAsString(fields.isHybrid) === 'Hybrid' : false;
                 const approvalVal = fields.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
-                const clientText  = fields.client          ? getLinkedRecordName(record.getCellValue(fields.client))         : '—';
+                // hybrid_customization_client rolls up the client through
+                // hybrid_customization, resolving correctly even when a
+                // Hybrid parent's own CLIENT link isn't populated directly.
+                const clientText  = (fields.hybridCustomizationClient ? record.getCellValueAsString(fields.hybridCustomizationClient) : '')
+                  || (fields.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '')
+                  || '—';
                 const styleText   = isHybridRow
                   ? (fields.hybridStyleNames ? (record.getCellValueAsString(fields.hybridStyleNames) || 'Hybrid') : 'Hybrid')
                   : (fields.customizedStyle ? getLinkedRecordName(record.getCellValue(fields.customizedStyle)) : '—');

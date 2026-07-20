@@ -140,7 +140,7 @@ const CUSTOM = {
   BASE_PRICE:            'fldLBXbdD3SUfXSgL',
   WEDDING_DATE:          'fldO0Lalw1SkwAf4D',
   // Hybrid customizations (two styles combined into one request) — the
-  // is_hybrid_customization single-select lives on the parent record only;
+  // customization_type (formerly is_hybrid_customization) single-select lives on the parent record only;
   // children are created as 'Regular' by default and never exposed as a
   // form question. hybrid_customization is a self-link, parent -> children.
   IS_HYBRID:             'fld1stC4sHuPT4pT4',
@@ -816,7 +816,7 @@ function TodayCard({ record, apptTable, clientRecords, onClick }: TodayCardProps
 // ─── Hybrid customizations ─────────────────────────────────────────────────────
 // A Hybrid request combines exactly two styles into one Customization Request:
 // two child Customizations records (one per style) plus a parent record
-// (is_hybrid_customization = Hybrid) whose Hybrid Component Customizations
+// (customization_type = Hybrid) whose Hybrid Component Customizations
 // links to both children. Per Julia (2026-07-20 demo feedback): Hybrid has no
 // per-style Customizations, Embroidery, or Flags — each style is just a Style
 // + Additional Details. Pricing isn't a per-style weight anymore either: the
@@ -1619,26 +1619,41 @@ function CustomizationModal({
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
+  // Past the chooser, clicking outside or the back arrow returns to the
+  // chooser instead of closing the modal — only the chooser step itself
+  // closes on dismiss (per Julia's 2026-07-20 feedback; matches customization_requests.tsx).
+  const handleDismiss = () => {
+    if (mode === 'add' && addKind !== null) setAddKind(null);
+    else requestClose();
+  };
+
+  const modalTitle = mode === 'add'
+    ? (addKind === 'Hybrid' ? 'New Hybrid Customization' : addKind === 'Regular' ? 'New Regular Customization' : 'New Customization Request')
+    : (existingIsHybrid ? 'Edit Hybrid Customization' : 'Edit Customization');
+
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
       style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)', opacity: isVisible?1:0 }}
-      onClick={e=>{ if (e.target===e.currentTarget) requestClose(); }}>
+      onClick={e=>{ if (e.target===e.currentTarget) handleDismiss(); }}>
       {/* Both Regular and Hybrid now share the same fields-left/summary-right
           layout, so both use the wider width — Regular at 680px looked
-          cramped once it adopted the same two-column split. */}
-      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[960px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out`}
-        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+          cramped once it adopted the same two-column split. The chooser step
+          itself uses a much narrower width — same value as
+          customization_requests.tsx's chooser — since it has nothing that
+          needs the wide two-column layout. */}
+      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform,max-width] duration-200 ease-out`}
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)', maxWidth: showHybridChooser ? '480px' : '960px' }}
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
         <div className="border-b border-gray-100 dark:border-white/5">
           <div className="p-5 flex items-center gap-3">
-            <button onClick={requestClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
+            <button onClick={handleDismiss} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
               <ArrowLeftIcon size={18}/>
             </button>
             <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">
-              {mode==='add' ? (showHybridChooser ? 'Add Customization Request' : (addKind==='Hybrid' ? 'Add Hybrid Customization' : 'Add Customization Request')) : (existingIsHybrid ? 'Edit Hybrid Customization' : 'Edit Customization')}
+              {modalTitle}
             </div>
             {mode === 'edit' && (
               <button type="button" disabled={!effectiveCanGenerateProposal} onClick={()=>setShowProposalPreview(true)}
@@ -1657,17 +1672,17 @@ function CustomizationModal({
 
         {showHybridChooser ? (
           <div className="flex-1 overflow-y-auto p-5">
-            <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">Is this a Hybrid customization (two styles combined) or a Regular one?</div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-4">Is this a Regular or Hybrid customization?</div>
+            <div className="space-y-3">
               <button type="button" onClick={()=>setAddKind('Regular')}
-                className="text-left border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-[#D97706] hover:dark:border-[#FBBF24] transition-colors">
-                <div className="font-bold text-gray-900 dark:text-[#F3EFE6] mb-1">Regular</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">A single style, customized as usual.</div>
+                className="w-full text-left border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:border-[#D97706] hover:dark:border-[#FBBF24] transition-colors">
+                <div className="font-bold text-gray-900 dark:text-[#F3EFE6] mb-0.5">Regular</div>
+                <div className="text-[13px] text-gray-500 dark:text-gray-400 whitespace-nowrap">A single style, customized as usual.</div>
               </button>
               <button type="button" onClick={()=>setAddKind('Hybrid')}
-                className="text-left border border-gray-200 dark:border-white/10 rounded-xl p-5 hover:border-[#D97706] hover:dark:border-[#FBBF24] transition-colors">
-                <div className="font-bold text-gray-900 dark:text-[#F3EFE6] mb-1">Hybrid</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Two styles combined into one request, each with its own price weight.</div>
+                className="w-full text-left border border-gray-200 dark:border-white/10 rounded-xl p-4 hover:border-[#D97706] hover:dark:border-[#FBBF24] transition-colors">
+                <div className="font-bold text-gray-900 dark:text-[#F3EFE6] mb-0.5">Hybrid</div>
+                <div className="text-[13px] text-gray-500 dark:text-gray-400 whitespace-nowrap">Two styles combined into one request.</div>
               </button>
             </div>
           </div>
