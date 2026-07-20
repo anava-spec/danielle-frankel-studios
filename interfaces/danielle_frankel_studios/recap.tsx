@@ -1129,7 +1129,10 @@ function HybridSectionFields({
       {title && <div className="font-semibold text-base text-gray-900 dark:text-[#F3EFE6]">{title}</div>}
 
       <div>
-        <span className={labelCls}>Style</span>
+        <div className="flex items-baseline justify-between gap-2 mb-1.5">
+          <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+        </div>
         <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
       </div>
 

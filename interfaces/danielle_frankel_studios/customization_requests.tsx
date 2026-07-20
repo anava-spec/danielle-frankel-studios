@@ -757,7 +757,10 @@ function HybridChildColumn({
       <div className="font-bold text-gray-900 dark:text-gray-100">{title}</div>
 
       <div>
-        <span className={labelCls}>Style</span>
+        <div className="flex items-baseline justify-between gap-2 mb-1.5">
+          <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+        </div>
         <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId} disabled={!canUpdate} />
       </div>
 
@@ -904,7 +907,10 @@ function DraftSectionFields({
       {title && <div className="font-semibold text-base text-gray-900 dark:text-gray-100">{title}</div>}
 
       <div>
-        <span className={labelCls}>Style</span>
+        <div className="flex items-baseline justify-between gap-2 mb-1.5">
+          <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+        </div>
         <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
       </div>
 
@@ -1591,7 +1597,10 @@ function RecordDetailPage({
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-5">
                 <div>
-                  <span className={labelCls}>Style</span>
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+                  </div>
                   <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
                     onChange={handleStyleId} disabled={!canUpdate} />
                 </div>
