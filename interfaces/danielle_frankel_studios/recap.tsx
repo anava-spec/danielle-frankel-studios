@@ -1159,11 +1159,12 @@ interface HybridSectionFieldsProps {
   basePriceNumber: number;
   multiplierFactor: number;
   showRushBox: boolean;
+  maxWeightPercent: number;
 }
 function HybridSectionFields({
   title, value, onChange, onDetailBlur,
   styleOptions, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
-  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor, showRushBox,
+  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor, showRushBox, maxWeightPercent,
 }: HybridSectionFieldsProps) {
   const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
@@ -1240,8 +1241,8 @@ function HybridSectionFields({
 
       <div>
         <span className={labelCls}>Hybrid Price Weight %</span>
-        <input type="number" min={0} max={100} value={value.weightPercent ?? ''}
-          onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(100, Number(e.target.value))) })}
+        <input type="number" min={0} max={maxWeightPercent} value={value.weightPercent ?? ''}
+          onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(maxWeightPercent, Number(e.target.value))) })}
           placeholder="e.g. 50" className={inputCls} />
       </div>
 
@@ -1403,9 +1404,16 @@ function CustomizationModal({
     )) as [ReturnType<typeof computeHybridSectionTotals>, ReturnType<typeof computeHybridSectionTotals>];
   }, [hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField, pricingRecords, pricingTable, pricingPercentField, pricingMultipleField, clientWeddingIso]);
 
+  // Hybrid Price Weight % must add up to exactly 100% across both styles —
+  // hard-blocked, not just a warning: the Save button stays disabled until
+  // it does, and each weight input's own max is capped so one field can
+  // never be typed high enough to push the combined total over 100%.
+  const hybridWeightSum = (hybridSections[0].weightPercent ?? 0) + (hybridSections[1].weightPercent ?? 0);
+  const hybridWeightValid = Math.round(hybridWeightSum) === 100;
+
   const [hybridSaving, setHybridSaving] = useState(false);
   const handleHybridSave = async () => {
-    if (!custTable || mode !== 'add') return;
+    if (!custTable || mode !== 'add' || !hybridWeightValid) return;
     setHybridSaving(true);
     try {
       const buildChildFields = (s: HybridSectionValue): Record<string, unknown> => {
@@ -1620,6 +1628,91 @@ function CustomizationModal({
       altsM2mAmount, rushFeeAmount, rushFeePercentDisplay, grandTotal]);
   const proposalSnapshot = canGenerateProposal ? liveDisplaySnapshot : null;
 
+  // ── Hybrid Generate Proposal ──────────────────────────────────────────────
+  // One combined proposal for the whole Hybrid request, sourced from the
+  // parent record. Each section's own line items and totals are scaled by
+  // that section's own weight fraction (no weight = full amount, matching
+  // Airtable's own proposed_total_custom_price rule) before being combined,
+  // so every row on the printed document sums exactly to the printed Grand
+  // Total — never a synthetic breakdown that contradicts itself.
+  const hybridProposalMissing = useMemo(() => {
+    if (mode !== 'edit' || !isHybridMode) return [];
+    const missing: string[] = [];
+    const [t1, t2] = hybridSectionTotals;
+    const style1Name = hybridSections[0].styleId ? (stylesRecords?.find(r => r.id === hybridSections[0].styleId)?.name ?? '') : '';
+    const style2Name = hybridSections[1].styleId ? (stylesRecords?.find(r => r.id === hybridSections[1].styleId)?.name ?? '') : '';
+    if (!style1Name) missing.push('Style 1 Customized Style');
+    if (!style2Name) missing.push('Style 2 Customized Style');
+    if (hybridSections[0].pricingIds.length === 0) missing.push('at least one Style 1 customization');
+    if (hybridSections[1].pricingIds.length === 0) missing.push('at least one Style 2 customization');
+    if (!hybridSections[0].embroidery) missing.push('Style 1 Amount of Embroidery/Paint/Lace');
+    if (!hybridSections[1].embroidery) missing.push('Style 2 Amount of Embroidery/Paint/Lace');
+    if (!hybridWeightValid) missing.push('Hybrid Price Weight % summing to 100%');
+    if ((t1.weightedTotal + t2.weightedTotal) <= 0) missing.push('a calculated price greater than $0');
+    if (!linkedClientId) missing.push('client');
+    if (!saName) missing.push('sales associate');
+    return missing;
+  }, [mode, isHybridMode, hybridSectionTotals, hybridSections, stylesRecords, hybridWeightValid, linkedClientId, saName]);
+  const hybridCanGenerateProposal = mode === 'edit' && !!existingRecord && isHybridMode && hybridProposalMissing.length === 0;
+
+  const hybridLiveDisplaySnapshot = useMemo<ProposalSnapshot>(() => {
+    const [t1, t2] = hybridSectionTotals;
+    const w1 = hybridSections[0].weightPercent != null ? hybridSections[0].weightPercent / 100 : 1;
+    const w2 = hybridSections[1].weightPercent != null ? hybridSections[1].weightPercent / 100 : 1;
+    const style1Name = hybridSections[0].styleId ? (stylesRecords?.find(r => r.id === hybridSections[0].styleId)?.name ?? '') : '';
+    const style2Name = hybridSections[1].styleId ? (stylesRecords?.find(r => r.id === hybridSections[1].styleId)?.name ?? '') : '';
+
+    const lineItemsFor = (section: HybridSectionValue, weight: number, tag: string): ProposalLineItem[] => {
+      if (!pTypeField) return [];
+      const styleRec = section.styleId ? (stylesRecords?.find(sr => sr.id === section.styleId) ?? null) : null;
+      const basePriceForRow = styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
+      const selfUsageForRow = styleRec && stylesSelfUsageField ? parseCurrencyString(styleRec.getCellValueAsString(stylesSelfUsageField)) : 0;
+      const multiplier = computeMultiplierFactor(selfUsageForRow, section.embroidery);
+      return section.pricingIds
+        .map(id => {
+          const r = pricingRecords?.find(pr => pr.id === id);
+          if (!r) return null;
+          const { amount, label } = resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceForRow, multiplier);
+          return {
+            id: r.id,
+            name: `${tag} — ${r.getCellValueAsString(pTypeField)}`,
+            label,
+            amount: amount * weight,
+            approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
+          };
+        })
+        .filter((x): x is ProposalLineItem => x !== null);
+    };
+
+    return {
+      styleName: [style1Name, style2Name].filter(Boolean).join(' + ') || 'Hybrid',
+      lineItems: [...lineItemsFor(hybridSections[0], w1, 'Style 1'), ...lineItemsFor(hybridSections[1], w2, 'Style 2')],
+      basePriceNumber: t1.basePriceNumber * w1 + t2.basePriceNumber * w2,
+      customizationTotal: t1.customizationTotal * w1 + t2.customizationTotal * w2,
+      embroideryAmount: `Style 1: ${hybridSections[0].embroidery ?? '—'} · Style 2: ${hybridSections[1].embroidery ?? '—'}`,
+      m2m: hybridSections[0].m2m || hybridSections[1].m2m,
+      alts: hybridSections[0].alts || hybridSections[1].alts,
+      rush: hybridSections[0].rush || hybridSections[1].rush,
+      altsM2mAmount: t1.altsM2mAmount * w1 + t2.altsM2mAmount * w2,
+      rushFeeAmount: t1.rushFeeAmount * w1 + t2.rushFeeAmount * w2,
+      rushFeePercentDisplay: [
+        hybridSections[0].rush && t1.rushFeePercent != null ? `Style 1: ${Math.round(t1.rushFeePercent * 100)}%` : null,
+        hybridSections[1].rush && t2.rushFeePercent != null ? `Style 2: ${Math.round(t2.rushFeePercent * 100)}%` : null,
+      ].filter(Boolean).join(' / '),
+      grandTotal: t1.weightedTotal + t2.weightedTotal,
+    };
+  }, [hybridSectionTotals, hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField,
+      pTypeField, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField, preApprovalField]);
+  const hybridProposalSnapshot = hybridCanGenerateProposal ? hybridLiveDisplaySnapshot : null;
+
+  // Whichever the modal is actually showing right now, Regular or Hybrid —
+  // everything downstream (header button, missing-fields banner, Proposals
+  // table, ProposalPreviewModal/ProposalDetailModal) reads only these.
+  const effectiveCanGenerateProposal = isHybridMode ? hybridCanGenerateProposal : canGenerateProposal;
+  const effectiveProposalMissing = isHybridMode ? hybridProposalMissing : proposalMissing;
+  const effectiveProposalSnapshot = isHybridMode ? hybridProposalSnapshot : proposalSnapshot;
+  const effectiveLiveDisplaySnapshot = isHybridMode ? hybridLiveDisplaySnapshot : liveDisplaySnapshot;
+
   const customizationProposals = useMemo(() => {
     if (!proposalRecords || !existingRecord || !proposalsTable) return [];
     const fSourceP = proposalsTable.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION);
@@ -1714,17 +1807,17 @@ function CustomizationModal({
             <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">
               {mode==='add' ? (showHybridChooser ? 'Add Customization Request' : (addKind==='Hybrid' ? 'Add Hybrid Customization' : 'Add Customization Request')) : (existingIsHybrid ? 'Edit Hybrid Customization' : 'Edit Customization')}
             </div>
-            {mode === 'edit' && !isHybridMode && (
-              <button type="button" disabled={!canGenerateProposal} onClick={()=>setShowProposalPreview(true)}
-                title={canGenerateProposal ? 'Generate Proposal' : `Missing: ${proposalMissing.join(', ')}`}
+            {mode === 'edit' && (
+              <button type="button" disabled={!effectiveCanGenerateProposal} onClick={()=>setShowProposalPreview(true)}
+                title={effectiveCanGenerateProposal ? 'Generate Proposal' : `Missing: ${effectiveProposalMissing.join(', ')}`}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                 <FileTextIcon size={14}/>Generate Proposal
               </button>
             )}
           </div>
-          {mode === 'edit' && !isHybridMode && !canGenerateProposal && (
+          {mode === 'edit' && !effectiveCanGenerateProposal && (
             <div className="px-5 pb-3 -mt-2 text-[11px] text-red-500 dark:text-red-400">
-              Missing for proposal: {proposalMissing.join(', ')}
+              Missing for proposal: {effectiveProposalMissing.join(', ')}
             </div>
           )}
         </div>
@@ -1753,9 +1846,9 @@ function CustomizationModal({
           )}
 
           {/* Proposals generated from this customization request — invoice-
-              style inline table (latest first). Not yet wired for Hybrid
-              requests, since a Hybrid parent has no style/pricing of its own. */}
-          {mode === 'edit' && !isHybridMode && proposalsTable && customizationProposals.length > 0 && (
+              style inline table (latest first). For a Hybrid request these
+              are sourced from the parent record, same as any other. */}
+          {mode === 'edit' && proposalsTable && customizationProposals.length > 0 && (
             <div>
               <span className={labelCls}>Proposals</span>
               <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
@@ -1916,8 +2009,6 @@ function CustomizationModal({
 
           {isHybridMode && (() => {
             const [t1, t2] = hybridSectionTotals;
-            const weightSum = (hybridSections[0].weightPercent ?? 0) + (hybridSections[1].weightPercent ?? 0);
-            const showWeightWarning = (hybridSections[0].weightPercent != null || hybridSections[1].weightPercent != null) && Math.round(weightSum) !== 100;
             return (
               <>
                 <div className="grid grid-cols-2 gap-4">
@@ -1936,6 +2027,7 @@ function CustomizationModal({
                     basePriceNumber={t1.basePriceNumber}
                     multiplierFactor={t1.multiplierFactor}
                     showRushBox={t1.leadtimeWeeks === null}
+                    maxWeightPercent={100 - (hybridSections[1].weightPercent ?? 0)}
                   />
                   <HybridSectionFields
                     title="Style 2"
@@ -1952,6 +2044,7 @@ function CustomizationModal({
                     basePriceNumber={t2.basePriceNumber}
                     multiplierFactor={t2.multiplierFactor}
                     showRushBox={t2.leadtimeWeeks === null}
+                    maxWeightPercent={100 - (hybridSections[0].weightPercent ?? 0)}
                   />
                 </div>
 
@@ -1995,9 +2088,9 @@ function CustomizationModal({
                       </div>
                     </div>
                   </div>
-                  {showWeightWarning && (
-                    <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                      Heads up: Hybrid Price Weight % should add up to 100% across both styles (currently {Math.round(weightSum)}%).
+                  {!hybridWeightValid && (
+                    <div className="mt-2 text-xs font-semibold text-red-600 dark:text-red-400">
+                      Error: Hybrid Price Weight % must add up to exactly 100% across both styles (currently {Math.round(hybridWeightSum)}%{hybridWeightSum > 100 ? ' — exceeds 100%' : ''}).
                     </div>
                   )}
                 </div>
@@ -2017,7 +2110,7 @@ function CustomizationModal({
             </button>
           )}
           {mode==='add' && addKind==='Hybrid' && (
-            <button onClick={handleHybridSave} disabled={hybridSaving || !hybridAddSections[0].styleId || !hybridAddSections[1].styleId}
+            <button onClick={handleHybridSave} disabled={hybridSaving || !hybridAddSections[0].styleId || !hybridAddSections[1].styleId || !hybridWeightValid}
               className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
               {hybridSaving?'Adding…':'Add Hybrid Customization'}
             </button>
@@ -2027,9 +2120,9 @@ function CustomizationModal({
       </div>
     </div>
 
-      {showProposalPreview && proposalSnapshot && linkedClientId && existingRecord && (
+      {showProposalPreview && effectiveProposalSnapshot && linkedClientId && existingRecord && (
         <ProposalPreviewModal
-          snapshot={proposalSnapshot}
+          snapshot={effectiveProposalSnapshot}
           clientName={clientName}
           clientId={linkedClientId}
           saName={saName}
@@ -2049,7 +2142,7 @@ function CustomizationModal({
             proposalsTable={proposalsTable}
             clientName={clientName}
             saName={saName}
-            snapshot={liveDisplaySnapshot}
+            snapshot={effectiveLiveDisplaySnapshot}
             onClose={()=>setViewProposalId(null)}
           />
         );
