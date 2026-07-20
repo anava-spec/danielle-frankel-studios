@@ -160,6 +160,10 @@ const PRICING = {
   PRICE:     'fldoFj5qMu6IRX53d',
   PERCENT:   'fldzVvl1ZMSfEGQdQ',
   MULTIPLE:  'fldEKZTpnJ5Y1gjOw',
+  // Whether this specific customization/pricing row needs an Embroidery
+  // Amount to compute its formula — Embroidery Amount only shows on the
+  // request form when at least one selected row has this checked.
+  IS_EMBROIDERY: 'fldXgmTz2GNW969Mw',
 } as const;
 
 // Proposals table — created in the sandbox base for "Customization Proposal
@@ -809,64 +813,24 @@ function TodayCard({ record, apptTable, clientRecords, onClick }: TodayCardProps
   );
 }
 
-// ─── Rush fee calculation ──────────────────────────────────────────────────────
-// Real Airtable formula (Customizations table, "Rush Fee with Proposed Custom
-// Price"): tiered by Leadtime (Weeks) — weeks between today and the wedding —
-// applied against Proposed Total Custom Price (Base Price + Customization
-// Total, before Rush Fee/M2M-Alterations). Reimplemented client-side because
-// in "add" mode no record exists yet for Airtable to compute the real formula
-// field against — this is the only way to preview it before save. Shared by
-// RushFeeBox's own display and CustomizationModal's Grand Total, so both
-// always agree on the same computed fee.
-function computeRushFeeTier(leadtimeWeeks: number | null, proposedTotal: number): { percent: number | null; feeAmount: number } {
-  if (leadtimeWeeks === null) return { percent: null, feeAmount: 0 };
-  const w = leadtimeWeeks;
-  let percent: number | null = null;
-  if      (w < 24 && w > 20) percent = 0;
-  else if (w < 20 && w > 16) percent = 0.10;
-  else if (w < 16 && w > 14) percent = 0.15;
-  else if (w < 14 && w > 12) percent = 0.20;
-  else if (w < 12 && w > 10) percent = 0.30;
-  else if (w < 10 && w > 8)  percent = 0.40;
-  else if (w < 8  && w > 6)  percent = 0.50;
-  else if (w < 6  && w > 4)  percent = 0.75;
-  return { percent, feeAmount: percent !== null ? percent * proposedTotal : 0 };
-}
-
-// IF(AND({Alterations}, {Made-to-Measure}), 2950, IF({Alterations}, 1950, IF({Made-to-Measure}, 1800, 0)))
-// Flat matrix, not a picker of Pricing table rows — M2M and Alterations are
-// now plain checkboxes (see CustomizationModal), and this is their combined
-// dollar amount for both the live preview and the Order Summary.
-function computeAltsM2mAmount(m2m: boolean, alts: boolean): number {
-  if (m2m && alts) return 2950;
-  if (alts) return 1950;
-  if (m2m) return 1800;
-  return 0;
-}
-
 // ─── Hybrid customizations ─────────────────────────────────────────────────────
 // A Hybrid request combines exactly two styles into one Customization Request:
-// two child Customizations records (one per style, each carrying its own
-// Hybrid Price Weight %) plus a parent record (is_hybrid_customization =
-// Hybrid) whose Hybrid Component Customizations links to both children.
-// Airtable's own proposed_total_custom_price formula already multiplies each
-// child's total by its own weight (no-op when the weight is blank), and
-// hybrid_proposed_total_custom_price on the parent SUMs the two children's
-// totals — this client-side math only needs to mirror that for the live
-// on-screen preview, both while composing a new request and while viewing an
-// already-created one.
+// two child Customizations records (one per style) plus a parent record
+// (is_hybrid_customization = Hybrid) whose Hybrid Component Customizations
+// links to both children. Per Julia (2026-07-20 demo feedback): Hybrid has no
+// per-style Customizations, Embroidery, or Flags — each style is just a Style
+// + Additional Details. Pricing isn't a per-style weight anymore either: the
+// combined total is the higher of the two styles' Base Price, plus an 85%
+// surcharge on top of that (see hybridCombinedTotal at the CustomizationModal
+// call site) — never a sum of the two styles' own prices.
 interface HybridSectionValue {
   styleId: string | null;
   pricingIds: string[];
   embroidery: string | null;
-  m2m: boolean;
-  alts: boolean;
-  rush: boolean;
   detail: string;
-  weightPercent: number | null; // 0-100 as typed by the user; Airtable's percent field stores the 0-1 fraction
 }
 function emptyHybridSection(): HybridSectionValue {
-  return { styleId: null, pricingIds: [], embroidery: null, m2m: false, alts: false, rush: false, detail: '', weightPercent: null };
+  return { styleId: null, pricingIds: [], embroidery: null, detail: '' };
 }
 function computeHybridSectionTotals(
   section: HybridSectionValue,
@@ -877,7 +841,6 @@ function computeHybridSectionTotals(
   pPriceField: ReturnType<Table['getFieldIfExists']>,
   pricingPercentField: ReturnType<Table['getFieldIfExists']>,
   pricingMultipleField: ReturnType<Table['getFieldIfExists']>,
-  clientWeddingIso: string | null,
 ) {
   const styleRec = section.styleId ? (stylesRecords?.find(r => r.id === section.styleId) ?? null) : null;
   const basePriceNumber = styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
@@ -888,34 +851,12 @@ function computeHybridSectionTotals(
     if (!r) return sum;
     return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor).amount;
   }, 0);
-  const altsM2mAmount = computeAltsM2mAmount(section.m2m, section.alts);
-  const rawTotal = basePriceNumber + customizationTotal;
-  const leadtimeWeeks = weeksUntil(clientWeddingIso);
-  const rushEstimate = computeRushFeeTier(leadtimeWeeks, rawTotal);
-  const rushFeeAmount = section.rush ? rushEstimate.feeAmount : 0;
-  const grandTotal = rawTotal + altsM2mAmount + rushFeeAmount;
-  const weightFraction = section.weightPercent != null ? section.weightPercent / 100 : null;
-  const weightedTotal = weightFraction != null ? grandTotal * weightFraction : grandTotal;
-  return { basePriceNumber, multiplierFactor, customizationTotal, altsM2mAmount, leadtimeWeeks, rushFeeAmount, rushFeePercent: rushEstimate.percent, grandTotal, weightedTotal };
+  const grandTotal = basePriceNumber + customizationTotal;
+  return { basePriceNumber, multiplierFactor, customizationTotal, grandTotal };
 }
-
-// ─── RushFeeBox ───────────────────────────────────────────────────────────────
-// Only ever rendered when leadtimeWeeks is null (see the call site) — once a
-// leadtime is available, the Order Summary's own "Rush Fee (X%)" line
-// already communicates the calculated value, so this box would be
-// redundant. Its only job is explaining why rush can't be priced yet.
-function RushFeeBox() {
-  return (
-    <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 p-4">
-      <div className="flex items-center gap-1.5 mb-1">
-        <LightningIcon size={13} className="text-amber-600 dark:text-amber-300"/>
-        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 capitalize tracking-wider">Rush Fee — Automated Calculation</span>
-      </div>
-      <div className="text-sm text-amber-800 dark:text-amber-200">
-        Rush fee can't be calculated yet because the wedding date isn't filled in.
-      </div>
-    </div>
-  );
+// The 85%-over-the-higher-style rule, applied to a pair of Base Prices.
+function computeHybridCombinedTotal(basePrice1: number, basePrice2: number): number {
+  return Math.max(basePrice1, basePrice2) * 1.85;
 }
 
 // ─── CustomizationStagePipeline ───────────────────────────────────────────────
@@ -1159,22 +1100,26 @@ interface HybridSectionFieldsProps {
   pricingMultipleField: ReturnType<Table['getFieldIfExists']>;
   basePriceNumber: number;
   multiplierFactor: number;
-  showRushBox: boolean;
-  showWeight?: boolean;
-  maxWeightPercent?: number;
+  // Hybrid sections skip Customizations and Embroidery Amount entirely —
+  // per Julia (2026-07-20 demo feedback), a Hybrid "customization" is just
+  // combining two styles, never a picker of specific line items.
+  showCustomizations?: boolean;
+  // Only meaningful when showCustomizations is true: Embroidery Amount
+  // itself only shows once at least one selected customization/pricing row
+  // needs it (Pricing table's own is_embroidery checkbox).
+  embroideryApplicable?: boolean;
 }
-// Every field a customization request asks for — Style, Embroidery Amount,
-// Customizations, Flags, Additional Details — plus, only for a Hybrid
-// section, its own Price Weight %. Shared between the single Regular style
-// and each of a Hybrid request's two Style sections, so the two flows can
-// never visually drift apart. Style and Embroidery share one row (each
-// half-width); Flags and Price Weight share the next (Flags alone, full
-// width, when there's no weight to show).
+// Every field a Regular customization request asks for — Style,
+// Customizations, Embroidery Amount (last, only when applicable),
+// Additional Details. A Hybrid section (showCustomizations=false) is just
+// Style + Additional Details. Shared between the single Regular style and
+// each of a Hybrid request's two Style sections, so the two flows can never
+// visually drift apart.
 function HybridSectionFields({
   title, value, onChange, onDetailBlur,
   styleOptions, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
-  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor, showRushBox,
-  showWeight = true, maxWeightPercent = 100,
+  pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor,
+  showCustomizations = true, embroideryApplicable = false,
 }: HybridSectionFieldsProps) {
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
@@ -1183,63 +1128,35 @@ function HybridSectionFields({
     <div className="border border-gray-200 dark:border-white/10 rounded-xl p-4 space-y-4">
       {title && <div className="font-semibold text-base text-gray-900 dark:text-[#F3EFE6]">{title}</div>}
 
-      <div className="flex gap-4">
-        <div className="w-1/2">
-          <span className={labelCls}>Style</span>
-          <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
+      <div>
+        <span className={labelCls}>Style</span>
+        <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
+      </div>
+
+      {showCustomizations && (
+        <div>
+          <span className={labelCls}>Customizations</span>
+          <PricingLineItemsTable
+            selected={value.pricingIds}
+            pricingRecords={pricingRecords}
+            pricingTable={pricingTable}
+            onChange={ids => onChange({ pricingIds: ids })}
+            preApprovalField={preApprovalField}
+            preApprovalColorMap={preApprovalColorMap}
+            percentField={pricingPercentField}
+            multipleField={pricingMultipleField}
+            basisAmount={basePriceNumber}
+            multiplierFactor={multiplierFactor}
+          />
         </div>
-        <div className="w-1/2">
+      )}
+
+      {showCustomizations && embroideryApplicable && (
+        <div>
           <span className={labelCls}>Embroidery Amount</span>
           <StyleSelectSingle value={value.embroidery} options={embroideryOptions} placeholder="Select…" onChange={id => onChange({ embroidery: id })} />
         </div>
-      </div>
-
-      <div>
-        <span className={labelCls}>Customizations</span>
-        <PricingLineItemsTable
-          selected={value.pricingIds}
-          pricingRecords={pricingRecords}
-          pricingTable={pricingTable}
-          onChange={ids => onChange({ pricingIds: ids })}
-          preApprovalField={preApprovalField}
-          preApprovalColorMap={preApprovalColorMap}
-          percentField={pricingPercentField}
-          multipleField={pricingMultipleField}
-          basisAmount={basePriceNumber}
-          multiplierFactor={multiplierFactor}
-        />
-      </div>
-
-      <div className="flex gap-4">
-        <div className={showWeight ? 'w-1/2' : 'w-full'}>
-          <span className={labelCls}>Flags</span>
-          <div className="flex gap-2 mb-3">
-            {([
-              { label: 'M2M', active: value.m2m, toggle: () => onChange({ m2m: !value.m2m }), color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
-              { label: 'Alterations', active: value.alts, toggle: () => onChange({ alts: !value.alts }), color: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
-              { label: 'Rush', active: value.rush, toggle: () => onChange({ rush: !value.rush }), color: 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
-            ] as const).map(f => (
-              <button key={f.label} type="button" onClick={f.toggle}
-                className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${f.active ? f.color : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 bg-white dark:bg-[#25211A] hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-                {f.active && <CheckIcon size={11} weight="bold" />}
-                {f.label}
-              </button>
-            ))}
-          </div>
-          {value.rush && showRushBox && <RushFeeBox />}
-        </div>
-        {showWeight && (
-          <div className="w-1/2">
-            <span className={labelCls}>Price Weight</span>
-            <div className="flex items-center gap-1">
-              <input type="number" min={0} max={maxWeightPercent} value={value.weightPercent ?? ''}
-                onChange={e => onChange({ weightPercent: e.target.value === '' ? null : Math.max(0, Math.min(maxWeightPercent, Number(e.target.value))) })}
-                placeholder="e.g. 50" className={inputCls} />
-              <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">%</span>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       <div>
         <span className={labelCls}>Additional Details</span>
@@ -1303,14 +1220,10 @@ function CustomizationModal({
   const fPricing    = custTable?.getFieldIfExists(CUSTOM.CUSTOMIZATION_PRICING) ?? null;
   const fDetail     = custTable?.getFieldIfExists(CUSTOM.CUSTOMIZATION_DETAIL)  ?? null;
   const fEmbroidery = custTable?.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT)     ?? null;
-  const fM2m        = custTable?.getFieldIfExists(CUSTOM.M2M)                   ?? null;
-  const fAlts       = custTable?.getFieldIfExists(CUSTOM.ALTERATIONS)           ?? null;
-  const fRush       = custTable?.getFieldIfExists(CUSTOM.RUSH)                  ?? null;
   const fClient     = custTable?.getFieldIfExists(CUSTOM.CLIENT)                ?? null;
   const fSlack      = custTable?.getFieldIfExists(CUSTOM.SEND_TO_SLACK)         ?? null;
   const fIsHybrid   = custTable?.getFieldIfExists(CUSTOM.IS_HYBRID)            ?? null;
   const fHybridLink = custTable?.getFieldIfExists(CUSTOM.HYBRID_LINK)          ?? null;
-  const fHybridWeight = custTable?.getFieldIfExists(CUSTOM.HYBRID_WEIGHT)      ?? null;
 
   // ── Hybrid ────────────────────────────────────────────────────────────────
   const existingIsHybrid = !!(existingRecord && fIsHybrid && existingRecord.getCellValueAsString(fIsHybrid) === 'Hybrid');
@@ -1329,16 +1242,9 @@ function CustomizationModal({
       styleId: fStyled ? ((rec.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null) : null,
       pricingIds: fPricing ? ((rec.getCellValue(fPricing) as Array<{ id: string }> | null)?.map(x => x.id) ?? []) : [],
       embroidery: fEmbroidery ? (rec.getCellValueAsString(fEmbroidery) || null) : null,
-      m2m: fM2m ? !!(rec.getCellValue(fM2m) as boolean | null) : false,
-      alts: fAlts ? !!(rec.getCellValue(fAlts) as boolean | null) : false,
-      rush: fRush ? !!(rec.getCellValue(fRush) as boolean | null) : false,
       detail: fDetail ? rec.getCellValueAsString(fDetail) : '',
-      weightPercent: fHybridWeight ? (() => {
-        const raw = rec.getCellValue(fHybridWeight);
-        return typeof raw === 'number' ? Math.round(raw * 100) : null;
-      })() : null,
     };
-  }, [fStyled, fPricing, fEmbroidery, fM2m, fAlts, fRush, fDetail, fHybridWeight]);
+  }, [fStyled, fPricing, fEmbroidery, fDetail]);
 
   // "add" mode: two independent local-only sections, no record yet.
   const [addKind, setAddKind] = useState<'Hybrid' | 'Regular' | null>(null);
@@ -1374,10 +1280,6 @@ function CustomizationModal({
     if ('styleId' in patch && fStyled) fieldPatch[fStyled.id] = patch.styleId ? [{ id: patch.styleId }] : null;
     if ('pricingIds' in patch && fPricing) fieldPatch[fPricing.id] = (patch.pricingIds ?? []).map(id => ({ id }));
     if ('embroidery' in patch && fEmbroidery) fieldPatch[fEmbroidery.id] = patch.embroidery ? { name: patch.embroidery } : null;
-    if ('m2m' in patch && fM2m) fieldPatch[fM2m.id] = !!patch.m2m;
-    if ('alts' in patch && fAlts) fieldPatch[fAlts.id] = !!patch.alts;
-    if ('rush' in patch && fRush) fieldPatch[fRush.id] = !!patch.rush;
-    if ('weightPercent' in patch && fHybridWeight) fieldPatch[fHybridWeight.id] = patch.weightPercent != null ? patch.weightPercent / 100 : null;
     if (Object.keys(fieldPatch).length > 0) {
       queueWrite(() => custTable!.updateRecordAsync(childRecord.id, fieldPatch)).catch(err => console.error('Hybrid child auto-save failed:', err));
     }
@@ -1400,20 +1302,18 @@ function CustomizationModal({
     const pPriceFieldForHybrid = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
     return hybridSections.map(section => computeHybridSectionTotals(
       section, stylesRecords, stylesBasePriceField, stylesSelfUsageField,
-      pricingRecords, pPriceFieldForHybrid, pricingPercentField, pricingMultipleField, clientWeddingIso,
+      pricingRecords, pPriceFieldForHybrid, pricingPercentField, pricingMultipleField,
     )) as [ReturnType<typeof computeHybridSectionTotals>, ReturnType<typeof computeHybridSectionTotals>];
-  }, [hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField, pricingRecords, pricingTable, pricingPercentField, pricingMultipleField, clientWeddingIso]);
+  }, [hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField, pricingRecords, pricingTable, pricingPercentField, pricingMultipleField]);
 
-  // Hybrid Price Weight % must add up to exactly 100% across both styles —
-  // hard-blocked, not just a warning: the Save button stays disabled until
-  // it does, and each weight input's own max is capped so one field can
-  // never be typed high enough to push the combined total over 100%.
-  const hybridWeightSum = (hybridSections[0].weightPercent ?? 0) + (hybridSections[1].weightPercent ?? 0);
-  const hybridWeightValid = Math.round(hybridWeightSum) === 100;
+  // Combined Hybrid total: 85% surcharge on top of the higher-priced style's
+  // Base Price (per Julia, 2026-07-20 demo feedback) — not a sum of the two
+  // styles' own prices, and no per-style weight involved at all anymore.
+  const hybridCombinedTotal = computeHybridCombinedTotal(hybridSectionTotals[0].basePriceNumber, hybridSectionTotals[1].basePriceNumber);
 
   const [hybridSaving, setHybridSaving] = useState(false);
   const handleHybridSave = async () => {
-    if (!custTable || mode !== 'add' || !hybridWeightValid) return;
+    if (!custTable || mode !== 'add') return;
     setHybridSaving(true);
     try {
       const buildChildFields = (s: HybridSectionValue): Record<string, unknown> => {
@@ -1423,12 +1323,7 @@ function CustomizationModal({
         if (fStyled && s.styleId) fields[CUSTOM.CUSTOMIZED_STYLE] = [{ id: s.styleId }];
         if (fPricing && s.pricingIds.length) fields[CUSTOM.CUSTOMIZATION_PRICING] = s.pricingIds.map(id => ({ id }));
         if (fDetail) fields[CUSTOM.CUSTOMIZATION_DETAIL] = s.detail || null;
-        if (fEmbroidery && s.embroidery) fields[CUSTOM.EMBROIDERY_AMOUNT] = { name: s.embroidery };
-        if (fM2m) fields[CUSTOM.M2M] = s.m2m;
-        if (fAlts) fields[CUSTOM.ALTERATIONS] = s.alts;
-        if (fRush) fields[CUSTOM.RUSH] = s.rush;
         if (fClient && linkedClientId) fields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
-        if (fHybridWeight && s.weightPercent != null) fields[CUSTOM.HYBRID_WEIGHT] = s.weightPercent / 100;
         return fields;
       };
       const child1Id = await queueWrite(() => custTable!.createRecordAsync(buildChildFields(hybridAddSections[0])));
@@ -1466,14 +1361,6 @@ function CustomizationModal({
   const [pricingIds,  setPricingIds]  = useState<string[]>(initPricing());
   const [detail,      setDetail]      = useState(existingRecord && fDetail ? existingRecord.getCellValueAsString(fDetail) : '');
   const [embroidery,  setEmbroidery]  = useState<string|null>(existingRecord && fEmbroidery ? existingRecord.getCellValueAsString(fEmbroidery)||null : null);
-  // M2M and Alterations are plain checkboxes — their combined dollar amount
-  // is a flat lookup matrix (see computeAltsM2mAmount below), not a picker of
-  // Pricing table rows.
-  const [m2m,         setM2m]         = useState(existingRecord && fM2m ? !!(existingRecord.getCellValue(fM2m) as boolean|null) : false);
-  const [alts,        setAlts]        = useState(existingRecord && fAlts ? !!(existingRecord.getCellValue(fAlts) as boolean|null) : false);
-  // Rush defaults on for a brand-new request; an existing record's stored
-  // value always wins once one exists.
-  const [rush,        setRush]        = useState(() => existingRecord && fRush ? !!(existingRecord.getCellValue(fRush) as boolean|null) : mode === 'add');
   const [saving, setSaving] = useState(false);
 
   // Pre-Approval has no fixed field ID — matched by normalized name, same as
@@ -1528,41 +1415,20 @@ function CustomizationModal({
   }, [pricingRecords, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor]);
 
   const customizationTotal = useMemo(() => sumPricingIds(pricingIds), [sumPricingIds, pricingIds]);
-  // IF(AND(Alterations, Made-to-Measure), 2950, IF(Alterations, 1950, IF(Made-to-Measure, 1800, 0)))
-  const altsM2mAmount = useMemo(() => computeAltsM2mAmount(m2m, alts), [m2m, alts]);
 
-  const proposedTotalCustomPrice = basePriceNumber + customizationTotal;
-  // Leadtime (Weeks) and "Rush Fee with Proposed Custom Price" don't exist
-  // yet for a record that hasn't been created ("add" mode) — fall back to a
-  // client-side estimate there (weeks until the wedding). In "edit" mode,
-  // prefer the real Leadtime (Weeks) field once it's present: our own
-  // weeksUntil(clientWeddingIso) can diverge from it (e.g. if the real
-  // formula falls back to a different date when Wedding is blank), which
-  // was showing "Wedding: Unknown" / "no fee" even when Leadtime actually
-  // had a value.
-  const leadtimeWeeks = useMemo(() => {
-    if (mode === 'edit' && existingRecord && leadtimeWeeksField) {
-      const raw = existingRecord.getCellValueAsString(leadtimeWeeksField);
-      if (raw) return parseCurrencyString(raw);
-    }
-    return weeksUntil(clientWeddingIso);
-  }, [mode, existingRecord, leadtimeWeeksField, clientWeddingIso]);
-  const clientRushEstimate = useMemo(
-    () => computeRushFeeTier(leadtimeWeeks, proposedTotalCustomPrice),
-    [leadtimeWeeks, proposedTotalCustomPrice]
-  );
-  const useStoredRushFee = mode === 'edit' && !!existingRecord && !!rushFeeProposedField;
-  const rushFeeAmount = useMemo(() => {
-    if (!rush) return 0;
-    if (useStoredRushFee) return parseCurrencyString(existingRecord!.getCellValueAsString(rushFeeProposedField!));
-    return clientRushEstimate.feeAmount;
-  }, [rush, useStoredRushFee, existingRecord, rushFeeProposedField, clientRushEstimate]);
-  const rushFeePercentDisplay = useMemo(() => {
-    if (mode === 'edit' && existingRecord && rushFeePercentField) return existingRecord.getCellValueAsString(rushFeePercentField);
-    return clientRushEstimate.percent !== null ? `${Math.round(clientRushEstimate.percent * 100)}%` : '';
-  }, [mode, existingRecord, rushFeePercentField, clientRushEstimate]);
+  const grandTotal = basePriceNumber + customizationTotal;
 
-  const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
+  // Embroidery Amount only matters — and only shows on the form — when at
+  // least one currently-selected customization/pricing row needs it (Pricing
+  // table's own is_embroidery checkbox; see PRICING.IS_EMBROIDERY).
+  const pIsEmbroideryField = pricingTable?.getFieldIfExists(PRICING.IS_EMBROIDERY) ?? null;
+  const embroideryApplicable = useMemo(() => {
+    if (!pIsEmbroideryField || !pricingRecords) return false;
+    return pricingIds.some(id => {
+      const r = pricingRecords.find(pr => pr.id === id);
+      return r ? !!(r.getCellValue(pIsEmbroideryField) as boolean | null) : false;
+    });
+  }, [pIsEmbroideryField, pricingRecords, pricingIds]);
 
   // ── Generate Proposal ─────────────────────────────────────────────────────
   const [showProposalPreview, setShowProposalPreview] = useState(false);
@@ -1579,12 +1445,12 @@ function CustomizationModal({
     const missing: string[] = [];
     if (!styleName) missing.push('Style');
     if (pricingIds.length === 0) missing.push('at least one selected customization');
-    if (!embroidery) missing.push('Amount of Embroidery/Paint/Lace');
+    if (embroideryApplicable && !embroidery) missing.push('Amount of Embroidery/Paint/Lace');
     if (grandTotal <= 0) missing.push('a calculated price greater than $0');
     if (!linkedClientId) missing.push('client');
     if (!saName) missing.push('sales associate');
     return missing;
-  }, [mode, styleName, pricingIds, embroidery, grandTotal, linkedClientId, saName]);
+  }, [mode, styleName, pricingIds, embroideryApplicable, embroidery, grandTotal, linkedClientId, saName]);
   const canGenerateProposal = mode === 'edit' && !!existingRecord && proposalMissing.length === 0;
 
   // Same values already shown in this modal's own Order Summary — the printed
@@ -1617,15 +1483,10 @@ function CustomizationModal({
       basePriceNumber,
       customizationTotal,
       embroideryAmount: embroidery ?? '',
-      m2m, alts, rush,
-      altsM2mAmount,
-      rushFeeAmount,
-      rushFeePercentDisplay,
       grandTotal,
     };
   }, [pTypeField, pricingIds, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField,
-      basePriceNumber, multiplierFactor, preApprovalField, styleName, customizationTotal, embroidery, m2m, alts, rush,
-      altsM2mAmount, rushFeeAmount, rushFeePercentDisplay, grandTotal]);
+      basePriceNumber, multiplierFactor, preApprovalField, styleName, customizationTotal, embroidery, grandTotal]);
   const proposalSnapshot = canGenerateProposal ? liveDisplaySnapshot : null;
 
   // ── Hybrid Generate Proposal ──────────────────────────────────────────────
@@ -1638,86 +1499,39 @@ function CustomizationModal({
   const hybridProposalMissing = useMemo(() => {
     if (mode !== 'edit' || !isHybridMode) return [];
     const missing: string[] = [];
-    const [t1, t2] = hybridSectionTotals;
     const style1Name = hybridSections[0].styleId ? (stylesRecords?.find(r => r.id === hybridSections[0].styleId)?.name ?? '') : '';
     const style2Name = hybridSections[1].styleId ? (stylesRecords?.find(r => r.id === hybridSections[1].styleId)?.name ?? '') : '';
-    // Customizations and Embroidery Amount are optional for Hybrid — the
-    // "customization" is sometimes just combining two styles, nothing more.
+    // Customizations and Embroidery Amount don't exist for Hybrid at all —
+    // the "customization" is sometimes just combining two styles, nothing
+    // more (per Julia, 2026-07-20 demo feedback). No weight to validate
+    // either — the combined price is always 85% over the higher Base Price.
     if (!style1Name) missing.push('Style 1');
     if (!style2Name) missing.push('Style 2');
-    if (!hybridWeightValid) missing.push('Price Weight % summing to 100%');
-    if ((t1.weightedTotal + t2.weightedTotal) <= 0) missing.push('a calculated price greater than $0');
+    if (hybridCombinedTotal <= 0) missing.push('a calculated price greater than $0');
     if (!linkedClientId) missing.push('client');
     if (!saName) missing.push('sales associate');
     return missing;
-  }, [mode, isHybridMode, hybridSectionTotals, hybridSections, stylesRecords, hybridWeightValid, linkedClientId, saName]);
+  }, [mode, isHybridMode, hybridCombinedTotal, hybridSections, stylesRecords, linkedClientId, saName]);
   const hybridCanGenerateProposal = mode === 'edit' && !!existingRecord && isHybridMode && hybridProposalMissing.length === 0;
 
   const hybridLiveDisplaySnapshot = useMemo<ProposalSnapshot>(() => {
     const [t1, t2] = hybridSectionTotals;
-    const w1 = hybridSections[0].weightPercent != null ? hybridSections[0].weightPercent / 100 : 1;
-    const w2 = hybridSections[1].weightPercent != null ? hybridSections[1].weightPercent / 100 : 1;
     const style1Name = hybridSections[0].styleId ? (stylesRecords?.find(r => r.id === hybridSections[0].styleId)?.name ?? '') : '';
     const style2Name = hybridSections[1].styleId ? (stylesRecords?.find(r => r.id === hybridSections[1].styleId)?.name ?? '') : '';
 
-    const lineItemsFor = (section: HybridSectionValue, weight: number, tag: string): ProposalLineItem[] => {
-      if (!pTypeField) return [];
-      const styleRec = section.styleId ? (stylesRecords?.find(sr => sr.id === section.styleId) ?? null) : null;
-      const basePriceForRow = styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
-      const selfUsageForRow = styleRec && stylesSelfUsageField ? parseCurrencyString(styleRec.getCellValueAsString(stylesSelfUsageField)) : 0;
-      const multiplier = computeMultiplierFactor(selfUsageForRow, section.embroidery);
-      return section.pricingIds
-        .map(id => {
-          const r = pricingRecords?.find(pr => pr.id === id);
-          if (!r) return null;
-          const { amount, label } = resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceForRow, multiplier);
-          return {
-            id: r.id,
-            name: `${tag} — ${r.getCellValueAsString(pTypeField)}`,
-            label,
-            amount: amount * weight,
-            approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
-          };
-        })
-        .filter((x): x is ProposalLineItem => x !== null);
-    };
-
-    const styleSection = (section: HybridSectionValue, weight: number, t: ReturnType<typeof computeHybridSectionTotals>, styleName: string, tag: string): ProposalStyleSection => ({
-      styleName: styleName || 'Style TBD',
-      embroideryAmount: section.embroidery ?? '—',
-      lineItems: lineItemsFor(section, weight, tag),
-      summaryRows: ([
-        { label: 'Base Price', amount: t.basePriceNumber * weight, sub: null as string | null },
-        { label: 'Customization Total', amount: t.customizationTotal * weight, sub: null },
-        ...(t.altsM2mAmount ? [{ label: 'M2M / Alterations', amount: t.altsM2mAmount * weight, sub: null }] : []),
-        ...(section.rush && t.rushFeeAmount ? [{ label: 'Rush Fee', amount: t.rushFeeAmount * weight, sub: t.rushFeePercent != null ? `${Math.round(t.rushFeePercent * 100)}%` : null }] : []),
-      ]).filter(row => row.amount !== 0),
-      sectionTotal: t.weightedTotal,
-    });
-
     return {
       styleName: [style1Name, style2Name].filter(Boolean).join(' + ') || 'Hybrid',
-      lineItems: [...lineItemsFor(hybridSections[0], w1, 'Style 1'), ...lineItemsFor(hybridSections[1], w2, 'Style 2')],
-      basePriceNumber: t1.basePriceNumber * w1 + t2.basePriceNumber * w2,
-      customizationTotal: t1.customizationTotal * w1 + t2.customizationTotal * w2,
-      embroideryAmount: `Style 1: ${hybridSections[0].embroidery ?? '—'} · Style 2: ${hybridSections[1].embroidery ?? '—'}`,
-      m2m: hybridSections[0].m2m || hybridSections[1].m2m,
-      alts: hybridSections[0].alts || hybridSections[1].alts,
-      rush: hybridSections[0].rush || hybridSections[1].rush,
-      altsM2mAmount: t1.altsM2mAmount * w1 + t2.altsM2mAmount * w2,
-      rushFeeAmount: t1.rushFeeAmount * w1 + t2.rushFeeAmount * w2,
-      rushFeePercentDisplay: [
-        hybridSections[0].rush && t1.rushFeePercent != null ? `Style 1: ${Math.round(t1.rushFeePercent * 100)}%` : null,
-        hybridSections[1].rush && t2.rushFeePercent != null ? `Style 2: ${Math.round(t2.rushFeePercent * 100)}%` : null,
-      ].filter(Boolean).join(' / '),
-      grandTotal: t1.weightedTotal + t2.weightedTotal,
+      lineItems: [],
+      basePriceNumber: t1.basePriceNumber + t2.basePriceNumber,
+      customizationTotal: 0,
+      embroideryAmount: '—',
+      grandTotal: hybridCombinedTotal,
       hybridBreakdown: {
-        style1: styleSection(hybridSections[0], w1, t1, style1Name, 'Style 1'),
-        style2: styleSection(hybridSections[1], w2, t2, style2Name, 'Style 2'),
+        style1: { styleName: style1Name || 'Style TBD', basePriceNumber: t1.basePriceNumber },
+        style2: { styleName: style2Name || 'Style TBD', basePriceNumber: t2.basePriceNumber },
       },
     };
-  }, [hybridSectionTotals, hybridSections, stylesRecords, stylesBasePriceField, stylesSelfUsageField,
-      pTypeField, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField, preApprovalField]);
+  }, [hybridSectionTotals, hybridSections, stylesRecords, hybridCombinedTotal]);
   const hybridProposalSnapshot = hybridCanGenerateProposal ? hybridLiveDisplaySnapshot : null;
 
   // Whichever the modal is actually showing right now, Regular or Hybrid —
@@ -1758,9 +1572,6 @@ function CustomizationModal({
   const handlePricing    = (ids:string[]) => { setPricingIds(ids); if (fPricing) autoSave({ [fPricing.id]: ids.map(id=>({id})) }); };
   const handleDetail     = () => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); };
   const handleEmbroidery = (v:string|null) => { setEmbroidery(v); if (fEmbroidery) autoSave({ [fEmbroidery.id]: v ? { name: v } : null }); };
-  const handleM2m         = (v:boolean) => { setM2m(v); if (fM2m) autoSave({ [fM2m.id]: v }); };
-  const handleAlts        = (v:boolean) => { setAlts(v); if (fAlts) autoSave({ [fAlts.id]: v }); };
-  const handleRush        = (v:boolean) => { setRush(v); if (fRush) autoSave({ [fRush.id]: v }); };
 
   const handleSave = async () => {
     if (!custTable || mode !== 'add') return;
@@ -1772,9 +1583,6 @@ function CustomizationModal({
       if (fPricing && pricingIds.length) fields[CUSTOM.CUSTOMIZATION_PRICING] = pricingIds.map(id=>({id}));
       if (fDetail)   fields[CUSTOM.CUSTOMIZATION_DETAIL] = detail || null;
       if (fEmbroidery && embroidery) fields[CUSTOM.EMBROIDERY_AMOUNT] = { name: embroidery };
-      if (fM2m)      fields[CUSTOM.M2M]        = m2m;
-      if (fAlts)     fields[CUSTOM.ALTERATIONS] = alts;
-      if (fRush)     fields[CUSTOM.RUSH]        = rush;
       if (fClient && linkedClientId) fields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
       if (fSlack)    fields[CUSTOM.SEND_TO_SLACK] = true;
       await queueWrite(()=>custTable!.createRecordAsync(fields));
@@ -1922,14 +1730,11 @@ function CustomizationModal({
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0">
                 <HybridSectionFields
-                  value={{ styleId, pricingIds, embroidery, m2m, alts, rush, detail, weightPercent: null }}
+                  value={{ styleId, pricingIds, embroidery, detail }}
                   onChange={patch => {
                     if ('styleId' in patch) handleStyleId(patch.styleId ?? null);
                     if ('embroidery' in patch) handleEmbroidery(patch.embroidery ?? null);
                     if ('pricingIds' in patch) handlePricing(patch.pricingIds ?? []);
-                    if ('m2m' in patch) handleM2m(!!patch.m2m);
-                    if ('alts' in patch) handleAlts(!!patch.alts);
-                    if ('rush' in patch) handleRush(!!patch.rush);
                     if ('detail' in patch) setDetail(patch.detail ?? '');
                   }}
                   onDetailBlur={handleDetail}
@@ -1942,8 +1747,7 @@ function CustomizationModal({
                   pricingMultipleField={pricingMultipleField}
                   basePriceNumber={basePriceNumber}
                   multiplierFactor={multiplierFactor}
-                  showRushBox={rush && leadtimeWeeks === null}
-                  showWeight={false}
+                  embroideryApplicable={embroideryApplicable}
                 />
               </div>
 
@@ -1952,27 +1756,23 @@ function CustomizationModal({
                   is required for this: sticky only has room to "stick"
                   while its containing block is taller than its own content,
                   which only happens once this column stretches to match
-                  the fields column's height. */}
+                  the fields column's height. Row text bumped to text-base
+                  per Julia's live font-size feedback (2026-07-20 demo). */}
               <div className="w-[40%] shrink-0">
-                <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
                   <span className={labelCls}>Summary</span>
                   {([
-                    { label: 'Base Price',          amount: basePriceNumber, sub: null as string | null },
-                    { label: 'Customization Total', amount: customizationTotal, sub: null },
-                    ...((m2m || alts) ? [{ label: 'M2M / Alterations', amount: altsM2mAmount, sub: null }] : []),
-                    ...(rush ? [{ label: 'Rush Fee', amount: rushFeeAmount, sub: rushFeePercentDisplay || null }] : []),
-                  ]).map(({ label, amount, sub }) => (
+                    { label: 'Base Price',          amount: basePriceNumber },
+                    { label: 'Customization Total', amount: customizationTotal },
+                  ]).map(({ label, amount }) => (
                     <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {label}
-                        {sub && <span className="text-xs font-medium text-gray-400 dark:text-gray-500"> ({sub})</span>}
-                      </span>
-                      <span className="text-sm text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(amount)}</span>
+                      <span className="text-base text-gray-600 dark:text-gray-400">{label}</span>
+                      <span className="text-base text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(amount)}</span>
                     </div>
                   ))}
                   <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
-                    <span className="text-sm">Grand Total</span>
-                    <span className="text-sm">{formatCurrency(grandTotal)}</span>
+                    <span className="text-lg">Grand Total</span>
+                    <span className="text-lg">{formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -1982,26 +1782,7 @@ function CustomizationModal({
           {isHybridMode && (() => {
             const [t1, t2] = hybridSectionTotals;
             const missingChildren = mode === 'edit' && hybridChildRecords.length < 2;
-            const summarySection = (label: string, t: ReturnType<typeof computeHybridSectionTotals>) => (
-              <div className="pt-3 border-t border-gray-100 dark:border-white/5 first:pt-0 first:border-t-0">
-                <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">{label}</div>
-                {([
-                  { l: 'Base Price', a: t.basePriceNumber },
-                  { l: 'Customization Total', a: t.customizationTotal },
-                  ...(t.altsM2mAmount ? [{ l: 'M2M / Alterations', a: t.altsM2mAmount }] : []),
-                  ...(t.rushFeeAmount ? [{ l: 'Rush Fee', a: t.rushFeeAmount }] : []),
-                ]).map(({ l, a }) => (
-                  <div key={l} className="flex justify-between items-center py-1">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">{l}</span>
-                    <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(a)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between items-center text-xs font-semibold text-gray-900 dark:text-[#F3EFE6] pt-1">
-                  <span>Weighted Total</span>
-                  <span>{formatCurrency(t.weightedTotal)}</span>
-                </div>
-              </div>
-            );
+            const higherIsStyle1 = t1.basePriceNumber >= t2.basePriceNumber;
             return (
               <div className="flex gap-6 items-stretch">
                 <div className="w-[60%] min-w-0 space-y-4">
@@ -2024,8 +1805,7 @@ function CustomizationModal({
                     pricingMultipleField={pricingMultipleField}
                     basePriceNumber={t1.basePriceNumber}
                     multiplierFactor={t1.multiplierFactor}
-                    showRushBox={t1.leadtimeWeeks === null}
-                    maxWeightPercent={100 - (hybridSections[1].weightPercent ?? 0)}
+                    showCustomizations={false}
                   />
                   <HybridSectionFields
                     title="Style 2"
@@ -2041,39 +1821,36 @@ function CustomizationModal({
                     pricingMultipleField={pricingMultipleField}
                     basePriceNumber={t2.basePriceNumber}
                     multiplierFactor={t2.multiplierFactor}
-                    showRushBox={t2.leadtimeWeeks === null}
-                    maxWeightPercent={100 - (hybridSections[0].weightPercent ?? 0)}
+                    showCustomizations={false}
                   />
                 </div>
 
                 {/* Summary — one panel, Style 1 / Style 2 / Hybrid stacked
                     vertically inside it. Sticky lives on the inner card, not
-                    this wrapper — see the Regular block above for why. */}
+                    this wrapper — see the Regular block above for why. Row
+                    text bumped to text-base per Julia's live font-size
+                    feedback (2026-07-20 demo). Pricing is no longer a
+                    per-style weight: the combined total is 85% on top of
+                    whichever style's Base Price is higher (per Julia). */}
                 <div className="w-[40%] shrink-0">
-                  <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
+                  <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5">
                     <span className={labelCls}>Summary</span>
-                    {summarySection('Style 1', t1)}
-                    {summarySection('Style 2', t2)}
-                    <div className="pt-3 border-t border-gray-100 dark:border-white/5">
-                      <div className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">Hybrid</div>
-                      <div className="flex justify-between items-center py-1">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Style 1 (weighted)</span>
-                        <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t1.weightedTotal)}</span>
-                      </div>
-                      <div className="flex justify-between items-center py-1">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Style 2 (weighted)</span>
-                        <span className="text-xs text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t2.weightedTotal)}</span>
-                      </div>
-                      <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
-                        <span className="text-xs">Grand Total</span>
-                        <span className="text-xs">{formatCurrency(t1.weightedTotal + t2.weightedTotal)}</span>
-                      </div>
+                    <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                      <span className="text-base text-gray-600 dark:text-gray-400">Style 1 Base Price{higherIsStyle1 && ' (higher)'}</span>
+                      <span className="text-base text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t1.basePriceNumber)}</span>
                     </div>
-                    {!hybridWeightValid && (
-                      <div className="pt-2 text-xs font-semibold text-red-600 dark:text-red-400">
-                        Error: Hybrid Price Weight % must add up to exactly 100% across both styles (currently {Math.round(hybridWeightSum)}%{hybridWeightSum > 100 ? ' — exceeds 100%' : ''}).
-                      </div>
-                    )}
+                    <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                      <span className="text-base text-gray-600 dark:text-gray-400">Style 2 Base Price{!higherIsStyle1 && ' (higher)'}</span>
+                      <span className="text-base text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(t2.basePriceNumber)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                      <span className="text-base text-gray-600 dark:text-gray-400">+85% Surcharge</span>
+                      <span className="text-base text-gray-900 dark:text-[#F3EFE6]">{formatCurrency(Math.max(t1.basePriceNumber, t2.basePriceNumber) * 0.85)}</span>
+                    </div>
+                    <div className="flex justify-between items-center font-bold text-gray-900 dark:text-[#F3EFE6] border-t border-gray-300 dark:border-gray-600 pt-1.5 mt-1">
+                      <span className="text-lg">Grand Total</span>
+                      <span className="text-lg">{formatCurrency(hybridCombinedTotal)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2092,7 +1869,7 @@ function CustomizationModal({
             </button>
           )}
           {mode==='add' && addKind==='Hybrid' && (
-            <button onClick={handleHybridSave} disabled={hybridSaving || !hybridAddSections[0].styleId || !hybridAddSections[1].styleId || !hybridWeightValid}
+            <button onClick={handleHybridSave} disabled={hybridSaving || !hybridAddSections[0].styleId || !hybridAddSections[1].styleId}
               className="bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] rounded-lg px-5 py-2 text-sm font-semibold hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors disabled:opacity-50">
               {hybridSaving?'Adding…':'Add Hybrid Customization'}
             </button>
@@ -2153,12 +1930,6 @@ interface ProposalSnapshot {
   basePriceNumber: number;
   customizationTotal: number;
   embroideryAmount: string;
-  m2m: boolean;
-  alts: boolean;
-  rush: boolean;
-  altsM2mAmount: number;
-  rushFeeAmount: number;
-  rushFeePercentDisplay: string;
   grandTotal: number;
   // Only set for a Hybrid request's snapshot — lets ProposalDocument render
   // Style 1 and Style 2 as two clearly separate, vertically stacked
@@ -2171,12 +1942,13 @@ interface ProposalSnapshot {
     style2: ProposalStyleSection;
   };
 }
+// Hybrid no longer has Customizations, Embroidery, or a per-style weight —
+// each style section is just its name and Base Price (per Julia, 2026-07-20
+// demo feedback). The combined Grand Total (85% over the higher Base Price)
+// is computed once, from both sections, at the document level.
 interface ProposalStyleSection {
   styleName: string;
-  embroideryAmount: string;
-  lineItems: ProposalLineItem[];
-  summaryRows: Array<{ label: string; amount: number; sub: string | null }>;
-  sectionTotal: number;
+  basePriceNumber: number;
 }
 
 // ─── ProposalDocument ───────────────────────────────────────────────────────
@@ -2192,12 +1964,12 @@ interface ProposalDocumentProps {
   generatedAt: Date;
 }
 function ProposalDocument({ clientName, saName, snapshot, generatedAt }: ProposalDocumentProps) {
-  // Zero-amount fees add no information on a client-facing proposal — skip them.
+  // Zero-amount rows add no information on a client-facing proposal — skip
+  // them. Rush/M2M/Alterations fees no longer appear here at all (per Julia,
+  // 2026-07-20 demo feedback) — those fees now live only on the Draft Order.
   const orderSummaryRows: Array<{ label: string; amount: number; sub: string | null }> = [
     { label: 'Base Price',          amount: snapshot.basePriceNumber,  sub: null },
     { label: 'Customization Total', amount: snapshot.customizationTotal, sub: null },
-    ...((snapshot.m2m || snapshot.alts) ? [{ label: 'M2M / Alterations', amount: snapshot.altsM2mAmount, sub: null }] : []),
-    ...(snapshot.rush ? [{ label: 'Rush Fee', amount: snapshot.rushFeeAmount, sub: snapshot.rushFeePercentDisplay || null }] : []),
   ].filter(row => row.amount !== 0);
 
   const hb = snapshot.hybridBreakdown;
@@ -2220,48 +1992,21 @@ function ProposalDocument({ clientName, saName, snapshot, generatedAt }: Proposa
       {hb ? (
         <>
           {/* Hybrid — Style 1 and Style 2 as two clearly separate, stacked
-              sections, each ending in its own weighted total; kept compact
-              (tighter padding/margins than the Regular layout below) so the
-              whole document — both styles plus the final Grand Total —
-              still fits on one printed page. */}
+              sections (just name + Base Price now — no Customizations,
+              Embroidery, or per-style weight; per Julia, 2026-07-20 demo
+              feedback), followed by the 85%-over-the-higher-price surcharge
+              and the combined Grand Total ending the document. Compact by
+              construction — easily fits on one printed page. */}
           {([{ label: 'Style 1', s: hb.style1 }, { label: 'Style 2', s: hb.style2 }] as const).map(({ label, s }) => (
-            <div key={label} className="mb-4">
-              <div className="text-base font-bold mb-1">{label}: {s.styleName}</div>
-              <div className="text-sm text-gray-600 mb-2"><span className="text-gray-500">Amount of Embroidery/Paint/Lace: </span>{s.embroideryAmount}</div>
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-2">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-3 py-1.5 text-xs font-semibold text-gray-500 capitalize tracking-wider text-left">Customization</th>
-                      <th className="px-3 py-1.5 text-xs font-semibold text-gray-500 capitalize tracking-wider text-right">Price</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {s.lineItems.map(item => (
-                      <tr key={item.id} className="border-b border-gray-100 last:border-0">
-                        <td className="px-3 py-1.5 text-sm text-gray-900">{item.name}</td>
-                        <td className="px-3 py-1.5 text-sm text-gray-700 text-right">{formatCurrency(item.amount)}</td>
-                      </tr>
-                    ))}
-                    {s.lineItems.length === 0 && (
-                      <tr><td colSpan={2} className="px-3 py-3 text-center text-gray-400 text-sm">No customizations added.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              {/* This style's own summary ends its section */}
-              {s.summaryRows.map(({ label: rl, amount, sub }) => (
-                <div key={rl} className="flex justify-between items-center py-1 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">{rl}{sub && <span className="text-xs font-medium text-gray-400"> ({sub})</span>}</span>
-                  <span className="text-sm text-gray-900">{formatCurrency(amount)}</span>
-                </div>
-              ))}
-              <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-300 pt-1.5">
-                <span className="text-sm">{label} Total</span>
-                <span className="text-sm">{formatCurrency(s.sectionTotal)}</span>
-              </div>
+            <div key={label} className="flex justify-between items-center py-2 border-b border-gray-100 mb-2">
+              <span className="text-base font-bold">{label}: {s.styleName}</span>
+              <span className="text-base text-gray-900">{formatCurrency(s.basePriceNumber)}</span>
             </div>
           ))}
+          <div className="flex justify-between items-center py-2 border-b border-gray-100 mb-2">
+            <span className="text-sm text-gray-600">+85% Surcharge (on the higher Base Price)</span>
+            <span className="text-sm text-gray-900">{formatCurrency(Math.max(hb.style1.basePriceNumber, hb.style2.basePriceNumber) * 0.85)}</span>
+          </div>
 
           {/* The combined total ends the whole document */}
           <div className="flex justify-between items-center font-bold text-gray-900 border-t-2 border-gray-400 pt-2 mb-4">
@@ -2409,13 +2154,9 @@ function ProposalPreviewModal({
     setSaving(true);
     setErrorMsg(null);
     try {
-      const customizationsSummary = [
-        snapshot.lineItems.length
-          ? `Selections: ${snapshot.lineItems.map(i => `${i.name}${i.label ? ` (${i.label})` : ''} — ${formatCurrency(i.amount)}`).join('; ')}`
-          : null,
-        (snapshot.m2m || snapshot.alts) ? `M2M / Alterations: ${formatCurrency(snapshot.altsM2mAmount)}` : null,
-        snapshot.rush ? `Rush Fee: ${formatCurrency(snapshot.rushFeeAmount)}${snapshot.rushFeePercentDisplay ? ` (${snapshot.rushFeePercentDisplay})` : ''}` : null,
-      ].filter(Boolean).join('\n') || '—';
+      const customizationsSummary = snapshot.lineItems.length
+        ? `Selections: ${snapshot.lineItems.map(i => `${i.name}${i.label ? ` (${i.label})` : ''} — ${formatCurrency(i.amount)}`).join('; ')}`
+        : '—';
 
       const fields: Record<string, unknown> = {
         [PROPOSAL.CLIENT]:                     [{ id: clientId }],
@@ -2821,9 +2562,6 @@ function PostAppointmentModal({
     styleName: string;
     dateRequested: string;
     isHybrid: boolean;
-    m2m: boolean;
-    alts: boolean;
-    rush: boolean;
     proposals: AirtableRecord[];
     grandTotal: number;
   }
@@ -2832,15 +2570,22 @@ function PostAppointmentModal({
     const fStyled     = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE);
     const fPricing    = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_PRICING);
     const fDateReq    = customizationsTable.getFieldIfExists(CUSTOM.DATE_OF_REQUEST);
-    const fEmbroidery = customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT);
-    const fM2m        = customizationsTable.getFieldIfExists(CUSTOM.M2M);
-    const fAlts       = customizationsTable.getFieldIfExists(CUSTOM.ALTERATIONS);
-    const fRush       = customizationsTable.getFieldIfExists(CUSTOM.RUSH);
     const fIsHybrid   = customizationsTable.getFieldIfExists(CUSTOM.IS_HYBRID);
+    const fHybridLinkField = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_LINK);
     const fHybridStyleNames = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_STYLE_NAMES);
-    const fHybridTotalPrice = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_TOTAL_PRICE);
     const fSourceP    = proposalsTable?.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION) ?? null;
     const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
+
+    // Each child's own Base Price, resolved via its own Customized Style —
+    // computed client-side (not from the Airtable rollup) since
+    // hybrid_proposed_total_custom_price still reflects the old per-style-
+    // weight formula, not the 85%-over-the-higher-price rule.
+    const childBasePrice = (childId: string): number => {
+      const child = customizationRecords?.find(r => r.id === childId);
+      const styleId = child && fStyled ? ((child.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null) : null;
+      const styleRec = styleId ? (stylesRecords?.find(r => r.id === styleId) ?? null) : null;
+      return styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
+    };
 
     return linkedCustomizations
       .map((c): CustomizationRow | null => {
@@ -2860,10 +2605,6 @@ function PostAppointmentModal({
         // same reason Appointment Time did elsewhere in this file.
         const dateRequested = fDateReq ? ((rec.getCellValue(fDateReq) as string | null) ?? '') : '';
 
-        const m2m  = fM2m  ? !!(rec.getCellValue(fM2m)  as boolean|null) : false;
-        const alts = fAlts ? !!(rec.getCellValue(fAlts) as boolean|null) : false;
-        const rush = fRush ? !!(rec.getCellValue(fRush) as boolean|null) : false;
-
         const proposals = (fSourceP && proposalRecords)
           ? proposalRecords.filter(p => {
               const link = p.getCellValue(fSourceP) as Array<{id:string}>|null;
@@ -2872,14 +2613,18 @@ function PostAppointmentModal({
           : [];
 
         if (isHybrid) {
-          const grandTotal = fHybridTotalPrice ? parseCurrencyString(rec.getCellValueAsString(fHybridTotalPrice)) : 0;
-          return { id: c.id, styleName, dateRequested, isHybrid, m2m, alts, rush, proposals, grandTotal };
+          const childIds = fHybridLinkField ? ((rec.getCellValue(fHybridLinkField) as Array<{ id: string }> | null) ?? []).map(x => x.id) : [];
+          const [base1, base2] = [childIds[0] ? childBasePrice(childIds[0]) : 0, childIds[1] ? childBasePrice(childIds[1]) : 0];
+          const grandTotal = computeHybridCombinedTotal(base1, base2);
+          return { id: c.id, styleName, dateRequested, isHybrid, proposals, grandTotal };
         }
 
-        const embroideryStr = fEmbroidery ? (rec.getCellValueAsString(fEmbroidery) || '') : '';
         const basePriceNumber = (styleRec && stylesBasePriceField)
           ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
           : 0;
+        const embroideryStr = customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT)
+          ? (rec.getCellValueAsString(customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT)!) || '')
+          : '';
         const selfUsageValue = selfUsageField ? parseCurrencyString(rec.getCellValueAsString(selfUsageField)) : 0;
         const multiplierFactor = computeMultiplierFactor(selfUsageValue, embroideryStr || null);
         const pricingIds = fPricing ? ((rec.getCellValue(fPricing) as Array<{id:string}>|null)?.map(x=>x.id) ?? []) : [];
@@ -2888,18 +2633,9 @@ function PostAppointmentModal({
           if (!r) return sum;
           return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, basePriceNumber, multiplierFactor).amount;
         }, 0);
-        const altsM2mAmount = computeAltsM2mAmount(m2m, alts);
-        const proposedTotal = basePriceNumber + customizationTotal;
-        const leadtimeWeeks = leadtimeWeeksField
-          ? (parseCurrencyString(rec.getCellValueAsString(leadtimeWeeksField)) || null)
-          : weeksUntil(clientWeddingIso);
-        const rushEstimate = computeRushFeeTier(leadtimeWeeks, proposedTotal);
-        const rushFeeAmount = rush
-          ? (rushFeeProposedField ? parseCurrencyString(rec.getCellValueAsString(rushFeeProposedField)) : rushEstimate.feeAmount)
-          : 0;
-        const grandTotal = basePriceNumber + customizationTotal + altsM2mAmount + rushFeeAmount;
+        const grandTotal = basePriceNumber + customizationTotal;
 
-        return { id: c.id, styleName, dateRequested, isHybrid, m2m, alts, rush, proposals, grandTotal };
+        return { id: c.id, styleName, dateRequested, isHybrid, proposals, grandTotal };
       })
       .filter((r): r is CustomizationRow => r !== null)
       .sort((a, b) => {
@@ -2908,8 +2644,8 @@ function PostAppointmentModal({
         return new Date(b.dateRequested).getTime() - new Date(a.dateRequested).getTime(); // most recent first
       });
   }, [linkedCustomizations, customizationRecords, customizationsTable, stylesRecords, pricingRecords, pricingTable,
-      stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, rushFeeProposedField,
-      leadtimeWeeksField, proposalsTable, proposalRecords, clientWeddingIso]);
+      stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField,
+      proposalsTable, proposalRecords]);
 
   // Sales associate has no linked Staff record anywhere else in this file — it's
   // a plain name field on both Appointments and Clients. Resolved against the
@@ -3125,16 +2861,13 @@ function PostAppointmentModal({
                   </thead>
                   <tbody>
                     {customizationRows.map(row=>{
-                      // Same colors as the Flags buttons in CustomizationModal/
-                      // HybridSectionFields, so a flag reads identically here and
-                      // in the detail page. Hybrid gets its own color (matches
-                      // Airtable's own purpleLight1 for the Hybrid choice) and
-                      // only ever shows for hybrid requests.
+                      // M2M/Alterations/Rush flags were removed from customization
+                      // requests entirely (per Julia, 2026-07-20 demo feedback —
+                      // those now live only on the Draft Order). Hybrid is the
+                      // only flag left, matching Airtable's own purpleLight1 for
+                      // that choice.
                       const flagChips = [
                         row.isHybrid && { label: 'Hybrid', color: 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-500/30' },
-                        row.m2m && { label: 'M2M', color: 'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30' },
-                        row.alts && { label: 'Alterations', color: 'bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30' },
-                        row.rush && { label: 'Rush', color: 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30' },
                       ].filter(Boolean) as { label: string; color: string }[];
                       return (
                         <tr key={row.id} onClick={()=>setEditCustomizationId(row.id)}
