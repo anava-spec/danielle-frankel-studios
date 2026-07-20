@@ -823,26 +823,31 @@ interface NotificationModalProps {
 }
 
 function NotificationModal({ content, onClose }: NotificationModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [requestClose]);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={requestClose}
     >
       <div
-        className="bg-white dark:bg-[#25211A] rounded-xl p-8 max-w-[480px] w-full mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+        className="bg-white dark:bg-[#25211A] rounded-xl p-8 max-w-[480px] w-full mx-4 transition-[opacity,transform] duration-200 ease-out"
+        style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)', opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <p className="text-base text-gray-800 dark:text-[#F3EFE6] mb-6 leading-relaxed">{content}</p>
         <div className="flex justify-center">
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="px-8 py-2 rounded-full bg-gray-900 dark:bg-[#F3EFE6] text-white dark:text-[#1B1813] text-sm font-medium hover:bg-gray-700 dark:hover:bg-white/20 transition-colors"
           >
             Close
@@ -2383,6 +2388,18 @@ function AppointmentsApp(): React.ReactElement {
   const [selectedStudio, setSelectedStudio] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  // Open/close transition for the record detail overlay below — drawerVisible
+  // lags selectedRecordId by the fade duration on close so the overlay stays
+  // mounted (and fades out) instead of vanishing the instant it's dismissed.
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  useEffect(() => {
+    if (selectedRecordId) { const t = setTimeout(() => setDrawerVisible(true), 10); return () => clearTimeout(t); }
+    setDrawerVisible(false);
+  }, [selectedRecordId]);
+  const requestCloseDrawer = useCallback(() => {
+    setDrawerVisible(false);
+    setTimeout(() => setSelectedRecordId(null), 200);
+  }, []);
   const [sortState, setSortState] = useState<SortState>({});
   const [layoutMode, setLayoutMode] = useState<'list' | 'calendar'>('list');
 
@@ -2419,10 +2436,10 @@ function AppointmentsApp(): React.ReactElement {
   }, [clientRecords]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedRecordId(null); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') requestCloseDrawer(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [requestCloseDrawer]);
 
   const apptTimeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_TIME) ?? null;
   const apptTypeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_TYPE) ?? null;
@@ -2793,7 +2810,7 @@ function AppointmentsApp(): React.ReactElement {
 
   const handleRowClick = (recordId: string) => {
     if (selectedRecordId === recordId) {
-      setSelectedRecordId(null);
+      requestCloseDrawer();
     } else {
       setSelectedRecordId(recordId);
     }
@@ -3136,12 +3153,13 @@ function AppointmentsApp(): React.ReactElement {
 
       {selectedRecordId && selectedRecord && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-          onClick={() => setSelectedRecordId(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ease-out"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: drawerVisible?1:0 }}
+          onClick={requestCloseDrawer}
         >
           <div
-            className="bg-white dark:bg-[#25211A] rounded-xl w-full max-w-[720px] max-h-[70vh] overflow-hidden flex flex-col mx-4" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            className="bg-white dark:bg-[#25211A] rounded-xl w-full max-w-[720px] max-h-[70vh] overflow-hidden flex flex-col mx-4 transition-[opacity,transform] duration-200 ease-out"
+            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)', opacity: drawerVisible?1:0, transform: drawerVisible?'scale(1)':'scale(0.96)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <DetailDrawer
@@ -3155,7 +3173,7 @@ function AppointmentsApp(): React.ReactElement {
               roomsTable={roomsTable}
               saOptions={saStaffOptions}
               altLeadOptions={altLeadStaffOptions}
-              onClose={() => setSelectedRecordId(null)}
+              onClose={requestCloseDrawer}
               clearErrorByRecord={clearErrorByRecord}
               roomLinkField={roomLinkField}
               studioNameField={studioNameField}

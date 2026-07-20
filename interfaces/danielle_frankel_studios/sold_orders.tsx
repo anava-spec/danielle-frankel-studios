@@ -260,11 +260,15 @@ type ModalData = {
 };
 
 function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void }) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [requestClose]);
 
   const FinRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex justify-between items-center py-1.5 text-sm border-b border-gray-50 dark:border-white/5 last:border-0">
@@ -275,12 +279,13 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={requestClose}
     >
       <div
-        className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -303,7 +308,7 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-300 transition-colors ml-4">
+          <button onClick={requestClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-300 transition-colors ml-4">
             <XIcon size={18} />
           </button>
         </div>

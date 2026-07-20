@@ -563,21 +563,27 @@ function MiniTable({ headers, rows, onRowClick, emptyText = 'None' }: {
 function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }: {
   title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void;
 }) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onCancel, 200); }, [onCancel]);
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onCancel]);
+  }, [requestClose]);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] mb-1.5">{title}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
         </div>
         <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
-          <button type="button" onClick={onCancel}
+          <button type="button" onClick={requestClose}
             className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
             Cancel
           </button>
@@ -602,11 +608,14 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
   const [notes,      setNotes]      = useState('');
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState('');
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [requestClose]);
 
   const showDirection = changeType === 'Tax Adjustment' || changeType === 'Other';
 
@@ -638,7 +647,7 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
       if (notesField && notes)   fields[notesField.id] = notes;
       await adjTable.createRecordAsync(fields);
       onSaved({ changeType, direction, amount: amtNum, notes, signedAmount: computeSigned(changeType, direction, amtNum) });
-      onClose();
+      requestClose();
     } catch (e) { console.error(e); setError('Failed to save. Please try again.'); }
     finally { setSaving(false); }
   };
@@ -647,17 +656,18 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden flex flex-col"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden flex flex-col transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order Adjustment</p>
             <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">New Adjustment</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
             <XIcon size={16} />
           </button>
         </div>
@@ -701,7 +711,7 @@ function AddAdjustmentModal({ adjTable, orderRecord, onClose, onSaved }: {
             className="px-5 py-2 text-sm font-semibold rounded-lg bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {saving ? 'Saving…' : 'Save Adjustment'}
           </button>
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+          <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
             Cancel
           </button>
         </div>
@@ -730,10 +740,14 @@ function AdjustmentDetailModal({ record, adjTable, onClose }: {
     queueWrite(() => adjTable.updateRecordAsync(record, { [f.id]: value }).catch(console.error));
   }, [adjTable, record]);
 
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [requestClose]);
 
   const showDirection = changeType === 'Tax Adjustment' || changeType === 'Other';
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
@@ -742,12 +756,14 @@ function AdjustmentDetailModal({ record, adjTable, onClose }: {
   const signedLabel = signedAmount === null ? '—' : signedAmount >= 0 ? `+${formatCurrency(signedAmount)}` : formatCurrency(signedAmount);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
+          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Adjustment</p>
             <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{orderId || 'Adjustment Detail'}</p>
@@ -819,10 +835,14 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
     } catch { return null; }
   };
 
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [requestClose]);
 
   const amId          = getStr(ORDER_ITEMS_FIELD_IDS.AM_ORDER_ITEM_ID);
   const styleName     = getStr(ORDER_ITEMS_FIELD_IDS.STYLE);
@@ -861,12 +881,14 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
+          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order Item</p>
             <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{amId || 'Item Detail'}</p>
@@ -905,6 +927,9 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
   const [optimisticAdjs, setOptimisticAdjs] = useState<Array<{
     id: string; changeType: string; direction: string; amount: number; notes: string; signedAmount: number;
   }>>([]);
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
 
   const getStr = (fid: string): string => { try { return record.getCellValueAsString(orderTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; } };
   const getNum = (fid: string): number | null => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
@@ -1143,9 +1168,9 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
   const selectedAdj = useMemo(() => selectedAdjId ? localAdjs.find(r => r.id === selectedAdjId) ?? null : null, [selectedAdjId, localAdjs]);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedAdj && !selectedItem && !showAddModal) onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedAdj && !selectedItem && !showAddModal) requestClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onClose, selectedAdj, selectedItem, showAddModal]);
+  }, [requestClose, selectedAdj, selectedItem, showAddModal]);
 
   const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
   const inp = 'w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors';
@@ -1229,12 +1254,14 @@ function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable
           }}
         />
       )}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-        style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-        onClick={e => { if (e.target === e.currentTarget && !showAddModal) onClose(); }}>
-        <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+        style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+        onClick={e => { if (e.target === e.currentTarget && !showAddModal) requestClose(); }}>
+        <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+          style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+          onClick={e => e.stopPropagation()}>
           <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
+            <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order</p>
               <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">
@@ -1415,6 +1442,9 @@ interface ModalProps {
 }
 function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTable, adjRecords, orderRecords, itemsTable, itemsRecords, syncLogTable, syncLogRecords }: ModalProps) {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
 
   const get = useCallback(<T,>(fid: string): T | null => {
     const f = fields[fid] ?? null; if (!f) return null;
@@ -1544,9 +1574,9 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   const selectedOrder = useMemo(() => selectedOrderId ? linkedOrders.find(r => r.id === selectedOrderId) ?? null : null, [selectedOrderId, linkedOrders]);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedOrder) onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedOrder) requestClose(); };
     document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
-  }, [onClose, selectedOrder]);
+  }, [requestClose, selectedOrder]);
 
   if (selectedOrder && orderTable) {
     return (
@@ -1567,10 +1597,12 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
   const hasHold = !!holdDate;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
@@ -1605,7 +1637,7 @@ function DetailModal({ record, fields, clientsTable, onClose, orderTable, adjTab
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><XIcon size={18} /></button>
+          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><XIcon size={18} /></button>
         </div>
 
         {/* Body */}

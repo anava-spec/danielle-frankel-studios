@@ -218,8 +218,14 @@ Structure:
 
 - `transition-colors` (Tailwind default duration, ~150ms) on all hover states — buttons, dropdown options, table rows.
 - `transition-transform` for the dropdown/accordion chevron rotation, same ~150ms.
-- No modal open/close animation (instant mount/unmount) — matches all 5 reference files, don't introduce one.
-- Avoid `transition-all` — it was only in one file and is unnecessary/imprecise; name the specific property.
+- Avoid `transition-all` — name the specific property/properties instead (e.g. `transition-[opacity,transform]`), never `transition-all`.
+- **Modal open/close: fade + scale, 200ms ease-out.** Every floating modal/dialog (a centered panel over a semi-transparent backdrop) animates in and out — no instant mount/unmount. Pattern (see `draft_orders.tsx` for the original reference implementation, now applied everywhere):
+  - `const [isVisible, setIsVisible] = useState(false);`
+  - Mount: `useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);` — the 10ms delay lets the initial paint happen at opacity 0 before transitioning to 1.
+  - Close: wrap the real `onClose` in a `requestClose` that fades out first — `const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);` — and call `requestClose` (never the raw `onClose`) from every dismiss path inside the modal: backdrop click, `X`/back button, Cancel, Escape key, and any success path that closes the modal (e.g. after a save).
+  - Backdrop div: add `transition-opacity duration-200 ease-out` to the className, and `opacity: isVisible ? 1 : 0` to the style object (keep the existing `backgroundColor`/`backdropFilter`).
+  - Panel div: add `transition-[opacity,transform] duration-200 ease-out` to the className, and `opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)'` to the style object.
+  - This does NOT apply to full-page navigation views (e.g. a "layer 2" detail page that replaces the whole screen with a "Go back" button, no backdrop) — only to genuine floating dialogs with a backdrop overlay.
 
 ---
 
@@ -263,6 +269,7 @@ When building or refactoring an interface, confirm:
 - [ ] Icons only from `@phosphor-icons/react`
 - [ ] Root shell includes `overflow-hidden`
 - [ ] Modal widths from the fixed scale in §3
+- [ ] Modals fade + scale in/out (§12), not instant mount/unmount
 - [ ] Category toggle filters (if any) never use red — red is reserved for danger/flags (§13)
 - [ ] Filter dropdowns show the filter name as placeholder only when unapplied, the value + inline `X` when applied — no external label, no "Clear" text link (§5, §6)
 - [ ] Search bar placeholder reads "Search by `<field>`, `<field>`…" (§6)

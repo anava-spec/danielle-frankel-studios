@@ -845,15 +845,18 @@ const SummaryProfileModal = React.memo(function SummaryProfileModal({
   client, stageColors, clientsTable, onClose, onViewFullProfile,
 }: SummaryProfileModalProps) {
   const stage = client.stage;
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-5"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
       <div
-        className="bg-white dark:bg-[#25211A] rounded-xl w-full max-w-[720px] p-6 max-h-[90vh] overflow-y-auto"
-        style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+        className="bg-white dark:bg-[#25211A] rounded-xl w-full max-w-[720px] p-6 max-h-[90vh] overflow-y-auto transition-[opacity,transform] duration-200 ease-out"
+        style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)', opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}

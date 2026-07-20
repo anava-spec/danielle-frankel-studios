@@ -1299,6 +1299,11 @@ function CustomizationModal({
   clientName, saName, saRecordId, proposalsTable, proposalRecords, allCustomizationRecords,
   base, onClose
 }: CustomizationModalProps) {
+  // ── Open/close transition — fade + scale, matches the brand modal spec ────
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   const custTable = customizationsTable ?? base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATIONS);
 
   // ── Field refs ────────────────────────────────────────────────────────────
@@ -1444,7 +1449,7 @@ function CustomizationModal({
       if (fStatus) parentFields[CUSTOM.STATUS] = { name: 'Sent to Production' };
       if (fSlack) parentFields[CUSTOM.SEND_TO_SLACK] = true;
       await queueWrite(() => custTable!.createRecordAsync(parentFields));
-      onClose();
+      requestClose();
     } catch (err) { console.error('Failed to add hybrid customization:', err); }
     finally { setHybridSaving(false); }
   };
@@ -1767,15 +1772,15 @@ function CustomizationModal({
       if (fClient && linkedClientId) fields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
       if (fSlack)    fields[CUSTOM.SEND_TO_SLACK] = true;
       await queueWrite(()=>custTable!.createRecordAsync(fields));
-      onClose();
+      requestClose();
     } catch (err) { console.error('Failed to add customization:', err); }
     finally { setSaving(false); }
   };
 
   useEffect(()=>{
-    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
+    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') requestClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
-  },[onClose]);
+  },[requestClose]);
 
   // Style dropdown is scoped to the client's own Favorite Styles in
   // Appointment, not every style in the base. Falls back to the full list
@@ -1796,16 +1801,17 @@ function CustomizationModal({
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
-      style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)' }}
-      onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
-      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full ${isHybridMode ? 'max-w-[960px]' : 'max-w-[680px]'} max-h-[90vh] overflow-hidden flex flex-col shadow-2xl`}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)', opacity: isVisible?1:0 }}
+      onClick={e=>{ if (e.target===e.currentTarget) requestClose(); }}>
+      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full ${isHybridMode ? 'max-w-[960px]' : 'max-w-[680px]'} max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out`}
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
         <div className="border-b border-gray-100 dark:border-white/5">
           <div className="p-5 flex items-center gap-3">
-            <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
+            <button onClick={requestClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
               <ArrowLeftIcon size={18}/>
             </button>
             <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">
@@ -2304,6 +2310,10 @@ interface ProposalPreviewModalProps {
 function ProposalPreviewModal({
   snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, onClose,
 }: ProposalPreviewModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   const [countdown, setCountdown]     = useState(PROPOSAL_CLOSE_COUNTDOWN_SECONDS);
   // Not just set synchronously on click — the print dialog itself is async and
   // OS-native, so the only signal this page actually gets that printing (or a
@@ -2346,10 +2356,10 @@ function ProposalPreviewModal({
   // Escape is intercepted (not just ignored) while the countdown runs, same as
   // the click-outside guard below — neither can close the modal early.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && closeEnabled) onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && closeEnabled) requestClose(); };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [closeEnabled, onClose]);
+  }, [closeEnabled, requestClose]);
 
   const handleConfirmSave = async () => {
     if (!proposalsTable || saving || success) return;
@@ -2397,9 +2407,9 @@ function ProposalPreviewModal({
 
   return (
     // Blur only — no dark dim — behind this popup.
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 proposal-modal-chrome"
-      style={{ backdropFilter:'blur(4px)' }}
-      onClick={e=>{ if (e.target===e.currentTarget && closeEnabled) onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 proposal-modal-chrome transition-opacity duration-200 ease-out"
+      style={{ backdropFilter:'blur(4px)', opacity: isVisible?1:0 }}
+      onClick={e=>{ if (e.target===e.currentTarget && closeEnabled) requestClose(); }}>
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -2410,7 +2420,8 @@ function ProposalPreviewModal({
           }
         }
       `}</style>
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
@@ -2446,7 +2457,7 @@ function ProposalPreviewModal({
             </button>
           ) : (
             <>
-              <button type="button" onClick={()=>{ if (closeEnabled) onClose(); }} disabled={!closeEnabled}
+              <button type="button" onClick={()=>{ if (closeEnabled) requestClose(); }} disabled={!closeEnabled}
                 className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {closeEnabled ? 'Close' : `Close (${countdown})`}
               </button>
@@ -2541,10 +2552,14 @@ interface ProposalDetailModalProps {
   onClose: () => void;
 }
 function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saName, snapshot, onClose }: ProposalDetailModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   useEffect(()=>{
-    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
+    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') requestClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
-  },[onClose]);
+  },[requestClose]);
 
   const fUnsigned    = proposalsTable.getFieldIfExists(PROPOSAL.UNSIGNED_DOCUMENT);
   const fSigned      = proposalsTable.getFieldIfExists(PROPOSAL.SIGNED_DOCUMENT);
@@ -2584,9 +2599,9 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 
   return (
     // Blur only — no dark dim — behind this popup.
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-5"
-      style={{ backdropFilter:'blur(4px)' }}
-      onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backdropFilter:'blur(4px)', opacity: isVisible?1:0 }}
+      onClick={e=>{ if (e.target===e.currentTarget) requestClose(); }}>
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -2597,10 +2612,11 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
           }
         }
       `}</style>
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={e=>e.stopPropagation()}>
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
+          <button onClick={requestClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:dark:text-gray-300 transition-colors">
             <ArrowLeftIcon size={18}/>
           </button>
           <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">{proposalRecord.name || 'Proposal'}</div>
@@ -2674,6 +2690,10 @@ function PostAppointmentModal({
   staffTable, staffRecords, proposalsTable, proposalRecords,
   base, onClose
 }: PostApptModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
   const [openCustomizationAdd, setOpenCustomizationAdd] = useState(false);
   const [editCustomizationId, setEditCustomizationId]   = useState<string|null>(null);
 
@@ -2879,9 +2899,9 @@ function PostAppointmentModal({
   const availableStyleNames = useMemo(()=>(stylesRecords??[]).map(r=>r.name).filter(Boolean).sort(),[stylesRecords]);
 
   useEffect(()=>{
-    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') onClose(); };
+    const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') requestClose(); };
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
-  },[onClose]);
+  },[requestClose]);
 
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
   const labelCls = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
@@ -2901,11 +2921,12 @@ function PostAppointmentModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-5"
-        style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)' }}
-        onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+        style={{ backgroundColor:'rgba(0,0,0,0.18)', backdropFilter:'blur(1px)', opacity: isVisible?1:0 }}
+        onClick={e=>{ if(e.target===e.currentTarget) requestClose(); }}>
         {/* +20% over the previous 680px */}
-        <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[816px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[816px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+          style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
           onClick={e=>e.stopPropagation()}>
 
           {/* Header */}
