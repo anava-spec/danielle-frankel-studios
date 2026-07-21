@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   initializeBlock,
   useBase,
@@ -521,7 +522,7 @@ function ApprovalPill({ status, colorMap }: { status: string; colorMap: Record<s
   if (!status) return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>;
   const hex = colorMap[status] ?? '#9CA3AF';
   return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
+    <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium border"
       style={{ backgroundColor: hex + '20', color: hex, borderColor: hex + '55' }}>
       {status}
     </span>
@@ -926,10 +927,34 @@ function PricingLineItemsTable({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   useEffect(()=>{
-    const h=(e:MouseEvent)=>{ if(ref.current&&!ref.current.contains(e.target as Node)) setOpen(false); };
+    const h=(e:MouseEvent)=>{
+      if (ref.current?.contains(e.target as Node)) return;
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown',h); return ()=>document.removeEventListener('mousedown',h);
   },[]);
+
+  // Rendered via a portal (below) so the panel isn't clipped by the modal's
+  // own scrollable body — position tracked in viewport coordinates and kept
+  // in sync while open, using the tallest height the viewport allows below
+  // the search bar rather than a fixed max-height.
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  const updateDropdownPos = useCallback(() => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const margin = 12;
+    setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: Math.max(160, window.innerHeight - r.bottom - margin) });
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    updateDropdownPos();
+    window.addEventListener('scroll', updateDropdownPos, true);
+    window.addEventListener('resize', updateDropdownPos);
+    return () => { window.removeEventListener('scroll', updateDropdownPos, true); window.removeEventListener('resize', updateDropdownPos); };
+  }, [open, updateDropdownPos]);
 
   const typeField     = pricingTable?.getFieldIfExists(PRICING.TYPE) ?? null;
   const priceField    = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
@@ -969,9 +994,11 @@ function PricingLineItemsTable({
   }, [pricingRecords, selected, typeField, activeField, priceField, percentField, multipleField, basisAmount, multiplierFactor]);
 
   const filteredSuggestions = useMemo(() => {
-    if (!query.trim()) return suggestions;
-    const q = query.toLowerCase();
-    return suggestions.filter(s => s.name.toLowerCase().includes(q));
+    const q = query.trim().toLowerCase();
+    return suggestions
+      .filter(s => s.name !== 'Other')
+      .filter(s => !q || s.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [suggestions, query]);
 
   const totalAmount = useMemo(() => selectedItems.reduce((sum, i) => sum + i.amount, 0), [selectedItems]);
@@ -988,8 +1015,10 @@ function PricingLineItemsTable({
             onFocus={()=>setOpen(true)} onChange={e=>{setQuery(e.target.value);setOpen(true);}}
             className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] transition-colors"/>
         </div>
-        {open && (
-          <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {open && dropdownPos && createPortal(
+          <div ref={dropdownRef}
+            style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, maxHeight: dropdownPos.maxHeight }}
+            className="z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filteredSuggestions.map(s=>(
               <button key={s.id} type="button" onClick={()=>addAndClear(s.id)}
                 className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:bg-[#3A2E12] transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
@@ -998,45 +1027,50 @@ function PricingLineItemsTable({
               </button>
             ))}
             {filteredSuggestions.length===0 && <div className="px-3 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">No matching customizations</div>}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
       {/* Nothing selected yet — a customization isn't always needed (e.g. a
           Hybrid request that's simply combining two styles), so don't show
-          an empty invoice table; just the search bar above is enough. */}
+          an empty invoice table; just the search bar above is enough. Body
+          scrolls internally with a max-height once it grows past a handful
+          of rows, so the whole modal doesn't have to be scrolled instead. */}
       {selectedItems.length > 0 && (
         <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-              <tr>
-                <th className="px-3 py-2 w-8" />
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Customization</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Rate</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left">Pre-Approval</th>
-                <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right">Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedItems.map(item=>(
-                <tr key={item.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
-                  <td className="px-3 py-2.5">
-                    <button type="button" onClick={()=>remove(item.id)} aria-label={`Remove ${item.name}`} className="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
-                      <XIcon size={13}/>
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{item.name}</td>
-                  <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
-                  <td className="px-3 py-2.5"><ApprovalPill status={item.approval} colorMap={preApprovalColorMap}/></td>
-                  <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
+          <div className="max-h-[280px] overflow-y-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 w-8 bg-gray-50 dark:bg-white/5" />
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left bg-gray-50 dark:bg-white/5">Customization</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-left bg-gray-50 dark:bg-white/5">Rate</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-center bg-gray-50 dark:bg-white/5">Pre-Approval</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider text-right bg-gray-50 dark:bg-white/5">Price</th>
                 </tr>
-              ))}
-              <tr className="border-t border-gray-200 dark:border-white/10">
-                <td className="px-3 py-2.5"/>
-                <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6]">Customization Total</td>
-                <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(totalAmount)}</td>
-              </tr>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {selectedItems.map(item=>(
+                  <tr key={item.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                    <td className="px-3 py-2.5">
+                      <button type="button" onClick={()=>remove(item.id)} aria-label={`Remove ${item.name}`} className="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
+                        <XIcon size={13}/>
+                      </button>
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{item.name}</td>
+                    <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-center"><ApprovalPill status={item.approval} colorMap={preApprovalColorMap}/></td>
+                    <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t border-gray-200 dark:border-white/10">
+                  <td className="px-3 py-2.5"/>
+                  <td colSpan={3} className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6]">Customization Total</td>
+                  <td className="px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-[#F3EFE6] text-right">{formatCurrency(totalAmount)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
