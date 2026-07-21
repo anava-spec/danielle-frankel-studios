@@ -2,7 +2,7 @@
 
 Group: Daily Ops · File: `fulfillment.tsx`
 
-> See [`docs/CROSS_CUTTING.md`](../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.).
+> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.).
 
 ## Business Objective
 
@@ -17,7 +17,7 @@ Track orders through fulfillment: pricing change transparency, hold/shipping sta
 
 ## Outputs
 
-- `OrderDetailModal`: read-only Sync Change Log section (see [Change Log](../../docs/CROSS_CUTTING.md#interfaces-without-custom-code-in-this-repo))
+- `OrderDetailModal`: read-only Sync Change Log section (see [Change Log](../../../docs/CROSS_CUTTING.md#interfaces-without-custom-code-in-this-repo))
 - Hold reason + "On hold until [date]" display
 - Three independent RYG (Red/Yellow/Green) Pickup Readiness flags: Tax, Address, Hold — deliberately not one combined "Readiness Checklist Passed" field, so staff can see exactly which check is unresolved
 - `pickup_released`: always a manual staff checkbox, never auto-derived, so a later change to underlying checks can't silently un-release an order that already shipped
