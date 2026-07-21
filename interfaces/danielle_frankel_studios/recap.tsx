@@ -427,9 +427,9 @@ function resolvePricingRowAmount(
     const raw = r.getCellValue(multipleField);
     // The stored Multiple Fee is a base rate, not the final price — the real
     // formula scales it by Self Usage and the embroidery/paint/lace tier.
-    // Surface the raw rate as a label (e.g. "$1,500.00 multiplier") since the
-    // Price column now shows the scaled amount.
-    if (typeof raw === 'number' && raw > 0) return { amount: raw * multiplierFactor, label: `${formatCurrency(raw)} multiplier` };
+    // Surface the raw rate and the scaling factor as a label (e.g.
+    // "$1,500.00 x 0.67") since the Price column shows the scaled amount.
+    if (typeof raw === 'number' && raw > 0) return { amount: raw * multiplierFactor, label: `${formatCurrency(raw)} x ${multiplierFactor.toFixed(2)}` };
   }
   return { amount: 0, label: null };
 }
@@ -1018,7 +1018,7 @@ function PricingLineItemsTable({
         {open && dropdownPos && createPortal(
           <div ref={dropdownRef}
             style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, maxHeight: dropdownPos.maxHeight }}
-            className="z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            className="z-[60] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filteredSuggestions.map(s=>(
               <button key={s.id} type="button" onClick={()=>addAndClear(s.id)}
                 className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:bg-[#3A2E12] transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
@@ -1083,10 +1083,34 @@ function StyleSelectSingle({ value, options, placeholder, onChange }: StyleSelec
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   useEffect(()=>{
-    const h=(e:MouseEvent)=>{ if(ref.current&&!ref.current.contains(e.target as Node)){setOpen(false);setQ('');} };
+    const h=(e:MouseEvent)=>{
+      if (ref.current?.contains(e.target as Node)) return;
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      setOpen(false); setQ('');
+    };
     document.addEventListener('mousedown',h); return ()=>document.removeEventListener('mousedown',h);
   },[]);
+
+  // Rendered via a portal (below) so the panel isn't clipped by the modal's
+  // own scrollable body — this is what let it get cut off by the bottom
+  // border when the field sat near the bottom of the form.
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  const updateDropdownPos = useCallback(() => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const margin = 12;
+    setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: Math.max(160, window.innerHeight - r.bottom - margin) });
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    updateDropdownPos();
+    window.addEventListener('scroll', updateDropdownPos, true);
+    window.addEventListener('resize', updateDropdownPos);
+    return () => { window.removeEventListener('scroll', updateDropdownPos, true); window.removeEventListener('resize', updateDropdownPos); };
+  }, [open, updateDropdownPos]);
+
   const filtered = useMemo(()=>q.trim()?options.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())):options,[options,q]);
   const sel = options.find(o=>o.id===value);
   return (
@@ -1096,8 +1120,10 @@ function StyleSelectSingle({ value, options, placeholder, onChange }: StyleSelec
         <span className={sel?'text-gray-900 dark:text-[#F3EFE6]':'text-gray-400 dark:text-gray-500'}>{sel?.label??placeholder}</span>
         <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 transition-transform ${open?'rotate-180':''}`}/>
       </button>
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
+      {open && dropdownPos && createPortal(
+        <div ref={dropdownRef}
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, maxHeight: dropdownPos.maxHeight }}
+          className="z-[60] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl flex flex-col">
           <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <div className="relative">
               <MagnifyingGlassIcon size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"/>
@@ -1106,14 +1132,14 @@ function StyleSelectSingle({ value, options, placeholder, onChange }: StyleSelec
             </div>
           </div>
           <div className="overflow-y-auto flex-1">
-            <button type="button" onClick={()=>{onChange(null);setOpen(false);setQ('');}}
-              className={`w-full text-left px-4 py-2 text-sm transition-colors ${!value?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-500 dark:text-gray-400 hover:bg-gray-50 hover:dark:bg-white/5'}`}>{placeholder}</button>
             {filtered.map(o=>(
               <button key={o.id} type="button" onClick={()=>{onChange(o.id);setOpen(false);setQ('');}}
                 className={`w-full text-left px-4 py-2 text-sm transition-colors ${o.id===value?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>{o.label}</button>
             ))}
+            {filtered.length===0 && <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">No matches</div>}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -1679,7 +1705,12 @@ function CustomizationModal({
           itself uses a much narrower width — same value as
           customization_requests.tsx's chooser — since it has nothing that
           needs the wide two-column layout. */}
-      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform,max-width] duration-200 ease-out`}
+      {/* max-width is NOT in the transitioned properties — animating a
+          container resize at the same moment its content swaps entirely
+          (chooser -> form) reads as a glitch, not a smooth transition. The
+          width change snaps instantly; only the modal's own open/close
+          (opacity + scale) animates, per BRANDING.md's modal spec. */}
+      <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out`}
         style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)', maxWidth: showHybridChooser ? '480px' : '960px' }}
         onClick={e=>e.stopPropagation()}>
 
