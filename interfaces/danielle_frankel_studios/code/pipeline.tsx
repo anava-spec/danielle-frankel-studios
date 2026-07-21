@@ -159,7 +159,7 @@ const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
   'Sold',
-  'In Production',
+  'Order Ready',
   'In Alterations',
   'In Fulfillment',
 ] as const;
@@ -169,7 +169,7 @@ const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Pre-Appointment': 'Pre-Appointment',
   'Deliberating': 'Deliberating',
   'Sold': 'Sold',
-  'In Production': 'Order Ready',
+  'Order Ready': 'Order Ready',
   'In Alterations': 'In Alterations',
   'In Fulfillment': 'In Fulfillment',
 };
@@ -1681,7 +1681,7 @@ interface FullProfileModalProps {
 }
 
 const STAGE_STEPS: string[] = [
-  'Pre-Appointment', 'Deliberating', 'Sold', 'In Production', 'In Alterations', 'In Fulfillment',
+  'Pre-Appointment', 'Deliberating', 'Sold', 'Order Ready', 'In Alterations', 'In Fulfillment',
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({
@@ -1811,7 +1811,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
             )}
           </div>
         );
-      case 'In Production':
+      case 'Order Ready':
         return (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">

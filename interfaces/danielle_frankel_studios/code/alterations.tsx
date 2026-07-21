@@ -132,7 +132,7 @@ const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
   'Sold',
-  'In Production',
+  'Order Ready',
   'In Alterations',
   'In Fulfillment',
 ] as const;
@@ -142,7 +142,7 @@ const STAGE_LABELS: Record<string, string> = {
   'Pre-Appointment': 'PRE-APPOINTMENT',
   'Deliberating':    'DELIBERATING',
   'Sold':            'SOLD',
-  'In Production':   'ORDER READY',
+  'Order Ready':   'ORDER READY',
   'In Alterations':  'ALTERATIONS',
   'In Fulfillment':  'FULFILLMENT',
 };
@@ -967,7 +967,7 @@ const SummaryProfileModal = React.memo(function SummaryProfileModal({
           )}
 
           {/* ── IN PRODUCTION (ORDER READY) ── */}
-          {stage === 'In Production' && (
+          {stage === 'Order Ready' && (
             <>
               <EditableNumber label="% Picked" value={client.pickedPercent} fieldId={FIELD_IDS.CLIENT_PICKED_PERCENT} recordId={client.id} table={clientsTable} suffix="%" isPercent />
               <EditableCheckbox label="Order Ready" value={client.orderReady} fieldId={FIELD_IDS.CLIENT_ORDER_READY} recordId={client.id} table={clientsTable} />
@@ -1042,7 +1042,7 @@ interface FullProfileModalProps {
 }
 
 const STAGE_STEPS: string[] = [
-  'Pre-Appointment', 'Deliberating', 'Sold', 'In Production', 'In Alterations', 'In Fulfillment',
+  'Pre-Appointment', 'Deliberating', 'Sold', 'Order Ready', 'In Alterations', 'In Fulfillment',
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({ client, stageColors, stageChoices, clientsTable, onClose }: FullProfileModalProps) {
