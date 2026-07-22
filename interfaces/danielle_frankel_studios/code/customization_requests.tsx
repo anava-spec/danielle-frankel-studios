@@ -60,7 +60,7 @@ const FIELD_IDS = {
   CUSTOMIZATION_ID:            'fldl9cIcV80nYEDwe',
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
-  PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',
+  PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',   // production_status — Sent to Production / Making at DF / At Factory / Ready to Cut / Pattern Making / Need Info / Complete
   APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Review / Counter-Proposed / Approved / Denied / Denied • Counter-Proposal
   CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Request Review / Under Review / Approved / Denied / Denied • Counter-Proposal
   PARENT_CUSTOMIZATION_REQUEST: 'fldh9tKr0Vmo84Yu6',  // parent_customization_request — self-link, set on a counter-proposal child
@@ -1340,8 +1340,9 @@ function NewRequestModal({
 // ─── ApproveDenyConfirmModal ────────────────────────────────────────────────────
 // Simple confirm modal, same shell as DeleteConfirmModal (no countdown — this
 // isn't destructive in the same irreversible-data-loss sense, just a stage move).
-function ApproveDenyConfirmModal({ action, clientName, onConfirm, onClose }: {
-  action: 'Approve' | 'Deny'; clientName: string; onConfirm: () => Promise<void>; onClose: () => void;
+function ApproveDenyConfirmModal({ action, clientName, context = 'internal', onConfirm, onClose }: {
+  action: 'Approve' | 'Deny'; clientName: string; context?: 'internal' | 'client';
+  onConfirm: () => Promise<void>; onClose: () => void;
 }) {
   const [isVisible, setIsVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
@@ -1368,9 +1369,13 @@ function ApproveDenyConfirmModal({ action, clientName, onConfirm, onClose }: {
         </div>
         <div className="p-5">
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            {isApprove
-              ? <>This will approve the customization request for <strong>{clientName}</strong> and move it forward to be proposed to the client.</>
-              : <>This will deny the customization request for <strong>{clientName}</strong>. This action cannot be undone.</>}
+            {context === 'client'
+              ? (isApprove
+                  ? <>This records that <strong>{clientName}</strong> approved the proposal — it will be marked as sent to production.</>
+                  : <>This records that <strong>{clientName}</strong> denied the proposal. This action cannot be undone.</>)
+              : (isApprove
+                  ? <>This will approve the customization request for <strong>{clientName}</strong> and move it forward to be proposed to the client.</>
+                  : <>This will deny the customization request for <strong>{clientName}</strong>. This action cannot be undone.</>)}
           </p>
         </div>
         <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
@@ -1396,10 +1401,17 @@ function ApproveDenyConfirmModal({ action, clientName, onConfirm, onClose }: {
 // internal Approved Price field the production team is actually proposing.
 function CounterProposalModal({
   parentRecord, customizationsTable, pricingRecords, pricingTable, preApprovalField, allCustomizationRecords,
-  onClose, onSubmitted,
+  source = 'internal', onClose, onSubmitted,
 }: {
   parentRecord: AirtableRecord; customizationsTable: Table; pricingRecords: AirtableRecord[];
   pricingTable: Table | null; preApprovalField: Field | null; allCustomizationRecords: AirtableRecord[];
+  // Which side initiated the counter — decides whether the PARENT's
+  // internal_approval_status or client_approval_status gets set to
+  // "Denied • Counter-Proposal". The child always starts fresh at
+  // internal_approval_status = "Counter-Proposed" either way, since a
+  // client counter still needs production to review/set a new price
+  // before it can go back to the client.
+  source?: 'internal' | 'client';
   onClose: () => void; onSubmitted: () => void;
 }) {
   const [isVisible, setIsVisible] = useState(false);
@@ -1481,8 +1493,9 @@ function CounterProposalModal({
     setSaving(true);
     setError(null);
     try {
+      const parentStatusField = source === 'client' ? FIELD_IDS.CLIENT_APPROVAL_STATUS : FIELD_IDS.APPROVAL_STATUS;
       await queueWrite(() => customizationsTable.updateRecordAsync(parentRecord.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied • Counter-Proposal' },
+        [parentStatusField]: { name: 'Denied • Counter-Proposal' },
       }));
       const clientLink = fClient ? (parentRecord.getCellValue(fClient) as Array<{ id: string }> | null) : null;
       const childFields: Record<string, unknown> = {
@@ -1670,6 +1683,7 @@ function RecordDetailPage({
   const fManagerApproval = table.getFieldIfExists(FIELD_IDS.APPROVED_BY_PRODUCTION);
   const fClientApprovalStatus = table.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS);
   const fProposedTotal        = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
+  const fProductionStatus     = table.getFieldIfExists(FIELD_IDS.PRODUCTION_STATUS);
 
   // ── Pricing table fields, shared by every line item and the rush fee row ───
   const pPriceField   = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_PRICE) : null;
@@ -1685,6 +1699,8 @@ function RecordDetailPage({
 
   const [approvalStatus, setApprovalStatus] = useState(fApprStatus ? getSingleSelectName(record.getCellValue(fApprStatus)) : '');
   const approvalColorMap = useMemo(() => getChoiceColorMap(fApprStatus), [fApprStatus]);
+  const [clientApprovalStatus, setClientApprovalStatus] = useState(fClientApprovalStatus ? getSingleSelectName(record.getCellValue(fClientApprovalStatus)) : '');
+  const clientApprovalColorMap = useMemo(() => getChoiceColorMap(fClientApprovalStatus), [fClientApprovalStatus]);
   const [styleId,    setStyleId]    = useState<string | null>(() => { const v = fStyled ? record.getCellValue(fStyled) as Array<{id: string}> | null : null; return v?.[0]?.id ?? null; });
   const [pricingIds, setPricingIds] = useState<string[]>(() => { const v = fPricing ? record.getCellValue(fPricing) as Array<{id: string}> | null : null; return v?.map(x => x.id) ?? []; });
   const [detail,     setDetail]     = useState(fDetail ? record.getCellValueAsString(fDetail) : '');
@@ -1692,6 +1708,9 @@ function RecordDetailPage({
   const [showCounterModal, setShowCounterModal] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showDenyConfirm, setShowDenyConfirm] = useState(false);
+  const [showClientCounterModal, setShowClientCounterModal] = useState(false);
+  const [showClientApproveConfirm, setShowClientApproveConfirm] = useState(false);
+  const [showClientDenyConfirm, setShowClientDenyConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -1771,6 +1790,7 @@ function RecordDetailPage({
       if (fApproved) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Approved');
+      if (fClientApprovalStatus) setClientApprovalStatus('Request Review');
     } catch (e) { setError('Failed to approve.'); }
     finally { setSaving(false); setShowApproveConfirm(false); }
   };
@@ -1786,6 +1806,33 @@ function RecordDetailPage({
       setApprovalStatus('Denied');
     } catch (e) { setError('Failed to deny.'); }
     finally { setSaving(false); setShowDenyConfirm(false); }
+  };
+
+  // Client decision — gated on clientApprovalStatus === 'Request Review'
+  // (set by handleApprove above, or by a re-approved counter-proposal child).
+  // Approved: client_approval_status -> Approved AND production_status ->
+  // "Sent to Production" (end of the approval flow — production picks it up
+  // from there). Denied: client_approval_status -> Denied [terminal].
+  const handleClientApprove = async () => {
+    setSaving(true);
+    try {
+      const patch: Record<string, unknown> = { [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Approved' } };
+      if (fProductionStatus) patch[FIELD_IDS.PRODUCTION_STATUS] = { name: 'Sent to Production' };
+      await queueWrite(() => table.updateRecordAsync(record.id, patch));
+      setClientApprovalStatus('Approved');
+    } catch (e) { setError('Failed to record client approval.'); }
+    finally { setSaving(false); setShowClientApproveConfirm(false); }
+  };
+
+  const handleClientDeny = async () => {
+    setSaving(true);
+    try {
+      await queueWrite(() => table.updateRecordAsync(record.id, {
+        [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Denied' },
+      }));
+      setClientApprovalStatus('Denied');
+    } catch (e) { setError('Failed to record client denial.'); }
+    finally { setSaving(false); setShowClientDenyConfirm(false); }
   };
 
   const clientName   = fClient ? getLinkedRecordName(record.getCellValue(fClient)) : '—';
@@ -1824,6 +1871,12 @@ function RecordDetailPage({
   // Counter-Propose decision — it isn't a terminal status. Every other status
   // (Approved, Denied, Denied • Counter-Proposal) is Stage B.
   const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
+
+  // Client decision gate — only actionable once internal approval sent it to
+  // "Request Review". Client-side has no "Counter-Proposed" choice of its own
+  // (per the updated client_approval_status schema) — a client counter simply
+  // writes "Denied • Counter-Proposal" directly (see handleClientCounterSubmitted).
+  const isClientStageA = clientApprovalStatus === 'Request Review';
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
   // Base Price is shown as-is from its stored field. Total Customization
@@ -2102,6 +2155,36 @@ function RecordDetailPage({
               </select>
             </div>
 
+            {/* Client Decision — actionable once internal approval sent this to
+                "Request Review" (client_approval_status). Same three-action
+                pattern as the internal decision above, scoped to this stage. */}
+            {isClientStageA && (
+              <div className="border-t border-gray-200 dark:border-white/10 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className={labelCls.replace(' mb-1.5 block', '')}>Client Decision</span>
+                  {clientApprovalStatus && (
+                    <ApprovalStatusPill status={clientApprovalStatus} colorMap={clientApprovalColorMap} />
+                  )}
+                </div>
+                {canUpdate && (
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setShowClientApproveConfirm(true)} disabled={saving}
+                      className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
+                      Approve
+                    </button>
+                    <button type="button" onClick={() => setShowClientDenyConfirm(true)} disabled={saving}
+                      className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+                      Deny
+                    </button>
+                    <button type="button" onClick={() => setShowClientCounterModal(true)} disabled={saving}
+                      className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
+                      Counter-Propose
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Status banners */}
             {approvalStatus === 'Counter-Proposed' && (
               <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
@@ -2124,6 +2207,18 @@ function RecordDetailPage({
               <div>
                 <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Counter-Proposed Price' : 'Approved Price'}</span>
                 <div className="text-sm text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
+              </div>
+            )}
+            {(clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') && (
+              <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                {clientApprovalStatus === 'Denied • Counter-Proposal'
+                  ? 'The client denied this proposal — a counter-proposal was submitted in its place.'
+                  : 'The client denied this proposal.'}
+              </div>
+            )}
+            {clientApprovalStatus === 'Approved' && (
+              <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
+                The client approved — sent to production.
               </div>
             )}
             {error && <div className="text-red-600 dark:text-red-400 text-sm">{error}</div>}
@@ -2157,8 +2252,40 @@ function RecordDetailPage({
           pricingTable={pricingTable}
           preApprovalField={preApprovalField}
           allCustomizationRecords={allCustomizationRecords}
+          source="internal"
           onClose={() => setShowCounterModal(false)}
           onSubmitted={() => { setShowCounterModal(false); onBack(); }}
+        />
+      )}
+      {showClientApproveConfirm && (
+        <ApproveDenyConfirmModal
+          action="Approve"
+          clientName={clientName}
+          context="client"
+          onConfirm={handleClientApprove}
+          onClose={() => setShowClientApproveConfirm(false)}
+        />
+      )}
+      {showClientDenyConfirm && (
+        <ApproveDenyConfirmModal
+          action="Deny"
+          clientName={clientName}
+          context="client"
+          onConfirm={handleClientDeny}
+          onClose={() => setShowClientDenyConfirm(false)}
+        />
+      )}
+      {showClientCounterModal && (
+        <CounterProposalModal
+          parentRecord={record}
+          customizationsTable={table}
+          pricingRecords={pricingRecords}
+          pricingTable={pricingTable}
+          preApprovalField={preApprovalField}
+          allCustomizationRecords={allCustomizationRecords}
+          source="client"
+          onClose={() => setShowClientCounterModal(false)}
+          onSubmitted={() => { setShowClientCounterModal(false); onBack(); }}
         />
       )}
     </div>
