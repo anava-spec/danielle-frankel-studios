@@ -2584,16 +2584,6 @@ function PostAppointmentModal({
   const [weddingConfirmed, setWeddingConfirmed] = useState(cBool(CLIENT.WEDDING_CONFIRMED));
   const [showCalendar, setShowCalendar]     = useState(false);
 
-  // Measurements
-  const [bust,       setBust]       = useState(cNum(CLIENT.MEAS_BUST)?.toString()??'');
-  const [underBust,  setUnderBust]  = useState(cNum(CLIENT.MEAS_UNDER_BUST)?.toString()??'');
-  const [waist,      setWaist]      = useState(cNum(CLIENT.MEAS_WAIST)?.toString()??'');
-  const [highHip,    setHighHip]    = useState(cNum(CLIENT.MEAS_HIGH_HIP)?.toString()??'');
-  const [hips,       setHips]       = useState(cNum(CLIENT.MEAS_HIPS)?.toString()??'');
-  const [height,     setHeight]     = useState(cNum(CLIENT.MEAS_HEIGHT)?.toString()??'');
-  const [hollowHem,  setHollowHem]  = useState(cNum(CLIENT.MEAS_HOLLOW_HEM)?.toString()??'');
-  const [shoulderW,  setShoulderW]  = useState(cNum(CLIENT.MEAS_SHOULDER_W)?.toString()??'');
-  const [armLength,  setArmLength]  = useState(cNum(CLIENT.MEAS_ARM_LENGTH)?.toString()??'');
   // measurement_notes is richText — read via fromRichText
   const [measNotes,  setMeasNotes]  = useState(fromRichText(getVal<unknown>(clientRec!, CLIENT.MEAS_NOTES)));
   const [size,       setSize]       = useState(cStr(CLIENT.SIZE));
@@ -2770,7 +2760,6 @@ function PostAppointmentModal({
     setShowCalendar(false);
   };
   const handleConfirmed    = (v:boolean) => { setWeddingConfirmed(v); saveClientField(CLIENT.WEDDING_CONFIRMED, v); };
-  const handleMeasBlur     = (fieldId:string, val:string) => saveClientField(fieldId, val?parseFloat(val)||null:null);
   const handleNotesBlur    = () => saveClientField(CLIENT.APPT_NOTES, notes);
   // measurement_notes is richText — write as {markdown: value}
   const handleMeasNotesBlur = () => saveClientField(CLIENT.MEAS_NOTES, measNotes ? toRichText(measNotes) : null);
@@ -2795,14 +2784,6 @@ function PostAppointmentModal({
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
   // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
-  const measInput = (label:string, val:string, set:(v:string)=>void, onBlur:()=>void, ph:string) => (
-    <div>
-      <div className="text-sm text-gray-400 dark:text-gray-500 mb-1">{label}</div>
-      <input value={val} onChange={e=>set(e.target.value)} onBlur={onBlur} placeholder={ph}
-        className={`${inputCls} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-        style={{ MozAppearance:'textfield' } as React.CSSProperties} type="number"/>
-    </div>
-  );
 
   const clientStage        = cStr(CLIENT.STAGE);
   const showPreApptFields  = clientStage === 'Pre-Appointment';
@@ -2899,24 +2880,17 @@ function PostAppointmentModal({
             {/* Measurements */}
             <div>
               <span className={labelCls}>Measurements</span>
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                {measInput('Bust',           bust,      setBust,      ()=>handleMeasBlur(CLIENT.MEAS_BUST,      bust),      '34"')}
-                {measInput('Under Bust',     underBust, setUnderBust, ()=>handleMeasBlur(CLIENT.MEAS_UNDER_BUST,underBust), '30"')}
-                {measInput('Waist',          waist,     setWaist,     ()=>handleMeasBlur(CLIENT.MEAS_WAIST,     waist),     '26"')}
-                {measInput('High Hip',       highHip,   setHighHip,   ()=>handleMeasBlur(CLIENT.MEAS_HIGH_HIP,  highHip),   '34"')}
-                {measInput('Hips',           hips,      setHips,      ()=>handleMeasBlur(CLIENT.MEAS_HIPS,      hips),      '36"')}
-                {measInput('Height',         height,    setHeight,    ()=>handleMeasBlur(CLIENT.MEAS_HEIGHT,    height),    '5\'6"')}
-                {measInput('Hollow to Hem',  hollowHem, setHollowHem, ()=>handleMeasBlur(CLIENT.MEAS_HOLLOW_HEM,hollowHem),'58"')}
-                {measInput('Shoulder Width', shoulderW, setShoulderW, ()=>handleMeasBlur(CLIENT.MEAS_SHOULDER_W,shoulderW), '14"')}
-                {measInput('Arm Length',     armLength, setArmLength, ()=>handleMeasBlur(CLIENT.MEAS_ARM_LENGTH,armLength), '23"')}
+              <div className="flex gap-3">
+                <div className="w-[30%]">
+                  <AttachmentSection label="Upload Measurement Photo" type="Measurements" existing={existingMeasPhotos} clientId={clientId}/>
+                </div>
+                <div className="w-[70%]">
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Measurement Notes (posture, concerns, alterations flags…)</div>
+                  <textarea value={measNotes} onChange={e=>setMeasNotes(e.target.value)} onBlur={handleMeasNotesBlur}
+                    placeholder="Any posture notes, concerns, or alterations flags…" rows={2}
+                    className={`${inputCls} resize-none`}/>
+                </div>
               </div>
-              <div className="mb-3">
-                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Measurement Notes (posture, concerns, alterations flags…)</div>
-                <textarea value={measNotes} onChange={e=>setMeasNotes(e.target.value)} onBlur={handleMeasNotesBlur}
-                  placeholder="Any posture notes, concerns, or alterations flags…" rows={2}
-                  className={`${inputCls} resize-none`}/>
-              </div>
-              <AttachmentSection label="Upload Measurement Photo" type="Measurements" existing={existingMeasPhotos} clientId={clientId}/>
             </div>
 
             {/* Appointment Photo */}
