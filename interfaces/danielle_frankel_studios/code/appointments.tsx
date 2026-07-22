@@ -1293,6 +1293,7 @@ interface CalendarPivotProps {
     altLeadLinkField: Field | undefined;
     roomLinkField: Field | undefined;
     endTimeField: Field | undefined;
+    apptNameField: Field | undefined;
   };
   clientNameById: Map<string, string>;
   clientStageById: Map<string, string>;
@@ -1495,6 +1496,7 @@ interface CalendarCardCompactProps {
     saNameField: Field | undefined;
     altLeadLinkField: Field | undefined;
     roomLinkField: Field | undefined;
+    apptNameField: Field | undefined;
   };
   appointmentsTable: Table;
   checkInField: Field | null;
@@ -1552,6 +1554,10 @@ function CalendarCardCompact({
   const roomValue = appointmentFields.roomLinkField
     ? record.getCellValueAsString(appointmentFields.roomLinkField)
     : null;
+  const apptNameRaw = appointmentFields.apptNameField
+    ? record.getCellValue(appointmentFields.apptNameField)
+    : null;
+  const apptNameEntry = extractSelectValue(apptNameRaw);
 
   const shortType = getShortTypeLabel(typeValue);
   const isAlterationsAppt = shortType.toLowerCase().includes('alterations');
@@ -1587,15 +1593,24 @@ function CalendarCardCompact({
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
     >
-      {/* Stage pill: top-right */}
-      {clientStage && (
-        <span className={`absolute top-2.5 right-2.5 inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight border text-[10px] ${stagePillClasses}`}>
-          {clientStage}
-        </span>
-      )}
+      {/* Stage / Appointment Type pills: top-right, stacked */}
+      <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1">
+        {clientStage && (
+          <span className={`inline-flex flex-col items-end px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] ${stagePillClasses}`}>
+            <span className="opacity-70">Stage:</span>
+            <span>{clientStage}</span>
+          </span>
+        )}
+        {apptNameEntry && (
+          <span className="inline-flex flex-col items-end px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]">
+            <span className="opacity-70">Appointment Type:</span>
+            <span>{apptNameEntry.name}</span>
+          </span>
+        )}
+      </div>
 
       {/* Client name */}
-      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-24">{clientName}</div>
+      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-28">{clientName}</div>
 
       {/* Appointment type — bold */}
       <div className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
@@ -3133,6 +3148,7 @@ function AppointmentsApp(): React.ReactElement {
                 altLeadLinkField: altLeadLinkField,
                 roomLinkField: roomLinkField,
                 endTimeField: apptEndTimeField,
+                apptNameField: apptNameField,
               }}
               clientNameById={clientNameById}
               clientStageById={clientStageById}
