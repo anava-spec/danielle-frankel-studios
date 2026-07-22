@@ -64,16 +64,18 @@ const FIELDS_CLIENTS = {
 };
 
 // input.config() se llama una sola vez, scope global, antes del try —
-// dryRun es un Input variable opcional del "Run script" step (boolean).
-// Si no se pasa (o el script se corre sin configurar inputs), default a true
-// para que nunca se escriba por accidente.
+// dryRun es un Input variable opcional del "Run script" step. Airtable pasa
+// las Input variables como texto (string "false"/"true"), no boolean, así
+// que se compara como string — String(undefined) = "undefined", por lo que
+// si no se configura el input, cae en el default TRUE (nunca escribe por
+// accidente).
 const cfg = input.config();
 
 const CONFIG = {
   LOG_LEVEL:    'B',              // A=minimal | B=audit (default) | C=debug
   SOURCE_STAGE: 'Order Ready',
   TARGET_STAGE: 'In Fulfillment',
-  DRY_RUN:      cfg.dryRun !== false,  // pasa dryRun=false explícitamente para escribir de verdad
+  DRY_RUN:      String(cfg.dryRun) !== 'false',  // pasa dryRun=false explícitamente para escribir de verdad
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
