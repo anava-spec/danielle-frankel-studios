@@ -78,6 +78,9 @@ const FIELD_IDS = {
   PRE_APPT_NOTES: 'fld3nCe9MAo4dKavc',
   APPT_END_TIME: 'fldFwFIBNtC76v0Y7',
   APPT_NAME: 'fldZO3rF3KOGxG0S5',
+  // Source singleSelect on the appointment_types reference table (TABLE_IDS.APPOINTMENT_TYPES)
+  // that FIELD_IDS.APPT_NAME looks up — used to resolve the real Airtable choice color.
+  APPT_TYPE_CHOICE: 'fld5M3HgiIOycZfKJ',
   IS_FIRST_VISIT: 'fldkBeg39sl9VSgzF',
   CUSTOMIZATION_LOOKUP: 'fldACtVEk2jHSpTDC',
 
@@ -172,6 +175,11 @@ const TABLE_IDS = {
   ROOMS: 'tblI8GIUpyxyWNpPa',
   STAFF: 'tblbYk88xJ8FQrLS4',
   STUDIOS: 'tblYM02GzeYdYk23v',
+  // Reference table for Acuity appointment types — the appointment_type lookup
+  // on Appointments (FIELD_IDS.APPT_NAME) mirrors this table's singleSelect,
+  // but a lookup field doesn't reliably expose the source field's choice
+  // colors at runtime. Read the color straight from the singleSelect here instead.
+  APPOINTMENT_TYPES: 'tblhU6FD6innd2VUZ',
 } as const;
 
 const VIEW_IDS = {
@@ -455,6 +463,13 @@ function getCompactPillClassesForColor(colorName: string | null | undefined): st
   return `inline-flex items-center justify-center w-full text-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[11px] ${colorClasses}`;
 }
 
+// Table-cell-sized pill using the field's real Airtable choice color — for
+// the List layout's Stage/Type columns (Calendar's chips use the compact variant above).
+function getListPillClassesForColor(colorName: string | null | undefined): string {
+  const colorClasses = colorName ? (AIRTABLE_COLOR_MAP[colorName] ?? DEFAULT_PILL_COLOR_CLASSES) : DEFAULT_PILL_COLOR_CLASSES;
+  return `inline-flex items-center text-[13px] px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses}`;
+}
+
 function formatMissingFieldsMessage(labels: string[]): string {
   if (labels.length === 0) return '';
   if (labels.length === 1) return `Missing ${labels[0]}`;
@@ -538,9 +553,14 @@ const STAGE_PILL_CLASSES: Record<string, string> = {
   'Did Not Convert': 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]',
 };
 
-function StagePill({ stage, size = 'sm' }: { stage: string | null; size?: 'sm' | 'lg' }): React.ReactElement {
+function StagePill({ stage, size = 'sm', color }: { stage: string | null; size?: 'sm' | 'lg'; color?: string | null }): React.ReactElement {
   if (!stage) return <span className="text-gray-400 dark:text-gray-500">—</span>;
-  const colorClasses = STAGE_PILL_CLASSES[stage] ?? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
+  // Prefers the real Airtable choice color (passed by the caller from the
+  // Stage field's own options) over the old hardcoded per-value map, so this
+  // stays correct if the field's colors are ever changed in Airtable.
+  const colorClasses = color !== undefined
+    ? (color ? (AIRTABLE_COLOR_MAP[color] ?? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]') : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]')
+    : (STAGE_PILL_CLASSES[stage] ?? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]');
   const sizeClass = size === 'lg'
     ? 'inline-flex items-center text-sm px-3 py-1.5 rounded-full font-medium border whitespace-nowrap'
     : 'inline-flex items-center text-[13px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap';
@@ -1279,7 +1299,7 @@ function CalendarActionButtons({
           className={canUpdate ? btnBlue : btnDisabledCls}>Check In</button>
       );
     } else {
-      items.push(<span key="ci" className="text-xs text-red-500">{missingDataMessage || 'Missing Data'}</span>);
+      items.push(<span key="ci" className="text-[13px] text-red-500">{missingDataMessage || 'Missing Data'}</span>);
     }
   }
 
@@ -1671,20 +1691,17 @@ function CalendarCardCompact({
       </div>
 
       {/* Client name */}
-      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-28">{clientName}</div>
-
-      {/* Appointment type — bold */}
-      <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
+      <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1.5 pr-28">{clientName}</div>
 
       {/* Fields */}
       <div className="space-y-0.5">
-        {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
+        {saValue && <div className="text-[13px] text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
         {showAltLead && (
-          <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
+          <div className={`text-[13px] ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
             Alt Lead: {altLeadValue || 'missing'}
           </div>
         )}
-        {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
+        {roomValue && <div className="text-[13px] text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
       </div>
 
       <CalendarActionButtons
@@ -1893,6 +1910,7 @@ interface DetailDrawerProps {
   studioNameField: Field | null;
   altLeadLinkField: Field | null;
   clientStageById: Map<string, string>;
+  stageColorByName: Map<string, string>;
 }
 
 function DetailDrawer({
@@ -1912,6 +1930,7 @@ function DetailDrawer({
   studioNameField,
   altLeadLinkField,
   clientStageById,
+  stageColorByName,
 }: DetailDrawerProps) {
   const apptTypeField = appointmentsTable.getFieldIfExists(FIELD_IDS.APPT_TYPE);
   const apptTimeField = appointmentsTable.getFieldIfExists(FIELD_IDS.APPT_TIME);
@@ -2180,7 +2199,7 @@ function DetailDrawer({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[16px] font-semibold text-gray-800 dark:text-[#F3EFE6]">{displayName}</span>
               {studioName && <span className="text-[13px] text-gray-500 dark:text-gray-400">{studioName}</span>}
-              {clientStage && <StagePill stage={clientStage} size="lg" />}
+              {clientStage && <StagePill stage={clientStage} size="lg" color={stageColorByName.get(clientStage)} />}
             </div>
 
             {/* Row 2: Phone · Email · Wedding · SA inline */}
@@ -2417,6 +2436,7 @@ function AppointmentsApp(): React.ReactElement {
   const roomsTable = base.getTableByIdIfExists(TABLE_IDS.ROOMS) ?? undefined;
   const staffTable = base.getTableByIdIfExists(TABLE_IDS.STAFF) ?? undefined;
   const studiosTable = base.getTableByIdIfExists(TABLE_IDS.STUDIOS) ?? undefined;
+  const appointmentTypesTable = base.getTableByIdIfExists(TABLE_IDS.APPOINTMENT_TYPES) ?? undefined;
   const appointmentFieldsToLoad = useMemo(
     () => getExistingFields(appointmentsTable, APPOINTMENT_RECORD_FIELDS),
     [appointmentsTable]
@@ -2533,9 +2553,10 @@ function AppointmentsApp(): React.ReactElement {
   const apptEndTimeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_END_TIME) ?? null;
 
   const clientStageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE) ?? null;
+  const apptTypeChoiceField = appointmentTypesTable?.getFieldIfExists(FIELD_IDS.APPT_TYPE_CHOICE) ?? null;
 
   const stageColorByName = useMemo(() => getFieldChoiceColorMap(clientStageField), [clientStageField]);
-  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptNameField), [apptNameField]);
+  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptTypeChoiceField), [apptTypeChoiceField]);
 
   const clientStageById = useMemo(() => {
     if (!clientRecords || !clientStageField) return new Map<string, string>();
@@ -3169,11 +3190,13 @@ function AppointmentsApp(): React.ReactElement {
                             : <MissingDataPill />}
                         </td>
                         <td className="px-3 py-2.5">
-                          <StagePill stage={clientStage} />
+                          {clientStage
+                            ? <span className={getListPillClassesForColor(stageColorByName.get(clientStage))}>{clientStage}</span>
+                            : <span className="text-gray-400 dark:text-gray-500">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
                           {apptNameEntry
-                            ? <span className={getAppointmentTypePillClasses(apptNameEntry.name, 'sm')}>{apptNameEntry.name}</span>
+                            ? <span className={getListPillClassesForColor(apptTypeColorByName.get(apptNameEntry.name))}>{apptNameEntry.name}</span>
                             : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
@@ -3274,6 +3297,7 @@ function AppointmentsApp(): React.ReactElement {
               studioNameField={studioNameField}
               altLeadLinkField={altLeadLinkField}
               clientStageById={clientStageById}
+              stageColorByName={stageColorByName}
             />
           </div>
         </div>
