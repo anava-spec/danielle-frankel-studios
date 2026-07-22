@@ -1594,18 +1594,22 @@ function CalendarCardCompact({
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
     >
       {/* Stage / Appointment Type pills: top-right, stacked */}
-      <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1">
+      <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5">
         {clientStage && (
-          <span className={`inline-flex flex-col items-end px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] ${stagePillClasses}`}>
-            <span className="opacity-70">Stage:</span>
-            <span>{clientStage}</span>
-          </span>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Stage:</span>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] ${stagePillClasses}`}>
+              {clientStage}
+            </span>
+          </div>
         )}
         {apptNameEntry && (
-          <span className="inline-flex flex-col items-end px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]">
-            <span className="opacity-70">Appointment Type:</span>
-            <span>{apptNameEntry.name}</span>
-          </span>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Appointment Type:</span>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]">
+              {apptNameEntry.name}
+            </span>
+          </div>
         )}
       </div>
 
