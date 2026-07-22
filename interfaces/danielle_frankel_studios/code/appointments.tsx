@@ -508,7 +508,7 @@ function MissingDataPill({ reason }: { reason?: string | null } = {}): React.Rea
   return (
     <span
       title={reason ?? undefined}
-      className={`inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap ${reason ? 'cursor-help' : ''}`}
+      className={`inline-flex items-center text-[13px] px-2.5 py-0.5 rounded-full font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap ${reason ? 'cursor-help' : ''}`}
     >
       Missing Data
     </span>
@@ -541,9 +541,9 @@ const STAGE_PILL_CLASSES: Record<string, string> = {
 function StagePill({ stage, size = 'sm' }: { stage: string | null; size?: 'sm' | 'lg' }): React.ReactElement {
   if (!stage) return <span className="text-gray-400 dark:text-gray-500">—</span>;
   const colorClasses = STAGE_PILL_CLASSES[stage] ?? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
-  const sizeClass = size === 'lg' 
+  const sizeClass = size === 'lg'
     ? 'inline-flex items-center text-sm px-3 py-1.5 rounded-full font-medium border whitespace-nowrap'
-    : 'inline-flex items-center text-base px-2 py-0.5 rounded-full font-medium border whitespace-nowrap';
+    : 'inline-flex items-center text-[13px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap';
   return (
     <span className={`${sizeClass} ${colorClasses}`}>
       {stage}
@@ -886,7 +886,7 @@ function NotificationModal({ content, onClose }: NotificationModalProps) {
         style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)', opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-base text-gray-800 dark:text-[#F3EFE6] mb-6 leading-relaxed">{content}</p>
+        <p className="text-sm text-gray-800 dark:text-[#F3EFE6] mb-6 leading-relaxed">{content}</p>
         <div className="flex justify-center">
           <button
             onClick={requestClose}
@@ -1637,7 +1637,7 @@ function CalendarCardCompact({
         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
       >
-        <div className="text-lg font-semibold text-gray-600 dark:text-gray-400 text-center">Blocked Time</div>
+        <div className="text-sm font-semibold text-gray-600 dark:text-gray-400 text-center">Blocked Time</div>
       </div>
     );
   }
@@ -1674,7 +1674,7 @@ function CalendarCardCompact({
       <div className="text-sm font-semibold text-gray-800 dark:text-[#F3EFE6] mb-1 pr-28">{clientName}</div>
 
       {/* Appointment type — bold */}
-      <div className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
+      <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{shortType}</div>
 
       {/* Fields */}
       <div className="space-y-0.5">
@@ -2140,7 +2140,7 @@ function DetailDrawer({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <BlockTimePill />
-                {studioName && <span className="text-base text-gray-500 dark:text-gray-400">{studioName}</span>}
+                {studioName && <span className="text-[13px] text-gray-500 dark:text-gray-400">{studioName}</span>}
               </div>
             </div>
           </div>
@@ -2153,7 +2153,7 @@ function DetailDrawer({
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-5">
             <DetailRow label="Time" fieldId={FIELD_IDS.APPT_TIME}>
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6] font-medium">{timeDisplay}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6] font-medium">{timeDisplay}</div>
             </DetailRow>
             <DetailRow label="Room">
               <EditableLinkedRecord
@@ -2178,8 +2178,8 @@ function DetailDrawer({
           <div className="flex-1 min-w-0">
             {/* Row 1: Name + Studio + Stage pill */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xl font-semibold text-gray-800 dark:text-[#F3EFE6]">{displayName}</span>
-              {studioName && <span className="text-base text-gray-500 dark:text-gray-400">{studioName}</span>}
+              <span className="text-[16px] font-semibold text-gray-800 dark:text-[#F3EFE6]">{displayName}</span>
+              {studioName && <span className="text-[13px] text-gray-500 dark:text-gray-400">{studioName}</span>}
               {clientStage && <StagePill stage={clientStage} size="lg" />}
             </div>
 
@@ -2232,7 +2232,7 @@ function DetailDrawer({
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-5">
           <DetailRow label="Time" fieldId={FIELD_IDS.APPT_TIME}>
-            <div className="text-base text-gray-800 dark:text-[#F3EFE6] font-medium">{timeDisplay}</div>
+            <div className="text-sm text-gray-800 dark:text-[#F3EFE6] font-medium">{timeDisplay}</div>
           </DetailRow>
           <DetailRow label="Room">
             <EditableLinkedRecord
@@ -2283,30 +2283,30 @@ function DetailDrawer({
         {isFirstVisit && linkedClientRecord && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Preferred stylist">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientStylistsField ? linkedClientRecord.getCellValueAsString(clientStylistsField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientStylistsField ? linkedClientRecord.getCellValueAsString(clientStylistsField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Ready to wear size" fieldId={FIELD_IDS.CLIENT_RTW_SIZE}>
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Next appointment">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Previous appointments">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientApptRecordsField ? linkedClientRecord.getCellValueAsString(clientApptRecordsField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientApptRecordsField ? linkedClientRecord.getCellValueAsString(clientApptRecordsField) : '—'}</div>
             </DetailRow>
             {clientFavStylesAcuityField && linkedClientRecord.getCellValueAsString(clientFavStylesAcuityField) && (
               <DetailRow label="Favorite styles" fieldId={FIELD_IDS.CLIENT_FAV_STYLES_ACUITY}>
-                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{linkedClientRecord.getCellValueAsString(clientFavStylesAcuityField)}</div>
+                <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{linkedClientRecord.getCellValueAsString(clientFavStylesAcuityField)}</div>
               </DetailRow>
             )}
             <DetailRow label="Personal style notes" fieldId={FIELD_IDS.CLIENT_PERSONAL_NOTES}>
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientPersonalNotesField ? linkedClientRecord.getCellValueAsString(clientPersonalNotesField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientPersonalNotesField ? linkedClientRecord.getCellValueAsString(clientPersonalNotesField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Wedding location" fieldId={FIELD_IDS.CLIENT_WEDDING_LOC}>
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientWeddingLocField ? linkedClientRecord.getCellValueAsString(clientWeddingLocField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientWeddingLocField ? linkedClientRecord.getCellValueAsString(clientWeddingLocField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Wedding planner" fieldId={FIELD_IDS.CLIENT_WEDDING_PLANNER}>
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientWeddingPlannerField ? linkedClientRecord.getCellValueAsString(clientWeddingPlannerField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientWeddingPlannerField ? linkedClientRecord.getCellValueAsString(clientWeddingPlannerField) : '—'}</div>
             </DetailRow>
           </div>
         )}
@@ -2314,45 +2314,45 @@ function DetailDrawer({
         {isFitPickUp && linkedClientRecord && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Last appointment">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientLastApptField ? linkedClientRecord.getCellValueAsString(clientLastApptField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientLastApptField ? linkedClientRecord.getCellValueAsString(clientLastApptField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Next appointment">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
             </DetailRow>
             <div className="grid grid-cols-2 gap-x-6 gap-y-5">
               <DetailRow label="Bust">
-                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{bustField ? record.getCellValueAsString(bustField) : '—'}</div>
+                <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{bustField ? record.getCellValueAsString(bustField) : '—'}</div>
               </DetailRow>
               <DetailRow label="Waist">
-                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{waistField ? record.getCellValueAsString(waistField) : '—'}</div>
+                <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{waistField ? record.getCellValueAsString(waistField) : '—'}</div>
               </DetailRow>
               <DetailRow label="Hips">
-                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{hipsField ? record.getCellValueAsString(hipsField) : '—'}</div>
+                <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{hipsField ? record.getCellValueAsString(hipsField) : '—'}</div>
               </DetailRow>
               <DetailRow label="Height">
-                <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{heightField ? record.getCellValueAsString(heightField) : '—'}</div>
+                <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{heightField ? record.getCellValueAsString(heightField) : '—'}</div>
               </DetailRow>
             </div>
             <DetailRow label="Measurement photos">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientMeasurementsField ? linkedClientRecord.getCellValueAsString(clientMeasurementsField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientMeasurementsField ? linkedClientRecord.getCellValueAsString(clientMeasurementsField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Photos from appointment">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{apptPhotosField ? record.getCellValueAsString(apptPhotosField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{apptPhotosField ? record.getCellValueAsString(apptPhotosField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Follow-up">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{followUpField ? record.getCellValueAsString(followUpField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{followUpField ? record.getCellValueAsString(followUpField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Interest in alterations">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientInterestAltsField ? linkedClientRecord.getCellValueAsString(clientInterestAltsField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientInterestAltsField ? linkedClientRecord.getCellValueAsString(clientInterestAltsField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Interest in made to measure">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientInterestM2mField ? linkedClientRecord.getCellValueAsString(clientInterestM2mField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientInterestM2mField ? linkedClientRecord.getCellValueAsString(clientInterestM2mField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Rush order">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientIsRushField ? linkedClientRecord.getCellValueAsString(clientIsRushField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientIsRushField ? linkedClientRecord.getCellValueAsString(clientIsRushField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Private appointment notes">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{clientApptNotesField ? linkedClientRecord.getCellValueAsString(clientApptNotesField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientApptNotesField ? linkedClientRecord.getCellValueAsString(clientApptNotesField) : '—'}</div>
             </DetailRow>
           </div>
         )}
@@ -2360,10 +2360,10 @@ function DetailDrawer({
         {isAlterations && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Alterations notes">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{altNotesField ? record.getCellValueAsString(altNotesField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{altNotesField ? record.getCellValueAsString(altNotesField) : '—'}</div>
             </DetailRow>
             <DetailRow label="Customizations">
-              <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{customizationField ? record.getCellValueAsString(customizationField) : '—'}</div>
+              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{customizationField ? record.getCellValueAsString(customizationField) : '—'}</div>
             </DetailRow>
             <div className="text-sm text-gray-600 dark:text-gray-400 italic">Flags (veil/shoes purchased) pending confirmation with Julia</div>
           </div>
@@ -2374,7 +2374,7 @@ function DetailDrawer({
             {favStylesValue && (
               <div className="mt-5">
                 <DetailRow label="Favorite styles">
-                  <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{favStylesValue}</div>
+                  <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{favStylesValue}</div>
                 </DetailRow>
               </div>
             )}
@@ -2382,7 +2382,7 @@ function DetailDrawer({
             {isNyStudio && samplesNotInNyValue && (
               <div className="mt-5">
                 <DetailRow label="Samples not in NY">
-                  <div className="text-base text-gray-800 dark:text-[#F3EFE6]">{samplesNotInNyValue}</div>
+                  <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{samplesNotInNyValue}</div>
                 </DetailRow>
               </div>
             )}
@@ -2941,7 +2941,7 @@ function AppointmentsApp(): React.ReactElement {
     const clickable = column && ['client', 'stage', 'type', 'room', 'sa', 'altlead'].includes(column);
     return (
       <th 
-        className={`px-3 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap text-left ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10' : ''}`}
+        className={`px-3 py-2 text-[11px] font-medium tracking-wide capitalize text-gray-500 dark:text-gray-400 whitespace-nowrap text-left ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10' : ''}`}
         onClick={() => column && clickable && handleSort(column)}
       >
         {label}
@@ -2986,7 +2986,10 @@ function AppointmentsApp(): React.ReactElement {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden font-sans antialiased bg-[#F8F5EE] dark:bg-[#1B1813]">
+    <div
+      className="h-screen flex flex-col overflow-hidden antialiased bg-[#F8F5EE] dark:bg-[#1B1813]"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
       <style>{GLOBAL_STYLES}</style>
       {modal && <NotificationModal content={modal.content} onClose={() => setModal(null)} />}
 
@@ -3139,10 +3142,10 @@ function AppointmentsApp(): React.ReactElement {
                             isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
                           }`}
                         >
-                          <td className="px-3 py-2.5 text-base whitespace-nowrap text-gray-600 dark:text-gray-400">
+                          <td className="px-3 py-2.5 text-[13px] whitespace-nowrap text-gray-600 dark:text-gray-400">
                             {timeValue ? renderTimeCell(timeValue, apptTimeZone) : '—'}
                           </td>
-                          <td colSpan={7} className="px-3 py-2.5 text-lg font-medium text-center text-gray-600 dark:text-gray-400">
+                          <td colSpan={7} className="px-3 py-2.5 text-sm font-semibold text-center text-gray-600 dark:text-gray-400">
                             Blocked Time
                           </td>
                         </tr>
@@ -3157,10 +3160,10 @@ function AppointmentsApp(): React.ReactElement {
                           isSelected ? 'bg-[#FEF3C7] dark:bg-[#3A2E12]' : ''
                         }`}
                       >
-                        <td className="px-3 py-2.5 text-base whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
                           {timeValue ? renderTimeCell(timeValue, apptTimeZone) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-base font-medium whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
+                        <td className="px-3 py-2.5 text-[13px] font-semibold whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
                           {clientLinkField && record.getCellValueAsString(clientLinkField)
                             ? record.getCellValueAsString(clientLinkField)
                             : <MissingDataPill />}
@@ -3170,16 +3173,16 @@ function AppointmentsApp(): React.ReactElement {
                         </td>
                         <td className="px-3 py-2.5">
                           {apptNameEntry
-                            ? <span className={getAppointmentTypePillClasses(apptNameEntry.name, 'md')}>{apptNameEntry.name}</span>
+                            ? <span className={getAppointmentTypePillClasses(apptNameEntry.name, 'sm')}>{apptNameEntry.name}</span>
                             : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
-                        <td className="px-3 py-2.5 text-base whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
                           {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill />}
                         </td>
-                        <td className="px-3 py-2.5 text-base whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
                           {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-base whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
                           {altLeadValue
                             ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
                             : isAlterationsAppt ? <MissingDataPill /> : '—'}
