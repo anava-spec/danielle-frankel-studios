@@ -326,13 +326,17 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
                       <span className="truncate">{data.email}</span>
                     </div>
                   )}
-                  {data.address && (
+                  {data.address ? (
                     <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                       <MapPinIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
                       <span>{data.address}</span>
                     </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <MapPinIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-200 dark:border-red-500/30">Missing address</span>
+                    </div>
                   )}
-                  {!data.phone && !data.email && !data.address && <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
                 </div>
               </div>
 
