@@ -424,19 +424,19 @@ function getAirtableSelectPillClasses(colorName: string | null | undefined): str
 
 // A multipleLookupValues cell (this is one — a lookup of a singleSelect,
 // through a link field) doesn't hand back a flat `{name, color}` object per
-// linked record here. This interface's runtime (@airtable/blocks/interface,
-// a different surface from the classic Blocks SDK) returns lookups-through-
-// links as a richer structure: `{ linkedRecordIds: string[],
-// valuesByLinkedRecordId: { [linkedRecordId]: Array<{id,name,color}> } }` —
-// confirmed directly against this field's actual cell data. Earlier fixes
-// here assumed a flat array or a single `{value: {...}}` wrapper (the shape
-// used by *other* lookups elsewhere in this codebase, e.g.
-// extractFirstLookupString in pipeline.tsx/recap.tsx) and neither matched,
-// which is why this kept returning null — "Missing Data" — even though the
-// underlying field was populated. Handles all of: plain string, flat
-// `{name,color}`/`{value:{...}}` (kept for safety, in case a different
-// lookup shape shows up elsewhere), and this linkedRecordIds shape.
+// linked record here. Confirmed directly against this field's actual cell
+// data (via the Missing Data hover tooltip added below): this interface's
+// runtime returns it as `[{ linkedRecordId: string, value: string }]` — an
+// array of one entry per linked record, where `value` is the PLAIN STRING
+// choice name, not a nested `{name,color}` object. Two earlier fixes here
+// each assumed a different wrong shape (a flat `{name,color}`, and a
+// `{value:{...}}` object-nested-in-object — the shape used by *other*
+// lookups elsewhere in this codebase, e.g. extractFirstLookupString in
+// pipeline.tsx/recap.tsx) and neither matched. Also handles a
+// `{linkedRecordIds, valuesByLinkedRecordId}` shape seen in an earlier
+// probe, kept in case a different lookup surfaces it.
 function unwrapSelectLike(value: unknown): { name: string; color?: string } | null {
+  if (typeof value === 'string') return value.length > 0 ? { name: value } : null;
   if (!value || typeof value !== 'object') return null;
   if ('name' in value) return value as { name: string; color?: string };
   if ('value' in value) return unwrapSelectLike((value as { value: unknown }).value);
@@ -446,7 +446,6 @@ function unwrapSelectLike(value: unknown): { name: string; color?: string } | nu
     if (!firstId) return null;
     const valuesForLink = v.valuesByLinkedRecordId?.[firstId];
     const firstValue = Array.isArray(valuesForLink) ? valuesForLink[0] : valuesForLink;
-    if (typeof firstValue === 'string') return { name: firstValue };
     return unwrapSelectLike(firstValue);
   }
   return null;
