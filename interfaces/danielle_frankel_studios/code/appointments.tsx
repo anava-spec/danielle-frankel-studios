@@ -422,6 +422,39 @@ function getAirtableSelectPillClasses(colorName: string | null | undefined): str
   return `inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses}`;
 }
 
+// Resolves the actual Airtable option color for a field's choices — used
+// instead of hardcoded per-value maps so pill colors stay in sync with
+// whatever colors are set on the field in Airtable. Works for a direct
+// singleSelect field (`field.options.choices`) and for a lookup-of-singleSelect
+// field, whose choices live nested under `field.options.result.options.choices`
+// (confirmed shape via get_table_schema for fldZO3rF3KOGxG0S5).
+function getFieldChoiceColorMap(field: Field | null | undefined): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!field) return map;
+  const opts = field.options as unknown as {
+    choices?: Array<{ name: string; color?: string }>;
+    result?: { options?: { choices?: Array<{ name: string; color?: string }> } };
+  } | undefined;
+  const choices = opts?.choices ?? opts?.result?.options?.choices ?? [];
+  for (const choice of choices) {
+    if (choice?.name) map.set(choice.name, choice.color ?? '');
+  }
+  return map;
+}
+
+const DEFAULT_PILL_COLOR_CLASSES = 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
+
+function getCompactPillClassesForColor(colorName: string | null | undefined): string {
+  const colorClasses = colorName ? (AIRTABLE_COLOR_MAP[colorName] ?? DEFAULT_PILL_COLOR_CLASSES) : DEFAULT_PILL_COLOR_CLASSES;
+  return `inline-flex items-center justify-center w-full text-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[11px] ${colorClasses}`;
+}
+
+function formatMissingFieldsMessage(labels: string[]): string {
+  if (labels.length === 0) return '';
+  if (labels.length === 1) return `Missing ${labels[0]}`;
+  return `Missing ${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
 // A multipleLookupValues cell (this is one — a lookup of a singleSelect,
 // through a link field) doesn't hand back a flat `{name, color}` object per
 // linked record here. Confirmed directly against this field's actual cell
@@ -1175,6 +1208,7 @@ interface CalendarActionButtonsProps {
   onPickUp: (record: Record) => void;
   apptTypeLabel: string;
   hasRequiredData: boolean;
+  missingDataMessage: string;
   showCheckInButton: boolean;
   showClearButton: boolean;
 }
@@ -1192,6 +1226,7 @@ function CalendarActionButtons({
   onPickUp,
   apptTypeLabel,
   hasRequiredData,
+  missingDataMessage,
   showCheckInButton,
   showClearButton,
 }: CalendarActionButtonsProps) {
@@ -1238,7 +1273,7 @@ function CalendarActionButtons({
           className={canUpdate ? btnBlue : btnDisabledCls}>Check In</button>
       );
     } else {
-      items.push(<span key="ci" className="text-xs text-red-500">Missing Data</span>);
+      items.push(<span key="ci" className="text-xs text-red-500">{missingDataMessage || 'Missing Data'}</span>);
     }
   }
 
@@ -1268,7 +1303,7 @@ function CalendarActionButtons({
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-2 pt-2 border-t border-gray-100 dark:border-white/5"
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-auto pt-2"
       onClick={(e) => e.stopPropagation()}>
       {items.reduce<React.ReactNode[]>((acc, item, i) => {
         if (i > 0) acc.push(<React.Fragment key={`sep-${i}`}>{sep}</React.Fragment>);
@@ -1297,6 +1332,8 @@ interface CalendarPivotProps {
   };
   clientNameById: Map<string, string>;
   clientStageById: Map<string, string>;
+  stageColorByName: Map<string, string>;
+  apptTypeColorByName: Map<string, string>;
   studioFilteredRoomOptions: Array<{ id: string; name: string }>;
   selectedDate: Date;
   appointmentsTable: Table;
@@ -1319,6 +1356,8 @@ function CalendarPivot({
   appointmentFields,
   clientNameById,
   clientStageById,
+  stageColorByName,
+  apptTypeColorByName,
   studioFilteredRoomOptions,
   selectedDate,
   appointmentsTable,
@@ -1455,6 +1494,8 @@ function CalendarPivot({
                             record={record}
                             clientNameById={clientNameById}
                             clientStageById={clientStageById}
+                            stageColorByName={stageColorByName}
+                            apptTypeColorByName={apptTypeColorByName}
                             appointmentFields={appointmentFields}
                             appointmentsTable={appointmentsTable}
                             checkInField={checkInField}
@@ -1489,6 +1530,8 @@ interface CalendarCardCompactProps {
   record: Record;
   clientNameById: Map<string, string>;
   clientStageById: Map<string, string>;
+  stageColorByName: Map<string, string>;
+  apptTypeColorByName: Map<string, string>;
   appointmentFields: {
     timeField: Field | undefined;
     clientField: Field | undefined;
@@ -1518,6 +1561,8 @@ function CalendarCardCompact({
   record,
   clientNameById,
   clientStageById,
+  stageColorByName,
+  apptTypeColorByName,
   appointmentFields,
   appointmentsTable,
   checkInField,
@@ -1564,8 +1609,16 @@ function CalendarCardCompact({
   // #27 — Alterations Lead shown only when appointment type is Alterations
   const showAltLead = isAlterationsAppt;
 
-  // Stage pill color class
-  const stagePillClasses = STAGE_PILL_CLASSES[clientStage ?? ''] ?? 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
+  // Pill colors resolved from the actual Airtable field options — no hardcoded per-value maps.
+  const stagePillClasses = getCompactPillClassesForColor(clientStage ? stageColorByName.get(clientStage) : null);
+  const apptTypePillClasses = getCompactPillClassesForColor(apptNameEntry ? apptTypeColorByName.get(apptNameEntry.name) : null);
+
+  const category = getAppointmentCategory(typeValue);
+  const missingFieldLabels: string[] = [];
+  if (!clientId) missingFieldLabels.push('Client');
+  if (category !== 'pick-up-only' && !roomValue) missingFieldLabels.push('Room');
+  if (!saValue) missingFieldLabels.push('Sales Associate');
+  const missingDataMessage = formatMissingFieldsMessage(missingFieldLabels);
 
   if (isBlock) {
     return (
@@ -1593,22 +1646,20 @@ function CalendarCardCompact({
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
     >
-      {/* Stage / Appointment Type pills: top-right, stacked */}
-      <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5">
+      {/* Stage / Appointment Type pills: top-right, stacked. A single-column
+          grid auto-sizes to the widest label/pill across both, so the
+          narrower chip stretches to match rather than clipping the wider one. */}
+      <div className="absolute top-2.5 right-2.5 inline-grid grid-cols-1 gap-1.5 max-w-[60%]">
         {clientStage && (
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Stage:</span>
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] ${stagePillClasses}`}>
-              {clientStage}
-            </span>
+          <div className="grid grid-cols-1 gap-0.5">
+            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Stage:</span>
+            <span className={stagePillClasses}>{clientStage}</span>
           </div>
         )}
         {apptNameEntry && (
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">Appointment Type:</span>
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[10px] bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]">
-              {apptNameEntry.name}
-            </span>
+          <div className="grid grid-cols-1 gap-0.5">
+            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Appointment Type:</span>
+            <span className={apptTypePillClasses}>{apptNameEntry.name}</span>
           </div>
         )}
       </div>
@@ -1643,6 +1694,7 @@ function CalendarCardCompact({
         onPickUp={onPickUp}
         apptTypeLabel={typeValue}
         hasRequiredData={hasRequiredData}
+        missingDataMessage={missingDataMessage}
         showCheckInButton={showCheckInButton}
         showClearButton={showClearButton}
       />
@@ -2472,6 +2524,9 @@ function AppointmentsApp(): React.ReactElement {
 
   const clientStageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE) ?? null;
 
+  const stageColorByName = useMemo(() => getFieldChoiceColorMap(clientStageField), [clientStageField]);
+  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptNameField), [apptNameField]);
+
   const clientStageById = useMemo(() => {
     if (!clientRecords || !clientStageField) return new Map<string, string>();
     const map = new Map<string, string>();
@@ -3156,6 +3211,8 @@ function AppointmentsApp(): React.ReactElement {
               }}
               clientNameById={clientNameById}
               clientStageById={clientStageById}
+              stageColorByName={stageColorByName}
+              apptTypeColorByName={apptTypeColorByName}
               studioFilteredRoomOptions={studioFilteredRoomOptions}
               selectedDate={selectedDate}
               appointmentsTable={appointmentsTable}
