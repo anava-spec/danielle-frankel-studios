@@ -1679,7 +1679,8 @@ const ALTERATIONS_PAYMENT_OPTIONS = [
 // per BRANDING.md §12) — same structural shape as customization_requests.tsx's
 // DeleteConfirmModal, but non-destructive: accent-colored confirm button (§8),
 // no countdown lock, no red danger box.
-function OverrideDueDateConfirmModal({ onConfirm, onClose }: {
+function OverrideDueDateConfirmModal({ action, onConfirm, onClose }: {
+  action: 'override' | 'revert';
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -1698,6 +1699,12 @@ function OverrideDueDateConfirmModal({ onConfirm, onClose }: {
     requestClose();
   };
 
+  const title = action === 'override' ? 'Override calculated due date?' : 'Revert to calculated due date?';
+  const message = action === 'override'
+    ? <>This lets you set the due date manually instead of the calculated 3-months-before-wedding formula. <strong>This changes the conditions used for Rush Fees.</strong> Are you sure you want to continue?</>
+    : <>This clears the manual due date and goes back to the calculated 3-months-before-wedding formula. <strong>This changes the conditions used for Rush Fees.</strong> Are you sure you want to continue?</>;
+  const confirmLabel = action === 'override' ? 'Override Due Date' : 'Revert Due Date';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
       style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
@@ -1706,7 +1713,7 @@ function OverrideDueDateConfirmModal({ onConfirm, onClose }: {
         style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)', opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
         onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
-          <p className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF]">Override calculated due date?</p>
+          <p className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF]">{title}</p>
           <button onClick={requestClose}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0">
             <XIcon size={18} />
@@ -1715,10 +1722,7 @@ function OverrideDueDateConfirmModal({ onConfirm, onClose }: {
         <div className="p-5">
           <div className="flex items-start gap-3 bg-[#FEF3C7] dark:bg-[#3A2E12] border border-amber-200 dark:border-amber-800/40 rounded-lg px-4 py-3">
             <WarningIcon size={18} className="text-[#D97706] dark:text-[#FBBF24] flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              This lets you set the due date manually instead of the calculated 3-months-before-wedding formula.
-              <strong> This changes the conditions used for Rush Fees.</strong> Are you sure you want to continue?
-            </p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">{message}</p>
           </div>
         </div>
         <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
@@ -1728,7 +1732,7 @@ function OverrideDueDateConfirmModal({ onConfirm, onClose }: {
           </button>
           <button type="button" onClick={handleConfirm}
             className="px-5 py-2 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors">
-            Override Due Date
+            {confirmLabel}
           </button>
         </div>
       </div>
@@ -1761,7 +1765,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
   const [showAllFields, setShowAllFields] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [showOverrideConfirm, setShowOverrideConfirm] = useState(false);
+  const [dueDateConfirmAction, setDueDateConfirmAction] = useState<'override' | 'revert' | null>(null);
   const [overrideActive, setOverrideActive] = useState(!!client.manualRushDueDate);
   useEffect(() => {
     const id = requestAnimationFrame(() => setVisible(true));
@@ -1909,7 +1913,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 )}
                 <button
                   type="button"
-                  onClick={() => { overrideActive ? handleRevertDueDate() : setShowOverrideConfirm(true); }}
+                  onClick={() => setDueDateConfirmAction(overrideActive ? 'revert' : 'override')}
                   className={overrideActive
                     ? 'px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors whitespace-nowrap'
                     : 'px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors whitespace-nowrap'}
@@ -2265,10 +2269,11 @@ const FullProfileModal = React.memo(function FullProfileModal({
         )}
 
       </div>
-      {showOverrideConfirm && (
+      {dueDateConfirmAction && (
         <OverrideDueDateConfirmModal
-          onConfirm={() => setOverrideActive(true)}
-          onClose={() => setShowOverrideConfirm(false)}
+          action={dueDateConfirmAction}
+          onConfirm={() => { dueDateConfirmAction === 'override' ? setOverrideActive(true) : handleRevertDueDate(); }}
+          onClose={() => setDueDateConfirmAction(null)}
         />
       )}
     </div>
