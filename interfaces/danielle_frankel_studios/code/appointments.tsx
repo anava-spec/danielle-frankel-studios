@@ -455,7 +455,7 @@ const DEFAULT_PILL_COLOR_CLASSES = 'bg-gray-100 dark:bg-white/10 text-gray-500 d
 
 function getCompactPillClassesForColor(colorName: string | null | undefined): string {
   const colorClasses = colorName ? (AIRTABLE_COLOR_MAP[colorName] ?? DEFAULT_PILL_COLOR_CLASSES) : DEFAULT_PILL_COLOR_CLASSES;
-  return `inline-flex items-center justify-center w-full text-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-[11px] ${colorClasses}`;
+  return `inline-flex items-center justify-center w-full text-center px-1.5 py-0.5 rounded-full font-medium border whitespace-nowrap leading-tight text-xs ${colorClasses}`;
 }
 
 // Table-cell-sized pill using the field's real Airtable choice color — for
@@ -1631,8 +1631,14 @@ function CalendarCardCompact({
   const showAltLead = isAlterationsAppt;
 
   // Pill colors resolved from the actual Airtable field options — no hardcoded per-value maps.
-  const stagePillClasses = getCompactPillClassesForColor(clientStage ? stageColorByName.get(clientStage) : null);
-  const apptTypePillClasses = getCompactPillClassesForColor(apptNameEntry ? apptTypeColorByName.get(apptNameEntry.name) : null);
+  const stageColorName = clientStage ? stageColorByName.get(clientStage) : undefined;
+  const apptTypeColorName = apptNameEntry ? apptTypeColorByName.get(apptNameEntry.name) : undefined;
+  const stagePillClasses = getCompactPillClassesForColor(stageColorName);
+  const apptTypePillClasses = getCompactPillClassesForColor(apptTypeColorName);
+  // Debug tooltips (temporary) — hover a chip to see exactly what color name
+  // was resolved and from which field/value, to verify against Airtable.
+  const stageColorDebug = `value: "${clientStage ?? ''}" | field: DF Clients.stage (fldLcxVZvI1rigBlh) | resolved color: ${stageColorName || 'none (falls back to gray)'} | choices loaded: ${stageColorByName.size}`;
+  const apptTypeColorDebug = `value: "${apptNameEntry?.name ?? ''}" | field: appointment_type (fldZO3rF3KOGxG0S5) | resolved color: ${apptTypeColorName || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`;
 
   const category = getAppointmentCategory(typeValue);
   const missingFieldLabels: string[] = [];
@@ -1672,13 +1678,13 @@ function CalendarCardCompact({
           narrower chip stretches to match rather than clipping the wider one. */}
       <div className="absolute top-2.5 right-2.5 inline-grid grid-cols-1 gap-1.5 max-w-[60%]">
         {clientStage && (
-          <div className="grid grid-cols-1 gap-0.5">
+          <div className="grid grid-cols-1 gap-0.5" title={stageColorDebug}>
             <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Stage:</span>
             <span className={stagePillClasses}>{clientStage}</span>
           </div>
         )}
         {apptNameEntry && (
-          <div className="grid grid-cols-1 gap-0.5">
+          <div className="grid grid-cols-1 gap-0.5" title={apptTypeColorDebug}>
             <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Appointment Type:</span>
             <span className={apptTypePillClasses}>{apptNameEntry.name}</span>
           </div>
@@ -3184,12 +3190,18 @@ function AppointmentsApp(): React.ReactElement {
                         </td>
                         <td className="px-3 py-2.5">
                           {clientStage
-                            ? <span className={getListPillClassesForColor(stageColorByName.get(clientStage))}>{clientStage}</span>
+                            ? <span
+                                className={getListPillClassesForColor(stageColorByName.get(clientStage))}
+                                title={`value: "${clientStage}" | field: DF Clients.stage (fldLcxVZvI1rigBlh) | resolved color: ${stageColorByName.get(clientStage) || 'none (falls back to gray)'} | choices loaded: ${stageColorByName.size}`}
+                              >{clientStage}</span>
                             : <span className="text-gray-400 dark:text-gray-500">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
                           {apptNameEntry
-                            ? <span className={getListPillClassesForColor(apptTypeColorByName.get(apptNameEntry.name))}>{apptNameEntry.name}</span>
+                            ? <span
+                                className={getListPillClassesForColor(apptTypeColorByName.get(apptNameEntry.name))}
+                                title={`value: "${apptNameEntry.name}" | field: appointment_type (fldZO3rF3KOGxG0S5) | resolved color: ${apptTypeColorByName.get(apptNameEntry.name) || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`}
+                              >{apptNameEntry.name}</span>
                             : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
