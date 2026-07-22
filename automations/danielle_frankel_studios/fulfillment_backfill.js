@@ -36,10 +36,11 @@ OBJECTIVE
   Si el cliente califica:
     - Actualiza DF Clients.stage a "In Fulfillment".
 
-  DRY_RUN: por defecto TRUE — solo imprime qué se actualizaría, sin escribir.
-  Revisar el log_summary (debería reportar ~308 clientes calificando, según
-  la filter view de Axel), y si el resultado se ve correcto, cambiar
-  CONFIG.DRY_RUN a false y correr de nuevo para aplicar los cambios.
+  DRY_RUN: viene de input.config().dryRun (Input variable del script step, no
+  hardcodeado) — por defecto TRUE si no se pasa. Revisar el log_summary
+  (debería reportar ~308 clientes calificando, según la filter view de Axel),
+  y si el resultado se ve correcto, correr de nuevo pasando dryRun=false en el
+  panel de Input variables para aplicar los cambios.
 
 OUTPUT
   Imprime en consola (via Logger) el resumen: clientes en Order Ready
@@ -62,11 +63,17 @@ const FIELDS_CLIENTS = {
   has_alterations_item:   'fldWaqPw2BO4XQIbX', // formula (checkbox result) — TRUE si algún order item es ALTERATIONS
 };
 
+// input.config() se llama una sola vez, scope global, antes del try —
+// dryRun es un Input variable opcional del "Run script" step (boolean).
+// Si no se pasa (o el script se corre sin configurar inputs), default a true
+// para que nunca se escriba por accidente.
+const cfg = input.config();
+
 const CONFIG = {
   LOG_LEVEL:    'B',              // A=minimal | B=audit (default) | C=debug
   SOURCE_STAGE: 'Order Ready',
   TARGET_STAGE: 'In Fulfillment',
-  DRY_RUN:      true,             // flip to false to actually write, after reviewing the dry-run log
+  DRY_RUN:      cfg.dryRun !== false,  // pasa dryRun=false explícitamente para escribir de verdad
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
