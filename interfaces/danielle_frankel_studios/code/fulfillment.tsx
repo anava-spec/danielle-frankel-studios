@@ -2066,6 +2066,10 @@ function FulfillmentApp(): React.ReactElement {
                   const fEmail = fields[FIELD_IDS.EMAIL];
                   const fSA    = fields[FIELD_IDS.SALES_ASSOCIATE_NAME];
                   const fItems = fields[FIELD_IDS.ITEMS_SOLD];
+                  const itemNames = fItems
+                    ? (rec.getCellValueAsString(fItems) ?? '').split(',').map(s => s.trim()).filter(Boolean)
+                    : [];
+                  const extraItemCount = itemNames.length - 1;
                   return (
                     <tr key={rec.id} onClick={() => setSelectedRecordId(rec.id)}
                       className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer transition-colors">
@@ -2079,7 +2083,16 @@ function FulfillmentApp(): React.ReactElement {
                           ? <Pill variant={delivVariant}>{delivStatus}</Pill>
                           : <span className="text-sm text-gray-400">—</span>}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{fItems ? <CellRenderer record={rec} field={fItems} /> : '—'}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">
+                        {itemNames.length > 0 ? (
+                          <div>
+                            <div className="truncate max-w-[160px]" title={itemNames.join(', ')}>{itemNames[0]}</div>
+                            {extraItemCount > 0 && (
+                              <div className="text-xs text-gray-400 dark:text-gray-500">+{extraItemCount} more item{extraItemCount > 1 ? 's' : ''}</div>
+                            )}
+                          </div>
+                        ) : '—'}
+                      </td>
                       <td className="px-3 py-2.5"><ReadinessChip severity={rSeverity} tooltip={rTooltip} /></td>
                       <td className="px-3 py-2.5"><ProgressBar percentage={pickedShipped ?? 0} /></td>
                       <td className="px-3 py-2.5"><Pill variant={hasHold ? 'red' : 'green'}>{hasHold ? 'Yes' : 'No'}</Pill></td>
