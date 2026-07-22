@@ -1,4 +1,3 @@
-import './style.css';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   initializeBlock,
@@ -9,10 +8,14 @@ import {
   X as XIcon,
   CaretDown as CaretDownIcon,
   CaretUp as CaretUpIcon,
+  CaretLeft as CaretLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
 } from '@phosphor-icons/react';
 
 // ─── Field IDs ────────────────────────────────────────────────────────────────
+// The DETAIL_* fields below are read-only here even where pipeline.tsx (the
+// source of the full-page detail this reuses) has an editable counterpart —
+// this page never writes to a client record.
 const FIELD_IDS = {
   FULL_NAME:                   'fldB3Wyam01D3wR5Q',
   STAGE:                       'fldLcxVZvI1rigBlh',
@@ -23,6 +26,77 @@ const FIELD_IDS = {
   WEDDING_DATE_FORMATTED:      'fldbgknumKGS5W5WU',
   PERSONAL_STYLE_NOTES:        'fldQiGCx5hRQ0Am1Z',
   STYLE_NAME:                  'fldEs3chQAeplPc1w',
+
+  // Header / contact
+  DETAIL_EMAIL:                     'fld5f3IVZoX0QZZ8R',
+  DETAIL_PHONE:                     'fldZrxF4bR6QBUwVK',
+  DETAIL_STUDIO:                    'fldIenJoxseeHmfIv',
+  DETAIL_SA_PHONE:                  'fldl5vP5mpQrHsTsm',
+  DETAIL_NEXT_APPOINTMENT:          'fldTe2cyBmicx9Ple',
+  DETAIL_NEXT_APPT_ROOM:            'fldfQUSkQRooZi8sr',
+  DETAIL_COUNTRY_OF_RESIDENCE:      'flduQb1j7LceNZuC8',
+
+  // Pre-Appointment
+  DETAIL_WEDDING_LOCATION:          'fldikRqj41XYiIDBk',
+  DETAIL_WEDDING_PLANNER:           'fldISwHPviwGQBHFJ',
+  DETAIL_PREFERRED_STYLIST:         'fld2jVE1qluvlhV7D',
+  DETAIL_RTW_SIZE:                  'fldvV2CiEx4RQN4mO',
+  DETAIL_SAMPLES_NOT_WHERE_NEEDED:  'fldVPJWXThfyGuh6d',
+
+  // Deliberating
+  DETAIL_FAV_STYLES_IN_APPT:        'fldVw8wCgPKvxN1jD',
+  DETAIL_CUSTOMIZATION_LINK:        'fldlbAPEaoTwfFPTv',
+  DETAIL_IS_RUSH:                   'fldzLjMjNfNn6KEI3',
+  DETAIL_MEAS_BUST:                 'fldiCV13D0ym7Yirh',
+  DETAIL_MEAS_WAIST:                'fldShyIHilro7fYol',
+  DETAIL_MEAS_HIPS:                 'fldx7dNHA3SZYC11C',
+  DETAIL_MEASUREMENTS:              'fldcWwbKOc9nkgzzV',
+  DETAIL_APPT_PHOTOS:               'fldWti8XzHbnGcjz9',
+  DETAIL_FOLLOW_UP_SENT:            'fldmjiS7lHEn9qZHN',
+  DETAIL_APPT_NOTES:                'fldwHp8zC3GykAuO1',
+  DETAIL_SALES_NOTES:               'fldsVYhG5tZAccxdK',
+
+  // Sold
+  DETAIL_SHOPIFY_ADDRESS:           'fldxFbYURZvlZ0tA1',
+  DETAIL_TOTAL_SPEND:               'fldasxslBOCb7GXnd',
+  DETAIL_DISCOUNT:                  'fldRcaPZSWB7ve24D',
+  DETAIL_QTY_ITEMS_SOLD:            'flda47cFuR4yMHqpu',
+  DETAIL_M2M:                       'fldJovDgD9pPRx7Yp',
+  DETAIL_ALTERATIONS_PAYMENT_STATUS: 'fldlEohtKV3LGF1tC',
+  DETAIL_SHOPIFY_ORDER_NUMBER:      'fldWSGqQW9czYdams',
+  DETAIL_APPAREL_MAGIC_ORDER:       'fldwMsegG6ImCHWxM',
+  DETAIL_ORDER_READY:               'fldCAak4Hy5RmvXWT',
+  DETAIL_DUE_DATE:                  'flddDJKkZDsOoCOzE',
+
+  // Order Ready
+  DETAIL_ITEMS_SOLD:                'fldEStULoGtNIjxPO',
+  DETAIL_CUSTOMIZATION_NOTES:       'fld6C6SKaa1pWbTf6',
+  DETAIL_CONTACTED_FOR_ALTERATIONS: 'fldmiD8TdERvJJT0j',
+  DETAIL_SHIP:                      'fldQjLmwDokAkYPEt',
+  DETAIL_PICK_UP:                   'fldwqYAsQ3Iasi8QT',
+  DETAIL_CLIENT_NOTIFIED_FULFILLMENT: 'fldxumxeRnrDQ3CIk',
+
+  // In Alterations
+  DETAIL_LATEST_ALTERATIONS_APPT:  'fldoF7SPEjWNi5JQF',
+  DETAIL_ALTERATION_NOTES:         'fldBhpBTj0gGmV5mc',
+
+  // In Fulfillment
+  DETAIL_FULFILLMENT_NOTES:        'fld4dnGW0td7H1dRX',
+  DETAIL_PICKED_PERCENT:           'fldh9IWe29cCm2WKg',
+  DETAIL_FULFILLMENT_METHOD:       'fldjwCFnGqOToCRnN',
+  DETAIL_ACUITY_ADDRESS:           'fldkpfulLIk0jq34d',
+  DETAIL_OTHER_ADDRESS:            'fld5uRLRmAXqAH0nu',
+  DETAIL_ADDRESS_CONFIRMED:        'fldksvLd6ZQabAoY1',
+  DETAIL_TRACKING_NUMBER:          'fldY0SvbuYeHUZa15',
+  DETAIL_3PL:                      'fldSxZrcIbBlyJO6R',
+  DETAIL_HOLD_SHIPMENT_DATE:       'fldVsDeVp6R6ytqlb',
+  DETAIL_TAXES:                    'fld1Hki2fjZifmFHg',
+  DETAIL_SHIPPING_COST:            'fldYcTq6s04xZiy2S',
+
+  // Interests
+  DETAIL_INTEREST_CUSTOM:          'fldTrFh5dMYvkl0F4',
+  DETAIL_INTEREST_ALTS:            'fldibh40zShnDmLfj',
+  DETAIL_INTEREST_M2M:             'fld3YweLOIcpr7xvL',
 } as const;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -77,6 +151,65 @@ function getLastApptTimestamp(record: AnyRecord): number {
 function getAppointmentCount(record: AnyRecord): number {
   const v = record.getCellValue(FIELD_IDS.APPOINTMENT_COUNT);
   return typeof v === 'number' ? v : 0;
+}
+
+// ─── Read-only detail-page helpers ────────────────────────────────────────────
+// Everything here is display-only — no EditableX components, no write calls —
+// matching pipeline.tsx's `readOnly` branch of each FullProfileModal section.
+function str(record: AnyRecord, fieldId: string): string {
+  return record.getCellValueAsString(fieldId) || '';
+}
+
+function getBool(record: AnyRecord, fieldId: string): boolean {
+  return record.getCellValue(fieldId) === true;
+}
+
+function getNumber(record: AnyRecord, fieldId: string): number | null {
+  const v = record.getCellValue(fieldId);
+  return typeof v === 'number' ? v : null;
+}
+
+function getLinkCount(record: AnyRecord, fieldId: string): number {
+  const v = record.getCellValue(fieldId);
+  return Array.isArray(v) ? v.length : 0;
+}
+
+function getDateDisplay(record: AnyRecord, fieldId: string, opts: Intl.DateTimeFormatOptions): string {
+  return formatDate(record.getCellValue(fieldId), opts);
+}
+
+function formatMoney(v: number | null): string {
+  return v != null ? `$${v.toLocaleString()}` : '—';
+}
+
+function formatPercent(v: number | null): string {
+  return v != null ? `${Math.round(v * 100)}%` : '—';
+}
+
+function yesNo(v: boolean): string {
+  return v ? 'Yes' : 'No';
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-gray-400 tracking-wide">{label}</div>
+      <div className="text-sm text-gray-800 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
+    </div>
+  );
+}
+
+function FieldRow({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-2 md:grid-cols-3 gap-4">{children}</div>;
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="text-xs text-gray-400 tracking-wide mb-3">{title}</div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
 }
 
 // ─── SearchInput ──────────────────────────────────────────────────────────────
@@ -195,6 +328,257 @@ function SortButton({
   );
 }
 
+// ─── Client Detail Page ───────────────────────────────────────────────────────
+// Read-only port of pipeline.tsx's FullProfileModal: same section layout and
+// full-page (not drawer) presentation, but every field is a plain DetailRow —
+// no Editable* components, since nothing here is ever written back. Personal
+// Style Notes is surfaced first (ahead of the header card), per request.
+// A "Did Not Convert" client isn't part of pipeline.tsx's STAGE_STEPS funnel,
+// so instead of a stage-stepper gating which section is editable, every
+// stage's section is always shown.
+function ClientDetailPage({ record, getStyleNames, onBack }: {
+  record: AnyRecord;
+  getStyleNames: (record: AnyRecord) => string[];
+  onBack: () => void;
+}) {
+  const fullName = str(record, FIELD_IDS.FULL_NAME) || 'Unknown Client';
+  const saName = getSAName(record) || '—';
+  const saPhone = str(record, FIELD_IDS.DETAIL_SA_PHONE);
+  const email = str(record, FIELD_IDS.DETAIL_EMAIL);
+  const phone = str(record, FIELD_IDS.DETAIL_PHONE);
+  const studio = str(record, FIELD_IDS.DETAIL_STUDIO) || '—';
+  const weddingDisplay = formatDate(record.getCellValue(FIELD_IDS.WEDDING_DATE_FORMATTED), { month: 'long', day: 'numeric', year: 'numeric' });
+  const notes = str(record, FIELD_IDS.PERSONAL_STYLE_NOTES);
+  const styleNames = getStyleNames(record);
+
+  const nextAppointment = getDateDisplay(record, FIELD_IDS.DETAIL_NEXT_APPOINTMENT, { month: 'short', day: 'numeric', year: 'numeric' });
+  const lastAppointment = getDateDisplay(record, FIELD_IDS.LAST_APPOINTMENT, { month: 'short', day: 'numeric', year: 'numeric' });
+  const nextApptRoom = str(record, FIELD_IDS.DETAIL_NEXT_APPT_ROOM);
+  const appointmentCount = getAppointmentCount(record);
+  const hasMeasurements = getLinkCount(record, FIELD_IDS.DETAIL_MEASUREMENTS) > 0 || getBool(record, FIELD_IDS.DETAIL_MEASUREMENTS);
+  const noPhotos = getBool(record, FIELD_IDS.DETAIL_APPT_PHOTOS);
+  const followUp = getBool(record, FIELD_IDS.DETAIL_FOLLOW_UP_SENT);
+  const apptNotes = str(record, FIELD_IDS.DETAIL_APPT_NOTES);
+
+  const taxes = getNumber(record, FIELD_IDS.DETAIL_TAXES);
+  const shippingCost = getNumber(record, FIELD_IDS.DETAIL_SHIPPING_COST);
+  const totalSpend = getNumber(record, FIELD_IDS.DETAIL_TOTAL_SPEND);
+  const holdShipmentDate = record.getCellValue(FIELD_IDS.DETAIL_HOLD_SHIPMENT_DATE);
+  const holdShipmentDisplay = getDateDisplay(record, FIELD_IDS.DETAIL_HOLD_SHIPMENT_DATE, { month: 'long', day: 'numeric', year: 'numeric' });
+  const holdShipmentIsFuture = (() => {
+    const s = unwrapLookupString(holdShipmentDate);
+    if (!s) return false;
+    const d = new Date(s);
+    return !isNaN(d.getTime()) && d > new Date();
+  })();
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-6 py-3">
+        <div className="max-w-[1200px] mx-auto">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white transition-colors"
+          >
+            <CaretLeftIcon size={16} />
+            Go back
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-[1200px] mx-auto p-6 space-y-4">
+
+        {/* Personal Style Notes — surfaced first, per request */}
+        <DetailSection title="Personal Style Notes">
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes || 'No notes yet.'}</p>
+        </DetailSection>
+
+        {/* Header card */}
+        <div className="bg-white border border-gray-200 rounded-lg p-5">
+          <div className="flex items-start gap-6 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-2xl font-semibold text-gray-900">{fullName}</div>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                  Did Not Convert
+                </span>
+                <span className="text-base text-gray-500">{studio}</span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <DetailRow label="Wedding Date" value={weddingDisplay} />
+            <div>
+              <div className="text-xs text-gray-400 tracking-wide">Sales Associate</div>
+              <div className="text-sm text-gray-800 font-medium mt-0.5">{saName}</div>
+              {saPhone && <a href={`tel:${saPhone}`} className="text-sm text-[#D97706] block">{saPhone}</a>}
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 tracking-wide">Email</div>
+              {email
+                ? <a href={`mailto:${email}`} className="text-sm text-[#D97706] font-medium mt-0.5 block truncate">{email}</a>
+                : <div className="text-sm text-gray-400 mt-0.5">—</div>}
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 tracking-wide">Phone</div>
+              {phone
+                ? <a href={`tel:${phone}`} className="text-sm text-[#D97706] font-medium mt-0.5 block">{phone}</a>
+                : <div className="text-sm text-gray-400 mt-0.5">—</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Appointment details */}
+        <DetailSection title="Appointment details">
+          <FieldRow>
+            <DetailRow label="Next Appointment" value={nextAppointment} />
+            <DetailRow label="Last Appointment" value={lastAppointment} />
+            <DetailRow label="Room" value={nextApptRoom || '—'} />
+            <DetailRow label="Total Appointments" value={appointmentCount} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="Measurements" value={hasMeasurements ? 'Complete' : 'Missing'} />
+            <DetailRow label="Appt Photos" value={noPhotos ? 'Missing' : 'Complete'} />
+            <DetailRow label="Follow-Up" value={followUp ? 'Sent' : 'Pending'} />
+          </FieldRow>
+        </DetailSection>
+
+        {/* Favorite styles */}
+        <DetailSection title="Favorite Styles">
+          {styleNames.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {styleNames.map((name, i) => (
+                <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-sm text-gray-400">—</span>
+          )}
+        </DetailSection>
+
+        {/* Interests */}
+        <DetailSection title="Interests">
+          <FieldRow>
+            <DetailRow label="Interest in Custom" value={yesNo(getBool(record, FIELD_IDS.DETAIL_INTEREST_CUSTOM))} />
+            <DetailRow label="Interest in Alts" value={yesNo(getBool(record, FIELD_IDS.DETAIL_INTEREST_ALTS))} />
+            <DetailRow label="Interest in M2M" value={yesNo(getBool(record, FIELD_IDS.DETAIL_INTEREST_M2M))} />
+          </FieldRow>
+        </DetailSection>
+
+        {/* Post-appointment notes */}
+        <DetailSection title="Post-appointment notes">
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">{apptNotes || 'No notes yet.'}</p>
+        </DetailSection>
+
+        {/* Pre-Appointment */}
+        <DetailSection title="Pre-Appointment">
+          <FieldRow>
+            <DetailRow label="Country of Residence" value={str(record, FIELD_IDS.DETAIL_COUNTRY_OF_RESIDENCE) || '—'} />
+            <DetailRow label="Wedding Location" value={str(record, FIELD_IDS.DETAIL_WEDDING_LOCATION) || '—'} />
+            <DetailRow label="Wedding Planner" value={str(record, FIELD_IDS.DETAIL_WEDDING_PLANNER) || '—'} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="Bridal Stylist" value={str(record, FIELD_IDS.DETAIL_PREFERRED_STYLIST) || '—'} />
+            <DetailRow label="RTW Size" value={getNumber(record, FIELD_IDS.DETAIL_RTW_SIZE) ?? '—'} />
+            <DetailRow label="Samples Not Where Needed" value={str(record, FIELD_IDS.DETAIL_SAMPLES_NOT_WHERE_NEEDED) || '—'} />
+          </FieldRow>
+        </DetailSection>
+
+        {/* Deliberating */}
+        <DetailSection title="Deliberating">
+          <FieldRow>
+            <DetailRow label="Favorite Styles in Appt" value={str(record, FIELD_IDS.DETAIL_FAV_STYLES_IN_APPT) || '—'} />
+            <DetailRow label="Customization Requests" value={getLinkCount(record, FIELD_IDS.DETAIL_CUSTOMIZATION_LINK) || '—'} />
+            <DetailRow label="Rush" value={getBool(record, FIELD_IDS.DETAIL_IS_RUSH) ? '🚨 Yes' : 'No'} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="Bust" value={getNumber(record, FIELD_IDS.DETAIL_MEAS_BUST) ?? '—'} />
+            <DetailRow label="Waist" value={getNumber(record, FIELD_IDS.DETAIL_MEAS_WAIST) ?? '—'} />
+            <DetailRow label="Hips" value={getNumber(record, FIELD_IDS.DETAIL_MEAS_HIPS) ?? '—'} />
+          </FieldRow>
+          <DetailRow label="Sales Notes" value={str(record, FIELD_IDS.DETAIL_SALES_NOTES) || '—'} />
+        </DetailSection>
+
+        {/* Sold */}
+        <DetailSection title="Sold">
+          <DetailRow label="Address" value={str(record, FIELD_IDS.DETAIL_SHOPIFY_ADDRESS) || '—'} />
+          <FieldRow>
+            <DetailRow label="Total Spend" value={formatMoney(totalSpend)} />
+            <DetailRow label="Discount" value={formatMoney(getNumber(record, FIELD_IDS.DETAIL_DISCOUNT))} />
+            <DetailRow label="Qty" value={getNumber(record, FIELD_IDS.DETAIL_QTY_ITEMS_SOLD) ?? '—'} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="M2M" value={yesNo(getBool(record, FIELD_IDS.DETAIL_M2M))} />
+            <DetailRow label="Alterations Payment" value={str(record, FIELD_IDS.DETAIL_ALTERATIONS_PAYMENT_STATUS) || '—'} />
+            <DetailRow label="Order Ready" value={yesNo(getBool(record, FIELD_IDS.DETAIL_ORDER_READY))} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="Shopify #" value={str(record, FIELD_IDS.DETAIL_SHOPIFY_ORDER_NUMBER) || '—'} />
+            <DetailRow label="AM #" value={str(record, FIELD_IDS.DETAIL_APPAREL_MAGIC_ORDER) || '—'} />
+            <DetailRow label="Due Date" value={getDateDisplay(record, FIELD_IDS.DETAIL_DUE_DATE, { month: 'long', day: 'numeric', year: 'numeric' })} />
+          </FieldRow>
+        </DetailSection>
+
+        {/* Order Ready */}
+        <DetailSection title="Order Ready">
+          <FieldRow>
+            <DetailRow label="Items Sold" value={str(record, FIELD_IDS.DETAIL_ITEMS_SOLD) || '—'} />
+            <DetailRow label="Alterations" value={yesNo(getBool(record, FIELD_IDS.DETAIL_CONTACTED_FOR_ALTERATIONS))} />
+            <DetailRow label="Client Notified" value={yesNo(getBool(record, FIELD_IDS.DETAIL_CLIENT_NOTIFIED_FULFILLMENT))} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="Shipping" value={yesNo(getBool(record, FIELD_IDS.DETAIL_SHIP))} />
+            <DetailRow label="Pick Up" value={yesNo(getBool(record, FIELD_IDS.DETAIL_PICK_UP))} />
+            <div />
+          </FieldRow>
+          <DetailRow label="Customization Notes" value={str(record, FIELD_IDS.DETAIL_CUSTOMIZATION_NOTES) || '—'} />
+        </DetailSection>
+
+        {/* In Alterations */}
+        <DetailSection title="In Alterations">
+          <FieldRow>
+            <DetailRow label="Last Alterations Appt" value={getDateDisplay(record, FIELD_IDS.DETAIL_LATEST_ALTERATIONS_APPT, { month: 'short', day: 'numeric', year: 'numeric' })} />
+            <DetailRow label="SA" value={saName} />
+            <DetailRow label="Total Spend" value={formatMoney(totalSpend)} />
+          </FieldRow>
+          <DetailRow label="Alteration Notes" value={str(record, FIELD_IDS.DETAIL_ALTERATION_NOTES) || '—'} />
+        </DetailSection>
+
+        {/* In Fulfillment */}
+        <DetailSection title="In Fulfillment">
+          <DetailRow label="Fulfillment Notes" value={str(record, FIELD_IDS.DETAIL_FULFILLMENT_NOTES) || '—'} />
+          <FieldRow>
+            <DetailRow label="% Picked" value={formatPercent(getNumber(record, FIELD_IDS.DETAIL_PICKED_PERCENT))} />
+            <DetailRow label="Fulfillment Method" value={str(record, FIELD_IDS.DETAIL_FULFILLMENT_METHOD) || '—'} />
+            <DetailRow label="Tax + Shipping" value={`${formatMoney(taxes)} / ${formatMoney(shippingCost)}`} />
+          </FieldRow>
+          <DetailRow label="Acuity Address" value={str(record, FIELD_IDS.DETAIL_ACUITY_ADDRESS) || '—'} />
+          <DetailRow label="Other Address" value={str(record, FIELD_IDS.DETAIL_OTHER_ADDRESS) || '—'} />
+          <FieldRow>
+            <DetailRow label="Address Confirmed" value={yesNo(getBool(record, FIELD_IDS.DETAIL_ADDRESS_CONFIRMED))} />
+            <DetailRow label="Tracking #" value={str(record, FIELD_IDS.DETAIL_TRACKING_NUMBER) || '—'} />
+            <DetailRow label="3PL" value={str(record, FIELD_IDS.DETAIL_3PL) || '—'} />
+          </FieldRow>
+          <DetailRow label="Do Not Ship Until" value={holdShipmentDisplay} />
+          {holdShipmentIsFuture && (
+            <div className="px-3 py-2 rounded-md bg-red-50 border border-red-200">
+              <span className="text-sm font-semibold text-red-700">🚨 Do not ship until {holdShipmentDisplay}</span>
+            </div>
+          )}
+          <FieldRow>
+            <DetailRow label="Total Spend" value={formatMoney(totalSpend)} />
+            <DetailRow label="Taxes" value={formatMoney(taxes)} />
+            <DetailRow label="Shipping Cost" value={formatMoney(shippingCost)} />
+          </FieldRow>
+        </DetailSection>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function DidNotConvertApp(): React.ReactElement {
   const base = useBase();
@@ -209,6 +593,7 @@ function DidNotConvertApp(): React.ReactElement {
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectedSAs, setSelectedSAs]       = useState(new Set<string>());
   const [saOpen, setSaOpen]                 = useState(false);
+  const [selectedId, setSelectedId]         = useState<string | null>(null);
   const [sortState, setSortState]           = useState<Record<string, 'asc' | 'desc' | 'none'>>({
     clientName: 'none',
     salesAssociate: 'none',
@@ -346,6 +731,20 @@ function DidNotConvertApp(): React.ReactElement {
 
   const colWidths = ['16%', '16%', '20%', '14%', '10%', '12%', '12%'];
 
+  const selectedRecord = selectedId ? dncRecords.find(r => r.id === selectedId) ?? null : null;
+
+  if (selectedRecord) {
+    return (
+      <div className="font-sans antialiased flex flex-col" style={{ backgroundColor: '#F8F5EE', height: '100vh', overflow: 'hidden' }}>
+        <ClientDetailPage
+          record={selectedRecord}
+          getStyleNames={getStyleNames}
+          onBack={() => setSelectedId(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="font-sans antialiased flex flex-col" style={{ backgroundColor: '#F8F5EE', height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
@@ -410,6 +809,7 @@ function DidNotConvertApp(): React.ReactElement {
                     return (
                       <tr
                         key={record.id}
+                        onClick={() => setSelectedId(record.id)}
                         className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer transition-colors"
                       >
                         <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{fullName}</td>
