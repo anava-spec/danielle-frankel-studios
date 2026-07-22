@@ -285,10 +285,16 @@ function formatDisplayDate(date: Date): string {
   }).format(date);
 }
 
-function renderTimeCell(timeValue: string): React.ReactElement {
+// LA-studio appointments (studio short_name "LA") display in Pacific time;
+// every other studio (NY and anything else) keeps the original Eastern time.
+function getTimeZoneForStudioShort(studioShort: string | null | undefined): string {
+  return (studioShort ?? '').trim().toUpperCase() === 'LA' ? 'America/Los_Angeles' : 'America/New_York';
+}
+
+function renderTimeCell(timeValue: string, timeZone: string = 'America/New_York'): React.ReactElement {
   const date = new Date(timeValue);
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
+    timeZone,
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -312,9 +318,9 @@ function renderTimeCell(timeValue: string): React.ReactElement {
   );
 }
 
-function formatNYTime(date: Date): string {
+function formatNYTime(date: Date, timeZone: string = 'America/New_York'): string {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
+    timeZone,
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -1914,6 +1920,7 @@ function DetailDrawer({
   const fullNameAcuityField = appointmentsTable.getFieldIfExists(FIELD_IDS.FULL_NAME_ACUITY);
   const favStylesField = appointmentsTable.getFieldIfExists(FIELD_IDS.FAV_STYLES);
   const samplesNotInNyField = appointmentsTable.getFieldIfExists(FIELD_IDS.SAMPLES_NOT_IN_NY);
+  const apptStudioShortField = appointmentsTable.getFieldIfExists(FIELD_IDS.STUDIO_SHORT_NAME);
 
   const clientFirstNameField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_FIRST_NAME);
   const clientLastNameField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_LAST_NAME);
@@ -1967,6 +1974,8 @@ function DetailDrawer({
   }
 
   const apptTime = apptTimeField ? (record.getCellValue(apptTimeField) as string | null) : null;
+  const studioShortValue = apptStudioShortField ? record.getCellValueAsString(apptStudioShortField) : null;
+  const apptTimeZone = getTimeZoneForStudioShort(studioShortValue);
   let timeDisplay = '—';
   if (apptTime) {
     const startDate = new Date(apptTime);
@@ -1975,9 +1984,9 @@ function DetailDrawer({
 
     if (durationMinutes) {
       const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
-      timeDisplay = `${formatNYTime(startDate)} – ${formatNYTime(endDate)}`;
+      timeDisplay = `${formatNYTime(startDate, apptTimeZone)} – ${formatNYTime(endDate, apptTimeZone)}`;
     } else {
-      timeDisplay = formatNYTime(startDate);
+      timeDisplay = formatNYTime(startDate, apptTimeZone);
     }
   }
 
@@ -2509,6 +2518,7 @@ function AppointmentsApp(): React.ReactElement {
 
   const apptTimeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_TIME) ?? null;
   const apptTypeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_TYPE) ?? null;
+  const apptStudioShortField = appointmentsTable?.getFieldIfExists(FIELD_IDS.STUDIO_SHORT_NAME) ?? null;
   const roomLinkField = appointmentsTable?.getFieldIfExists(FIELD_IDS.ROOM_LINK) ?? null;
   const clientLinkField = appointmentsTable?.getFieldIfExists(FIELD_IDS.CLIENT_LINK) ?? null;
   const saNameField = appointmentsTable?.getFieldIfExists(FIELD_IDS.SA_NAME) ?? null;
@@ -3077,6 +3087,8 @@ function AppointmentsApp(): React.ReactElement {
                   {filteredRecords.map((record) => {
                     const isSelected = record.id === selectedRecordId;
                     const timeValue = apptTimeField ? (record.getCellValue(apptTimeField) as string | null) : null;
+                    const studioShortValue = apptStudioShortField ? record.getCellValueAsString(apptStudioShortField) : null;
+                    const apptTimeZone = getTimeZoneForStudioShort(studioShortValue);
                     const typeValue = apptTypeField ? record.getCellValueAsString(apptTypeField) : '';
                     const apptCategory = apptCategoryField ? record.getCellValueAsString(apptCategoryField) : '';
                     const isAlterationsAppt = apptCategory.toLowerCase() === 'alterations';
@@ -3128,7 +3140,7 @@ function AppointmentsApp(): React.ReactElement {
                           }`}
                         >
                           <td className="px-3 py-2.5 text-base whitespace-nowrap text-gray-600 dark:text-gray-400">
-                            {timeValue ? renderTimeCell(timeValue) : '—'}
+                            {timeValue ? renderTimeCell(timeValue, apptTimeZone) : '—'}
                           </td>
                           <td colSpan={7} className="px-3 py-2.5 text-lg font-medium text-center text-gray-600 dark:text-gray-400">
                             Blocked Time
@@ -3146,7 +3158,7 @@ function AppointmentsApp(): React.ReactElement {
                         }`}
                       >
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
-                          {timeValue ? renderTimeCell(timeValue) : '—'}
+                          {timeValue ? renderTimeCell(timeValue, apptTimeZone) : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-base font-medium whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
                           {clientLinkField && record.getCellValueAsString(clientLinkField)
