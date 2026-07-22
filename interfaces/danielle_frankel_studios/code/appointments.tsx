@@ -77,10 +77,10 @@ const FIELD_IDS = {
   STUDIO_ADDRESS: 'fldthP6CLGo6w7MWJ',
   PRE_APPT_NOTES: 'fld3nCe9MAo4dKavc',
   APPT_END_TIME: 'fldFwFIBNtC76v0Y7',
+  // The appointment_type field to use — a lookup of a singleSelect. A
+  // similarly-named field also exists on this table and will be removed soon;
+  // this is the correct one both for the displayed value and its color.
   APPT_NAME: 'fldZO3rF3KOGxG0S5',
-  // Source singleSelect on the appointment_types reference table (TABLE_IDS.APPOINTMENT_TYPES)
-  // that FIELD_IDS.APPT_NAME looks up — used to resolve the real Airtable choice color.
-  APPT_TYPE_CHOICE: 'fld5M3HgiIOycZfKJ',
   IS_FIRST_VISIT: 'fldkBeg39sl9VSgzF',
   CUSTOMIZATION_LOOKUP: 'fldACtVEk2jHSpTDC',
 
@@ -175,11 +175,6 @@ const TABLE_IDS = {
   ROOMS: 'tblI8GIUpyxyWNpPa',
   STAFF: 'tblbYk88xJ8FQrLS4',
   STUDIOS: 'tblYM02GzeYdYk23v',
-  // Reference table for Acuity appointment types — the appointment_type lookup
-  // on Appointments (FIELD_IDS.APPT_NAME) mirrors this table's singleSelect,
-  // but a lookup field doesn't reliably expose the source field's choice
-  // colors at runtime. Read the color straight from the singleSelect here instead.
-  APPOINTMENT_TYPES: 'tblhU6FD6innd2VUZ',
 } as const;
 
 const VIEW_IDS = {
@@ -1299,7 +1294,7 @@ function CalendarActionButtons({
           className={canUpdate ? btnBlue : btnDisabledCls}>Check In</button>
       );
     } else {
-      items.push(<span key="ci" className="text-[13px] text-red-500">{missingDataMessage || 'Missing Data'}</span>);
+      items.push(<span key="ci" className="text-xs text-red-500">{missingDataMessage || 'Missing Data'}</span>);
     }
   }
 
@@ -1695,13 +1690,13 @@ function CalendarCardCompact({
 
       {/* Fields */}
       <div className="space-y-0.5">
-        {saValue && <div className="text-[13px] text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
+        {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
         {showAltLead && (
-          <div className={`text-[13px] ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
+          <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
             Alt Lead: {altLeadValue || 'missing'}
           </div>
         )}
-        {roomValue && <div className="text-[13px] text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
+        {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
       </div>
 
       <CalendarActionButtons
@@ -2436,7 +2431,6 @@ function AppointmentsApp(): React.ReactElement {
   const roomsTable = base.getTableByIdIfExists(TABLE_IDS.ROOMS) ?? undefined;
   const staffTable = base.getTableByIdIfExists(TABLE_IDS.STAFF) ?? undefined;
   const studiosTable = base.getTableByIdIfExists(TABLE_IDS.STUDIOS) ?? undefined;
-  const appointmentTypesTable = base.getTableByIdIfExists(TABLE_IDS.APPOINTMENT_TYPES) ?? undefined;
   const appointmentFieldsToLoad = useMemo(
     () => getExistingFields(appointmentsTable, APPOINTMENT_RECORD_FIELDS),
     [appointmentsTable]
@@ -2553,10 +2547,9 @@ function AppointmentsApp(): React.ReactElement {
   const apptEndTimeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_END_TIME) ?? null;
 
   const clientStageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE) ?? null;
-  const apptTypeChoiceField = appointmentTypesTable?.getFieldIfExists(FIELD_IDS.APPT_TYPE_CHOICE) ?? null;
 
   const stageColorByName = useMemo(() => getFieldChoiceColorMap(clientStageField), [clientStageField]);
-  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptTypeChoiceField), [apptTypeChoiceField]);
+  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptNameField), [apptNameField]);
 
   const clientStageById = useMemo(() => {
     if (!clientRecords || !clientStageField) return new Map<string, string>();
