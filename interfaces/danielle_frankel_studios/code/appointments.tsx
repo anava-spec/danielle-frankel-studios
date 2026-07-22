@@ -423,18 +423,32 @@ function getAirtableSelectPillClasses(colorName: string | null | undefined): str
 }
 
 // A multipleLookupValues cell (this is one — a lookup of a singleSelect,
-// through a link field) doesn't always hand back a flat `{name, color}`
-// object per linked record — it can come back wrapped as `{value: {name,
-// color}}`, the same nested shape already handled for other lookups
-// elsewhere in this codebase (see extractFirstLookupString in
-// pipeline.tsx/recap.tsx). Not unwrapping that extra layer meant `'name' in
-// first` was always false, so this returned null for almost every record —
-// exactly the "Missing Data" symptom, even though the underlying lookup
-// field itself was populated.
+// through a link field) doesn't hand back a flat `{name, color}` object per
+// linked record here. This interface's runtime (@airtable/blocks/interface,
+// a different surface from the classic Blocks SDK) returns lookups-through-
+// links as a richer structure: `{ linkedRecordIds: string[],
+// valuesByLinkedRecordId: { [linkedRecordId]: Array<{id,name,color}> } }` —
+// confirmed directly against this field's actual cell data. Earlier fixes
+// here assumed a flat array or a single `{value: {...}}` wrapper (the shape
+// used by *other* lookups elsewhere in this codebase, e.g.
+// extractFirstLookupString in pipeline.tsx/recap.tsx) and neither matched,
+// which is why this kept returning null — "Missing Data" — even though the
+// underlying field was populated. Handles all of: plain string, flat
+// `{name,color}`/`{value:{...}}` (kept for safety, in case a different
+// lookup shape shows up elsewhere), and this linkedRecordIds shape.
 function unwrapSelectLike(value: unknown): { name: string; color?: string } | null {
   if (!value || typeof value !== 'object') return null;
   if ('name' in value) return value as { name: string; color?: string };
   if ('value' in value) return unwrapSelectLike((value as { value: unknown }).value);
+  if ('linkedRecordIds' in value && 'valuesByLinkedRecordId' in value) {
+    const v = value as { linkedRecordIds: string[]; valuesByLinkedRecordId: Record<string, unknown> };
+    const firstId = v.linkedRecordIds?.[0];
+    if (!firstId) return null;
+    const valuesForLink = v.valuesByLinkedRecordId?.[firstId];
+    const firstValue = Array.isArray(valuesForLink) ? valuesForLink[0] : valuesForLink;
+    if (typeof firstValue === 'string') return { name: firstValue };
+    return unwrapSelectLike(firstValue);
+  }
   return null;
 }
 function extractSelectValue(rawValue: unknown): { name: string; color: string | null } | null {
@@ -452,9 +466,12 @@ function extractSelectValue(rawValue: unknown): { name: string; color: string | 
   return null;
 }
 
-function MissingDataPill(): React.ReactElement {
+function MissingDataPill({ reason }: { reason?: string | null } = {}): React.ReactElement {
   return (
-    <span className="inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap">
+    <span
+      title={reason ?? undefined}
+      className={`inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap ${reason ? 'cursor-help' : ''}`}
+    >
       Missing Data
     </span>
   );
@@ -2990,9 +3007,17 @@ function AppointmentsApp(): React.ReactElement {
                     const typeValue = apptTypeField ? record.getCellValueAsString(apptTypeField) : '';
                     const apptCategory = apptCategoryField ? record.getCellValueAsString(apptCategoryField) : '';
                     const isAlterationsAppt = apptCategory.toLowerCase() === 'alterations';
+                    // Type must reflect the appointment_type field
+                    // (fldZO3rF3KOGxG0S5) only — no silent fallback to the
+                    // separate compound Appointment Type field (typeValue),
+                    // so what's shown here always matches what's in that
+                    // column, and a genuine parse failure isn't masked.
                     const apptNameRaw = apptNameField ? record.getCellValue(apptNameField) : null;
-                    const apptNameEntry = extractSelectValue(apptNameRaw)
-                      ?? (typeValue ? { name: getShortTypeLabel(typeValue), color: null as null } : null);
+                    const apptNameEntry = extractSelectValue(apptNameRaw);
+                    const apptNameMissingReason = apptNameEntry ? null
+                      : !apptNameField ? 'appointment_type field not found on this table.'
+                      : (apptNameRaw === null || apptNameRaw === undefined) ? 'appointment_type is empty for this appointment.'
+                      : `appointment_type has a value but could not be parsed — raw: ${JSON.stringify(apptNameRaw).slice(0, 200)}`;
                     
                     const linkedClients = clientLinkField
                       ? (record.getCellValue(clientLinkField) as Array<{ id: string }> | null)
@@ -3061,7 +3086,7 @@ function AppointmentsApp(): React.ReactElement {
                         <td className="px-3 py-2.5">
                           {apptNameEntry
                             ? <span className={getAppointmentTypePillClasses(apptNameEntry.name, 'md')}>{apptNameEntry.name}</span>
-                            : <MissingDataPill />}
+                            : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
                         <td className="px-3 py-2.5 text-base whitespace-nowrap">
                           {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill />}
