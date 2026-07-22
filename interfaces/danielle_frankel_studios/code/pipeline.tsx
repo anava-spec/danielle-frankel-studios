@@ -1900,14 +1900,14 @@ const FullProfileModal = React.memo(function FullProfileModal({
               />
             ) : (
               <div className="flex items-end gap-3 flex-wrap">
-                <div className="flex-1 min-w-[160px]">
+                <div className="w-1/3 min-w-[140px]">
                   <DetailRow
                     label="Due Date (3 mo. before wedding)"
                     value={overrideActive && client.manualRushDueDate ? formatFullDate(client.manualRushDueDate) : (client.dueDate ? formatFullDate(client.dueDate) : '—')}
                   />
                 </div>
                 {overrideActive && (
-                  <div className="flex-1 min-w-[160px]">
+                  <div className="w-1/3 min-w-[140px]">
                     <EditableDate label="Manual Due Date" value={client.manualRushDueDate} fieldId={FIELD_IDS.CLIENT_MANUAL_RUSH_DUE_DATE} recordId={client.id} base={base} />
                   </div>
                 )}
@@ -1915,8 +1915,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
                   type="button"
                   onClick={() => setDueDateConfirmAction(overrideActive ? 'revert' : 'override')}
                   className={overrideActive
-                    ? 'flex-1 min-w-[160px] px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors text-center'
-                    : 'flex-1 min-w-[160px] px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors text-center'}
+                    ? 'w-1/4 min-w-[140px] px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors text-center'
+                    : 'w-1/4 min-w-[140px] px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors text-center'}
                 >
                   {overrideActive ? 'Revert to Calculated Due Date' : 'Override Calculated Due Date'}
                 </button>
