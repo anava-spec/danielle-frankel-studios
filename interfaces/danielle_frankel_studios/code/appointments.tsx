@@ -422,22 +422,33 @@ function getAirtableSelectPillClasses(colorName: string | null | undefined): str
   return `inline-flex items-center text-base px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses}`;
 }
 
+// A multipleLookupValues cell (this is one — a lookup of a singleSelect,
+// through a link field) doesn't always hand back a flat `{name, color}`
+// object per linked record — it can come back wrapped as `{value: {name,
+// color}}`, the same nested shape already handled for other lookups
+// elsewhere in this codebase (see extractFirstLookupString in
+// pipeline.tsx/recap.tsx). Not unwrapping that extra layer meant `'name' in
+// first` was always false, so this returned null for almost every record —
+// exactly the "Missing Data" symptom, even though the underlying lookup
+// field itself was populated.
+function unwrapSelectLike(value: unknown): { name: string; color?: string } | null {
+  if (!value || typeof value !== 'object') return null;
+  if ('name' in value) return value as { name: string; color?: string };
+  if ('value' in value) return unwrapSelectLike((value as { value: unknown }).value);
+  return null;
+}
 function extractSelectValue(rawValue: unknown): { name: string; color: string | null } | null {
   if (rawValue === null || rawValue === undefined) return null;
   if (typeof rawValue === 'string') return rawValue.length > 0 ? { name: rawValue, color: null } : null;
   if (Array.isArray(rawValue) && rawValue.length > 0) {
     const first = rawValue[0];
-    if (first && typeof first === 'object' && 'name' in first) {
-      const obj = first as { name: string; color?: string };
-      return { name: obj.name, color: obj.color ?? null };
-    }
     if (typeof first === 'string') return { name: first, color: null };
+    const obj = unwrapSelectLike(first);
+    if (obj) return { name: obj.name, color: obj.color ?? null };
     return null;
   }
-  if (typeof rawValue === 'object' && !Array.isArray(rawValue) && 'name' in (rawValue as object)) {
-    const obj = rawValue as { name: string; color?: string };
-    return { name: obj.name, color: obj.color ?? null };
-  }
+  const obj = unwrapSelectLike(rawValue);
+  if (obj) return { name: obj.name, color: obj.color ?? null };
   return null;
 }
 
