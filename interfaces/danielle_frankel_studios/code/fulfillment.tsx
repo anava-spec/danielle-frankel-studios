@@ -1826,24 +1826,18 @@ function FulfillmentApp(): React.ReactElement {
     return { severity, tooltip };
   }, [getBoolOrError, getNumOrError]);
 
-  // Background gate — always applied, not user-facing: only clients with sold items and
-  // a wedding date on or after today belong in the fulfillment queue.
+  // Background gate — always applied, not user-facing: per docs/AIRTABLE PHASE LOGIC.docx,
+  // membership in the Fulfillment queue is solely `Stage === 'In Fulfillment'`. There is no
+  // items-sold or wedding-date requirement in the phase logic — a prior version of this gate
+  // additionally required a non-empty Items Sold and a wedding date today-or-later, which
+  // silently dropped ~80% of legitimately-staged clients whose DF Clients record simply had
+  // those lookup fields unpopulated (see 2026-07-22 diagnosis: only 3 of 27 In-Fulfillment
+  // clients were passing). Missing items/wedding-date is a data-completeness gap to flag in
+  // the UI, not a reason to exclude a client from the queue.
   const fulfillmentRecords = useMemo(() => {
     if (!allRecords) return [];
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const itemsField   = fields[FIELD_IDS.ITEMS_SOLD];
-    const weddingField = fields[FIELD_IDS.WEDDING_DATE];
-    return allRecords.filter(r => {
-      if (getSel(r, FIELD_IDS.STAGE)?.name !== 'In Fulfillment') return false;
-      const itemsVal = itemsField ? r.getCellValue(itemsField) : null;
-      const hasItems = Array.isArray(itemsVal) ? itemsVal.length > 0 : !!itemsVal;
-      if (!hasItems) return false;
-      const wd = weddingField ? (r.getCellValue(weddingField) as string | null) : null;
-      if (!wd) return false;
-      const wdDate = new Date(wd); wdDate.setHours(0, 0, 0, 0);
-      return wdDate.getTime() >= today.getTime();
-    });
-  }, [allRecords, getSel, fields]);
+    return allRecords.filter(r => getSel(r, FIELD_IDS.STAGE)?.name === 'In Fulfillment');
+  }, [allRecords, getSel]);
 
   const uniqueStudios = useMemo(() => {
     if (!studiosRecords || !studiosTable) return [];
