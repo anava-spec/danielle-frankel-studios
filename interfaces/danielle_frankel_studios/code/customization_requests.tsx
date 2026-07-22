@@ -10,9 +10,6 @@ import {
 import {
   CaretDown as CaretDownIcon,
   X as XIcon,
-  CheckCircle as CheckCircleIcon,
-  XSquare as XSquareIcon,
-  ArrowCounterClockwise as ArrowCounterClockwiseIcon,
   ArrowLeft as ArrowLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   Trash as TrashIcon,
@@ -36,13 +33,37 @@ function useTheme(): 'light' | 'dark' {
   return colorScheme;
 }
 
+// ─── useSmoothToggle ────────────────────────────────────────────────────────────
+// Shared open/close transition for dropdown panels — same fade+scale technique
+// every modal in this file already uses (mount immediately, flip to "visible"
+// a tick later so the browser paints the 0-state first; on close, flip
+// "visible" off immediately but delay the actual unmount so the fade-out has
+// time to play). ~150ms, matching BRANDING.md §12's non-modal transition durations.
+function useSmoothToggle(open: boolean, durationMs = 150) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const t = setTimeout(() => setVisible(true), 10);
+      return () => clearTimeout(t);
+    }
+    setVisible(false);
+    const t = setTimeout(() => setMounted(false), durationMs);
+    return () => clearTimeout(t);
+  }, [open, durationMs]);
+  return { mounted, visible };
+}
+
 // ─── Table / Field IDs ────────────────────────────────────────────────────────
 const FIELD_IDS = {
   CUSTOMIZATION_ID:            'fldl9cIcV80nYEDwe',
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',
-  APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',
+  APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Review / Counter-Proposed / Approved / Denied
+  CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Propose to Client / Counter-Proposed / Approved / Denied
+  PARENT_CUSTOMIZATION_REQUEST: 'fldh9tKr0Vmo84Yu6',  // parent_customization_request — self-link, set on a counter-proposal child
   CUSTOMIZED_STYLE:            'fldCaKP1d4C0aohQE',
   CUSTOMIZATION_DETAIL:        'fldg1hEoZe9MFQj02',
   CUSTOMIZATION_PRICING:       'fldJY7GklAVZ7lsjw',
@@ -121,39 +142,6 @@ function getFieldChoiceNames(field: unknown): string[] {
     const choices = ((field as { options?: { choices?: Array<{ name: string }> } }).options?.choices ?? []);
     return choices.map(c => c.name);
   } catch { return []; }
-}
-
-// ─── External Field Sources ───────────────────────────────────────────────────
-// Maps field IDs that are populated by external integrations to their source.
-// Used to: (a) lock fields as non-editable, (b) show a colored dot on labels.
-type FieldSource = 'acuity' | 'shopify' | 'apparel_magic';
-
-const FIELD_SOURCE: Record<string, FieldSource> = {
-  // Customizations table lookups
-  [FIELD_IDS.WEDDING_DATE]:    'acuity',        // lookup of DF_Clients.Wedding_Date (Acuity)
-  [FIELD_IDS.AM_ORDER_NUMBER]: 'apparel_magic', // lookup of AM Order Number (Apparel Magic)
-  // DF_Styles fields (Shopify-sourced)
-  [FIELD_IDS.STYLE_NAME]:      'shopify',
-};
-
-function isFieldReadOnlyBySource(fieldId?: string): boolean {
-  if (!fieldId) return false;
-  return fieldId in FIELD_SOURCE;
-}
-
-const SOURCE_COLORS: Record<FieldSource, { dot: string; text: string }> = {
-  acuity:        { dot: 'bg-purple-500', text: 'text-purple-600 dark:text-purple-400' },
-  shopify:       { dot: 'bg-green-500',  text: 'text-green-600  dark:text-green-400'  },
-  apparel_magic: { dot: 'bg-amber-500',  text: 'text-amber-600  dark:text-amber-400'  },
-};
-
-// Renders a small colored dot next to a label when the field has an external source.
-function SourceDot({ fieldId }: { fieldId?: string }) {
-  if (!fieldId) return null;
-  const source = FIELD_SOURCE[fieldId] as FieldSource | undefined;
-  if (!source) return null;
-  const { dot } = SOURCE_COLORS[source];
-  return <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ml-1 ${dot}`} />;
 }
 
 // ─── Airtable color token → saturated accent hex ─────────────────────────────
@@ -283,6 +271,7 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
     () => searchable && query ? options.filter(o => o.toLowerCase().includes(query.toLowerCase())) : options,
     [options, query, searchable]
   );
+  const panel = useSmoothToggle(open);
   // Trigger label swaps based on state (spec §5/§6): no value selected shows
   // the filter's own name as placeholder; a value selected shows the value
   // itself plus an inline clear-X — no external label sits beside the trigger.
@@ -302,8 +291,10 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
           ? <XIcon size={14} className="text-amber-600 dark:text-amber-400 flex-shrink-0 hover:text-amber-800 dark:hover:text-amber-200" onClick={e => { e.stopPropagation(); onChange([]); }} />
           : <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />}
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg shadow-lg w-[240px] overflow-hidden">
+      {panel.mounted && (
+        <div
+          style={{ opacity: panel.visible ? 1 : 0, transform: panel.visible ? 'scale(1)' : 'scale(0.97)', transformOrigin: 'top left' }}
+          className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg shadow-lg w-[240px] overflow-hidden transition-[opacity,transform] duration-150 ease-out">
           {searchable && (
             <div className="px-2 pt-1.5 pb-1 border-b border-gray-100 dark:border-white/5">
               <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…"
@@ -354,6 +345,7 @@ function LayoutDropdown({ value, onChange }: { value: typeof LAYOUT_OPTIONS[numb
     onChange(option);
     setIsOpen(false);
   };
+  const panel = useSmoothToggle(isOpen);
 
   return (
     <div ref={containerRef} className="relative">
@@ -361,8 +353,10 @@ function LayoutDropdown({ value, onChange }: { value: typeof LAYOUT_OPTIONS[numb
         className="flex items-center justify-center w-[130px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-amber-400/50 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-colors">
         <span className="truncate text-center">{LAYOUT_LABELS[value]}</span>
       </button>
-      {isOpen && (
-        <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg overflow-hidden w-[130px] py-1">
+      {panel.mounted && (
+        <div
+          style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)', opacity: panel.visible ? 1 : 0, transform: panel.visible ? 'scale(1)' : 'scale(0.97)', transformOrigin: 'top right' }}
+          className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg overflow-hidden w-[130px] py-1 transition-[opacity,transform] duration-150 ease-out">
           {LAYOUT_OPTIONS.map(option => (
             <button key={option} type="button" onClick={() => handleSelect(option)}
               className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
@@ -1135,7 +1129,7 @@ function NewRequestModal({
         const s = regularSection;
         const fields: Record<string, unknown> = {
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
-          [FIELD_IDS.APPROVAL_STATUS]: { name: 'Request' },
+          [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
           [FIELD_IDS.CUSTOMIZED_STYLE]: s.styleId ? [{ id: s.styleId }] : null,
           [FIELD_IDS.CUSTOMIZATION_PRICING]: s.pricingIds.map(id => ({ id })),
           [FIELD_IDS.CUSTOMIZATION_DETAIL]: s.detail || null,
@@ -1149,7 +1143,7 @@ function NewRequestModal({
         // or removed entirely per Julia's 2026-07-20 demo feedback).
         const buildChildFields = (s: DraftSectionValue): Record<string, unknown> => ({
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
-          [FIELD_IDS.APPROVAL_STATUS]: { name: 'Request' },
+          [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
           [FIELD_IDS.IS_HYBRID]: { name: 'Regular' },
           [FIELD_IDS.CUSTOMIZED_STYLE]: s.styleId ? [{ id: s.styleId }] : null,
           [FIELD_IDS.CUSTOMIZATION_DETAIL]: s.detail || null,
@@ -1158,7 +1152,7 @@ function NewRequestModal({
         const child2Id = await customizationsTable.createRecordAsync(buildChildFields(hybridSections[1]));
         const parentId = await customizationsTable.createRecordAsync({
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
-          [FIELD_IDS.APPROVAL_STATUS]: { name: 'Request' },
+          [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
           [FIELD_IDS.IS_HYBRID]: { name: 'Hybrid' },
           [FIELD_IDS.HYBRID_LINK]: [{ id: child1Id }, { id: child2Id }],
         });
@@ -1343,6 +1337,305 @@ function NewRequestModal({
   );
 }
 
+// ─── ApproveDenyConfirmModal ────────────────────────────────────────────────────
+// Simple confirm modal, same shell as DeleteConfirmModal (no countdown — this
+// isn't destructive in the same irreversible-data-loss sense, just a stage move).
+function ApproveDenyConfirmModal({ action, clientName, onConfirm, onClose }: {
+  action: 'Approve' | 'Deny'; clientName: string; onConfirm: () => Promise<void>; onClose: () => void;
+}) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+  const [saving, setSaving] = useState(false);
+  const handleConfirm = async () => { setSaving(true); await onConfirm(); };
+  const isApprove = action === 'Approve';
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[440px] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
+          <div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">{action} request</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF]">Are you sure?</p>
+          </div>
+          <button onClick={requestClose} disabled={saving}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0 disabled:opacity-50">
+            <XIcon size={18} />
+          </button>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            {isApprove
+              ? <>This will approve the customization request for <strong>{clientName}</strong> and move it forward to be proposed to the client.</>
+              : <>This will deny the customization request for <strong>{clientName}</strong>. This action cannot be undone.</>}
+          </p>
+        </div>
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
+          <button type="button" onClick={requestClose} disabled={saving}
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={handleConfirm} disabled={saving}
+            className={`px-5 py-2 text-sm font-semibold rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${isApprove ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
+            {saving ? 'Saving…' : action}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CounterProposalModal ───────────────────────────────────────────────────────
+// A counter-proposal is a full child Customizations record (parent_customization_
+// request links it back), created directly from a Stage A record — same shell/
+// two-panel pattern as NewRequestModal, but skips the customization-type chooser
+// (parent's type/style/customizations are copied read-only) and adds the
+// internal Approved Price field the production team is actually proposing.
+function CounterProposalModal({
+  parentRecord, customizationsTable, pricingRecords, pricingTable, preApprovalField, allCustomizationRecords,
+  onClose, onSubmitted,
+}: {
+  parentRecord: AirtableRecord; customizationsTable: Table; pricingRecords: AirtableRecord[];
+  pricingTable: Table | null; preApprovalField: Field | null; allCustomizationRecords: AirtableRecord[];
+  onClose: () => void; onSubmitted: () => void;
+}) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, [requestClose]);
+
+  const fClient          = customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT);
+  const fIsHybrid         = customizationsTable.getFieldIfExists(FIELD_IDS.IS_HYBRID);
+  const fStyled           = customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
+  const fHybridStyleNames = customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_STYLE_NAMES);
+  const fHybridLink       = customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK);
+  const fPricing          = customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
+  const fBasePrice        = customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE);
+  const pPriceField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
+  const pPercentField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null;
+  const pMultiField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null;
+  const pTypeField    = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_CUSTOMIZATION_TYPE) ?? null;
+
+  const clientName = fClient ? getLinkedRecordName(parentRecord.getCellValue(fClient)) : '—';
+  const isHybrid = !!(fIsHybrid && parentRecord.getCellValueAsString(fIsHybrid) === 'Hybrid');
+  const typeText = fIsHybrid ? (parentRecord.getCellValueAsString(fIsHybrid) || 'Regular') : 'Regular';
+  const typeColorMap = useMemo(() => getChoiceColorMap(fIsHybrid), [fIsHybrid]);
+  const styleText = isHybrid
+    ? (fHybridStyleNames ? (parentRecord.getCellValueAsString(fHybridStyleNames) || 'Hybrid') : 'Hybrid')
+    : (fStyled ? getLinkedRecordName(parentRecord.getCellValue(fStyled)) : '—');
+
+  const pricingIds = useMemo(() => {
+    if (isHybrid || !fPricing) return [];
+    const v = parentRecord.getCellValue(fPricing) as Array<{ id: string }> | null;
+    return v?.map(x => x.id) ?? [];
+  }, [isHybrid, fPricing, parentRecord]);
+
+  const basePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0;
+
+  const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
+  const selectedItems = useMemo(() => {
+    if (isHybrid || !pTypeField) return [];
+    return pricingIds.map(id => {
+      const r = pricingRecords.find(pr => pr.id === id);
+      if (!r) return null;
+      const { amount, label } = resolvePricingRow(r, { priceField: pPriceField, percentField: pPercentField, multiField: pMultiField }, basePriceNumber, 1);
+      return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
+    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
+  }, [isHybrid, pricingIds, pricingRecords, pTypeField, pPriceField, pPercentField, pMultiField, basePriceNumber, preApprovalField]);
+  const totalCustomizationCost = selectedItems.reduce((sum, i) => sum + i.amount, 0);
+
+  // Hybrid has no per-request Base Price/Customizations of its own — its
+  // "original cost" is the 85%-over-the-higher-child-Base-Price total,
+  // computed from its two linked children (same math as RecordDetailPage).
+  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
+    if (!isHybrid || !fHybridLink) return [];
+    const ids = ((parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+  }, [isHybrid, fHybridLink, parentRecord, allCustomizationRecords]);
+  const hybridOriginalTotal = useMemo(() => {
+    if (!isHybrid || !fBasePrice) return 0;
+    const [c1, c2] = hybridChildRecords;
+    const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fBasePrice)) : 0;
+    const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fBasePrice)) : 0;
+    return computeHybridCombinedTotal(b1, b2);
+  }, [isHybrid, fBasePrice, hybridChildRecords]);
+
+  const originalTotal = isHybrid ? hybridOriginalTotal : (basePriceNumber + totalCustomizationCost);
+
+  const [internalApprovedPrice, setInternalApprovedPrice] = useState('');
+  const [additionalDetails, setAdditionalDetails] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const priceNum = parseFloat(internalApprovedPrice);
+  const canSubmit = internalApprovedPrice.trim() !== '' && !isNaN(priceNum);
+
+  const handleSubmit = async () => {
+    if (!canSubmit || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await queueWrite(() => customizationsTable.updateRecordAsync(parentRecord.id, {
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' },
+      }));
+      const clientLink = fClient ? (parentRecord.getCellValue(fClient) as Array<{ id: string }> | null) : null;
+      const childFields: Record<string, unknown> = {
+        [FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST]: [{ id: parentRecord.id }],
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Counter-Proposed' },
+        [FIELD_IDS.APPROVED_PRICING]: priceNum,
+        [FIELD_IDS.CUSTOMIZATION_DETAIL]: additionalDetails || null,
+      };
+      if (clientLink) childFields[FIELD_IDS.CLIENT] = clientLink.map(c => ({ id: c.id }));
+      if (fIsHybrid) childFields[FIELD_IDS.IS_HYBRID] = { name: typeText };
+      if (!isHybrid) {
+        if (fStyled) {
+          const styleLink = parentRecord.getCellValue(fStyled) as Array<{ id: string }> | null;
+          childFields[FIELD_IDS.CUSTOMIZED_STYLE] = styleLink ? styleLink.map(s => ({ id: s.id })) : null;
+        }
+        childFields[FIELD_IDS.CUSTOMIZATION_PRICING] = pricingIds.map(id => ({ id }));
+      }
+      await customizationsTable.createRecordAsync(childFields);
+      onSubmitted();
+    } catch (e) {
+      console.error('Failed to submit counter-proposal:', e);
+      setError('Failed to submit counter-proposal. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
+  const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
+  const readOnlyCls = `${inputCls} opacity-70 cursor-not-allowed bg-gray-50 dark:bg-white/5`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)', maxWidth: '960px' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-xl text-gray-900 dark:text-[#F5F3EF] truncate">Counter-Proposal</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{clientName}</div>
+          </div>
+          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+            <XIcon size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex gap-6 items-stretch">
+            <div className="w-[60%] min-w-0 space-y-4">
+              <div className="flex gap-4">
+                <div className="w-1/2">
+                  <span className={labelCls}>Parent Request</span>
+                  <div className={readOnlyCls}>{parentRecord.name}</div>
+                </div>
+                <div className="w-1/2">
+                  <span className={labelCls}>Internal Approved Price</span>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500">$</span>
+                    <input type="number" value={internalApprovedPrice} onChange={e => setInternalApprovedPrice(e.target.value)}
+                      className={`${inputCls} pl-6 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                      style={{ MozAppearance: 'textfield' } as React.CSSProperties}
+                      placeholder="0.00" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <div className="w-1/2">
+                  <span className={labelCls}>Customization Type</span>
+                  <ApprovalStatusPill status={typeText} colorMap={typeColorMap} />
+                </div>
+                <div className="w-1/2">
+                  <span className={labelCls}>Style</span>
+                  <div className={readOnlyCls}>{styleText}</div>
+                </div>
+              </div>
+
+              {!isHybrid && (
+                <div>
+                  <span className={labelCls}>Customizations</span>
+                  <LineItemsTable
+                    selectedItems={selectedItems}
+                    suggestions={[]}
+                    onAdd={() => {}}
+                    onRemove={() => {}}
+                    preApprovalColorMap={preApprovalColorMap}
+                    totalAmount={totalCustomizationCost}
+                    disabled
+                  />
+                </div>
+              )}
+
+              <div>
+                <span className={labelCls}>Additional Details</span>
+                <textarea value={additionalDetails} onChange={e => setAdditionalDetails(e.target.value)}
+                  placeholder="Describe the revised proposal…"
+                  rows={3} className={`${inputCls} resize-none`} />
+              </div>
+
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+            </div>
+
+            <div className="w-[40%] shrink-0">
+              <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
+                <span className={labelCls}>Internal Approved Price</span>
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 pb-2">
+                  {canSubmit ? formatCurrency(priceNum) : '—'}
+                </div>
+                <div className="border-t border-gray-300 dark:border-white/20 pt-3 space-y-1.5">
+                  <span className={labelCls}>Original Costs</span>
+                  {!isHybrid ? (
+                    <>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">Base Price</span>
+                        <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(basePriceNumber)}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">Customization Total</span>
+                        <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(totalCustomizationCost)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between items-center py-1.5">
+                      <span className="text-base text-gray-600 dark:text-gray-400">Hybrid Combined Total</span>
+                      <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(hybridOriginalTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
+                    <span className="text-base">Original Total</span>
+                    <span className="text-base">{formatCurrency(originalTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
+          <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            Back
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={!canSubmit || saving}
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-amber-600 dark:bg-amber-400 text-white dark:text-gray-900 hover:bg-amber-700 dark:hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            {saving ? 'Sending…' : 'Send Counter-Proposal'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── RecordDetailPage ─────────────────────────────────────────────────────────
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, stylesBasePriceField, preApprovalField,
@@ -1375,6 +1668,8 @@ function RecordDetailPage({
   const fApproved   = table.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
   const fClient     = table.getFieldIfExists(FIELD_IDS.CLIENT);
   const fManagerApproval = table.getFieldIfExists(FIELD_IDS.APPROVED_BY_PRODUCTION);
+  const fClientApprovalStatus = table.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS);
+  const fProposedTotal        = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
 
   // ── Pricing table fields, shared by every line item and the rush fee row ───
   const pPriceField   = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_PRICE) : null;
@@ -1394,9 +1689,9 @@ function RecordDetailPage({
   const [pricingIds, setPricingIds] = useState<string[]>(() => { const v = fPricing ? record.getCellValue(fPricing) as Array<{id: string}> | null : null; return v?.map(x => x.id) ?? []; });
   const [detail,     setDetail]     = useState(fDetail ? record.getCellValueAsString(fDetail) : '');
   const [embroidery, setEmbroidery] = useState<string | null>(fEmbroidery ? record.getCellValueAsString(fEmbroidery) || null : null);
-  const [showCounterForm, setShowCounterForm] = useState(false);
-  const [counterPrice, setCounterPrice] = useState('');
-  const [counterNotes, setCounterNotes] = useState(fDetail ? record.getCellValueAsString(fDetail) : '');
+  const [showCounterModal, setShowCounterModal] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showDenyConfirm, setShowDenyConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -1463,45 +1758,34 @@ function RecordDetailPage({
     if (fManagerApproval) autoSave({ [fManagerApproval.id]: { name: value } });
   };
 
+  // Approved: internal_approval_status -> Approved, AND client_approval_status
+  // -> "Propose to Client" (moves it to the client-facing pipeline), with
+  // internal_approved_pricing set to the current proposed_total_custom_price
+  // at the moment of approval (a snapshot, not a live-linked value).
   const handleApprove = async () => {
     setSaving(true);
     try {
-      // APPROVED_BY_PRODUCTION is now the Manager Approval single-select
-      // field (see below) — a separate concern from this production-review
-      // Approve/Deny flow, so it's no longer touched here as a side effect.
-      await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved by Production' },
-      }));
-      setApprovalStatus('Approved by Production');
+      const proposedTotal = fProposedTotal ? (record.getCellValue(fProposedTotal) as number | null) : null;
+      const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved' } };
+      if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Propose to Client' };
+      if (fApproved) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
+      await queueWrite(() => table.updateRecordAsync(record.id, patch));
+      setApprovalStatus('Approved');
     } catch (e) { setError('Failed to approve.'); }
-    finally { setSaving(false); }
+    finally { setSaving(false); setShowApproveConfirm(false); }
   };
 
+  // Denied: internal_approval_status -> Denied. Flow ends here — no further
+  // client-approval-status write, per spec.
   const handleDeny = async () => {
     setSaving(true);
     try {
       await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied by Production' },
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' },
       }));
-      setApprovalStatus('Denied by Production');
+      setApprovalStatus('Denied');
     } catch (e) { setError('Failed to deny.'); }
-    finally { setSaving(false); }
-  };
-
-  const handleSubmitCounter = async () => {
-    setSaving(true);
-    try {
-      const priceVal = counterPrice ? parseFloat(counterPrice) : null;
-      await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Counter-Proposed' },
-        [FIELD_IDS.APPROVED_PRICING]: priceVal,
-        [FIELD_IDS.CUSTOMIZATION_DETAIL]: counterNotes,
-      }));
-      setApprovalStatus('Counter-Proposed');
-      setDetail(counterNotes);
-      setShowCounterForm(false);
-    } catch (e) { setError('Failed to submit counter-proposal.'); }
-    finally { setSaving(false); }
+    finally { setSaving(false); setShowDenyConfirm(false); }
   };
 
   const clientName   = fClient ? getLinkedRecordName(record.getCellValue(fClient)) : '—';
@@ -1533,7 +1817,10 @@ function RecordDetailPage({
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
 
-  const isProductionReview = approvalStatus === 'Under Production Review';
+  // Stage A: New Request / Under Review (empty status counts as New Request,
+  // same as the Workdesk's Approval-layout bucket) — the only stages where
+  // Approve/Deny/Counter-Propose apply. Every other status is Stage B.
+  const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review';
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
   // Base Price is shown as-is from its stored field. Total Customization
@@ -1625,48 +1912,24 @@ function RecordDetailPage({
         {approvalStatus && (
           <ApprovalStatusPill status={approvalStatus} colorMap={approvalColorMap} size="header" />
         )}
-        {/* Source legend + action buttons pushed to the right */}
+        {/* Action buttons pushed to the right — field-sync-source legend removed, not used here */}
         <div className="ml-auto flex items-center gap-4 flex-shrink-0">
-          {/* Field source legend */}
-          <div className="flex flex-col justify-between h-14 items-start">
-            {(Object.entries(SOURCE_COLORS) as [FieldSource, { dot: string; text: string }][]).map(([src, { dot, text }]) => (
-              <span key={src} className={`inline-flex items-center gap-1.5 text-xs font-medium ${text}`}>
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
-                {src === 'acuity' ? 'Acuity' : src === 'shopify' ? 'Shopify' : 'Apparel Magic'}
-              </span>
-            ))}
-          </div>
-        {canUpdate && isProductionReview && (
-          <div className="flex items-center gap-2">
-            {!showCounterForm ? (
-              <>
-                <button type="button" onClick={handleApprove} disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
-                  <CheckCircleIcon size={15} /> Approve
-                </button>
-                <button type="button" onClick={handleDeny} disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
-                  <XSquareIcon size={15} /> Deny
-                </button>
-                <button type="button" onClick={() => setShowCounterForm(true)} disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50">
-                  <ArrowCounterClockwiseIcon size={15} /> Counter-Propose
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={handleSubmitCounter} disabled={saving}
-                  className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium hover:bg-gray-700 dark:hover:bg-gray-200 transition-colors disabled:opacity-50">
-                  Submit Counter-Proposal
-                </button>
-                <button type="button" onClick={() => setShowCounterForm(false)}
-                  className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:underline cursor-pointer transition-colors">
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        )}
+          {canUpdate && isStageA && (
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setShowApproveConfirm(true)} disabled={saving}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
+                Approve
+              </button>
+              <button type="button" onClick={() => setShowDenyConfirm(true)} disabled={saving}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+                Deny
+              </button>
+              <button type="button" onClick={() => setShowCounterModal(true)} disabled={saving}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
+                Counter-Propose
+              </button>
+            </div>
+          )}
           {canDelete && (
             <button type="button" onClick={() => setShowDeleteModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex-shrink-0">
@@ -1836,41 +2099,23 @@ function RecordDetailPage({
               </select>
             </div>
 
-            {/* Counter-proposal form */}
-            {isProductionReview && showCounterForm && (
-              <div className="space-y-3 border-t border-gray-200 dark:border-white/10 pt-4">
-                <div>
-                  <label className={labelCls}>Counter-Proposed Price</label>
-                  <input type="number" value={counterPrice} onChange={e => setCounterPrice(e.target.value)}
-                    className={`${inputCls} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                    style={{ MozAppearance: 'textfield' } as React.CSSProperties}
-                    placeholder="Enter revised price" />
-                </div>
-                <div>
-                  <label className={labelCls}>Revised Design Notes</label>
-                  <textarea value={counterNotes} onChange={e => setCounterNotes(e.target.value)}
-                    className={`${inputCls} resize-none`} rows={3} />
-                </div>
-              </div>
-            )}
-
             {/* Status banners */}
             {approvalStatus === 'Counter-Proposed' && (
               <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
                 Production has counter-proposed. Review the revised price above.
               </div>
             )}
-            {(approvalStatus === 'Denied by Production' || approvalStatus === 'Denied by Client') && (
+            {approvalStatus === 'Denied' && (
               <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 This customization request was denied.
               </div>
             )}
-            {approvalStatus === 'Order Purchased' && (
-              <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-lg px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
-                Finalized and purchased.
+            {approvalStatus === 'Approved' && (
+              <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
+                Approved — proposed to the client.
               </div>
             )}
-            {(approvalStatus === 'Approved by Production' || approvalStatus === 'Approved by Client' || approvalStatus === 'Counter-Proposed' || approvalStatus === 'Order Purchased') && fApproved && (
+            {(approvalStatus === 'Approved' || approvalStatus === 'Counter-Proposed') && fApproved && (
               <div>
                 <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Counter-Proposed Price' : 'Approved Price'}</span>
                 <div className="text-sm text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
@@ -1882,6 +2127,35 @@ function RecordDetailPage({
         </div>
 
       </div>
+
+      {showApproveConfirm && (
+        <ApproveDenyConfirmModal
+          action="Approve"
+          clientName={clientName}
+          onConfirm={handleApprove}
+          onClose={() => setShowApproveConfirm(false)}
+        />
+      )}
+      {showDenyConfirm && (
+        <ApproveDenyConfirmModal
+          action="Deny"
+          clientName={clientName}
+          onConfirm={handleDeny}
+          onClose={() => setShowDenyConfirm(false)}
+        />
+      )}
+      {showCounterModal && (
+        <CounterProposalModal
+          parentRecord={record}
+          customizationsTable={table}
+          pricingRecords={pricingRecords}
+          pricingTable={pricingTable}
+          preApprovalField={preApprovalField}
+          allCustomizationRecords={allCustomizationRecords}
+          onClose={() => setShowCounterModal(false)}
+          onSubmitted={() => { setShowCounterModal(false); onBack(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1919,6 +2193,16 @@ function CustomizationApp(): React.ReactElement {
   const [clientSearch,         setClientSearch]         = useState('');
   const [showNewRequest,       setShowNewRequest]       = useState(false);
   const [draggedRecordId,      setDraggedRecordId]      = useState<string | null>(null);
+
+  // Smooth (not animated) layout swap — same fade-in-on-mount technique used by
+  // every modal in this file, just applied to the layout body instead of a
+  // backdrop, so switching Workdesk/Approval doesn't read as an abrupt snap.
+  const [layoutVisible, setLayoutVisible] = useState(true);
+  useEffect(() => {
+    setLayoutVisible(false);
+    const t = setTimeout(() => setLayoutVisible(true), 10);
+    return () => clearTimeout(t);
+  }, [layout]);
 
   const saOptions = useMemo(() => {
     if (!staffTable || !staffRecords) return [];
@@ -2028,11 +2312,11 @@ function CustomizationApp(): React.ReactElement {
   // apply), split into the two status buckets. "New Requests" includes both
   // an empty status and the explicit "Request" choice, per Axel's spec.
   const newRequestRecords = useMemo(
-    () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'Request'; }),
+    () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'New Request'; }),
     [filteredRecords, buildRowData]
   );
   const underReviewRecords = useMemo(
-    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Production Review'),
+    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Review'),
     [filteredRecords, buildRowData]
   );
 
@@ -2041,7 +2325,7 @@ function CustomizationApp(): React.ReactElement {
     const id = draggedRecordId;
     setDraggedRecordId(null);
     queueWrite(() => customizationsTable.updateRecordAsync(id, {
-      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Production Review' },
+      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Review' },
     })).catch(err => console.error('Approval status drag-update failed:', err));
   }, [draggedRecordId, customizationsTable]);
 
@@ -2095,6 +2379,9 @@ function CustomizationApp(): React.ReactElement {
   // ── Layer 1: Table list ───────────────────────────────────────────────────
   return (
     <>
+    {/* Keep the scrollbar track/thumb but drop the up/down arrow buttons —
+        matches recap.tsx's established global scrollbar pattern. */}
+    <style>{`::-webkit-scrollbar-button{display:none;height:0;width:0}`}</style>
     <div className="h-screen flex flex-col font-sans antialiased overflow-hidden" style={{ backgroundColor: '#F8F5EE' }}>
       {/* Filter Bar */}
       <div className="flex-shrink-0 flex items-center gap-4 px-6 py-3 border-b border-[#E9E0CE] dark:border-[#38322A] bg-white dark:bg-[#25211A] flex-wrap">
@@ -2117,6 +2404,7 @@ function CustomizationApp(): React.ReactElement {
         </div>
       </div>
 
+      <div className="flex-1 flex flex-col overflow-hidden transition-opacity duration-200 ease-out" style={{ opacity: layoutVisible ? 1 : 0 }}>
       {layout === 'ops' ? (
         /* Table */
         <div className="p-6 overflow-auto flex-1">
@@ -2163,7 +2451,7 @@ function CustomizationApp(): React.ReactElement {
         <div className="p-6 overflow-auto flex-1">
           <div className="grid grid-cols-2 gap-6 h-full">
             <div className="flex flex-col min-h-0">
-              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
+              <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
                 New Requests <span className="text-gray-400 dark:text-gray-500 font-normal">({newRequestRecords.length})</span>
               </h2>
               <div className="bg-white dark:bg-[#25211A] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl overflow-hidden flex-1 min-h-0 overflow-y-auto">
@@ -2206,7 +2494,7 @@ function CustomizationApp(): React.ReactElement {
             </div>
 
             <div className="flex flex-col min-h-0">
-              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
+              <h2 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
                 Under Review <span className="text-gray-400 dark:text-gray-500 font-normal">({underReviewRecords.length})</span>
               </h2>
               <div onDragOver={e => e.preventDefault()} onDrop={handleDropToUnderReview}
@@ -2250,6 +2538,7 @@ function CustomizationApp(): React.ReactElement {
           </div>
         </div>
       )}
+      </div>
     </div>
 
     {showNewRequest && customizationsTable && (
