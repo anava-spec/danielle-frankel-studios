@@ -174,6 +174,17 @@ One shared `StatusPill` component (replacing the four near-duplicates — `Appro
 
 ---
 
+## 9b. Missing Data Flags
+
+One shared `MissingDataPill` component per interface file (not ad hoc red `<span>`s scattered across the code) for any required field that's empty:
+- **Color**: `bg-red-50 text-red-600 border-red-200` (light) / `bg-red-950/30 text-red-400 border-red-800` (dark) — always include the dark variant, never ship light-only.
+- **Size**: match whatever pill/chip it sits beside in that context (a table cell's 13px, a compact card chip's 12px, etc.) — never a fixed px chosen in isolation. If it visually reads bigger or smaller than its neighbors, that's a bug.
+- **Label**: prefer naming the specific missing field(s) over a generic "Missing Data" whenever the component already knows which fields are required — e.g. `Missing Room and Sales Associate` instead of just `Missing Data`. Join multiple fields with commas and "and" before the last one.
+- **Tooltip**: when the cause isn't obvious from the label alone (e.g. a parsing failure vs. a genuinely empty field), add a native `title` tooltip explaining why — this turns "why does this say Missing Data" into a one-hover diagnosis instead of a support round-trip.
+- **Never mask it**: don't silently fall back to a different field or a blank value to avoid showing the flag — a required field being empty is a real data problem, and hiding it just delays someone finding out.
+
+---
+
 ## 10. Layout Patterns
 
 - Root shell: `h-screen flex flex-col overflow-hidden` — always include `overflow-hidden` on the root (pipeline.tsx's omission was a bug, not a variant).
