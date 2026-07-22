@@ -61,8 +61,8 @@ const FIELD_IDS = {
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',
-  APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Review / Counter-Proposed / Approved / Denied
-  CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Propose to Client / Counter-Proposed / Approved / Denied
+  APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Internal Review / Counter-Proposed / Approved / Denied / Denied • Counter-Proposal
+  CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Request Client Review / Under Review / Counter-Proposed / Approved / Denied
   PARENT_CUSTOMIZATION_REQUEST: 'fldh9tKr0Vmo84Yu6',  // parent_customization_request — self-link, set on a counter-proposal child
   CUSTOMIZED_STYLE:            'fldCaKP1d4C0aohQE',
   CUSTOMIZATION_DETAIL:        'fldg1hEoZe9MFQj02',
@@ -1482,7 +1482,7 @@ function CounterProposalModal({
     setError(null);
     try {
       await queueWrite(() => customizationsTable.updateRecordAsync(parentRecord.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' },
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied • Counter-Proposal' },
       }));
       const clientLink = fClient ? (parentRecord.getCellValue(fClient) as Array<{ id: string }> | null) : null;
       const childFields: Record<string, unknown> = {
@@ -1759,7 +1759,7 @@ function RecordDetailPage({
   };
 
   // Approved: internal_approval_status -> Approved, AND client_approval_status
-  // -> "Propose to Client" (moves it to the client-facing pipeline), with
+  // -> "Request Client Review" (moves it to the client-facing pipeline), with
   // internal_approved_pricing set to the current proposed_total_custom_price
   // at the moment of approval (a snapshot, not a live-linked value).
   const handleApprove = async () => {
@@ -1767,7 +1767,7 @@ function RecordDetailPage({
     try {
       const proposedTotal = fProposedTotal ? (record.getCellValue(fProposedTotal) as number | null) : null;
       const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved' } };
-      if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Propose to Client' };
+      if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Request Client Review' };
       if (fApproved) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Approved');
@@ -1820,7 +1820,7 @@ function RecordDetailPage({
   // Stage A: New Request / Under Review (empty status counts as New Request,
   // same as the Workdesk's Approval-layout bucket) — the only stages where
   // Approve/Deny/Counter-Propose apply. Every other status is Stage B.
-  const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review';
+  const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Internal Review';
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
   // Base Price is shown as-is from its stored field. Total Customization
@@ -2105,9 +2105,11 @@ function RecordDetailPage({
                 Production has counter-proposed. Review the revised price above.
               </div>
             )}
-            {approvalStatus === 'Denied' && (
+            {(approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') && (
               <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
-                This customization request was denied.
+                {approvalStatus === 'Denied • Counter-Proposal'
+                  ? 'This customization request was denied — a counter-proposal was submitted in its place.'
+                  : 'This customization request was denied.'}
               </div>
             )}
             {approvalStatus === 'Approved' && (
@@ -2316,7 +2318,7 @@ function CustomizationApp(): React.ReactElement {
     [filteredRecords, buildRowData]
   );
   const underReviewRecords = useMemo(
-    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Review'),
+    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Internal Review'),
     [filteredRecords, buildRowData]
   );
 
@@ -2325,7 +2327,7 @@ function CustomizationApp(): React.ReactElement {
     const id = draggedRecordId;
     setDraggedRecordId(null);
     queueWrite(() => customizationsTable.updateRecordAsync(id, {
-      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Review' },
+      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Internal Review' },
     })).catch(err => console.error('Approval status drag-update failed:', err));
   }, [draggedRecordId, customizationsTable]);
 
