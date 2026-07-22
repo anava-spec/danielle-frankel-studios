@@ -392,47 +392,52 @@ function getAppointmentCategory(typeLabel: string): AppointmentCategory {
   return 'standard';
 }
 
+// All four Airtable intensity tiers (base/Bright/Light1/Light2) resolve to the
+// same high-contrast bg-100/text-800 formula per hue — the tier distinctions
+// in Airtable's own palette aren't meaningfully different for a small chip,
+// and a light chip needs a dark same-hue text (not the pale text-500/600
+// this used to have) to actually be readable.
 const AIRTABLE_COLOR_MAP: Record<string, string> = {
-  blue: 'bg-blue-200 dark:bg-blue-800/50 text-blue-800 dark:text-blue-100 border-blue-300 dark:border-blue-600',
-  blueBright: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 border-blue-200 dark:border-blue-700',
-  blueLight1: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300 border-blue-100 dark:border-blue-800',
-  blueLight2: 'bg-blue-50 dark:bg-blue-950/30 text-blue-500 dark:text-blue-400 border-blue-100 dark:border-blue-800',
-  cyan: 'bg-cyan-200 dark:bg-cyan-800/50 text-cyan-800 dark:text-cyan-100 border-cyan-300 dark:border-cyan-600',
-  cyanBright: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
-  cyanLight1: 'bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-300 border-cyan-100 dark:border-cyan-800',
-  cyanLight2: 'bg-cyan-50 dark:bg-cyan-950/30 text-cyan-500 dark:text-cyan-400 border-cyan-100 dark:border-cyan-800',
-  teal: 'bg-teal-200 dark:bg-teal-800/50 text-teal-800 dark:text-teal-100 border-teal-300 dark:border-teal-600',
-  tealBright: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-200 border-teal-200 dark:border-teal-700',
-  tealLight1: 'bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-300 border-teal-100 dark:border-teal-800',
-  tealLight2: 'bg-teal-50 dark:bg-teal-950/30 text-teal-500 dark:text-teal-400 border-teal-100 dark:border-teal-800',
-  green: 'bg-green-200 dark:bg-green-800/50 text-green-800 dark:text-green-100 border-green-300 dark:border-green-600',
-  greenBright: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-200 border-green-200 dark:border-green-700',
-  greenLight1: 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-300 border-green-100 dark:border-green-800',
-  greenLight2: 'bg-green-50 dark:bg-green-950/30 text-green-500 dark:text-green-400 border-green-100 dark:border-green-800',
-  yellow: 'bg-yellow-200 dark:bg-yellow-800/50 text-yellow-800 dark:text-yellow-100 border-yellow-300 dark:border-yellow-600',
-  yellowBright: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-200 border-yellow-200 dark:border-yellow-700',
-  yellowLight1: 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-600 dark:text-yellow-300 border-yellow-100 dark:border-yellow-800',
-  yellowLight2: 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-500 dark:text-yellow-400 border-yellow-100 dark:border-yellow-800',
-  orange: 'bg-orange-200 dark:bg-orange-800/50 text-orange-800 dark:text-orange-100 border-orange-300 dark:border-orange-600',
-  orangeBright: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-200 border-orange-200 dark:border-orange-700',
-  orangeLight1: 'bg-orange-50 dark:bg-orange-950/30 text-orange-600 dark:text-orange-300 border-orange-100 dark:border-orange-800',
-  orangeLight2: 'bg-orange-50 dark:bg-orange-950/30 text-orange-500 dark:text-orange-400 border-orange-100 dark:border-orange-800',
-  red: 'bg-red-200 dark:bg-red-800/50 text-red-800 dark:text-red-100 border-red-300 dark:border-red-600',
-  redBright: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-200 border-red-200 dark:border-red-700',
-  redLight1: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-300 border-red-100 dark:border-red-800',
-  redLight2: 'bg-red-50 dark:bg-red-950/30 text-red-500 dark:text-red-400 border-red-100 dark:border-red-800',
-  pink: 'bg-pink-200 dark:bg-pink-800/50 text-pink-800 dark:text-pink-100 border-pink-300 dark:border-pink-600',
-  pinkBright: 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-200 border-pink-200 dark:border-pink-700',
-  pinkLight1: 'bg-pink-50 dark:bg-pink-950/30 text-pink-600 dark:text-pink-300 border-pink-100 dark:border-pink-800',
-  pinkLight2: 'bg-pink-50 dark:bg-pink-950/30 text-pink-500 dark:text-pink-400 border-pink-100 dark:border-pink-800',
-  purple: 'bg-purple-200 dark:bg-purple-800/50 text-purple-800 dark:text-purple-100 border-purple-300 dark:border-purple-600',
-  purpleBright: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200 border-purple-200 dark:border-purple-700',
-  purpleLight1: 'bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-300 border-purple-100 dark:border-purple-800',
-  purpleLight2: 'bg-purple-50 dark:bg-purple-950/30 text-purple-500 dark:text-purple-400 border-purple-100 dark:border-purple-800',
+  blue: 'bg-blue-200 dark:bg-blue-800/50 text-blue-900 dark:text-blue-100 border-blue-300 dark:border-blue-600',
+  blueBright: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  blueLight1: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  blueLight2: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  cyan: 'bg-cyan-200 dark:bg-cyan-800/50 text-cyan-900 dark:text-cyan-100 border-cyan-300 dark:border-cyan-600',
+  cyanBright: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  cyanLight1: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  cyanLight2: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  teal: 'bg-teal-200 dark:bg-teal-800/50 text-teal-900 dark:text-teal-100 border-teal-300 dark:border-teal-600',
+  tealBright: 'bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200 border-teal-200 dark:border-teal-700',
+  tealLight1: 'bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200 border-teal-200 dark:border-teal-700',
+  tealLight2: 'bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200 border-teal-200 dark:border-teal-700',
+  green: 'bg-green-200 dark:bg-green-800/50 text-green-900 dark:text-green-100 border-green-300 dark:border-green-600',
+  greenBright: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  greenLight1: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  greenLight2: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  yellow: 'bg-yellow-200 dark:bg-yellow-800/50 text-yellow-900 dark:text-yellow-100 border-yellow-300 dark:border-yellow-600',
+  yellowBright: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border-yellow-200 dark:border-yellow-700',
+  yellowLight1: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border-yellow-200 dark:border-yellow-700',
+  yellowLight2: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border-yellow-200 dark:border-yellow-700',
+  orange: 'bg-orange-200 dark:bg-orange-800/50 text-orange-900 dark:text-orange-100 border-orange-300 dark:border-orange-600',
+  orangeBright: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 border-orange-200 dark:border-orange-700',
+  orangeLight1: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 border-orange-200 dark:border-orange-700',
+  orangeLight2: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 border-orange-200 dark:border-orange-700',
+  red: 'bg-red-200 dark:bg-red-800/50 text-red-900 dark:text-red-100 border-red-300 dark:border-red-600',
+  redBright: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 border-red-200 dark:border-red-700',
+  redLight1: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 border-red-200 dark:border-red-700',
+  redLight2: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 border-red-200 dark:border-red-700',
+  pink: 'bg-pink-200 dark:bg-pink-800/50 text-pink-900 dark:text-pink-100 border-pink-300 dark:border-pink-600',
+  pinkBright: 'bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-200 border-pink-200 dark:border-pink-700',
+  pinkLight1: 'bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-200 border-pink-200 dark:border-pink-700',
+  pinkLight2: 'bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-200 border-pink-200 dark:border-pink-700',
+  purple: 'bg-purple-200 dark:bg-purple-800/50 text-purple-900 dark:text-purple-100 border-purple-300 dark:border-purple-600',
+  purpleBright: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border-purple-200 dark:border-purple-700',
+  purpleLight1: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border-purple-200 dark:border-purple-700',
+  purpleLight2: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border-purple-200 dark:border-purple-700',
   gray: 'bg-gray-200 dark:bg-white/15 text-gray-800 dark:text-[#F3EFE6] border-gray-300 dark:border-white/15',
-  grayBright: 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#38322A]',
-  grayLight1: 'bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-gray-100 dark:border-white/5',
-  grayLight2: 'bg-gray-50 dark:bg-white/5 text-gray-400 dark:text-gray-500 border-gray-100 dark:border-white/5',
+  grayBright: 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-[#38322A]',
+  grayLight1: 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-[#38322A]',
+  grayLight2: 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-[#38322A]',
 };
 
 function getAirtableSelectPillClasses(colorName: string | null | undefined): string {
@@ -1288,61 +1293,59 @@ function CalendarActionButtons({
     onPickUp(record);
   };
 
-  const txtBase = 'text-xs font-medium transition-colors';
-  const btnBlue = `${txtBase} text-[#D97706] dark:text-[#FBBF24] hover:text-[#B45F04] dark:text-[#FBBF24] cursor-pointer`;
-  const btnDisabledCls = `${txtBase} opacity-40 cursor-not-allowed text-gray-400 dark:text-gray-500`;
-  const btnGreenTxt = `${txtBase} text-green-600`;
-  const sep = <span className="text-gray-300 dark:text-gray-600 text-xs select-none">·</span>;
+  // Same button styling as the List layout's ActionButtons — just smaller.
+  const btn = 'text-[11px] font-medium border rounded-md transition-colors whitespace-nowrap px-2 py-0.5 text-center';
+  const btnDefault = `${btn} border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer`;
+  const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300`;
+  const btnGreen = `${btn} border-green-200 bg-green-100 text-green-700 cursor-default`;
+  const pillRed = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
+  const pillYellow = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
 
   const items: React.ReactNode[] = [];
 
   if (checkInValue) {
-    items.push(<span key="ci" className={btnGreenTxt}>Checked In</span>);
+    items.push(<button key="ci" disabled className={btnGreen}>Checked In</button>);
   } else if (showCheckInButton) {
     if (hasRequiredData) {
       items.push(
         <button key="ci" onClick={handleCheckInClick} disabled={!canUpdate}
-          className={canUpdate ? btnBlue : btnDisabledCls}>Check In</button>
+          className={canUpdate ? btnDefault : btnDisabled}>Check In</button>
       );
     } else {
-      items.push(<span key="ci" className="text-xs text-red-500">{missingDataMessage || 'Missing Data'}</span>);
+      items.push(<span key="ci" className={pillRed}>{missingDataMessage || 'Missing Data'}</span>);
     }
   }
 
   if (checkInValue) {
     if (showCleared) {
-      items.push(<span key="cl" className={btnGreenTxt}>Cleared</span>);
+      items.push(<button key="cl" disabled className={btnGreen}>Cleared</button>);
     } else if (showClearButton) {
       items.push(
         <button key="cl" onClick={handleClearClick} disabled={!canUpdate}
-          className={canUpdate ? btnBlue : btnDisabledCls}>Clear</button>
+          className={canUpdate ? btnDefault : btnDisabled}>Clear</button>
       );
     }
   }
 
   if (category === 'pick-up-only' || category === 'combined-pick-up') {
     if (pickedUpValue) {
-      items.push(<span key="pu" className={btnGreenTxt}>Picked Up</span>);
+      items.push(<button key="pu" disabled className={btnGreen}>Picked Up</button>);
     } else if (showCleared || category === 'pick-up-only') {
       items.push(
-        <button key="pu" onClick={handlePickUpClick} className={btnBlue}>Pick Up</button>
+        <button key="pu" onClick={handlePickUpClick} className={btnDefault}>Pick Up</button>
       );
     } else {
-      items.push(<span key="pu" className="text-xs text-orange-500">Pick Up Pending</span>);
+      items.push(<span key="pu" className={pillYellow}>Pick Up Pending</span>);
     }
   }
 
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-auto pt-2"
+    <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-2"
       onClick={(e) => e.stopPropagation()}>
-      {items.reduce<React.ReactNode[]>((acc, item, i) => {
-        if (i > 0) acc.push(<React.Fragment key={`sep-${i}`}>{sep}</React.Fragment>);
-        acc.push(<React.Fragment key={i}>{item}</React.Fragment>);
-        return acc;
-      }, [])}
-      {errorMsg && <span className="w-full text-xs text-red-500 mt-0.5">{errorMsg}</span>}
+      {items}
+      {errorMsg && <span className="w-full text-[11px] text-red-500 mt-0.5">{errorMsg}</span>}
     </div>
   );
 }
@@ -1690,13 +1693,13 @@ function CalendarCardCompact({
       <div className="absolute top-2.5 right-2.5 inline-grid grid-cols-1 gap-1.5 max-w-[60%]">
         {clientStage && (
           <div className="grid grid-cols-1 gap-0.5" title={stageColorDebug}>
-            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Stage:</span>
+            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Stage:</span>
             <span className={stagePillClasses}>{clientStage}</span>
           </div>
         )}
         {apptNameEntry && (
           <div className="grid grid-cols-1 gap-0.5" title={apptTypeColorDebug}>
-            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Appointment Type:</span>
+            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-left">Appointment Type:</span>
             <span className={apptTypePillClasses}>{apptNameEntry.name}</span>
           </div>
         )}
