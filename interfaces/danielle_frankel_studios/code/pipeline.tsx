@@ -18,6 +18,7 @@ import {
   Check as CheckIcon,
   FloppyDisk as FloppyDiskIcon,
   CalendarBlank as CalendarIcon,
+  Warning as WarningIcon,
 } from '@phosphor-icons/react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +94,10 @@ const FIELD_IDS = {
   CLIENT_ALTERATION_NOTES:             'fldBhpBTj0gGmV5mc',
   CLIENT_SALES_NOTES:                  'fldsVYhG5tZAccxdK',
   CLIENT_DUE_DATE:                     'flddDJKkZDsOoCOzE',
+  // Manual override for CLIENT_DUE_DATE — the formula field is always
+  // 3 months before the wedding date, but a rush order sometimes needs a
+  // different due date. Set via the "Override Calculated Due Date" flow.
+  CLIENT_MANUAL_RUSH_DUE_DATE:         'fldAjKncKLbKz0HOz',
   CLIENT_CUSTOMIZATION_NOTES:          'fld6C6SKaa1pWbTf6',
   CLIENT_FIRST_ALTERATIONS_APPT:       'fldRS6ctrPGlEPqlR',
   CLIENT_TAXES:                        'fld1Hki2fjZifmFHg',
@@ -510,6 +515,7 @@ interface ClientData {
   timelineBucket: string;
   salesNotes: string;
   dueDate: string | null;
+  manualRushDueDate: string | null;
   customizationNotes: string;
   firstAlterationsAppt: string | null;
   taxes: number | null;
@@ -1667,6 +1673,70 @@ const ALTERATIONS_PAYMENT_OPTIONS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// OVERRIDE DUE DATE CONFIRM MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+// Standard centered confirm dialog (backdrop + rounded-2xl container, fade+scale
+// per BRANDING.md §12) — same structural shape as customization_requests.tsx's
+// DeleteConfirmModal, but non-destructive: accent-colored confirm button (§8),
+// no countdown lock, no red danger box.
+function OverrideDueDateConfirmModal({ onConfirm, onClose }: {
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [requestClose]);
+
+  const handleConfirm = () => {
+    onConfirm();
+    requestClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[440px] overflow-hidden flex flex-col transition-[opacity,transform] duration-200 ease-out"
+        style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.25)', opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-start justify-between">
+          <p className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF]">Override calculated due date?</p>
+          <button onClick={requestClose}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0">
+            <XIcon size={18} />
+          </button>
+        </div>
+        <div className="p-5">
+          <div className="flex items-start gap-3 bg-[#FEF3C7] dark:bg-[#3A2E12] border border-amber-200 dark:border-amber-800/40 rounded-lg px-4 py-3">
+            <WarningIcon size={18} className="text-[#D97706] dark:text-[#FBBF24] flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              This lets you set the due date manually instead of the calculated 3-months-before-wedding formula.
+              <strong> This changes the conditions used for Rush Fees.</strong> Are you sure you want to continue?
+            </p>
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
+          <button type="button" onClick={requestClose}
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleConfirm}
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors">
+            Override Due Date
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FULL PROFILE MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 interface FullProfileModalProps {
@@ -1691,6 +1761,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
   const [showAllFields, setShowAllFields] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [showOverrideConfirm, setShowOverrideConfirm] = useState(false);
+  const [overrideActive, setOverrideActive] = useState(!!client.manualRushDueDate);
   useEffect(() => {
     const id = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(id);
@@ -1699,6 +1771,18 @@ const FullProfileModal = React.memo(function FullProfileModal({
     setVisible(false);
     setTimeout(onClose, 220);
   }, [onClose]);
+
+  const handleRevertDueDate = useCallback(async () => {
+    setOverrideActive(false);
+    try {
+      const clientsTable = base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c');
+      if (clientsTable?.hasPermissionToUpdateRecords()) {
+        await clientsTable.updateRecordAsync(client.id, { [FIELD_IDS.CLIENT_MANUAL_RUSH_DUE_DATE]: null });
+      }
+    } catch (err) {
+      console.error('Failed to clear manual due date:', err);
+    }
+  }, [base, client.id]);
 
   function renderStageSection(sectionStage: string, readOnly: boolean) {
     switch (sectionStage) {
@@ -1805,7 +1889,35 @@ const FullProfileModal = React.memo(function FullProfileModal({
               }
               <div /><div />
             </FieldRow>
-            <DetailRow label="Due Date (3 mo. before wedding)" value={client.dueDate ? formatFullDate(client.dueDate) : '—'} />
+            {readOnly ? (
+              <DetailRow
+                label="Due Date (3 mo. before wedding)"
+                value={overrideActive && client.manualRushDueDate ? formatFullDate(client.manualRushDueDate) : (client.dueDate ? formatFullDate(client.dueDate) : '—')}
+              />
+            ) : (
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="flex-1 min-w-[160px]">
+                  <DetailRow
+                    label="Due Date (3 mo. before wedding)"
+                    value={overrideActive && client.manualRushDueDate ? formatFullDate(client.manualRushDueDate) : (client.dueDate ? formatFullDate(client.dueDate) : '—')}
+                  />
+                </div>
+                {overrideActive && (
+                  <div className="flex-1 min-w-[160px]">
+                    <EditableDate label="Manual Due Date" value={client.manualRushDueDate} fieldId={FIELD_IDS.CLIENT_MANUAL_RUSH_DUE_DATE} recordId={client.id} base={base} />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { overrideActive ? handleRevertDueDate() : setShowOverrideConfirm(true); }}
+                  className={overrideActive
+                    ? 'px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors whitespace-nowrap'
+                    : 'px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors whitespace-nowrap'}
+                >
+                  {overrideActive ? 'Revert to Calculated Due Date' : 'Override Calculated Due Date'}
+                </button>
+              </div>
+            )}
             {client.alterationsPaymentStatus?.toLowerCase() === 'paid' && (
               <DetailRow label="Alterations" value="Yes — Paid" />
             )}
@@ -2153,6 +2265,12 @@ const FullProfileModal = React.memo(function FullProfileModal({
         )}
 
       </div>
+      {showOverrideConfirm && (
+        <OverrideDueDateConfirmModal
+          onConfirm={() => setOverrideActive(true)}
+          onClose={() => setShowOverrideConfirm(false)}
+        />
+      )}
     </div>
   );
 });
@@ -2538,6 +2656,7 @@ function Pipeline(): React.ReactElement {
       apparelMagicOrderNumber:    f(FIELD_IDS.APPAREL_MAGIC_ORDER_NUMBER),
       salesNotes:                 f(FIELD_IDS.CLIENT_SALES_NOTES),
       dueDate:                    f(FIELD_IDS.CLIENT_DUE_DATE),
+      manualRushDueDate:          f(FIELD_IDS.CLIENT_MANUAL_RUSH_DUE_DATE),
       customizationNotes:         f(FIELD_IDS.CLIENT_CUSTOMIZATION_NOTES),
       firstAlterationsAppt:       f(FIELD_IDS.CLIENT_FIRST_ALTERATIONS_APPT),
       taxes:                      f(FIELD_IDS.CLIENT_TAXES),
