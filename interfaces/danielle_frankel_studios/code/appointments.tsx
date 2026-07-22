@@ -79,8 +79,13 @@ const FIELD_IDS = {
   APPT_END_TIME: 'fldFwFIBNtC76v0Y7',
   // The appointment_type field to use — a lookup of a singleSelect. A
   // similarly-named field also exists on this table and will be removed soon;
-  // this is the correct one both for the displayed value and its color.
+  // this is the correct one for the displayed value (its color comes from
+  // TABLE_IDS.APPOINTMENT_TYPES / APPT_TYPE_CHOICE instead — see there).
   APPT_NAME: 'fldZO3rF3KOGxG0S5',
+  // Source singleSelect on the appointment_types reference table that
+  // FIELD_IDS.APPT_NAME looks up — confirmed via debug tooltip to be the only
+  // reliable source for this field's real Airtable choice colors.
+  APPT_TYPE_CHOICE: 'fld5M3HgiIOycZfKJ',
   IS_FIRST_VISIT: 'fldkBeg39sl9VSgzF',
   CUSTOMIZATION_LOOKUP: 'fldACtVEk2jHSpTDC',
 
@@ -175,6 +180,12 @@ const TABLE_IDS = {
   ROOMS: 'tblI8GIUpyxyWNpPa',
   STAFF: 'tblbYk88xJ8FQrLS4',
   STUDIOS: 'tblYM02GzeYdYk23v',
+  // Reference table for Acuity appointment types. Confirmed via a debug
+  // tooltip that the appointment_type lookup on Appointments (FIELD_IDS.APPT_NAME)
+  // reports 0 choices loaded at runtime — a lookup field doesn't expose the
+  // source field's option colors here — so the color has to come from this
+  // table's own singleSelect field instead (FIELD_IDS.APPT_TYPE_CHOICE).
+  APPOINTMENT_TYPES: 'tblhU6FD6innd2VUZ',
 } as const;
 
 const VIEW_IDS = {
@@ -1638,7 +1649,7 @@ function CalendarCardCompact({
   // Debug tooltips (temporary) — hover a chip to see exactly what color name
   // was resolved and from which field/value, to verify against Airtable.
   const stageColorDebug = `value: "${clientStage ?? ''}" | field: DF Clients.stage (fldLcxVZvI1rigBlh) | resolved color: ${stageColorName || 'none (falls back to gray)'} | choices loaded: ${stageColorByName.size}`;
-  const apptTypeColorDebug = `value: "${apptNameEntry?.name ?? ''}" | field: appointment_type (fldZO3rF3KOGxG0S5) | resolved color: ${apptTypeColorName || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`;
+  const apptTypeColorDebug = `value: "${apptNameEntry?.name ?? ''}" | color source: appointment_types.type field (fld5M3HgiIOycZfKJ) | resolved color: ${apptTypeColorName || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`;
 
   const category = getAppointmentCategory(typeValue);
   const missingFieldLabels: string[] = [];
@@ -2437,6 +2448,7 @@ function AppointmentsApp(): React.ReactElement {
   const roomsTable = base.getTableByIdIfExists(TABLE_IDS.ROOMS) ?? undefined;
   const staffTable = base.getTableByIdIfExists(TABLE_IDS.STAFF) ?? undefined;
   const studiosTable = base.getTableByIdIfExists(TABLE_IDS.STUDIOS) ?? undefined;
+  const appointmentTypesTable = base.getTableByIdIfExists(TABLE_IDS.APPOINTMENT_TYPES) ?? undefined;
   const appointmentFieldsToLoad = useMemo(
     () => getExistingFields(appointmentsTable, APPOINTMENT_RECORD_FIELDS),
     [appointmentsTable]
@@ -2553,9 +2565,10 @@ function AppointmentsApp(): React.ReactElement {
   const apptEndTimeField = appointmentsTable?.getFieldIfExists(FIELD_IDS.APPT_END_TIME) ?? null;
 
   const clientStageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE) ?? null;
+  const apptTypeChoiceField = appointmentTypesTable?.getFieldIfExists(FIELD_IDS.APPT_TYPE_CHOICE) ?? null;
 
   const stageColorByName = useMemo(() => getFieldChoiceColorMap(clientStageField), [clientStageField]);
-  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptNameField), [apptNameField]);
+  const apptTypeColorByName = useMemo(() => getFieldChoiceColorMap(apptTypeChoiceField), [apptTypeChoiceField]);
 
   const clientStageById = useMemo(() => {
     if (!clientRecords || !clientStageField) return new Map<string, string>();
@@ -3200,7 +3213,7 @@ function AppointmentsApp(): React.ReactElement {
                           {apptNameEntry
                             ? <span
                                 className={getListPillClassesForColor(apptTypeColorByName.get(apptNameEntry.name))}
-                                title={`value: "${apptNameEntry.name}" | field: appointment_type (fldZO3rF3KOGxG0S5) | resolved color: ${apptTypeColorByName.get(apptNameEntry.name) || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`}
+                                title={`value: "${apptNameEntry.name}" | color source: appointment_types.type field (fld5M3HgiIOycZfKJ) | resolved color: ${apptTypeColorByName.get(apptNameEntry.name) || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`}
                               >{apptNameEntry.name}</span>
                             : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
