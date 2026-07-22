@@ -78,7 +78,6 @@ const FIELD_IDS = {
   MADE_TO_MEASURE:             'fldonK9Rd5lOXeH8F',
   M2M_OPTIONS:                 'fldXZqzpDkpCpEiaU',
   ALTERATIONS_OPTIONS:         'fld40aMei08HRGcJd',
-  APPROVED_BY_PRODUCTION:      'fld6yhV6sLKglxfiu',
   SALES_ASSOCIATE:             'fldZ5towmwbgJho67',
   WEDDING_DATE:                'fldO0Lalw1SkwAf4D',
   DUE_DATE:                    'fldT2Kndwz0ZAMr4Y',
@@ -626,12 +625,6 @@ function normalizedIncludes(value: string, keyword: string): boolean {
 // given one when this interface was scoped), so it's the one property exposed
 // here — this gives the user a panel entry to fix the binding by hand if the
 // name-based auto-match below picks the wrong field or none.
-//
-// Manager Approval Status used to be here too, while it was still an unnamed
-// single-select with no field ID. It's since been given a real, stable
-// identity — the user repurposed APPROVED_BY_PRODUCTION (fld6yhV6sLKglxfiu)
-// into that exact single-select — so it's back to a plain FIELD_IDS lookup in
-// RecordDetailPage below, same as everything else in this file.
 function getCustomProperties(base: ReturnType<typeof useBase>) {
   const pricingTable = base.getTableByIdIfExists(PRICING_TABLE_ID);
   const customizationsTable = base.getTableByIdIfExists(CUSTOMIZATIONS_TABLE_ID);
@@ -1680,7 +1673,6 @@ function RecordDetailPage({
   const fBasePrice  = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fApproved   = table.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
   const fClient     = table.getFieldIfExists(FIELD_IDS.CLIENT);
-  const fManagerApproval = table.getFieldIfExists(FIELD_IDS.APPROVED_BY_PRODUCTION);
   const fClientApprovalStatus = table.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS);
   const fProposedTotal        = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
   const fProductionStatus     = table.getFieldIfExists(FIELD_IDS.PRODUCTION_STATUS);
@@ -1763,19 +1755,6 @@ function RecordDetailPage({
   const handleEmbroidery = (v: string | null) => { setEmbroidery(v); if (fEmbroidery) autoSave({ [fEmbroidery.id]: v ? { name: v } : null }); };
   const addLineItem    = (id: string) => handlePricing([...pricingIds, id]);
   const removeLineItem = (id: string) => handlePricing(pricingIds.filter(x => x !== id));
-
-  const MANAGER_APPROVAL_OPTIONS = ['Pending Approval', 'Approved', 'Rejected'] as const;
-  const [managerApprovalStatus, setManagerApprovalStatus] = useState(
-    fManagerApproval ? (getSingleSelectName(record.getCellValue(fManagerApproval)) || 'Pending Approval') : 'Pending Approval'
-  );
-  // Once Approved or Rejected, the dropdown locks — only Pending Approval
-  // stays editable. This is a deliberate one-way gate, not a permission check.
-  const isManagerApprovalLocked = managerApprovalStatus === 'Approved' || managerApprovalStatus === 'Rejected';
-  const handleManagerApprovalChange = (value: string) => {
-    if (isManagerApprovalLocked) return;
-    setManagerApprovalStatus(value);
-    if (fManagerApproval) autoSave({ [fManagerApproval.id]: { name: value } });
-  };
 
   // Approved: internal_approval_status -> Approved, AND client_approval_status
   // -> "Request Client Review" (moves it to the client-facing pipeline), with
@@ -2143,17 +2122,6 @@ function RecordDetailPage({
                 </div>
               );
             })()}
-
-            {/* Manager-level approval — replaces the old Slack-based approval step.
-                Locks once Approved is picked; Pending/Rejected stay editable. */}
-            <div>
-              <span className={labelCls}>Manager Approval</span>
-              <select value={managerApprovalStatus} disabled={!canUpdate || isManagerApprovalLocked}
-                onChange={e => handleManagerApprovalChange(e.target.value)}
-                className={`${inputCls} disabled:opacity-60 disabled:cursor-not-allowed`}>
-                {MANAGER_APPROVAL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
 
             {/* Client Decision — actionable once internal approval sent this to
                 "Request Review" (client_approval_status). Same three-action
