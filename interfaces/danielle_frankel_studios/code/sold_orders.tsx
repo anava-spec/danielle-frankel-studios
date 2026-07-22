@@ -11,6 +11,7 @@ import {
   X as XIcon,
   Phone as PhoneIcon,
   Envelope as EnvelopeIcon,
+  MapPin as MapPinIcon,
   Circle as CircleIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
 } from '@phosphor-icons/react';
@@ -33,6 +34,7 @@ const FIELD_IDS = {
   TOTAL:                'fldkIMTeKdneKABS4',
   CLIENT_LINK:          'fldeVnAInz9d1jpY5',   // multipleRecordLinks → DF_Clients
   CLIENT_PHONE:         'flden7s2Be6miTBmA',   // lookup
+  CLIENT_ADDRESS:       'fldcIwTbS3kXxQYVJ',   // lookup
   CLIENT_STAGE:         'fldxhlu6v6EnpzZk1',   // lookup
   CLIENT_EMAIL:         'fldjsFvUeHMSgqbSZ',   // lookup
   SALES_ASSOCIATE:      'fldHciJNFQSMgTqJK',   // lookup (via Client → staff.full_name)
@@ -234,6 +236,7 @@ type ModalData = {
   stage:       string | null;
   phone:       string;
   email:       string;
+  address:     string;
   studioName:  string;
   saName:      string;
   weddingDate: unknown;
@@ -278,7 +281,7 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
     >
       <div
         className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
-        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)', fontFamily: "'Inter', system-ui, sans-serif" }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -309,7 +312,7 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
             {/* Left */}
             <div className="space-y-5">
               <div>
-                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Contact</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-2 block">Contact</span>
                 <div className="space-y-1.5">
                   {data.phone && (
                     <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -323,17 +326,23 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
                       <span className="truncate">{data.email}</span>
                     </div>
                   )}
-                  {!data.phone && !data.email && <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
+                  {data.address && (
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <MapPinIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                      <span>{data.address}</span>
+                    </div>
+                  )}
+                  {!data.phone && !data.email && !data.address && <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
                 </div>
               </div>
 
               <div>
-                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 block">Sales Associate</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1 block">Sales Associate</span>
                 <p className="text-sm text-gray-800 dark:text-[#F3EFE6]">{data.saName || '—'}</p>
               </div>
 
               <div>
-                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 block">Order</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1 block">Order</span>
                 <div className="space-y-0.5 text-sm text-gray-700 dark:text-gray-300">
                   <div>Shopify <span className="font-medium">{data.shopifyNum || '—'}</span></div>
                   <div>
@@ -347,7 +356,7 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
               </div>
 
               <div>
-                <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Items Sold</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-2 block">Items Sold</span>
                 {data.itemNames.length > 0 ? (
                   <div className="space-y-1">
                     {data.itemNames.map((name, i) => (
@@ -365,7 +374,7 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
 
             {/* Right: Financials */}
             <div>
-              <span className="text-sm text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 block">Financials</span>
+              <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-3 block">Financials</span>
               <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-4">
                 <FinRow label="Subtotal"        value={fmt$(data.subtotal)} />
                 <FinRow label="Shipping"        value={fmt$(data.shipping)} />
@@ -447,6 +456,7 @@ function SoldApp(): React.ReactElement {
     stage:        string | null;
     phone:        string;
     email:        string;
+    address:      string;
     studioName:   string;
     studioId:     string;
     saName:       string;
@@ -475,6 +485,7 @@ function SoldApp(): React.ReactElement {
     const fItems       = ordersTable.getFieldIfExists(FIELD_IDS.ITEMS);
     const fClientLink  = ordersTable.getFieldIfExists(FIELD_IDS.CLIENT_LINK);
     const fClientPhone = ordersTable.getFieldIfExists(FIELD_IDS.CLIENT_PHONE);
+    const fClientAddress = ordersTable.getFieldIfExists(FIELD_IDS.CLIENT_ADDRESS);
     const fClientStage = ordersTable.getFieldIfExists(FIELD_IDS.CLIENT_STAGE);
     const fClientEmail = ordersTable.getFieldIfExists(FIELD_IDS.CLIENT_EMAIL);
     const fSA          = ordersTable.getFieldIfExists(FIELD_IDS.SALES_ASSOCIATE);
@@ -509,6 +520,7 @@ function SoldApp(): React.ReactElement {
       const stage = fClientStage ? getLookupString(order.getCellValue(fClientStage)) || null : null;
       const phone = fClientPhone ? getLookupString(order.getCellValue(fClientPhone)) : '';
       const email = fClientEmail ? getLookupString(order.getCellValue(fClientEmail)) : '';
+      const address = fClientAddress ? getLookupString(order.getCellValue(fClientAddress)) : '';
 
       // SA is a lookup field — getCellValueAsString is the reliable path
       const saName = fSA
@@ -542,6 +554,7 @@ function SoldApp(): React.ReactElement {
         stage,
         phone,
         email,
+        address,
         studioName,
         studioId:     storeId,
         saName,
@@ -626,6 +639,7 @@ function SoldApp(): React.ReactElement {
       stage:        row.stage,
       phone:        row.phone,
       email:        row.email,
+      address:      row.address,
       studioName:   row.studioName,
       saName:       row.saName,
       weddingDate:  row.weddingDate,
@@ -726,7 +740,7 @@ function SoldApp(): React.ReactElement {
                     ['Total',           'total'],
                     ['SA',              'saName'],
                   ] as [string, string][]).map(([label, key]) => (
-                    <th key={key} className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                    <th key={key} className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wider whitespace-nowrap">
                       <ColHeader label={label} colKey={key} />
                     </th>
                   ))}
