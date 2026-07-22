@@ -1915,8 +1915,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
                   type="button"
                   onClick={() => setDueDateConfirmAction(overrideActive ? 'revert' : 'override')}
                   className={overrideActive
-                    ? 'px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors whitespace-nowrap'
-                    : 'px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors whitespace-nowrap'}
+                    ? 'flex-1 min-w-[160px] px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors text-center'
+                    : 'flex-1 min-w-[160px] px-3 py-1.5 text-sm font-semibold rounded-lg bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors text-center'}
                 >
                   {overrideActive ? 'Revert to Calculated Due Date' : 'Override Calculated Due Date'}
                 </button>
