@@ -122,7 +122,7 @@ const TYPE_OPTIONS = ['Garment', 'Shoes', 'Accessories'];
 const ALERT_TYPE_OPTIONS = ['Style not in studio', 'Client size missing', 'No styles on file'];
 
 type LocationStatus = 'in-studio' | 'at trunk show' | 'away';
-type TimePeriod = '7' | '14' | '30' | 'all';
+type TimePeriod = 'today' | '7' | '14' | '30' | 'all';
 
 interface StyleMatch {
   style: string;
@@ -941,6 +941,7 @@ function SampleTracker() {
 
   // ── Time period options ──
   const TIME_OPTIONS: SelectOption[] = [
+    { key: 'today', label: 'Today' },
     { key: '7',   label: 'Next 7 days' },
     { key: '14',  label: 'Next 14 days' },
     { key: '30',  label: 'Next month' },
@@ -1123,7 +1124,9 @@ function SampleTracker() {
     let filtered = allAlerts;
 
     // Time period
-    if (timePeriod !== 'all') {
+    if (timePeriod === 'today') {
+      filtered = filtered.filter(a => a.daysUntil === 0);
+    } else if (timePeriod !== 'all') {
       const days = parseInt(timePeriod, 10);
       filtered = filtered.filter(a => a.daysUntil <= days);
     }
