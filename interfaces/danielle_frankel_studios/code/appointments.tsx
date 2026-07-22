@@ -1007,8 +1007,8 @@ function ActionButtons({
   const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300`;
   const btnGreen = `${btn} border-green-200 bg-green-100 text-green-700 cursor-default`;
 
-  const pillRed = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-base font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
-  const pillYellow = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-base font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
+  const pillRed = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-[13px] font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
+  const pillYellow = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-[13px] font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
 
   const wrapper = 'flex flex-col items-center gap-1 w-full';
   const row = 'flex items-center justify-center gap-2 flex-wrap';
@@ -1298,8 +1298,8 @@ function CalendarActionButtons({
   const btnDefault = `${btn} border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer`;
   const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300`;
   const btnGreen = `${btn} border-green-200 bg-green-100 text-green-700 cursor-default`;
-  const pillRed = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
-  const pillYellow = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
+  const pillRed = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
+  const pillYellow = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
 
   const items: React.ReactNode[] = [];
 
