@@ -61,8 +61,8 @@ const FIELD_IDS = {
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',
-  APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Internal Review / Counter-Proposed / Approved / Denied / Denied • Counter-Proposal
-  CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Request Client Review / Under Review / Counter-Proposed / Approved / Denied
+  APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Review / Counter-Proposed / Approved / Denied / Denied • Counter-Proposal
+  CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Request Review / Under Review / Approved / Denied / Denied • Counter-Proposal
   PARENT_CUSTOMIZATION_REQUEST: 'fldh9tKr0Vmo84Yu6',  // parent_customization_request — self-link, set on a counter-proposal child
   CUSTOMIZED_STYLE:            'fldCaKP1d4C0aohQE',
   CUSTOMIZATION_DETAIL:        'fldg1hEoZe9MFQj02',
@@ -1767,7 +1767,7 @@ function RecordDetailPage({
     try {
       const proposedTotal = fProposedTotal ? (record.getCellValue(fProposedTotal) as number | null) : null;
       const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved' } };
-      if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Request Client Review' };
+      if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Request Review' };
       if (fApproved) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Approved');
@@ -1817,10 +1817,13 @@ function RecordDetailPage({
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
 
-  // Stage A: New Request / Under Review (empty status counts as New Request,
-  // same as the Workdesk's Approval-layout bucket) — the only stages where
-  // Approve/Deny/Counter-Propose apply. Every other status is Stage B.
-  const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Internal Review';
+  // Stage A: New Request / Under Review / Counter-Proposed (empty status counts
+  // as New Request, same as the Workdesk's Approval-layout bucket). Per the
+  // approval flowchart, a Counter-Proposed record (a counter-proposal child, or
+  // any record re-countered at any depth) still needs its own Approve/Deny/
+  // Counter-Propose decision — it isn't a terminal status. Every other status
+  // (Approved, Denied, Denied • Counter-Proposal) is Stage B.
+  const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
   // Base Price is shown as-is from its stored field. Total Customization
@@ -2317,8 +2320,11 @@ function CustomizationApp(): React.ReactElement {
     () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'New Request'; }),
     [filteredRecords, buildRowData]
   );
+  // Counter-Proposed records fold into Under Review here too — they're not
+  // terminal, they still need an Approve/Deny/Counter-Propose decision (see
+  // isStageA in RecordDetailPage).
   const underReviewRecords = useMemo(
-    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Internal Review'),
+    () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === 'Under Review' || v === 'Counter-Proposed'; }),
     [filteredRecords, buildRowData]
   );
 
@@ -2327,7 +2333,7 @@ function CustomizationApp(): React.ReactElement {
     const id = draggedRecordId;
     setDraggedRecordId(null);
     queueWrite(() => customizationsTable.updateRecordAsync(id, {
-      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Internal Review' },
+      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Review' },
     })).catch(err => console.error('Approval status drag-update failed:', err));
   }, [draggedRecordId, customizationsTable]);
 
