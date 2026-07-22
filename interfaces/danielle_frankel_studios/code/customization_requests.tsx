@@ -330,6 +330,51 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
   );
 }
 
+// ─── LayoutDropdown ────────────────────────────────────────────────────────────
+// Same pattern as pipeline.tsx's ViewDropdown (§5b Layout Selector) — a single-
+// value trigger, centered text, no placeholder state (a layout is always
+// selected).
+const LAYOUT_OPTIONS = ['ops', 'approval'] as const;
+const LAYOUT_LABELS: Record<typeof LAYOUT_OPTIONS[number], string> = { ops: 'Workdesk', approval: 'Approval' };
+
+function LayoutDropdown({ value, onChange }: { value: typeof LAYOUT_OPTIONS[number]; onChange: (v: typeof LAYOUT_OPTIONS[number]) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const handleSelect = (option: typeof LAYOUT_OPTIONS[number]) => {
+    onChange(option);
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-center w-[130px] bg-white dark:bg-[#25211A] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-amber-400/50 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-colors">
+        <span className="truncate text-center">{LAYOUT_LABELS[value]}</span>
+      </button>
+      {isOpen && (
+        <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-lg overflow-hidden w-[130px] py-1">
+          {LAYOUT_OPTIONS.map(option => (
+            <button key={option} type="button" onClick={() => handleSelect(option)}
+              className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${value === option ? 'bg-amber-50 dark:bg-amber-400/15 text-amber-700 dark:text-amber-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              <span className="truncate">{LAYOUT_LABELS[option]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ApprovalStatusPill — colors read from field choices at runtime ───────────
 // colorMap is built via getChoiceColorMap(field) so it adapts as options change.
 // Sizes are each 1pt smaller than the previous iteration:
@@ -1867,11 +1912,13 @@ function CustomizationApp(): React.ReactElement {
   const clientRecords           = useRecords(clientsTable);
 
   const [viewState,            setViewState]            = useState<ViewState>({ layer: 1 });
+  const [layout,               setLayout]               = useState<typeof LAYOUT_OPTIONS[number]>('ops');
   const [filterSA,             setFilterSA]             = useState<string[]>([]);
   const [filterStyle,          setFilterStyle]          = useState<string[]>([]);
   const [filterApprovalStatus, setFilterApprovalStatus] = useState<string[]>([]);
   const [clientSearch,         setClientSearch]         = useState('');
   const [showNewRequest,       setShowNewRequest]       = useState(false);
+  const [draggedRecordId,      setDraggedRecordId]      = useState<string | null>(null);
 
   const saOptions = useMemo(() => {
     if (!staffTable || !staffRecords) return [];
@@ -1943,6 +1990,61 @@ function CustomizationApp(): React.ReactElement {
     });
   }, [allCustomizationRecords, filterSA, filterStyle, filterApprovalStatus, clientSearch, fields]);
 
+  // Shared row-projection logic — used by both the Ops (single-table) layout
+  // and the Approval layout's two split tables, so the two never drift.
+  const buildRowData = useCallback((record: AirtableRecord) => {
+    const isHybridRow = fields?.isHybrid ? record.getCellValueAsString(fields.isHybrid) === 'Hybrid' : false;
+    const approvalVal = fields?.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
+    const clientText  = (fields?.hybridCustomizationClient ? record.getCellValueAsString(fields.hybridCustomizationClient) : '')
+      || (fields?.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '')
+      || '—';
+    const styleText   = isHybridRow
+      ? (fields?.hybridStyleNames ? (record.getCellValueAsString(fields.hybridStyleNames) || 'Hybrid') : 'Hybrid')
+      : (fields?.customizedStyle ? getLinkedRecordName(record.getCellValue(fields.customizedStyle)) : '—');
+    const saText      = fields?.salesAssociate ? record.getCellValueAsString(fields.salesAssociate) || '—' : '—';
+    const dateStr     = fields?.dateOfRequest  ? resolveDateString(record.getCellValue(fields.dateOfRequest)) : '';
+    const weddingRaw  = fields?.weddingDate    ? record.getCellValue(fields.weddingDate) : null;
+    const weddingStr  = resolveDateString(weddingRaw)
+      || (fields?.weddingDate ? record.getCellValueAsString(fields.weddingDate) : '');
+    const approvedVal = fields?.approvedPricing ? record.getCellValueAsString(fields.approvedPricing) : '';
+    // Hybrid total is computed client-side (85% over the higher child Base
+    // Price) rather than trusted from the stale hybrid_proposed_total_custom_price
+    // rollup, which still reflects the old per-child-weight formula — see recap.tsx.
+    const proposedVal = isHybridRow
+      ? (() => {
+          if (!fields?.hybridLink || !fields.basePrice) return '';
+          const childIds = ((record.getCellValue(fields.hybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+          const children = childIds.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+          const [c1, c2] = children;
+          const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fields.basePrice)) : 0;
+          const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fields.basePrice)) : 0;
+          return formatCurrency(computeHybridCombinedTotal(b1, b2));
+        })()
+      : (fields?.proposedTotalCustomPrice ? record.getCellValueAsString(fields.proposedTotalCustomPrice) : '');
+    return { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal };
+  }, [fields, allCustomizationRecords]);
+
+  // Approval layout — same underlying filtered set (search/SA/Style still
+  // apply), split into the two status buckets. "New Requests" includes both
+  // an empty status and the explicit "Request" choice, per Axel's spec.
+  const newRequestRecords = useMemo(
+    () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'Request'; }),
+    [filteredRecords, buildRowData]
+  );
+  const underReviewRecords = useMemo(
+    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Production Review'),
+    [filteredRecords, buildRowData]
+  );
+
+  const handleDropToUnderReview = useCallback(() => {
+    if (!draggedRecordId || !customizationsTable) { setDraggedRecordId(null); return; }
+    const id = draggedRecordId;
+    setDraggedRecordId(null);
+    queueWrite(() => customizationsTable.updateRecordAsync(id, {
+      [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Production Review' },
+    })).catch(err => console.error('Approval status drag-update failed:', err));
+  }, [draggedRecordId, customizationsTable]);
+
   const selectedRecord = useMemo(() => {
     if (viewState.layer !== 2) return null;
     return allCustomizationRecords.find(r => r.id === viewState.recordId) ?? null;
@@ -2003,84 +2105,151 @@ function CustomizationApp(): React.ReactElement {
         </div>
         <FilterDropdown label="Sales Associate" values={filterSA}             options={saOptions}               onChange={setFilterSA} />
         <FilterDropdown label="Style"           values={filterStyle}          options={styleOptions}            onChange={setFilterStyle} searchable />
-        <FilterDropdown label="Production Status" values={filterApprovalStatus} options={approvalStatusOptions}  onChange={setFilterApprovalStatus} />
-        <button type="button" onClick={() => setShowNewRequest(true)}
-          className="ml-auto flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-600 dark:bg-amber-400 dark:text-gray-900 rounded-lg hover:bg-amber-700 dark:hover:bg-amber-300 transition-colors">
-          <PlusIcon size={14} />New Customization Request
-        </button>
-      </div>
-
-      {/* Table */}
-      <div className="p-6 overflow-auto flex-1">
-        <div className="bg-white dark:bg-[#25211A] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-              <tr>
-                {['Client', 'Style', 'Production Status', 'Sales Associate', 'Date of Request', 'Wedding Date', 'Proposed Total', 'Approved Price'].map(h => (
-                  <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.map(record => {
-                const isHybridRow = fields.isHybrid ? record.getCellValueAsString(fields.isHybrid) === 'Hybrid' : false;
-                const approvalVal = fields.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
-                // hybrid_customization_client rolls up the client through
-                // hybrid_customization, resolving correctly even when a
-                // Hybrid parent's own CLIENT link isn't populated directly.
-                const clientText  = (fields.hybridCustomizationClient ? record.getCellValueAsString(fields.hybridCustomizationClient) : '')
-                  || (fields.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '')
-                  || '—';
-                const styleText   = isHybridRow
-                  ? (fields.hybridStyleNames ? (record.getCellValueAsString(fields.hybridStyleNames) || 'Hybrid') : 'Hybrid')
-                  : (fields.customizedStyle ? getLinkedRecordName(record.getCellValue(fields.customizedStyle)) : '—');
-                const saText      = fields.salesAssociate  ? record.getCellValueAsString(fields.salesAssociate) || '—'       : '—';
-                const dateStr     = fields.dateOfRequest   ? resolveDateString(record.getCellValue(fields.dateOfRequest))    : '';
-                const weddingRaw  = fields.weddingDate     ? record.getCellValue(fields.weddingDate)                         : null;
-                const weddingStr  = resolveDateString(weddingRaw)
-                  || (fields.weddingDate ? record.getCellValueAsString(fields.weddingDate) : '');
-                const approvedVal = fields.approvedPricing          ? record.getCellValueAsString(fields.approvedPricing)          : '';
-                // Hybrid total is computed client-side (85% over the higher
-                // child Base Price) rather than trusted from the stale
-                // hybrid_proposed_total_custom_price rollup, which still
-                // reflects the old per-child-weight formula — see recap.tsx.
-                const proposedVal = isHybridRow
-                  ? (() => {
-                      if (!fields.hybridLink || !fields.basePrice) return '';
-                      const childIds = ((record.getCellValue(fields.hybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-                      const children = childIds.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-                      const [c1, c2] = children;
-                      const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fields.basePrice)) : 0;
-                      const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fields.basePrice)) : 0;
-                      return formatCurrency(computeHybridCombinedTotal(b1, b2));
-                    })()
-                  : (fields.proposedTotalCustomPrice ? record.getCellValueAsString(fields.proposedTotalCustomPrice) : '');
-                const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
-                return (
-                  <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id })}
-                    className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
-                    <td className={cellCls}>{clientText}</td>
-                    <td className={cellCls}>{styleText}</td>
-                    <td className="px-3 py-2.5"><ApprovalStatusPill status={approvalVal} colorMap={approvalChoiceColors} /></td>
-                    <td className={cellCls}>{saText}</td>
-                    <td className={cellCls}>{formatDate(dateStr)}</td>
-                    <td className={cellCls}>{formatWeddingDate(weddingStr)}</td>
-                    <td className={cellCls}>{proposedVal || '—'}</td>
-                    <td className={cellCls}>{approvedVal || '—'}</td>
-                  </tr>
-                );
-              })}
-              {filteredRecords.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-                    No customization records found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {layout === 'ops' && (
+          <FilterDropdown label="Approval Status" values={filterApprovalStatus} options={approvalStatusOptions}  onChange={setFilterApprovalStatus} />
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          <LayoutDropdown value={layout} onChange={setLayout} />
+          <button type="button" onClick={() => setShowNewRequest(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-600 dark:bg-amber-400 dark:text-gray-900 rounded-lg hover:bg-amber-700 dark:hover:bg-amber-300 transition-colors">
+            <PlusIcon size={14} />New Customization Request
+          </button>
         </div>
       </div>
+
+      {layout === 'ops' ? (
+        /* Table */
+        <div className="p-6 overflow-auto flex-1">
+          <div className="bg-white dark:bg-[#25211A] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                <tr>
+                  {['Client', 'Style', 'Approval Status', 'Sales Associate', 'Date of Request', 'Wedding Date', 'Proposed Total', 'Approved Price'].map(h => (
+                    <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRecords.map(record => {
+                  const { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal } = buildRowData(record);
+                  const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
+                  return (
+                    <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id })}
+                      className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
+                      <td className={cellCls}>{clientText}</td>
+                      <td className={cellCls}>{styleText}</td>
+                      <td className="px-3 py-2.5"><ApprovalStatusPill status={approvalVal} colorMap={approvalChoiceColors} /></td>
+                      <td className={cellCls}>{saText}</td>
+                      <td className={cellCls}>{formatDate(dateStr)}</td>
+                      <td className={cellCls}>{formatWeddingDate(weddingStr)}</td>
+                      <td className={cellCls}>{proposedVal || '—'}</td>
+                      <td className={cellCls}>{approvedVal || '—'}</td>
+                    </tr>
+                  );
+                })}
+                {filteredRecords.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                      No customization records found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Approval layout — New Requests (drag source) / Under Review (drop target) */
+        <div className="p-6 overflow-auto flex-1">
+          <div className="grid grid-cols-2 gap-6 h-full">
+            <div className="flex flex-col min-h-0">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
+                New Requests <span className="text-gray-400 dark:text-gray-500 font-normal">({newRequestRecords.length})</span>
+              </h2>
+              <div className="bg-white dark:bg-[#25211A] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl overflow-hidden flex-1 min-h-0 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 sticky top-0">
+                    <tr>
+                      {['Client', 'Style', 'Sales Associate', 'Date of Request', 'Proposed Total'].map(h => (
+                        <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newRequestRecords.map(record => {
+                      const { clientText, styleText, saText, dateStr, proposedVal } = buildRowData(record);
+                      const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
+                      return (
+                        <tr key={record.id} draggable
+                          onDragStart={() => setDraggedRecordId(record.id)}
+                          onDragEnd={() => setDraggedRecordId(null)}
+                          onClick={() => setViewState({ layer: 2, recordId: record.id })}
+                          className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-move transition-colors">
+                          <td className={cellCls}>{clientText}</td>
+                          <td className={cellCls}>{styleText}</td>
+                          <td className={cellCls}>{saText}</td>
+                          <td className={cellCls}>{formatDate(dateStr)}</td>
+                          <td className={cellCls}>{proposedVal || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                    {newRequestRecords.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                          No new requests.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex flex-col min-h-0">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0">
+                Under Review <span className="text-gray-400 dark:text-gray-500 font-normal">({underReviewRecords.length})</span>
+              </h2>
+              <div onDragOver={e => e.preventDefault()} onDrop={handleDropToUnderReview}
+                className={`bg-white dark:bg-[#25211A] border rounded-xl overflow-hidden flex-1 min-h-0 overflow-y-auto transition-colors ${
+                  draggedRecordId ? 'border-amber-400 dark:border-amber-400 ring-2 ring-amber-400/30' : 'border-[#E9E0CE] dark:border-[#38322A]'
+                }`}>
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 sticky top-0">
+                    <tr>
+                      {['Client', 'Style', 'Sales Associate', 'Date of Request', 'Proposed Total'].map(h => (
+                        <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {underReviewRecords.map(record => {
+                      const { clientText, styleText, saText, dateStr, proposedVal } = buildRowData(record);
+                      const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
+                      return (
+                        <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id })}
+                          className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
+                          <td className={cellCls}>{clientText}</td>
+                          <td className={cellCls}>{styleText}</td>
+                          <td className={cellCls}>{saText}</td>
+                          <td className={cellCls}>{formatDate(dateStr)}</td>
+                          <td className={cellCls}>{proposedVal || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                    {underReviewRecords.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                          Drag a new request here to send it for review.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
 
     {showNewRequest && customizationsTable && (
