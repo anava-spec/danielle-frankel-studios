@@ -238,19 +238,6 @@ function resolveDateString(cell: unknown): string {
   return String(cell);
 }
 
-function formatWeddingDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '—';
-  try {
-    const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00');
-    if (isNaN(d.getTime())) return '—';
-    const month = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(d);
-    const day = d.getDate(); const year = d.getFullYear();
-    const mod10 = day % 10; const mod100 = day % 100;
-    const suffix = mod100 >= 11 && mod100 <= 13 ? 'th' : mod10 === 1 ? 'st' : mod10 === 2 ? 'nd' : mod10 === 3 ? 'rd' : 'th';
-    return `${month} ${day}${suffix}, ${year}`;
-  } catch { return '—'; }
-}
-
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   try {
@@ -2688,7 +2675,6 @@ function CustomizationApp(): React.ReactElement {
       clientApprovalStatus:     customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS),
       salesAssociate:           customizationsTable.getFieldIfExists(FIELD_IDS.SALES_ASSOCIATE),
       dateOfRequest:            customizationsTable.getFieldIfExists(FIELD_IDS.DATE_OF_REQUEST),
-      weddingDate:              customizationsTable.getFieldIfExists(FIELD_IDS.WEDDING_DATE),
       proposedTotalCustomPrice: customizationsTable.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE),
       approvedPricing:          customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING),
       isHybrid:                 customizationsTable.getFieldIfExists(FIELD_IDS.IS_HYBRID),
@@ -2731,6 +2717,7 @@ function CustomizationApp(): React.ReactElement {
   }, [allCustomizationRecords, fields]);
 
   const approvalChoiceColors = useMemo(() => getChoiceColorMap(fields?.approvalStatus ?? null), [fields]);
+  const clientApprovalChoiceColors = useMemo(() => getChoiceColorMap(fields?.clientApprovalStatus ?? null), [fields]);
 
   // The Approval Status filter combines both status fields into one list —
   // each option prefixed by which field it comes from ("Internal …" / "Client
@@ -2808,6 +2795,7 @@ function CustomizationApp(): React.ReactElement {
   const buildRowData = useCallback((record: AirtableRecord) => {
     const isHybridRow = fields?.isHybrid ? record.getCellValueAsString(fields.isHybrid) === 'Hybrid' : false;
     const approvalVal = fields?.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
+    const clientApprovalVal = fields?.clientApprovalStatus ? getSingleSelectName(record.getCellValue(fields.clientApprovalStatus)) : '';
     const clientText  = (fields?.hybridCustomizationClient ? record.getCellValueAsString(fields.hybridCustomizationClient) : '')
       || (fields?.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '')
       || '—';
@@ -2816,9 +2804,6 @@ function CustomizationApp(): React.ReactElement {
       : (fields?.customizedStyle ? getLinkedRecordName(record.getCellValue(fields.customizedStyle)) : '—');
     const saText      = fields?.salesAssociate ? record.getCellValueAsString(fields.salesAssociate) || '—' : '—';
     const dateStr     = fields?.dateOfRequest  ? resolveDateString(record.getCellValue(fields.dateOfRequest)) : '';
-    const weddingRaw  = fields?.weddingDate    ? record.getCellValue(fields.weddingDate) : null;
-    const weddingStr  = resolveDateString(weddingRaw)
-      || (fields?.weddingDate ? record.getCellValueAsString(fields.weddingDate) : '');
     const approvedVal = fields?.approvedPricing ? record.getCellValueAsString(fields.approvedPricing) : '';
     // Hybrid total is computed client-side (85% over the higher child Base
     // Price) rather than trusted from the stale hybrid_proposed_total_custom_price
@@ -2842,7 +2827,7 @@ function CustomizationApp(): React.ReactElement {
     const requestType = fields?.parentRequest
       ? (((record.getCellValue(fields.parentRequest) as Array<{ id: string }> | null)?.length ?? 0) > 0 ? 'Counter-Proposal' : 'New Request')
       : 'New Request';
-    return { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal, requestType };
+    return { approvalVal, clientApprovalVal, clientText, styleText, saText, dateStr, proposedVal, approvedVal, requestType };
   }, [fields, allCustomizationRecords]);
 
   // Approval layout — same underlying filtered set (search/SA/Style still
@@ -2956,14 +2941,14 @@ function CustomizationApp(): React.ReactElement {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
                 <tr>
-                  {['Client', 'Style', 'Approval Status', 'Sales Associate', 'Date of Request', 'Wedding Date', 'Proposed Total', 'Approved Price'].map(h => (
+                  {['Client', 'Style', 'Internal Status', 'Client Status', 'Sales Associate', 'Date of Request', 'Proposed Total', 'Approved Price'].map(h => (
                     <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {workdeskRecords.map(record => {
-                  const { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal } = buildRowData(record);
+                  const { approvalVal, clientApprovalVal, clientText, styleText, saText, dateStr, proposedVal, approvedVal } = buildRowData(record);
                   const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                   return (
                     <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'ops' })}
@@ -2971,9 +2956,9 @@ function CustomizationApp(): React.ReactElement {
                       <td className={cellCls}>{clientText}</td>
                       <td className={cellCls}>{styleText}</td>
                       <td className="px-3 py-2.5"><ApprovalStatusPill status={approvalVal} colorMap={approvalChoiceColors} /></td>
+                      <td className="px-3 py-2.5">{clientApprovalVal && <ApprovalStatusPill status={clientApprovalVal} colorMap={clientApprovalChoiceColors} />}</td>
                       <td className={cellCls}>{saText}</td>
                       <td className={cellCls}>{formatDate(dateStr)}</td>
-                      <td className={cellCls}>{formatWeddingDate(weddingStr)}</td>
                       <td className={cellCls}>{proposedVal || '—'}</td>
                       <td className={cellCls}>{approvedVal || '—'}</td>
                     </tr>
