@@ -5,6 +5,7 @@ import {
   useBase,
   useRecords,
   useCustomProperties,
+  CellRenderer,
   useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import {
@@ -58,6 +59,7 @@ function useSmoothToggle(open: boolean, durationMs = 150) {
 // ─── Table / Field IDs ────────────────────────────────────────────────────────
 const FIELD_IDS = {
   CUSTOMIZATION_ID:            'fldl9cIcV80nYEDwe',
+  CREATED_BY:                  'fldXjqAayXy8f5P8O',   // created_by — Airtable createdBy field, rendered via CellRenderer for the user chip
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',   // production_status — Sent to Production / Making at DF / At Factory / Ready to Cut / Pattern Making / Need Info / Complete
@@ -1672,6 +1674,7 @@ function RecordDetailPage({
   const canUpdate = table.hasPermissionToUpdateRecords();
 
   const fApprStatus = table.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS);
+  const fCreatedBy  = table.getFieldIfExists(FIELD_IDS.CREATED_BY);
   const fStyled     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
   const fPricing    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
   const fIsHybrid   = table.getFieldIfExists(FIELD_IDS.IS_HYBRID);
@@ -1883,7 +1886,17 @@ function RecordDetailPage({
   // Approve/Deny/Counter-Propose decision only makes sense once someone has
   // actually picked it up for review.
   const isNewRequestStage = approvalStatus === '' || approvalStatus === 'New Request';
-  const isReviewableStage = approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
+
+  // Internal decision — who can act depends on which stage it's in, not just
+  // the layout: "Under Review" is Margo's queue (Approval layout only); a
+  // "Counter-Proposed" record is Margo's own counter, now on the SA's desk to
+  // approve/deny/re-counter before it moves on (Workdesk only). Same
+  // underlying handlers either way — internal_approval_status doesn't care
+  // who clicked, only the field-write logic does.
+  const canActInternally = canUpdate && (
+    (sourceLayout === 'approval' && approvalStatus === 'Under Review') ||
+    (sourceLayout === 'ops'      && approvalStatus === 'Counter-Proposed')
+  );
 
   // Field-level editability — distinct from isStageA (which only gates the
   // Approve/Deny/Counter-Propose action buttons). Entering from Workdesk
@@ -2000,11 +2013,11 @@ function RecordDetailPage({
               Move to Under Review
             </button>
           )}
-          {/* Internal decision only executes from the Approval layout — Workdesk
-              handles the client-side decision instead (see Client Decision
-              section below). No prefix needed here since there's only one
-              meaning in this context. */}
-          {canUpdate && isReviewableStage && sourceLayout === 'approval' && (
+          {/* Internal decision — Under Review is Margo's call (Approval layout);
+              Counter-Proposed is the SA's call, reviewing Margo's own counter
+              (Workdesk). See canActInternally above. No prefix needed on these
+              labels since there's only one meaning in either context. */}
+          {canActInternally && (
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowApproveConfirm(true)} disabled={saving}
                 className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
@@ -2060,13 +2073,19 @@ function RecordDetailPage({
             {!isHybrid && (
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-5">
-                <div>
-                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                    <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+                <div className="flex gap-4 items-start">
+                  <div className="w-[80%] min-w-0">
+                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                      <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+                    </div>
+                    <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
+                      onChange={handleStyleId} disabled={!canEditFields} />
                   </div>
-                  <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                    onChange={handleStyleId} disabled={!canEditFields} />
+                  <div className="w-[20%] shrink-0">
+                    <span className={labelCls}>Created By</span>
+                    {fCreatedBy ? <CellRenderer record={record} field={fCreatedBy} /> : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
+                  </div>
                 </div>
 
                 <div>
@@ -2107,7 +2126,20 @@ function RecordDetailPage({
 
               <div className="w-[40%] shrink-0">
                 <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  <span className={labelCls}>Summary</span>
+                  {/* Counter-Proposed Price sits here, not at the bottom of the
+                      page — same shape as the Counter-Proposal form's own
+                      Summary panel: the revised price up top, then a divider,
+                      then the original cost breakdown below it. */}
+                  {approvalStatus === 'Counter-Proposed' && fApproved && (
+                    <>
+                      <span className={labelCls}>Counter-Proposed Price</span>
+                      <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 pb-2">
+                        {record.getCellValueAsString(fApproved) || '—'}
+                      </div>
+                      <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
+                    </>
+                  )}
+                  <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Original Costs' : 'Summary'}</span>
                   {[
                     { label: 'Base Price',         display: formatCurrency(basePriceNumber) },
                     { label: 'Customization Total', display: formatCurrency(totalCustomizationCost) },
@@ -2118,7 +2150,7 @@ function RecordDetailPage({
                     </div>
                   ))}
                   <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
-                    <span className="text-lg">Grand Total</span>
+                    <span className="text-lg">{approvalStatus === 'Counter-Proposed' ? 'Original Total' : 'Grand Total'}</span>
                     <span className="text-lg">{formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
@@ -2235,9 +2267,12 @@ function RecordDetailPage({
                 Approved — proposed to the client.
               </div>
             )}
-            {(approvalStatus === 'Approved' || approvalStatus === 'Counter-Proposed') && fApproved && (
+            {/* Counter-Proposed Price moved to the Summary panel above — see
+                the Regular-body Summary block. Approved Price stays here,
+                since it isn't mentioned as needing to move. */}
+            {approvalStatus === 'Approved' && fApproved && (
               <div>
-                <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Counter-Proposed Price' : 'Approved Price'}</span>
+                <span className={labelCls}>Approved Price</span>
                 <div className="text-sm text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
               </div>
             )}
