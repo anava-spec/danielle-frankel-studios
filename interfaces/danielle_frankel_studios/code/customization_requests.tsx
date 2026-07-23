@@ -1531,6 +1531,11 @@ function CounterProposalModal({
     setError(null);
     try {
       const parentStatusField = source === 'client' ? FIELD_IDS.CLIENT_APPROVAL_STATUS : FIELD_IDS.APPROVAL_STATUS;
+      // Read the parent's CURRENT internal_approval_status before writing
+      // anything — parentRecord is a live SDK record, so once the write below
+      // completes its cached value flips to "Denied • Counter-Proposal" and
+      // reading it after that point would always land on the wrong branch.
+      const parentInternalStatus = fApprStatus ? getSingleSelectName(parentRecord.getCellValue(fApprStatus)) : '';
       await queueWrite(() => customizationsTable.updateRecordAsync(parentRecord.id, {
         [parentStatusField]: { name: 'Denied • Counter-Proposal' },
       }));
@@ -1548,7 +1553,6 @@ function CounterProposalModal({
       // "Under Review", her own queue) or by the SA re-countering Margo's own
       // counter (parentRecord is "Counter-Proposed", the SA's queue) — either
       // way the new record hands off to whichever side didn't just act.
-      const parentInternalStatus = fApprStatus ? getSingleSelectName(parentRecord.getCellValue(fApprStatus)) : '';
       const childApprovalStatusName = source === 'client'
         ? 'New Request'
         : (parentInternalStatus === 'Counter-Proposed' ? 'New Request' : 'Counter-Proposed');
