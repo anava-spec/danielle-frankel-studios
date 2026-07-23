@@ -1994,7 +1994,11 @@ function RecordDetailPage({
               Move to Under Review
             </button>
           )}
-          {canUpdate && isReviewableStage && (
+          {/* Internal decision only executes from the Approval layout — Workdesk
+              handles the client-side decision instead (see Client Decision
+              section below). No prefix needed here since there's only one
+              meaning in this context. */}
+          {canUpdate && isReviewableStage && sourceLayout === 'approval' && (
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowApproveConfirm(true)} disabled={saving}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
@@ -2169,8 +2173,12 @@ function RecordDetailPage({
             })()}
 
             {/* Client Decision — actionable once internal approval sent this to
-                "Request Review" (client_approval_status). Same three-action
-                pattern as the internal decision above, scoped to this stage. */}
+                "Request Review" (client_approval_status). Only executable from
+                Workdesk (the Approval layout's job is the internal decision
+                above) — labeled with the "Client" prefix here since, unlike
+                the internal buttons, this is the one that needs disambiguating
+                from the other action set a Workdesk user could otherwise
+                confuse it with. */}
             {isClientStageA && (
               <div className="border-t border-gray-200 dark:border-white/10 pt-4">
                 <div className="flex items-center justify-between mb-2">
@@ -2179,19 +2187,19 @@ function RecordDetailPage({
                     <ApprovalStatusPill status={clientApprovalStatus} colorMap={clientApprovalColorMap} />
                   )}
                 </div>
-                {canUpdate && (
+                {canUpdate && sourceLayout === 'ops' && (
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setShowClientApproveConfirm(true)} disabled={saving}
                       className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
-                      Approve
+                      Client Approved
                     </button>
                     <button type="button" onClick={() => setShowClientDenyConfirm(true)} disabled={saving}
                       className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
-                      Deny
+                      Client Denied
                     </button>
                     <button type="button" onClick={() => setShowClientCounterModal(true)} disabled={saving}
                       className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
-                      Counter-Propose
+                      Client Counter-Proposed
                     </button>
                   </div>
                 )}
