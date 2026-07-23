@@ -2210,7 +2210,7 @@ function RecordDetailPage({
     || '';
 
   return (
-    <div className="h-screen flex flex-col font-sans antialiased" style={{ backgroundColor: '#F8F5EE' }}>
+    <div className="h-screen flex flex-col font-sans antialiased bg-[#F8F5EE] dark:bg-[#1B1813]">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-6 py-4 border-b border-[#E9E0CE] dark:border-[#38322A] bg-white dark:bg-[#25211A]">
         <button type="button" onClick={onBack}
@@ -2950,10 +2950,10 @@ function CustomizationApp(): React.ReactElement {
 
   if (!customizationsTable || !pricingTable) {
     return (
-      <div className="h-screen flex items-center justify-center font-sans" style={{ backgroundColor: '#F8F5EE' }}>
+      <div className="h-screen flex items-center justify-center font-sans bg-[#F8F5EE] dark:bg-[#1B1813]">
         <div className="text-center">
-          <p className="text-gray-600 text-xl font-medium">Configuration Required</p>
-          <p className="text-gray-500 text-sm mt-2">Ensure the Customizations and Customization Pricing tables are available.</p>
+          <p className="text-gray-600 dark:text-gray-300 text-xl font-medium">Configuration Required</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">Ensure the Customizations and Customization Pricing tables are available.</p>
         </div>
       </div>
     );
@@ -2961,7 +2961,7 @@ function CustomizationApp(): React.ReactElement {
 
   if (!fields) {
     return (
-      <div className="h-screen flex items-center justify-center font-sans" style={{ backgroundColor: '#F8F5EE' }}>
+      <div className="h-screen flex items-center justify-center font-sans bg-[#F8F5EE] dark:bg-[#1B1813]">
         <div className="text-gray-600 dark:text-gray-400 text-sm">Loading…</div>
       </div>
     );
@@ -3002,7 +3002,7 @@ function CustomizationApp(): React.ReactElement {
     {/* Keep the scrollbar track/thumb but drop the up/down arrow buttons —
         matches recap.tsx's established global scrollbar pattern. */}
     <style>{`::-webkit-scrollbar-button{display:none;height:0;width:0}`}</style>
-    <div className="h-screen flex flex-col font-sans antialiased overflow-hidden" style={{ backgroundColor: '#F8F5EE' }}>
+    <div className="h-screen flex flex-col font-sans antialiased overflow-hidden bg-[#F8F5EE] dark:bg-[#1B1813]">
       {/* Filter Bar */}
       <div className="flex-shrink-0 flex items-center gap-4 px-6 py-3 border-b border-[#E9E0CE] dark:border-[#38322A] bg-white dark:bg-[#25211A] flex-wrap">
         <div className="relative">
