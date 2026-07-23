@@ -158,11 +158,17 @@ function formatDate(dateStr: string | null | undefined): string {
 
 // Shipping is a multipleLookupValues field — its cell value is an array (one
 // entry per linked record), even though the state_costs link only ever holds
-// one. Unwrap to the first numeric entry instead of casting the array itself
-// to `number` (which silently produced NaN/0 in the detail page).
+// one. This interface's runtime has previously (see BRANDING.md §9's
+// lookup-color note) returned lookup entries as `{ linkedRecordId, value }`
+// rather than the raw primitive, so unwrap recursively instead of assuming
+// either shape.
 function unwrapLookupNumber(value: unknown): number | null {
-  if (Array.isArray(value)) return typeof value[0] === 'number' ? value[0] : null;
-  return typeof value === 'number' ? value : null;
+  if (typeof value === 'number') return isNaN(value) ? null : value;
+  if (Array.isArray(value)) return value.length > 0 ? unwrapLookupNumber(value[0]) : null;
+  if (value && typeof value === 'object' && 'value' in value) {
+    return unwrapLookupNumber((value as { value: unknown }).value);
+  }
+  return null;
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -2291,7 +2297,9 @@ function Layer4({
   const stateCostRecord = stateCostId ? stateCostRecords.find(r => r.id === stateCostId) ?? null : null;
   const stateCostName = stateCostRecord && stateCostNameField ? stateCostRecord.getCellValueAsString(stateCostNameField) : '';
   const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
-  const shipping = shippingField ? unwrapLookupNumber(draft.getCellValue(shippingField)) ?? 0 : 0;
+  const shippingRaw = shippingField ? draft.getCellValue(shippingField) : null;
+  const shipping = unwrapLookupNumber(shippingRaw) ?? 0;
+  const shippingDebug = `field: shipping (${FIELD_IDS.DRAFT_SHIPPING}) | raw: ${JSON.stringify(shippingRaw)} | resolved: ${unwrapLookupNumber(shippingRaw) ?? 'none (falls back to 0)'}`;
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
   const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
@@ -2862,7 +2870,7 @@ function Layer4({
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">Shipping</td>
                     {/* Shipping is now a lookup off state_costs — always read-only, regardless of isEditable. */}
-                    <td className="py-3 pr-2 text-right">{formatCurrency(shipping)}</td>
+                    <td className="py-3 pr-2 text-right cursor-help" title={shippingDebug}>{formatCurrency(shipping)}</td>
                     <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={shippingNotes} field={shippingNotesField} fieldKey="shippingNotes" theme={theme} onBlur={handleNotesBlur} borderless />
