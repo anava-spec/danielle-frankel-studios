@@ -11,6 +11,7 @@ import {
 import {
   CaretDown as CaretDownIcon,
   X as XIcon,
+  CheckCircle as CheckCircleIcon,
   ArrowLeft as ArrowLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   Trash as TrashIcon,
@@ -1676,11 +1677,34 @@ function CounterProposalModal({
   );
 }
 
+// ─── Toast ──────────────────────────────────────────────────────────────────────
+// Bottom-left confirmation toast — z-60 per the toast/notification tier
+// (above modals, rare). Same fade+scale-in mount technique as every modal in
+// this file; auto-dismiss timing is owned by the parent (CustomizationApp),
+// this component just renders whatever message it's given and offers a
+// manual dismiss.
+function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  return (
+    <div
+      className="fixed bottom-5 left-5 z-[60] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-gray-900 dark:bg-[#25211A] border border-gray-800 dark:border-[#38322A] shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+      style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'translateY(0)' : 'translateY(8px)' }}
+    >
+      <CheckCircleIcon size={18} weight="fill" className="text-green-400 flex-shrink-0" />
+      <span className="text-sm font-medium text-white">{message}</span>
+      <button type="button" onClick={onDismiss} className="ml-1 text-gray-400 hover:text-white transition-colors flex-shrink-0">
+        <XIcon size={14} />
+      </button>
+    </div>
+  );
+}
+
 // ─── RecordDetailPage ─────────────────────────────────────────────────────────
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, stylesBasePriceField, preApprovalField,
   selfUsageField,
-  clientRecords, favoriteStylesApptField, allCustomizationRecords, sourceLayout, onBack,
+  clientRecords, favoriteStylesApptField, allCustomizationRecords, sourceLayout, onBack, onCounterProposalSent,
 }: {
   record: AirtableRecord; table: Table; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   stylesRecords: AirtableRecord[]; stylesBasePriceField: Field | null; preApprovalField: Field | null;
@@ -1689,6 +1713,7 @@ function RecordDetailPage({
   allCustomizationRecords: AirtableRecord[];
   sourceLayout: 'ops' | 'approval';
   onBack: () => void;
+  onCounterProposalSent: () => void;
 }) {
   const canUpdate = table.hasPermissionToUpdateRecords();
 
@@ -2093,6 +2118,10 @@ function RecordDetailPage({
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-5">
                 <div className="flex gap-4 items-start">
+                  <div className="w-[20%] shrink-0">
+                    <span className={labelCls}>Created By</span>
+                    {fCreatedBy ? <CellRenderer record={record} field={fCreatedBy} /> : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
+                  </div>
                   <div className="w-[80%] min-w-0">
                     <div className="flex items-baseline justify-between gap-2 mb-1.5">
                       <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
@@ -2100,10 +2129,6 @@ function RecordDetailPage({
                     </div>
                     <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
                       onChange={handleStyleId} disabled={!canEditFields} />
-                  </div>
-                  <div className="w-[20%] shrink-0">
-                    <span className={labelCls}>Created By</span>
-                    {fCreatedBy ? <CellRenderer record={record} field={fCreatedBy} /> : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
                   </div>
                 </div>
 
@@ -2340,7 +2365,7 @@ function RecordDetailPage({
           allCustomizationRecords={allCustomizationRecords}
           source="internal"
           onClose={() => setShowCounterModal(false)}
-          onSubmitted={() => { setShowCounterModal(false); onBack(); }}
+          onSubmitted={() => { setShowCounterModal(false); onBack(); onCounterProposalSent(); }}
         />
       )}
       {showClientApproveConfirm && (
@@ -2371,7 +2396,7 @@ function RecordDetailPage({
           allCustomizationRecords={allCustomizationRecords}
           source="client"
           onClose={() => setShowClientCounterModal(false)}
-          onSubmitted={() => { setShowClientCounterModal(false); onBack(); }}
+          onSubmitted={() => { setShowClientCounterModal(false); onBack(); onCounterProposalSent(); }}
         />
       )}
     </div>
@@ -2411,6 +2436,12 @@ function CustomizationApp(): React.ReactElement {
   const [clientSearch,         setClientSearch]         = useState('');
   const [showNewRequest,       setShowNewRequest]       = useState(false);
   const [draggedRecordId,      setDraggedRecordId]      = useState<string | null>(null);
+  const [toastMessage,         setToastMessage]         = useState<string | null>(null);
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(null), 3500);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
 
   // Smooth (not animated) layout swap — same fade-in-on-mount technique used by
   // every modal in this file, just applied to the layout body instead of a
@@ -2634,6 +2665,7 @@ function CustomizationApp(): React.ReactElement {
             ? setViewState({ layer: 2, recordId: viewState.previousRecordId, sourceLayout: viewState.sourceLayout })
             : setViewState({ layer: 1 })
         }
+        onCounterProposalSent={() => setToastMessage('Counter-proposal sent.')}
       />
     );
   }
@@ -2817,6 +2849,7 @@ function CustomizationApp(): React.ReactElement {
         onCreated={recordId => { setShowNewRequest(false); setViewState({ layer: 2, recordId, sourceLayout: 'ops' }); }}
       />
     )}
+    {toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}
     </>
   );
 }
