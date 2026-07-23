@@ -67,6 +67,9 @@ const FIELD_IDS = {
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',   // production_status — Sent to Production / Making at DF / At Factory / Ready to Cut / Pattern Making / Need Info / Complete
   APPROVAL_STATUS:             'fldEfOYgxOhyDiMEH',   // internal_approval_status — New Request / Under Review / Counter-Proposed / Approved / Denied / Denied • Counter-Proposal
   CLIENT_APPROVAL_STATUS:      'fldwE1BTp4G5eF2jR',   // client_approval_status — Request Review / Under Review / Approved / Denied / Denied • Counter-Proposal
+  INTERNAL_DENIAL_REASON:      'fldMaJF9el2FKX3jT',   // internal_denial_reason — Margo's reason for denying an Under Review request
+  SA_DENIAL_REASON:            'fldpouuzI4UeesdS3',   // sa_denial_reason — the SA's reason for denying a Counter-Proposed record (killing Margo's own counter)
+  CLIENT_DENIAL_REASON:        'fldaNnUvdDPIdg3kN',   // client_denial_reason — the client's reason for denying a proposal
   PARENT_CUSTOMIZATION_REQUEST: 'fldh9tKr0Vmo84Yu6',  // parent_customization_request — self-link, set on a counter-proposal child
   CUSTOMIZED_STYLE:            'fldCaKP1d4C0aohQE',
   CUSTOMIZATION_DETAIL:        'fldg1hEoZe9MFQj02',
@@ -1335,14 +1338,18 @@ function NewRequestModal({
 // isn't destructive in the same irreversible-data-loss sense, just a stage move).
 function ApproveDenyConfirmModal({ action, clientName, context = 'internal', onConfirm, onClose }: {
   action: 'Approve' | 'Deny'; clientName: string; context?: 'internal' | 'client';
-  onConfirm: () => Promise<void>; onClose: () => void;
+  // Deny always passes the entered reason (required, non-empty); Approve
+  // callers ignore the argument entirely.
+  onConfirm: (reason: string) => Promise<void>; onClose: () => void;
 }) {
   const [isVisible, setIsVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
   const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
   const [saving, setSaving] = useState(false);
-  const handleConfirm = async () => { setSaving(true); await onConfirm(); };
+  const [reason, setReason] = useState('');
   const isApprove = action === 'Approve';
+  const canConfirm = isApprove || reason.trim() !== '';
+  const handleConfirm = async () => { if (!canConfirm) return; setSaving(true); await onConfirm(reason.trim()); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
       style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
@@ -1370,13 +1377,21 @@ function ApproveDenyConfirmModal({ action, clientName, context = 'internal', onC
                   ? <>This will approve the customization request for <strong>{clientName}</strong> and move it forward to be proposed to the client.</>
                   : <>This will deny the customization request for <strong>{clientName}</strong>. This action cannot be undone.</>)}
           </p>
+          {!isApprove && (
+            <div className="mt-4">
+              <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Reason for denial</span>
+              <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+                placeholder="Explain why this request is being denied…"
+                className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors resize-none" />
+            </div>
+          )}
         </div>
         <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
           <button type="button" onClick={requestClose} disabled={saving}
             className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50">
             Cancel
           </button>
-          <button type="button" onClick={handleConfirm} disabled={saving}
+          <button type="button" onClick={handleConfirm} disabled={saving || !canConfirm}
             className={`px-5 py-2 text-sm font-semibold rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${isApprove ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
             {saving ? 'Saving…' : action}
           </button>
@@ -1801,6 +1816,9 @@ function RecordDetailPage({
   const fProductionStatus     = table.getFieldIfExists(FIELD_IDS.PRODUCTION_STATUS);
   const fParentRequest        = table.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
   const fCreatedAt            = table.getFieldIfExists(FIELD_IDS.CREATED_AT);
+  const fInternalDenialReason = table.getFieldIfExists(FIELD_IDS.INTERNAL_DENIAL_REASON);
+  const fSaDenialReason       = table.getFieldIfExists(FIELD_IDS.SA_DENIAL_REASON);
+  const fClientDenialReason   = table.getFieldIfExists(FIELD_IDS.CLIENT_DENIAL_REASON);
 
   // One-to-many counter-proposal chain: every CP links directly to the same
   // root request. If this record has its own parent link, it IS a CP — the
@@ -1941,13 +1959,21 @@ function RecordDetailPage({
   };
 
   // Denied: internal_approval_status -> Denied. Flow ends here — no further
-  // client-approval-status write, per spec.
-  const handleDeny = async () => {
+  // client-approval-status write, per spec. The same button/handler serves
+  // two different actors depending on stage — Margo denying a fresh request
+  // (Under Review) vs. the SA killing Margo's own counter (Counter-Proposed)
+  // — so the reason goes to a different field for each, decided by the
+  // status at the moment of denial.
+  const handleDeny = async (reason: string) => {
     setSaving(true);
     try {
-      await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' },
-      }));
+      const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' } };
+      if (approvalStatus === 'Counter-Proposed') {
+        if (fSaDenialReason) patch[FIELD_IDS.SA_DENIAL_REASON] = reason;
+      } else {
+        if (fInternalDenialReason) patch[FIELD_IDS.INTERNAL_DENIAL_REASON] = reason;
+      }
+      await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Denied');
     } catch (e) { setError('Failed to deny.'); }
     finally { setSaving(false); setShowDenyConfirm(false); }
@@ -1983,12 +2009,12 @@ function RecordDetailPage({
     finally { setSaving(false); setShowClientApproveConfirm(false); }
   };
 
-  const handleClientDeny = async () => {
+  const handleClientDeny = async (reason: string) => {
     setSaving(true);
     try {
-      await queueWrite(() => table.updateRecordAsync(record.id, {
-        [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Denied' },
-      }));
+      const patch: Record<string, unknown> = { [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Denied' } };
+      if (fClientDenialReason) patch[FIELD_IDS.CLIENT_DENIAL_REASON] = reason;
+      await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setClientApprovalStatus('Denied');
     } catch (e) { setError('Failed to record client denial.'); }
     finally { setSaving(false); setShowClientDenyConfirm(false); }
@@ -2265,34 +2291,49 @@ function RecordDetailPage({
 
               const redMsgs: string[] = [];
               if (approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') {
-                redMsgs.push(approvalStatus === 'Denied • Counter-Proposal'
+                const base = approvalStatus === 'Denied • Counter-Proposal'
                   ? 'This customization request was denied — a counter-proposal was submitted in its place.'
-                  : 'This customization request was denied.');
+                  : 'This customization request was denied.';
+                // Whichever of the two internal reason fields actually got
+                // written tells us who denied it — Margo (Under Review) or
+                // the SA (killing Margo's own Counter-Proposed).
+                const reasonStr = (fInternalDenialReason ? record.getCellValueAsString(fInternalDenialReason) : '')
+                  || (fSaDenialReason ? record.getCellValueAsString(fSaDenialReason) : '');
+                redMsgs.push(reasonStr ? `${base} Reason: ${reasonStr}` : base);
               }
               if (clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') {
-                redMsgs.push(clientApprovalStatus === 'Denied • Counter-Proposal'
+                const base = clientApprovalStatus === 'Denied • Counter-Proposal'
                   ? 'The client denied this proposal — a counter-proposal was submitted in its place.'
-                  : 'The client denied this proposal.');
+                  : 'The client denied this proposal.';
+                const reasonStr = fClientDenialReason ? record.getCellValueAsString(fClientDenialReason) : '';
+                redMsgs.push(reasonStr ? `${base} Reason: ${reasonStr}` : base);
               }
 
+              if (greenMsgs.length === 0 && amberMsgs.length === 0 && redMsgs.length === 0) return null;
+
+              // Own tighter vertical rhythm (space-y-3, 40% less than the
+              // column's default space-y-5) so banners sit closer to each
+              // other without changing the gap to whatever comes before/
+              // after the whole banner group. Padding is 30% shorter too
+              // (py-3 -> ~8.4px) so each banner reads as a slim strip.
               return (
-                <>
+                <div className="space-y-3">
                   {greenMsgs.length > 0 && (
-                    <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300 space-y-1">
+                    <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-[8.4px] text-sm text-green-700 dark:text-green-300 space-y-1">
                       {greenMsgs.map((msg, i) => <div key={i}>{msg}</div>)}
                     </div>
                   )}
                   {amberMsgs.length > 0 && (
-                    <div className="w-[60%] bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300 space-y-1">
+                    <div className="w-[60%] bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-[8.4px] text-sm text-amber-800 dark:text-amber-300 space-y-1">
                       {amberMsgs.map((msg, i) => <div key={i}>{msg}</div>)}
                     </div>
                   )}
                   {redMsgs.length > 0 && (
-                    <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300 space-y-1">
+                    <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-[8.4px] text-sm text-red-700 dark:text-red-300 space-y-1">
                       {redMsgs.map((msg, i) => <div key={i}>{msg}</div>)}
                     </div>
                   )}
-                </>
+                </div>
               );
             })()}
 
