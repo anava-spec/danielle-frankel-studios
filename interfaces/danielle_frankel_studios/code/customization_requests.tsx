@@ -2001,15 +2001,15 @@ function RecordDetailPage({
           {canUpdate && isReviewableStage && sourceLayout === 'approval' && (
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowApproveConfirm(true)} disabled={saving}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
                 Approve
               </button>
               <button type="button" onClick={() => setShowDenyConfirm(true)} disabled={saving}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
                 Deny
               </button>
               <button type="button" onClick={() => setShowCounterModal(true)} disabled={saving}
-                className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
                 Counter-Propose
               </button>
             </div>
@@ -2190,15 +2190,15 @@ function RecordDetailPage({
                 {canUpdate && sourceLayout === 'ops' && (
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setShowClientApproveConfirm(true)} disabled={saving}
-                      className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
+                      className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
                       Client Approved
                     </button>
                     <button type="button" onClick={() => setShowClientDenyConfirm(true)} disabled={saving}
-                      className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+                      className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
                       Client Denied
                     </button>
                     <button type="button" onClick={() => setShowClientCounterModal(true)} disabled={saving}
-                      className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
+                      className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
                       Client Counter-Proposed
                     </button>
                   </div>
