@@ -2206,6 +2206,23 @@ function Layer4({
     return Math.floor((dueDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
   }, [dueDate]);
 
+  // Must run unconditionally (guarding on `draft` internally) — this used to
+  // sit after the `if (!draft)` early return further down, which skipped the
+  // hook on some renders and not others (e.g. right after creating a draft,
+  // before draftRecords syncs), triggering React error #310.
+  const rushFeeExplanation = useMemo(() => {
+    if (!draft || !dueDate || weeksUntilDueDate === null) return '';
+    const styleIds = getLinkedRecordIds(draft, styleField);
+    const customizationIds = getLinkedRecordIds(draft, customizationsField);
+    const styles = styleRecords.filter(s => styleIds.includes(s.id));
+    const customizations = customizationRecords.filter(c => customizationIds.includes(c.id));
+    const customizedStyleIds = new Set(
+      customizations.flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField))
+    );
+    const standaloneCount = styles.filter(s => !customizedStyleIds.has(s.id)).length;
+    return getRushFeeExplanation(standaloneCount, weeksUntilDueDate, dueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField);
+  }, [draft, dueDate, weeksUntilDueDate, styleField, customizationsField, styleRecords, customizationRecords, customizationCustomizedStyleField, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField, getLinkedRecordIds]);
+
   const computeRushFee = (styleIds: string[], customizationIds: string[]): number => {
     if (!clientDueDate) return 0;
 
@@ -2274,6 +2291,19 @@ function Layer4({
     return () => clearTimeout(timer);
   }, [draft]);
 
+  // Default the toggle to whichever of the two discount fields actually has a
+  // value for this draft, once per draft loaded. Must run unconditionally
+  // (guarding on `draft` internally) — it used to sit after the `if (!draft)`
+  // early return below, which skipped this hook on some renders and not
+  // others (e.g. right after creating a draft, before draftRecords syncs),
+  // triggering React error #310 (hook count mismatch between renders).
+  useEffect(() => {
+    if (!draft) return;
+    const discountVal = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
+    const discountPctVal = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
+    setDiscountMode(discountPctVal > 0 && discountVal === 0 ? 'percentage' : 'currency');
+  }, [draft, draftId, discountField, discountPercentageField]);
+
   if (!draft) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -2303,12 +2333,6 @@ function Layer4({
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
   const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
-
-  // Default the toggle to whichever of the two discount fields actually has a
-  // value for this draft, once per draft loaded.
-  useEffect(() => {
-    setDiscountMode(discountPercentage > 0 && discount === 0 ? 'percentage' : 'currency');
-  }, [draftId]); // eslint-disable-line react-hooks/exhaustive-deps
   const shippingNotes = shippingNotesField ? draft.getCellValueAsString(shippingNotesField) : '';
   const taxesNotes = taxesNotesField ? draft.getCellValueAsString(taxesNotesField) : '';
   const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
@@ -2329,15 +2353,6 @@ function Layer4({
 
   const linkedStyles = styleRecords.filter(s => linkedStyleIds.includes(s.id));
   const linkedCustomizations = customizationRecords.filter(c => linkedCustomizationIds.includes(c.id));
-
-  const rushFeeExplanation = useMemo(() => {
-    if (!dueDate || weeksUntilDueDate === null) return '';
-    const customizedStyleIds = new Set(
-      linkedCustomizations.flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField))
-    );
-    const standaloneCount = linkedStyles.filter(s => !customizedStyleIds.has(s.id)).length;
-    return getRushFeeExplanation(standaloneCount, weeksUntilDueDate, dueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField);
-  }, [linkedStyles, linkedCustomizations, dueDate, weeksUntilDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const handleToggleLock = async () => {
     if (!canUpdate || !lockedField) return;
