@@ -61,6 +61,7 @@ function useSmoothToggle(open: boolean, durationMs = 150) {
 const FIELD_IDS = {
   CUSTOMIZATION_ID:            'fldl9cIcV80nYEDwe',
   CREATED_BY:                  'fldXjqAayXy8f5P8O',   // created_by — Airtable createdBy field, rendered via CellRenderer for the user chip
+  CREATED_AT:                  'fldMAmHSS7Ose9zf0',   // created_at — used to order the counter-proposal history
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',   // production_status — Sent to Production / Making at DF / At Factory / Ready to Cut / Pattern Making / Need Info / Complete
@@ -1430,6 +1431,7 @@ function CounterProposalModal({
   const fBasePrice        = customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fEmbroidery       = customizationsTable.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fApproved         = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
+  const fParentRequest    = customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
   const pPriceField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
   const pPercentField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null;
   const pMultiField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null;
@@ -1532,9 +1534,19 @@ function CounterProposalModal({
         [parentStatusField]: { name: 'Denied • Counter-Proposal' },
       }));
       const clientLink = fClient ? (parentRecord.getCellValue(fClient) as Array<{ id: string }> | null) : null;
+      // One-to-many chain: every counter-proposal links directly to the same
+      // ROOT request, not to whichever record it's countering. If parentRecord
+      // already has its own parent link, inherit that (it's already a CP);
+      // otherwise parentRecord itself is the root.
+      const parentsOwnRootLink = fParentRequest ? (parentRecord.getCellValue(fParentRequest) as Array<{ id: string }> | null) : null;
+      const rootId = parentsOwnRootLink?.[0]?.id ?? parentRecord.id;
       const childFields: Record<string, unknown> = {
-        [FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST]: [{ id: parentRecord.id }],
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Counter-Proposed' },
+        [FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST]: [{ id: rootId }],
+        // New Request, not "Counter-Proposed" — it re-enters the normal
+        // pipeline (Move to Under Review → Approve/Deny/Counter-Propose) like
+        // any other request. Being a counter-proposal is now purely signaled
+        // by parent_customization_request being non-empty.
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
         [FIELD_IDS.APPROVED_PRICING]: priceNum,
         [FIELD_IDS.CUSTOMIZATION_DETAIL]: additionalDetails || null,
       };
@@ -1770,6 +1782,39 @@ function RecordDetailPage({
   const fClientApprovalStatus = table.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS);
   const fProposedTotal        = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
   const fProductionStatus     = table.getFieldIfExists(FIELD_IDS.PRODUCTION_STATUS);
+  const fParentRequest        = table.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
+  const fCreatedAt            = table.getFieldIfExists(FIELD_IDS.CREATED_AT);
+
+  // One-to-many counter-proposal chain: every CP links directly to the same
+  // root request. If this record has its own parent link, it IS a CP — the
+  // root is whatever it points to. Otherwise this record is the root itself.
+  const parentLink = fParentRequest ? (record.getCellValue(fParentRequest) as Array<{ id: string }> | null) : null;
+  const isCounterProposal = !!(parentLink && parentLink.length > 0);
+  const rootRecord = useMemo(() => {
+    if (!isCounterProposal) return record;
+    const rootId = parentLink![0].id;
+    return allCustomizationRecords.find(r => r.id === rootId) ?? record;
+  }, [isCounterProposal, parentLink, record, allCustomizationRecords]);
+
+  // Every counter-proposal of this thread — the root's own reverse of
+  // parent_customization_request (Airtable's auto-generated inverse link),
+  // resolved client-side from allCustomizationRecords since that's already
+  // the full live record set. Used for the History section below.
+  const threadChildren = useMemo(() => {
+    if (!fParentRequest) return [];
+    return allCustomizationRecords.filter(r => {
+      const link = r.getCellValue(fParentRequest) as Array<{ id: string }> | null;
+      return !!link?.some(l => l.id === rootRecord.id);
+    });
+  }, [fParentRequest, allCustomizationRecords, rootRecord]);
+  const threadRecords = useMemo(
+    () => [rootRecord, ...threadChildren].sort((a, b) => {
+      const aTime = fCreatedAt ? (a.getCellValue(fCreatedAt) as string | null) ?? '' : '';
+      const bTime = fCreatedAt ? (b.getCellValue(fCreatedAt) as string | null) ?? '' : '';
+      return aTime.localeCompare(bTime);
+    }),
+    [rootRecord, threadChildren, fCreatedAt]
+  );
 
   // ── Pricing table fields, shared by every line item and the rush fee row ───
   const pPriceField   = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_PRICE) : null;
@@ -1796,6 +1841,7 @@ function RecordDetailPage({
   const [showClientCounterModal, setShowClientCounterModal] = useState(false);
   const [showClientApproveConfirm, setShowClientApproveConfirm] = useState(false);
   const [showClientDenyConfirm, setShowClientDenyConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -1950,40 +1996,31 @@ function RecordDetailPage({
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
 
-  // Stage A: New Request / Under Review / Counter-Proposed (empty status counts
-  // as New Request, same as the Workdesk's Approval-layout bucket). Per the
-  // approval flowchart, a Counter-Proposed record (a counter-proposal child, or
-  // any record re-countered at any depth) still needs its own Approve/Deny/
-  // Counter-Propose decision — it isn't a terminal status. Every other status
-  // (Approved, Denied, Denied • Counter-Proposal) is Stage B.
-  const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
-
   // Within Stage A, New Request only ever offers "Move to Under Review" — the
   // Approve/Deny/Counter-Propose decision only makes sense once someone has
-  // actually picked it up for review.
+  // actually picked it up for review. A counter-proposal is created directly
+  // as "New Request" now (see CounterProposalModal) — it re-enters this exact
+  // same pipeline like any other request, so "Counter-Proposed" as a status
+  // is legacy/unused going forward (being a counter-proposal is now signaled
+  // purely by parent_customization_request being non-empty — see isCounterProposal).
   const isNewRequestStage = approvalStatus === '' || approvalStatus === 'New Request';
 
-  // Internal decision — who can act depends on which stage it's in, not just
-  // the layout: "Under Review" is Margo's queue (Approval layout only); a
-  // "Counter-Proposed" record is Margo's own counter, now on the SA's desk to
-  // approve/deny/re-counter before it moves on (Workdesk only). Same
-  // underlying handlers either way — internal_approval_status doesn't care
-  // who clicked, only the field-write logic does.
-  const canActInternally = canUpdate && (
-    (sourceLayout === 'approval' && approvalStatus === 'Under Review') ||
-    (sourceLayout === 'ops'      && approvalStatus === 'Counter-Proposed')
-  );
+  // Internal decision (Approve/Deny/Counter-Propose) is Margo's call, from
+  // the Approval layout, once a request is Under Review.
+  const canActInternally = canUpdate && sourceLayout === 'approval' && approvalStatus === 'Under Review';
 
-  // Field-level editability — distinct from isStageA (which only gates the
-  // Approve/Deny/Counter-Propose action buttons). Entering from Workdesk
-  // allows editing the record's own fields, but only while it's still early
-  // in the pipeline (New Request/Under Review — narrower than isStageA,
-  // Counter-Proposed is excluded since by then it's a distinct child record
-  // under active review, not something to keep hand-editing). Entering from
-  // the Approval layout is always read-only, regardless of stage — Margo can
-  // decide, not edit.
+  // Field-level editability. Entering from Workdesk allows editing the
+  // record's own fields, but only while it's still early in the pipeline
+  // (New Request/Under Review). Entering from the Approval layout is always
+  // read-only, regardless of stage — Margo can decide, not edit.
   const isEditableStage = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review';
   const canEditFields = canUpdate && sourceLayout === 'ops' && isEditableStage;
+  // Style/Customizations specifically are only ever editable on the ROOT
+  // request — once a counter-proposal exists, they're frozen everywhere in
+  // the thread, on purpose (no added complexity from letting later CPs drift
+  // from what was actually being priced). Additional Details/Embroidery
+  // Amount aren't affected — they follow canEditFields alone.
+  const canEditStyleCustomizations = canEditFields && !isCounterProposal;
 
   // Client decision gate — only actionable once internal approval sent it to
   // "Request Review". Client-side has no "Counter-Proposed" choice of its own
@@ -2043,6 +2080,29 @@ function RecordDetailPage({
   );
 
   const grandTotal = basePriceNumber + totalCustomizationCost;
+
+  // Original Total — always computed from the ROOT record's own Style/
+  // Customizations/Embroidery, never from whichever CP is currently open.
+  // Style/Customizations are read-only on every CP (see canEditStyleCustomizations
+  // below), so the root's own fields are guaranteed to still reflect the true
+  // original pricing, however long the counter-proposal thread gets.
+  const rootBasePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(rootRecord.getCellValueAsString(fBasePrice)) : 0;
+  const rootEmbroidery = fEmbroidery ? (rootRecord.getCellValueAsString(fEmbroidery) || null) : null;
+  const rootMultiplierFactor = computeMultiplierFactor(0, rootEmbroidery);
+  const rootPricingIds = useMemo(() => {
+    if (isHybrid || !fPricing) return [];
+    const v = rootRecord.getCellValue(fPricing) as Array<{ id: string }> | null;
+    return v?.map(x => x.id) ?? [];
+  }, [isHybrid, fPricing, rootRecord]);
+  const rootCustomizationTotal = useMemo(() => {
+    if (isHybrid || !pTypeField) return 0;
+    return rootPricingIds.reduce((sum, id) => {
+      const r = pricingRecords.find(pr => pr.id === id);
+      if (!r) return sum;
+      return sum + resolvePricingRow(r, priceableFields, rootBasePriceNumber, rootMultiplierFactor).amount;
+    }, 0);
+  }, [isHybrid, pTypeField, rootPricingIds, pricingRecords, priceableFields, rootBasePriceNumber, rootMultiplierFactor]);
+  const rootOriginalTotal = rootBasePriceNumber + rootCustomizationTotal;
 
   const hybridChildBasePrices = useMemo<[number, number]>(() => {
     if (!isHybrid || !fBasePrice) return [0, 0];
@@ -2152,7 +2212,7 @@ function RecordDetailPage({
                       <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
                     </div>
                     <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                      onChange={handleStyleId} disabled={!canEditFields} />
+                      onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
                   </div>
                 </div>
 
@@ -2165,7 +2225,7 @@ function RecordDetailPage({
                     onRemove={removeLineItem}
                     preApprovalColorMap={preApprovalColorMap}
                     totalAmount={totalCustomizationCost}
-                    disabled={!canEditFields}
+                    disabled={!canEditStyleCustomizations}
                   />
                 </div>
 
@@ -2199,8 +2259,11 @@ function RecordDetailPage({
                   {/* Counter-Proposed Price sits here, not at the bottom of the
                       page — same shape as the Counter-Proposal form's own
                       Summary panel: the revised price up top, then a divider,
-                      then the original cost breakdown below it. */}
-                  {approvalStatus === 'Counter-Proposed' && fApproved && (
+                      then the ROOT's original cost breakdown below it. Keyed
+                      off parent_customization_request being non-empty, not
+                      this record's own status — a counter-proposal reads as
+                      one here at any stage (New Request, Under Review, etc). */}
+                  {isCounterProposal && fApproved && (
                     <>
                       <span className={labelCls}>Counter-Proposed Price</span>
                       <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 pb-2">
@@ -2209,10 +2272,10 @@ function RecordDetailPage({
                       <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
                     </>
                   )}
-                  <span className={labelCls}>{approvalStatus === 'Counter-Proposed' ? 'Original Costs' : 'Summary'}</span>
+                  <span className={labelCls}>{isCounterProposal ? 'Original Costs' : 'Summary'}</span>
                   {[
-                    { label: 'Base Price',         display: formatCurrency(basePriceNumber) },
-                    { label: 'Customization Total', display: formatCurrency(totalCustomizationCost) },
+                    { label: 'Base Price',         display: formatCurrency(isCounterProposal ? rootBasePriceNumber : basePriceNumber) },
+                    { label: 'Customization Total', display: formatCurrency(isCounterProposal ? rootCustomizationTotal : totalCustomizationCost) },
                   ].map(({ label, display }) => (
                     <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
                       <span className="text-base text-gray-600 dark:text-gray-400">{label}</span>
@@ -2220,8 +2283,8 @@ function RecordDetailPage({
                     </div>
                   ))}
                   <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
-                    <span className="text-lg">{approvalStatus === 'Counter-Proposed' ? 'Original Total' : 'Grand Total'}</span>
-                    <span className="text-lg">{formatCurrency(grandTotal)}</span>
+                    <span className="text-lg">{isCounterProposal ? 'Original Total' : 'Grand Total'}</span>
+                    <span className="text-lg">{formatCurrency(isCounterProposal ? rootOriginalTotal : grandTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -2319,10 +2382,56 @@ function RecordDetailPage({
               </div>
             )}
 
+            {/* Counter-Proposal History — every record in this thread (the
+                root + all its counter-proposals, all linked directly to the
+                same root under the one-to-many model). Collapsed by default;
+                quick-review inline table, not the full detail view. */}
+            {threadRecords.length > 1 && (
+              <div className="border-t border-gray-200 dark:border-white/10 pt-4">
+                <button type="button" onClick={() => setShowHistory(v => !v)}
+                  className="flex items-center gap-2 text-left">
+                  <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+                  <span className={labelCls.replace(' mb-1.5 block', '')}>Counter-Proposal History ({threadRecords.length})</span>
+                </button>
+                {showHistory && (
+                  <div className="mt-3 bg-white dark:bg-[#1B1813] border border-gray-200 dark:border-[#38322A] rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                        <tr>
+                          <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left">Version</th>
+                          <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left">Created At</th>
+                          <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left">Status</th>
+                          <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {threadRecords.map((r, i) => {
+                          const isCurrent = r.id === record.id;
+                          const rStatus = fApprStatus ? getSingleSelectName(r.getCellValue(fApprStatus)) : '';
+                          const rCreatedAt = fCreatedAt ? (r.getCellValue(fCreatedAt) as string | null) : null;
+                          const rAmount = fApproved ? r.getCellValueAsString(fApproved) : '';
+                          return (
+                            <tr key={r.id} className={`border-b border-gray-100 dark:border-white/5 last:border-0 ${isCurrent ? 'bg-amber-50/40 dark:bg-white/5' : ''}`}>
+                              <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                {i === 0 ? 'Original' : `Counter-Proposal ${i}`}{isCurrent ? ' — viewing' : ''}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">{formatDate(rCreatedAt)}</td>
+                              <td className="px-3 py-2"><ApprovalStatusPill status={rStatus} colorMap={approvalColorMap} /></td>
+                              <td className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">{rAmount || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Status banners */}
-            {approvalStatus === 'Counter-Proposed' && (
+            {isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review') && (
               <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-                Production has counter-proposed. Review the revised price above.
+                This is a counter-proposal — review the revised price in the Summary panel above.
               </div>
             )}
             {(approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') && (
@@ -2518,8 +2627,39 @@ function CustomizationApp(): React.ReactElement {
       hybridStyleNames:         customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_STYLE_NAMES),
       hybridLink:               customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK),
       basePrice:                customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE),
+      parentRequest:            customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST),
+      createdAt:                customizationsTable.getFieldIfExists(FIELD_IDS.CREATED_AT),
     };
   }, [customizationsTable]);
+
+  // One-to-many counter-proposal threads: every non-root record links
+  // directly to the same root via parent_customization_request. Only the
+  // most-recently-created record in a thread should ever surface as its own
+  // row in a list view — older thread members (including the root, once it
+  // has any children) are superseded and only visible via the Detail Page's
+  // History section.
+  const nonLatestThreadIds = useMemo(() => {
+    const hidden = new Set<string>();
+    if (!fields?.parentRequest) return hidden;
+    const childrenByRoot = new Map<string, AirtableRecord[]>();
+    for (const r of allCustomizationRecords) {
+      const link = r.getCellValue(fields.parentRequest) as Array<{ id: string }> | null;
+      const rootId = link?.[0]?.id;
+      if (!rootId) continue;
+      if (!childrenByRoot.has(rootId)) childrenByRoot.set(rootId, []);
+      childrenByRoot.get(rootId)!.push(r);
+    }
+    for (const [rootId, children] of childrenByRoot) {
+      hidden.add(rootId);
+      const sorted = [...children].sort((a, b) => {
+        const aT = fields.createdAt ? (a.getCellValue(fields.createdAt) as string | null) ?? '' : '';
+        const bT = fields.createdAt ? (b.getCellValue(fields.createdAt) as string | null) ?? '' : '';
+        return aT.localeCompare(bT);
+      });
+      sorted.slice(0, -1).forEach(c => hidden.add(c.id));
+    }
+    return hidden;
+  }, [allCustomizationRecords, fields]);
 
   const approvalChoiceColors = useMemo(() => getChoiceColorMap(fields?.approvalStatus ?? null), [fields]);
 
@@ -2565,6 +2705,7 @@ function CustomizationApp(): React.ReactElement {
         ? ((record.getCellValue(fields.hybridLinkInverse) as Array<{ id: string }> | null)?.length ?? 0) > 0
         : false;
       if (isHybridChild) return false;
+      if (nonLatestThreadIds.has(record.id)) return false;
       const saValue     = fields.salesAssociate   ? record.getCellValueAsString(fields.salesAssociate) : '';
       const styleRaw    = fields.customizedStyle  ? record.getCellValue(fields.customizedStyle)        : null;
       const styleValue  = getLinkedRecordName(styleRaw);
@@ -2577,7 +2718,7 @@ function CustomizationApp(): React.ReactElement {
       const bDate = fields.dateOfRequest ? resolveDateString(b.getCellValue(fields.dateOfRequest)) : '';
       return bDate.localeCompare(aDate);
     });
-  }, [allCustomizationRecords, filterSA, filterStyle, clientSearch, fields]);
+  }, [allCustomizationRecords, filterSA, filterStyle, clientSearch, fields, nonLatestThreadIds]);
 
   // Approval Status filter applies only to the Workdesk table — the Approval
   // layout's New Requests/Under Review buckets (derived from filteredRecords
