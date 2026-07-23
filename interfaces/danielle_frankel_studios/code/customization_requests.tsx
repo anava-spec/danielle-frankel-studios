@@ -1440,6 +1440,8 @@ function CounterProposalModal({
   const fHybridLink       = customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK);
   const fPricing          = customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
   const fBasePrice        = customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE);
+  const fEmbroidery       = customizationsTable.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
+  const fApproved         = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
   const pPriceField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
   const pPercentField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null;
   const pMultiField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null;
@@ -1462,6 +1464,11 @@ function CounterProposalModal({
   }, [isHybrid, fPricing, parentRecord]);
 
   const basePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0;
+  // Same embroidery value the child will inherit (see handleSubmit) — reused
+  // here so the read-only preview matches what the child actually ends up
+  // priced at, instead of assuming a flat multiplier of 1.
+  const parentEmbroidery = fEmbroidery ? (parentRecord.getCellValueAsString(fEmbroidery) || null) : null;
+  const multiplierFactor = computeMultiplierFactor(0, parentEmbroidery);
 
   const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
   const selectedItems = useMemo(() => {
@@ -1469,10 +1476,10 @@ function CounterProposalModal({
     return pricingIds.map(id => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return null;
-      const { amount, label } = resolvePricingRow(r, { priceField: pPriceField, percentField: pPercentField, multiField: pMultiField }, basePriceNumber, 1);
+      const { amount, label } = resolvePricingRow(r, { priceField: pPriceField, percentField: pPercentField, multiField: pMultiField }, basePriceNumber, multiplierFactor);
       return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
     }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
-  }, [isHybrid, pricingIds, pricingRecords, pTypeField, pPriceField, pPercentField, pMultiField, basePriceNumber, preApprovalField]);
+  }, [isHybrid, pricingIds, pricingRecords, pTypeField, pPriceField, pPercentField, pMultiField, basePriceNumber, preApprovalField, multiplierFactor]);
   const totalCustomizationCost = selectedItems.reduce((sum, i) => sum + i.amount, 0);
 
   // Hybrid has no per-request Base Price/Customizations of its own — its
@@ -1492,6 +1499,11 @@ function CounterProposalModal({
   }, [isHybrid, fBasePrice, hybridChildRecords]);
 
   const originalTotal = isHybrid ? hybridOriginalTotal : (basePriceNumber + totalCustomizationCost);
+  // If parentRecord is itself a counter-proposal (i.e. this is a counter-
+  // proposal of a counter-proposal), it already carries its own approved
+  // price from that earlier decision — show it so the reviewer can compare
+  // the truly original total against the last revised price.
+  const lastCounterProposedPrice = fApproved ? parentRecord.getCellValueAsString(fApproved) : '';
 
   // internalApprovedPrice is the raw numeric string (source of truth for
   // parsing/canSubmit); priceDisplay is what's actually shown in the input,
@@ -1545,6 +1557,14 @@ function CounterProposalModal({
           childFields[FIELD_IDS.CUSTOMIZED_STYLE] = styleLink ? styleLink.map(s => ({ id: s.id })) : null;
         }
         childFields[FIELD_IDS.CUSTOMIZATION_PRICING] = pricingIds.map(id => ({ id }));
+        // Embroidery Amount wasn't being copied — the child inherited the
+        // parent's line items but not this, so its own multiplier-priced rows
+        // (e.g. Hand Painted) silently computed against a blank embroidery
+        // value (multiplier factor 0) instead of the parent's real one.
+        if (fEmbroidery) {
+          const embroideryVal = parentRecord.getCellValueAsString(fEmbroidery);
+          childFields[FIELD_IDS.AMOUNT_EMBROIDERY] = embroideryVal ? { name: embroideryVal } : null;
+        }
       }
       await customizationsTable.createRecordAsync(childFields);
       onSubmitted();
@@ -1663,6 +1683,17 @@ function CounterProposalModal({
                     <span className="text-base">Original Total</span>
                     <span className="text-base">{formatCurrency(originalTotal)}</span>
                   </div>
+                  {/* Counter-proposing a counter-proposal: parentRecord already
+                      carries its own approved_pricing from whichever decision
+                      last set it — surface it alongside Original Total so it's
+                      clear what the original price was vs. what was most
+                      recently revised to. */}
+                  {lastCounterProposedPrice && (
+                    <div className="flex justify-between items-center text-amber-700 dark:text-amber-400">
+                      <span className="text-base">Last Counter-Proposed Price</span>
+                      <span className="text-base font-semibold">{lastCounterProposedPrice}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
