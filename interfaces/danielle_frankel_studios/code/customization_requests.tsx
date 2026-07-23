@@ -182,7 +182,11 @@ function queueWrite(fn: () => Promise<void>): Promise<void> {
   return next;
 }
 
-type ViewState = { layer: 1 } | { layer: 2; recordId: string; previousRecordId?: string };
+// sourceLayout tracks which Main Page layout the detail page was opened from —
+// RecordDetailPage uses it to decide whether the record's fields can be
+// edited at all (Approval layout is always read-only; Workdesk is editable
+// only while the record is still in an early stage).
+type ViewState = { layer: 1 } | { layer: 2; recordId: string; previousRecordId?: string; sourceLayout: 'ops' | 'approval' };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getSingleSelectName(cell: unknown): string {
@@ -1649,13 +1653,14 @@ function CounterProposalModal({
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, stylesBasePriceField, preApprovalField,
   selfUsageField,
-  clientRecords, favoriteStylesApptField, allCustomizationRecords, onBack,
+  clientRecords, favoriteStylesApptField, allCustomizationRecords, sourceLayout, onBack,
 }: {
   record: AirtableRecord; table: Table; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   stylesRecords: AirtableRecord[]; stylesBasePriceField: Field | null; preApprovalField: Field | null;
   selfUsageField: Field | null;
   clientRecords: AirtableRecord[]; favoriteStylesApptField: Field | null;
   allCustomizationRecords: AirtableRecord[];
+  sourceLayout: 'ops' | 'approval';
   onBack: () => void;
 }) {
   const canUpdate = table.hasPermissionToUpdateRecords();
@@ -1854,6 +1859,17 @@ function RecordDetailPage({
   // (Approved, Denied, Denied • Counter-Proposal) is Stage B.
   const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
 
+  // Field-level editability — distinct from isStageA (which only gates the
+  // Approve/Deny/Counter-Propose action buttons). Entering from Workdesk
+  // allows editing the record's own fields, but only while it's still early
+  // in the pipeline (New Request/Under Review — narrower than isStageA,
+  // Counter-Proposed is excluded since by then it's a distinct child record
+  // under active review, not something to keep hand-editing). Entering from
+  // the Approval layout is always read-only, regardless of stage — Margo can
+  // decide, not edit.
+  const isEditableStage = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review';
+  const canEditFields = canUpdate && sourceLayout === 'ops' && isEditableStage;
+
   // Client decision gate — only actionable once internal approval sent it to
   // "Request Review". Client-side has no "Counter-Proposed" choice of its own
   // (per the updated client_approval_status schema) — a client counter simply
@@ -2014,7 +2030,7 @@ function RecordDetailPage({
                     <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
                   </div>
                   <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                    onChange={handleStyleId} disabled={!canUpdate} />
+                    onChange={handleStyleId} disabled={!canEditFields} />
                 </div>
 
                 <div>
@@ -2026,7 +2042,7 @@ function RecordDetailPage({
                     onRemove={removeLineItem}
                     preApprovalColorMap={preApprovalColorMap}
                     totalAmount={totalCustomizationCost}
-                    disabled={!canUpdate}
+                    disabled={!canEditFields}
                   />
                 </div>
 
@@ -2034,7 +2050,7 @@ function RecordDetailPage({
                   <div>
                     <span className={labelCls}>Embroidery Amount</span>
                     <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
-                      onChange={handleEmbroidery} disabled={!canUpdate} />
+                      onChange={handleEmbroidery} disabled={!canEditFields} />
                   </div>
                 )}
 
@@ -2042,7 +2058,7 @@ function RecordDetailPage({
                   <span className={labelCls}>Additional Details</span>
                   <textarea value={detail} onChange={e => setDetail(e.target.value)}
                     onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
-                    disabled={!canUpdate}
+                    disabled={!canEditFields}
                     placeholder="Describe the specific customization…"
                     rows={3} className={`${inputCls} resize-none`} />
                 </div>
@@ -2090,13 +2106,13 @@ function RecordDetailPage({
                     {hybridChildRecords[0] && (
                       <HybridChildColumn
                         title="Style 1" childRecord={hybridChildRecords[0]} table={table}
-                        styleOptions={styleOptions} canUpdate={canUpdate}
+                        styleOptions={styleOptions} canUpdate={canEditFields}
                       />
                     )}
                     {hybridChildRecords[1] && (
                       <HybridChildColumn
                         title="Style 2" childRecord={hybridChildRecords[1]} table={table}
-                        styleOptions={styleOptions} canUpdate={canUpdate}
+                        styleOptions={styleOptions} canUpdate={canEditFields}
                       />
                     )}
                   </div>
@@ -2513,9 +2529,10 @@ function CustomizationApp(): React.ReactElement {
         clientRecords={clientRecords}
         favoriteStylesApptField={favoriteStylesApptField}
         allCustomizationRecords={allCustomizationRecords}
+        sourceLayout={viewState.sourceLayout}
         onBack={() =>
           viewState.previousRecordId
-            ? setViewState({ layer: 2, recordId: viewState.previousRecordId })
+            ? setViewState({ layer: 2, recordId: viewState.previousRecordId, sourceLayout: viewState.sourceLayout })
             : setViewState({ layer: 1 })
         }
       />
@@ -2568,7 +2585,7 @@ function CustomizationApp(): React.ReactElement {
                   const { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal } = buildRowData(record);
                   const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                   return (
-                    <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id })}
+                    <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'ops' })}
                       className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
                       <td className={cellCls}>{clientText}</td>
                       <td className={cellCls}>{styleText}</td>
@@ -2617,7 +2634,7 @@ function CustomizationApp(): React.ReactElement {
                         <tr key={record.id} draggable
                           onDragStart={() => setDraggedRecordId(record.id)}
                           onDragEnd={() => setDraggedRecordId(null)}
-                          onClick={() => setViewState({ layer: 2, recordId: record.id })}
+                          onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'approval' })}
                           className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-move transition-colors">
                           <td className={cellCls}>{clientText}</td>
                           <td className={cellCls}>{styleText}</td>
@@ -2660,7 +2677,7 @@ function CustomizationApp(): React.ReactElement {
                       const { clientText, styleText, saText, dateStr, proposedVal } = buildRowData(record);
                       const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                       return (
-                        <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id })}
+                        <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'approval' })}
                           className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
                           <td className={cellCls}>{clientText}</td>
                           <td className={cellCls}>{styleText}</td>
@@ -2698,7 +2715,7 @@ function CustomizationApp(): React.ReactElement {
         clientRecords={clientRecords}
         preApprovalField={preApprovalField}
         onClose={() => setShowNewRequest(false)}
-        onCreated={recordId => { setShowNewRequest(false); setViewState({ layer: 2, recordId }); }}
+        onCreated={recordId => { setShowNewRequest(false); setViewState({ layer: 2, recordId, sourceLayout: 'ops' }); }}
       />
     )}
     </>
