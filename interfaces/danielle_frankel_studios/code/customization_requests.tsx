@@ -1407,10 +1407,15 @@ function ApproveDenyConfirmModal({ action, clientName, context = 'internal', onC
 // internal Approved Price field the production team is actually proposing.
 function CounterProposalModal({
   parentRecord, customizationsTable, pricingRecords, pricingTable, preApprovalField, allCustomizationRecords,
-  source = 'internal', onClose, onSubmitted,
+  source = 'internal', sourceLayout, onClose, onSubmitted,
 }: {
   parentRecord: AirtableRecord; customizationsTable: Table; pricingRecords: AirtableRecord[];
   pricingTable: Table | null; preApprovalField: Field | null; allCustomizationRecords: AirtableRecord[];
+  // Which Main Page layout this was opened from — Workdesk (the SA) calls this
+  // price "Internal Proposed Price" (it's a proposal to Margo, not yet
+  // approved); Approval (Margo) calls it "Internal Approved Price" (Margo's
+  // own decision is the approval).
+  sourceLayout: 'ops' | 'approval';
   // Which side initiated the counter — decides whether the PARENT's
   // internal_approval_status or client_approval_status gets set to
   // "Denied • Counter-Proposal". The child always starts fresh at
@@ -1441,6 +1446,7 @@ function CounterProposalModal({
   const pTypeField    = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_CUSTOMIZATION_TYPE) ?? null;
 
   const clientName = fClient ? getLinkedRecordName(parentRecord.getCellValue(fClient)) : '—';
+  const priceFieldLabel = sourceLayout === 'ops' ? 'Internal Proposed Price' : 'Internal Approved Price';
   const isHybrid = !!(fIsHybrid && parentRecord.getCellValueAsString(fIsHybrid) === 'Hybrid');
   const typeText = fIsHybrid ? (parentRecord.getCellValueAsString(fIsHybrid) || 'Regular') : 'Regular';
   const typeColorMap = useMemo(() => getChoiceColorMap(fIsHybrid), [fIsHybrid]);
@@ -1580,7 +1586,7 @@ function CounterProposalModal({
                   <div className={readOnlyCls}>{parentRecord.name}</div>
                 </div>
                 <div className="w-1/2">
-                  <span className={labelCls}>Internal Approved Price</span>
+                  <span className={labelCls}>{priceFieldLabel}</span>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500">$</span>
                     <input type="text" inputMode="decimal" value={priceDisplay} onChange={e => handlePriceChange(e.target.value)} onBlur={handlePriceBlur}
@@ -1630,7 +1636,7 @@ function CounterProposalModal({
 
             <div className="w-[40%] shrink-0">
               <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                <span className={labelCls}>Internal Approved Price</span>
+                <span className={labelCls}>{priceFieldLabel}</span>
                 <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 pb-2">
                   {canSubmit ? formatCurrency(priceNum) : '—'}
                 </div>
@@ -2364,6 +2370,7 @@ function RecordDetailPage({
           preApprovalField={preApprovalField}
           allCustomizationRecords={allCustomizationRecords}
           source="internal"
+          sourceLayout={sourceLayout}
           onClose={() => setShowCounterModal(false)}
           onSubmitted={() => { setShowCounterModal(false); onBack(); onCounterProposalSent(); }}
         />
@@ -2395,6 +2402,7 @@ function RecordDetailPage({
           preApprovalField={preApprovalField}
           allCustomizationRecords={allCustomizationRecords}
           source="client"
+          sourceLayout={sourceLayout}
           onClose={() => setShowClientCounterModal(false)}
           onSubmitted={() => { setShowClientCounterModal(false); onBack(); onCounterProposalSent(); }}
         />
