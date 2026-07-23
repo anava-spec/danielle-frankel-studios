@@ -1699,9 +1699,16 @@ function Layer2({
               </div>
 
               {clientId && (
-                <p className="text-xs" style={{ color: theme.textSecondary }}>
-                  [debug] clientId: {clientId || 'none'} | total customizations loaded: {customizationRecords.length} | client field found: {customizationClientField ? 'yes' : 'no'} | this client's customizations: {clientCustomizationsUnfiltered.length} | approved: {clientApprovedCustomizations.length} | internal status field found: {customizationApprovalStatusField ? 'yes' : 'no'} | client status field found: {customizationClientApprovalStatusField ? 'yes' : 'no'}
-                </p>
+                <div className="text-xs space-y-1" style={{ color: theme.textSecondary }}>
+                  <p>
+                    [debug] clientId: {clientId || 'none'} | total customizations loaded: {customizationRecords.length} | this client's customizations: {clientCustomizationsUnfiltered.length} | approved: {clientApprovedCustomizations.length} | selected style ids: {selectedStyleIds.join(', ') || 'none'}
+                  </p>
+                  {clientApprovedCustomizations.map(c => (
+                    <p key={c.id}>
+                      [debug] approved customization {customizationIdField ? c.getCellValueAsString(customizationIdField) : c.id} | customized_style link ids: {getLinkedRecordIds(c, customizationCustomizedStyleField).join(', ') || 'none'} | matches selected style: {getLinkedRecordIds(c, customizationCustomizedStyleField).some(id => selectedStyleIds.includes(id)) ? 'yes' : 'no'}
+                    </p>
+                  ))}
+                </div>
               )}
 
               {clientId && clientCustomizationsUnfiltered.length > 0 && (
