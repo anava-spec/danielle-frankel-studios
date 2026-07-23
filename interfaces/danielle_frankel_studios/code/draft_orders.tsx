@@ -1698,6 +1698,12 @@ function Layer2({
                   )}
               </div>
 
+              {clientId && (
+                <p className="text-xs" style={{ color: theme.textSecondary }}>
+                  [debug] clientId: {clientId || 'none'} | total customizations loaded: {customizationRecords.length} | client field found: {customizationClientField ? 'yes' : 'no'} | this client's customizations: {clientCustomizationsUnfiltered.length} | approved: {clientApprovedCustomizations.length} | internal status field found: {customizationApprovalStatusField ? 'yes' : 'no'} | client status field found: {customizationClientApprovalStatusField ? 'yes' : 'no'}
+                </p>
+              )}
+
               {clientId && clientCustomizationsUnfiltered.length > 0 && (
                 <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
