@@ -2007,7 +2007,7 @@ function RecordDetailPage({
         )}
         {/* Action buttons pushed to the right — field-sync-source legend removed, not used here */}
         <div className="ml-auto flex items-center gap-4 flex-shrink-0">
-          {canUpdate && isNewRequestStage && (
+          {canUpdate && isNewRequestStage && sourceLayout === 'approval' && (
             <button type="button" onClick={handleMoveToUnderReview} disabled={saving}
               className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
               Move to Under Review
