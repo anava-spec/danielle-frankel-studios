@@ -1486,13 +1486,33 @@ function CounterProposalModal({
 
   const originalTotal = isHybrid ? hybridOriginalTotal : (basePriceNumber + totalCustomizationCost);
 
+  // internalApprovedPrice is the raw numeric string (source of truth for
+  // parsing/canSubmit); priceDisplay is what's actually shown in the input,
+  // reformatted with thousands commas live as the user types, and to a full
+  // "1,234.00" on blur — matching formatCurrency's own output everywhere else
+  // this value is displayed (Summary panel, detail page).
   const [internalApprovedPrice, setInternalApprovedPrice] = useState('');
+  const [priceDisplay, setPriceDisplay] = useState('');
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const priceNum = parseFloat(internalApprovedPrice);
   const canSubmit = internalApprovedPrice.trim() !== '' && !isNaN(priceNum);
+
+  const handlePriceChange = (raw: string) => {
+    let cleaned = raw.replace(/[^0-9.]/g, '');
+    const parts = cleaned.split('.');
+    if (parts.length > 2) cleaned = parts[0] + '.' + parts.slice(1).join('');
+    setInternalApprovedPrice(cleaned);
+    const [intPart, decPart] = cleaned.split('.');
+    const intFormatted = intPart ? Number(intPart).toLocaleString('en-US') : '';
+    setPriceDisplay(decPart !== undefined ? `${intFormatted}.${decPart}` : intFormatted);
+  };
+  const handlePriceBlur = () => {
+    const n = parseFloat(internalApprovedPrice);
+    setPriceDisplay(Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
@@ -1562,9 +1582,8 @@ function CounterProposalModal({
                   <span className={labelCls}>Internal Approved Price</span>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500">$</span>
-                    <input type="number" value={internalApprovedPrice} onChange={e => setInternalApprovedPrice(e.target.value)}
-                      className={`${inputCls} pl-6 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                      style={{ MozAppearance: 'textfield' } as React.CSSProperties}
+                    <input type="text" inputMode="decimal" value={priceDisplay} onChange={e => handlePriceChange(e.target.value)} onBlur={handlePriceBlur}
+                      className={`${inputCls} pl-6`}
                       placeholder="0.00" />
                   </div>
                 </div>
