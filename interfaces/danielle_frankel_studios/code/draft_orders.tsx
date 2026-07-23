@@ -1306,11 +1306,29 @@ function Layer2({
   }, [selectedStyles, selectedCustomizations, clientDueDate, weeksUntilDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const discountAmount = useMemo(() => {
+    const orderSubtotal = styleSubtotal + customizationSubtotal;
     if (discountMode === 'percentage') {
-      return (styleSubtotal + customizationSubtotal) * parsePercentInput(discountPercent);
+      const pct = Math.min(Math.max(parsePercentInput(discountPercent), 0), 1);
+      return orderSubtotal * pct;
     }
-    return parseCurrency(discount);
+    return Math.min(Math.max(parseCurrency(discount), 0), orderSubtotal);
   }, [discountMode, discount, discountPercent, styleSubtotal, customizationSubtotal]);
+
+  // Reformats and clamps the visible value once the user leaves the field —
+  // currency can't exceed the order's subtotal, percentage can't exceed 100%.
+  const handleDiscountBlur = () => {
+    const orderSubtotal = styleSubtotal + customizationSubtotal;
+    if (discountMode === 'percentage') {
+      if (discountPercent.trim() === '') return;
+      const raw = parseFloat(discountPercent.replace(/[^0-9.-]/g, '')) || 0;
+      const clamped = Math.min(Math.max(raw, 0), 100);
+      setDiscountPercent(`${clamped}%`);
+    } else {
+      if (discount.trim() === '') return;
+      const clamped = Math.min(Math.max(parseCurrency(discount), 0), orderSubtotal);
+      setDiscount(formatCurrency(clamped));
+    }
+  };
 
   const total = useMemo(() => {
     return rushFee + previewShipping + previewTaxes - discountAmount;
@@ -1853,6 +1871,7 @@ function Layer2({
                             placeholder={discountMode === 'percentage' ? '0%' : '$0.00'}
                             value={discountMode === 'percentage' ? discountPercent : discount}
                             onChange={e => discountMode === 'percentage' ? setDiscountPercent(e.target.value) : setDiscount(e.target.value)}
+                            onBlur={handleDiscountBlur}
                             disabled={!clientId}
                             className="w-full px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
@@ -2459,7 +2478,9 @@ function Layer4({
 
   const handleCurrencyBlur = async (field: Field | null, value: string, fieldKey: string) => {
     if (!isEditable || !field) return;
-    const numValue = parseCurrency(value);
+    // Discount (currency) can't exceed the order's own subtotal.
+    const orderSubtotal = styleSubtotal + customizationSubtotal;
+    const numValue = Math.min(Math.max(parseCurrency(value), 0), orderSubtotal);
     try {
       await draftOrdersTable.updateRecordAsync(draftId, {
         [field.id]: numValue,
@@ -2473,7 +2494,8 @@ function Layer4({
 
   const handlePercentBlur = async (field: Field | null, value: string, fieldKey: string) => {
     if (!isEditable || !field) return;
-    const numValue = parsePercentInput(value);
+    // Discount (percentage) can't exceed 100%.
+    const numValue = Math.min(Math.max(parsePercentInput(value), 0), 1);
     try {
       await draftOrdersTable.updateRecordAsync(draftId, {
         [field.id]: numValue,
