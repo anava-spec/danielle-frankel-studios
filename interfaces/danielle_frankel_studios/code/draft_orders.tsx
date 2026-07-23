@@ -156,6 +156,40 @@ function formatCurrency(value: number | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 }
 
+// Business rationale for the Rush Fee row's Notes cell — explains *why* the
+// fee applies and at what rate, not just the due date it's based on.
+function getRushFeeExplanation(
+  standaloneStyleCount: number,
+  weeksRemaining: number,
+  dueDate: Date,
+  rushFeeRuleRecords: AirtableRecord[],
+  rushRuleWeeksField: Field | null,
+  rushRuleNonCustomizedPctField: Field | null,
+): string {
+  if (standaloneStyleCount === 0) return '';
+
+  const matchingRule = rushFeeRuleRecords
+    .filter(rule => {
+      const ruleWeeks = rushRuleWeeksField ? (rule.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+      return ruleWeeks >= weeksRemaining;
+    })
+    .sort((a, b) => {
+      const weeksA = rushRuleWeeksField ? (a.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+      const weeksB = rushRuleWeeksField ? (b.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+      return weeksA - weeksB;
+    })[0];
+
+  if (!matchingRule) return '';
+
+  const ruleWeeks = rushRuleWeeksField ? (matchingRule.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
+  const rushPct = rushRuleNonCustomizedPctField
+    ? (matchingRule.getCellValue(rushRuleNonCustomizedPctField) as number | null) ?? 0
+    : 0;
+  const pctLabel = `${Math.round(rushPct * 100)}%`;
+
+  return `Applies a ${pctLabel} rush fee to ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'} — only ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} remain until the due date (${formatDate(dueDate.toISOString())}), which falls in the ≤${ruleWeeks}-week rush tier. Customized styles are excluded since their pricing already accounts for rush timing.`;
+}
+
 function parseCurrency(value: string): number {
   const cleaned = value.replace(/[^0-9.-]/g, '');
   const parsed = parseFloat(cleaned);
@@ -1189,6 +1223,15 @@ function Layer2({
     }, 0);
   }, [selectedStyles, selectedCustomizations, clientDueDate, weeksUntilDueDate, rushFeeRuleRecords, stylePriceField, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
+  const rushFeeExplanation = useMemo(() => {
+    if (!clientDueDate || weeksUntilDueDate === null) return '';
+    const customizedStyleIds = new Set(
+      selectedCustomizations.flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField))
+    );
+    const standaloneCount = selectedStyles.filter(s => !customizedStyleIds.has(s.id)).length;
+    return getRushFeeExplanation(standaloneCount, weeksUntilDueDate, clientDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField);
+  }, [selectedStyles, selectedCustomizations, clientDueDate, weeksUntilDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
+
   const total = useMemo(() => {
     const disc = parseCurrency(discount);
     return rushFee + previewShipping + previewTaxes - disc;
@@ -1677,8 +1720,7 @@ function Layer2({
                           <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
                           <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
                           <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
-                            {clientDueDate && weeksUntilDueDate !== null &&
-                              `Due date to have the styles ready is in ${weeksUntilDueDate} week${weeksUntilDueDate === 1 ? '' : 's'}, on ${formatDate(clientDueDate.toISOString())}.`}
+                            {rushFeeExplanation}
                           </td>
                         </tr>
                       )}
@@ -2160,6 +2202,15 @@ function Layer4({
 
   const linkedStyles = styleRecords.filter(s => linkedStyleIds.includes(s.id));
   const linkedCustomizations = customizationRecords.filter(c => linkedCustomizationIds.includes(c.id));
+
+  const rushFeeExplanation = useMemo(() => {
+    if (!dueDate || weeksUntilDueDate === null) return '';
+    const customizedStyleIds = new Set(
+      linkedCustomizations.flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField))
+    );
+    const standaloneCount = linkedStyles.filter(s => !customizedStyleIds.has(s.id)).length;
+    return getRushFeeExplanation(standaloneCount, weeksUntilDueDate, dueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField);
+  }, [linkedStyles, linkedCustomizations, dueDate, weeksUntilDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const handleToggleLock = async () => {
     if (!canUpdate || !lockedField) return;
@@ -2666,8 +2717,7 @@ function Layer4({
                       <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
                       <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
                       <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
-                        {dueDate && weeksUntilDueDate !== null &&
-                          `Due date to have the styles ready is in ${weeksUntilDueDate} week${weeksUntilDueDate === 1 ? '' : 's'}, on ${formatDate(dueDate.toISOString())}.`}
+                        {rushFeeExplanation}
                       </td>
                     </tr>
                   )}
