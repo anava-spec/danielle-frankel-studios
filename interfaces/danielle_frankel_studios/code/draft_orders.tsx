@@ -1165,14 +1165,18 @@ function Layer2({
     }).slice(0, 20);
   }, [clientRecords, clientSearchQuery, clientNameField]);
 
+  // Based on the client's customization requests, not their Acuity/appointment
+  // favorite styles — a legacy customization request can be tied to a style
+  // the client never actually picked in Acuity, and the old Acuity-based
+  // filter hid that style entirely, making the (already-approved) customization
+  // impossible to attach to any style in this form.
   const eligibleStyleIds = useMemo(() => {
     if (!clientId) return [];
-    const client = clientRecords.find(c => c.id === clientId);
-    if (!client) return [];
-    const idsFromAcuity = getLinkedRecordIds(client, clientFavoriteStylesAcuityField);
-    const idsFromAppointment = getLinkedRecordIds(client, clientFavoriteStylesAppointmentField);
-    return Array.from(new Set([...idsFromAcuity, ...idsFromAppointment]));
-  }, [clientId, clientRecords, clientFavoriteStylesAcuityField, clientFavoriteStylesAppointmentField, getLinkedRecordIds]);
+    const idsFromCustomizations = customizationRecords
+      .filter(c => getLinkedRecordIds(c, customizationClientField).includes(clientId))
+      .flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField));
+    return Array.from(new Set(idsFromCustomizations));
+  }, [clientId, customizationRecords, customizationClientField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const eligibleStyles = useMemo(() => {
     if (eligibleStyleIds.length === 0) return styleRecords;
@@ -1698,19 +1702,6 @@ function Layer2({
                   )}
               </div>
 
-              {clientId && (
-                <div className="text-xs space-y-1" style={{ color: theme.textSecondary }}>
-                  <p>
-                    [debug] clientId: {clientId || 'none'} | total customizations loaded: {customizationRecords.length} | this client's customizations: {clientCustomizationsUnfiltered.length} | approved: {clientApprovedCustomizations.length} | selected style ids: {selectedStyleIds.join(', ') || 'none'}
-                  </p>
-                  {clientApprovedCustomizations.map(c => (
-                    <p key={c.id}>
-                      [debug] approved customization {customizationIdField ? c.getCellValueAsString(customizationIdField) : c.id} | customized_style link ids: {getLinkedRecordIds(c, customizationCustomizedStyleField).join(', ') || 'none'} | matches selected style: {getLinkedRecordIds(c, customizationCustomizedStyleField).some(id => selectedStyleIds.includes(id)) ? 'yes' : 'no'}
-                    </p>
-                  ))}
-                </div>
-              )}
-
               {clientId && clientCustomizationsUnfiltered.length > 0 && (
                 <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
@@ -2208,13 +2199,14 @@ function Layer4({
     });
   }, [customizationRecords, clientId, customizationClientField, customizationApprovalStatusField, customizationClientApprovalStatusField, getLinkedRecordIds]);
 
+  // Based on the client's customization requests, not their Acuity/appointment
+  // favorite styles — see the matching comment in Layer2.
   const eligibleStyleIds = useMemo(() => {
-    const client = clientRecords.find(c => c.id === clientId);
-    if (!client) return [];
-    const idsFromAcuity = getLinkedRecordIds(client, clientFavoriteStylesAcuityField);
-    const idsFromAppointment = getLinkedRecordIds(client, clientFavoriteStylesAppointmentField);
-    return Array.from(new Set([...idsFromAcuity, ...idsFromAppointment]));
-  }, [clientId, clientRecords, clientFavoriteStylesAcuityField, clientFavoriteStylesAppointmentField, getLinkedRecordIds]);
+    const idsFromCustomizations = customizationRecords
+      .filter(c => getLinkedRecordIds(c, customizationClientField).includes(clientId))
+      .flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField));
+    return Array.from(new Set(idsFromCustomizations));
+  }, [clientId, customizationRecords, customizationClientField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const eligibleStyles = useMemo(() => {
     if (eligibleStyleIds.length === 0) return styleRecords;
