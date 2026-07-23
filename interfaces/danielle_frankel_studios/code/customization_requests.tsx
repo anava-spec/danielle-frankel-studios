@@ -1431,6 +1431,7 @@ function CounterProposalModal({
   const isHybrid = !!(fIsHybrid && parentRecord.getCellValueAsString(fIsHybrid) === 'Hybrid');
   const typeText = fIsHybrid ? (parentRecord.getCellValueAsString(fIsHybrid) || 'Regular') : 'Regular';
   const typeColorMap = useMemo(() => getChoiceColorMap(fIsHybrid), [fIsHybrid]);
+  const typeColorHex = typeColorMap[typeText] ?? '#9CA3AF';
   const styleText = isHybrid
     ? (fHybridStyleNames ? (parentRecord.getCellValueAsString(fHybridStyleNames) || 'Hybrid') : 'Hybrid')
     : (fStyled ? getLinkedRecordName(parentRecord.getCellValue(fStyled)) : '—');
@@ -1560,7 +1561,9 @@ function CounterProposalModal({
               <div className="flex gap-4">
                 <div className="w-1/2">
                   <span className={labelCls}>Customization Type</span>
-                  <ApprovalStatusPill status={typeText} colorMap={typeColorMap} />
+                  <div className={readOnlyCls} style={{ backgroundColor: `${typeColorHex}20`, borderColor: `${typeColorHex}55`, color: typeColorHex }}>
+                    {typeText}
+                  </div>
                 </div>
                 <div className="w-1/2">
                   <span className={labelCls}>Style</span>
