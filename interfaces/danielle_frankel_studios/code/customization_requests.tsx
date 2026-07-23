@@ -1795,6 +1795,20 @@ function RecordDetailPage({
     finally { setSaving(false); setShowDenyConfirm(false); }
   };
 
+  // New Request -> Under Review: the only action available at this stage —
+  // Approve/Deny/Counter-Propose only make sense once someone has actually
+  // started reviewing it. Same transition the Workdesk's drag-and-drop does.
+  const handleMoveToUnderReview = async () => {
+    setSaving(true);
+    try {
+      await queueWrite(() => table.updateRecordAsync(record.id, {
+        [FIELD_IDS.APPROVAL_STATUS]: { name: 'Under Review' },
+      }));
+      setApprovalStatus('Under Review');
+    } catch (e) { setError('Failed to move to Under Review.'); }
+    finally { setSaving(false); }
+  };
+
   // Client decision — gated on clientApprovalStatus === 'Request Review'
   // (set by handleApprove above, or by a re-approved counter-proposal child).
   // Approved: client_approval_status -> Approved AND production_status ->
@@ -1858,6 +1872,12 @@ function RecordDetailPage({
   // Counter-Propose decision — it isn't a terminal status. Every other status
   // (Approved, Denied, Denied • Counter-Proposal) is Stage B.
   const isStageA = approvalStatus === '' || approvalStatus === 'New Request' || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
+
+  // Within Stage A, New Request only ever offers "Move to Under Review" — the
+  // Approve/Deny/Counter-Propose decision only makes sense once someone has
+  // actually picked it up for review.
+  const isNewRequestStage = approvalStatus === '' || approvalStatus === 'New Request';
+  const isReviewableStage = approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed';
 
   // Field-level editability — distinct from isStageA (which only gates the
   // Approve/Deny/Counter-Propose action buttons). Entering from Workdesk
@@ -1968,7 +1988,13 @@ function RecordDetailPage({
         )}
         {/* Action buttons pushed to the right — field-sync-source legend removed, not used here */}
         <div className="ml-auto flex items-center gap-4 flex-shrink-0">
-          {canUpdate && isStageA && (
+          {canUpdate && isNewRequestStage && (
+            <button type="button" onClick={handleMoveToUnderReview} disabled={saving}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
+              Move to Under Review
+            </button>
+          )}
+          {canUpdate && isReviewableStage && (
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowApproveConfirm(true)} disabled={saving}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
