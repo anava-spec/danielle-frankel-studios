@@ -77,6 +77,7 @@ const FIELD_IDS = {
   BASE_PRICE:                  'fldLBXbdD3SUfXSgL',
   PROPOSED_CUSTOM_PRICING:     'fldXWP4eMZuSKWmep',
   PROPOSED_TOTAL_CUSTOM_PRICE: 'fldtF37zwwAPb5hjS',
+  CLIENT_PROPOSED_PRICING:     'fldNLwgg5sVAnoo4S',   // client_proposed_pricing — the price the client is proposing in their own counter-proposal
   APPROVED_PRICING:            'fldFRRjwVlCgHhPdA',
   RUSH:                        'fldt92ponsfyKqDS1',
   RUSH_FEE:                    'fldfLFUmvEsER1pvI',
@@ -1444,6 +1445,7 @@ function CounterProposalModal({
   const fBasePrice        = customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fEmbroidery       = customizationsTable.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fApproved         = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
+  const fClientProposedPricing = customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_PROPOSED_PRICING);
   const fParentRequest    = customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
   const fApprStatus       = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS);
   const pPriceField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
@@ -1452,7 +1454,11 @@ function CounterProposalModal({
   const pTypeField    = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_CUSTOMIZATION_TYPE) ?? null;
 
   const clientName = fClient ? getLinkedRecordName(parentRecord.getCellValue(fClient)) : '—';
-  const priceFieldLabel = sourceLayout === 'ops' ? 'Internal Proposed Price' : 'Internal Approved Price';
+  // A client's own counter-proposal hasn't been internally reviewed yet, so
+  // its price is recorded as client_proposed_pricing — a distinct field from
+  // internal_approved_pricing, which only gets a value once Margo actually
+  // approves it (see handleApprove).
+  const priceFieldLabel = source === 'client' ? 'Client Proposed Price' : (sourceLayout === 'ops' ? 'Internal Proposed Price' : 'Internal Approved Price');
   const isHybrid = !!(fIsHybrid && parentRecord.getCellValueAsString(fIsHybrid) === 'Hybrid');
   const typeText = fIsHybrid ? (parentRecord.getCellValueAsString(fIsHybrid) || 'Regular') : 'Regular';
   const typeColorMap = useMemo(() => getChoiceColorMap(fIsHybrid), [fIsHybrid]);
@@ -1572,7 +1578,11 @@ function CounterProposalModal({
       const childFields: Record<string, unknown> = {
         [FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST]: [{ id: rootId }],
         [FIELD_IDS.APPROVAL_STATUS]: { name: childApprovalStatusName },
-        [FIELD_IDS.APPROVED_PRICING]: priceNum,
+        // A client's own counter-proposal price hasn't been internally
+        // reviewed yet, so it's recorded separately from internal_approved_
+        // pricing (which stays empty until Margo actually approves it — see
+        // handleApprove, which copies this value over at that point).
+        [source === 'client' ? FIELD_IDS.CLIENT_PROPOSED_PRICING : FIELD_IDS.APPROVED_PRICING]: priceNum,
         [FIELD_IDS.CUSTOMIZATION_DETAIL]: additionalDetails || null,
       };
       if (clientLink) childFields[FIELD_IDS.CLIENT] = clientLink.map(c => ({ id: c.id }));
@@ -1810,6 +1820,7 @@ function RecordDetailPage({
   const fEmbroidery = table.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fBasePrice  = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fApproved   = table.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
+  const fClientProposedPricing = table.getFieldIfExists(FIELD_IDS.CLIENT_PROPOSED_PRICING);
   const fClient     = table.getFieldIfExists(FIELD_IDS.CLIENT);
   const fClientApprovalStatus = table.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS);
   const fProposedTotal        = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
@@ -1943,14 +1954,25 @@ function RecordDetailPage({
   // negotiated internal_approved_pricing from when it was created — approving
   // it just confirms that number, never recomputes it from this record's own
   // proposed_total_custom_price (which reflects its own Customizations
-  // selection, not the price actually agreed on).
+  // selection, not the price actually agreed on). The one exception: a
+  // client-sourced counter-proposal has no internal_approved_pricing yet
+  // (only client_proposed_pricing, set at creation) — approving it is the
+  // moment Margo internally confirms that ask, so it copies over then.
   const handleApprove = async () => {
     setSaving(true);
     try {
       const proposedTotal = fProposedTotal ? (record.getCellValue(fProposedTotal) as number | null) : null;
+      const existingApproved = fApproved ? (record.getCellValue(fApproved) as number | null) : null;
+      const clientProposedValue = fClientProposedPricing ? (record.getCellValue(fClientProposedPricing) as number | null) : null;
       const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved' } };
       if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Request Review' };
-      if (fApproved && !isCounterProposal) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
+      if (fApproved) {
+        if (!isCounterProposal) {
+          patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
+        } else if (existingApproved == null && clientProposedValue != null) {
+          patch[FIELD_IDS.APPROVED_PRICING] = clientProposedValue;
+        }
+      }
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Approved');
       if (fClientApprovalStatus) setClientApprovalStatus('Request Review');
@@ -2179,6 +2201,13 @@ function RecordDetailPage({
 
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
+
+  // The Counter-Proposed Price shown pre-approval — internal_approved_pricing
+  // if this CP already has its own negotiated price (an internal counter),
+  // otherwise client_proposed_pricing (a client counter, not yet reviewed).
+  const currentProposedPriceStr = (fApproved && record.getCellValueAsString(fApproved))
+    || (fClientProposedPricing && record.getCellValueAsString(fClientProposedPricing))
+    || '';
 
   return (
     <div className="h-screen flex flex-col font-sans antialiased" style={{ backgroundColor: '#F8F5EE' }}>
@@ -2412,13 +2441,14 @@ function RecordDetailPage({
 
               <div className="w-[40%] shrink-0">
                 <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  {/* Approved Price and Counter-Proposed Price are the same
-                      underlying field (APPROVED_PRICING) read two ways — once
-                      a request is actually Approved, that's the number that
-                      matters, so it takes the top slot and the largest font.
-                      While still mid-review, the same value reads as
-                      "Counter-Proposed" instead, at a smaller size since it
-                      isn't final yet. Never both at once. */}
+                  {/* Approved Price (internal_approved_pricing) takes the top
+                      slot and largest font once a request is actually
+                      Approved — that's the number that matters. Pre-approval,
+                      the same-shaped block instead shows the Counter-Proposed
+                      Price at a smaller size, sourced from internal_approved_
+                      pricing (an internal counter) or client_proposed_pricing
+                      (a client counter not yet reviewed) — see
+                      currentProposedPriceStr. Never both at once. */}
                   {approvalStatus === 'Approved' && fApproved ? (
                     <>
                       <span className={labelCls}>Approved Price</span>
@@ -2427,11 +2457,11 @@ function RecordDetailPage({
                       </div>
                       <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
                     </>
-                  ) : isCounterProposal && fApproved && (
+                  ) : isCounterProposal && currentProposedPriceStr && (
                     <>
                       <span className={labelCls}>Counter-Proposed Price</span>
                       <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 pb-2">
-                        {record.getCellValueAsString(fApproved) || '—'}
+                        {currentProposedPriceStr}
                       </div>
                       <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
                     </>
@@ -2547,12 +2577,16 @@ function RecordDetailPage({
                           const rCreatedAt = fCreatedAt ? (r.getCellValue(fCreatedAt) as string | null) : null;
                           // Approved Pricing is only ever populated once this
                           // specific record was itself internally approved or
-                          // created as a counter (see CounterProposalModal) —
-                          // a request that was denied straight into a counter
-                          // (the common case for every non-final thread
-                          // member) never got one, so fall back to its own
-                          // Proposed Total Custom Price (the SA's original ask).
+                          // created as an internal counter (see
+                          // CounterProposalModal) — a client-sourced counter
+                          // only has client_proposed_pricing until Margo
+                          // reviews it, and a request that was denied straight
+                          // into a counter (the common case for every non-
+                          // final thread member) never got either, so fall
+                          // back to its own Proposed Total Custom Price (the
+                          // SA's original ask).
                           const rAmount = (fApproved ? r.getCellValueAsString(fApproved) : '')
+                            || (fClientProposedPricing ? r.getCellValueAsString(fClientProposedPricing) : '')
                             || (fProposedTotal ? r.getCellValueAsString(fProposedTotal) : '');
                           // The most recent thread member is always the one
                           // already reachable directly from a list view (that's
