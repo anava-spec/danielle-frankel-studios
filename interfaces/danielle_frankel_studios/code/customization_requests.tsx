@@ -2259,13 +2259,37 @@ function RecordDetailPage({
         <div className="flex-1 overflow-y-auto py-5">
           <div className="mx-auto space-y-5" style={{ width: '60%' }}>
 
-            {/* Approved banner — up top, above everything, so it's the first
-                thing seen once a request is ready to go to the client. Same
-                width as the left (fields) column below it, not the panel
-                pair combined. */}
+            {/* Status banners — every one of them lives up top by default, so
+                whatever's most relevant about this request's state is the
+                first thing seen, above both panels. Same width as the left
+                (fields) column below, not the panel pair combined. */}
             {approvalStatus === 'Approved' && (
               <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
                 Customization Request Approved - review with the client.
+              </div>
+            )}
+            {isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed') && (
+              <div className="w-[60%] bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
+                This is a counter-proposal — review the revised price in the Summary panel above.
+              </div>
+            )}
+            {(approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') && (
+              <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                {approvalStatus === 'Denied • Counter-Proposal'
+                  ? 'This customization request was denied — a counter-proposal was submitted in its place.'
+                  : 'This customization request was denied.'}
+              </div>
+            )}
+            {(clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') && (
+              <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                {clientApprovalStatus === 'Denied • Counter-Proposal'
+                  ? 'The client denied this proposal — a counter-proposal was submitted in its place.'
+                  : 'The client denied this proposal.'}
+              </div>
+            )}
+            {clientApprovalStatus === 'Approved' && (
+              <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
+                The client approved — sent to production.
               </div>
             )}
 
@@ -2512,31 +2536,6 @@ function RecordDetailPage({
               </div>
             )}
 
-            {/* Status banners */}
-            {isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed') && (
-              <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-                This is a counter-proposal — review the revised price in the Summary panel above.
-              </div>
-            )}
-            {(approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') && (
-              <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
-                {approvalStatus === 'Denied • Counter-Proposal'
-                  ? 'This customization request was denied — a counter-proposal was submitted in its place.'
-                  : 'This customization request was denied.'}
-              </div>
-            )}
-            {(clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') && (
-              <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
-                {clientApprovalStatus === 'Denied • Counter-Proposal'
-                  ? 'The client denied this proposal — a counter-proposal was submitted in its place.'
-                  : 'The client denied this proposal.'}
-              </div>
-            )}
-            {clientApprovalStatus === 'Approved' && (
-              <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
-                The client approved — sent to production.
-              </div>
-            )}
             {error && <div className="text-red-600 dark:text-red-400 text-sm">{error}</div>}
 
           </div>
