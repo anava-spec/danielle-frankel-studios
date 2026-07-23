@@ -2330,6 +2330,7 @@ function CustomizationApp(): React.ReactElement {
       hybridCustomizationClient: customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_CUSTOMIZATION_CLIENT),
       customizedStyle:          customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE),
       approvalStatus:           customizationsTable.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS),
+      clientApprovalStatus:     customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS),
       salesAssociate:           customizationsTable.getFieldIfExists(FIELD_IDS.SALES_ASSOCIATE),
       dateOfRequest:            customizationsTable.getFieldIfExists(FIELD_IDS.DATE_OF_REQUEST),
       weddingDate:              customizationsTable.getFieldIfExists(FIELD_IDS.WEDDING_DATE),
@@ -2344,7 +2345,36 @@ function CustomizationApp(): React.ReactElement {
   }, [customizationsTable]);
 
   const approvalChoiceColors = useMemo(() => getChoiceColorMap(fields?.approvalStatus ?? null), [fields]);
-  const approvalStatusOptions = useMemo(() => getFieldChoiceNames(fields?.approvalStatus ?? null), [fields]);
+
+  // The Approval Status filter combines both status fields into one list —
+  // each option prefixed by which field it comes from ("Internal …" / "Client
+  // …") since the two fields' choices aren't mutually exclusive (e.g. both
+  // have their own "Denied"). A record's own combined label picks whichever
+  // field is actually in play: once client_approval_status has a value, that
+  // supersedes the internal one as "the" current status (matches how the
+  // Detail Page's Client Decision stage works) — otherwise it falls back to
+  // internal_approval_status ('' reads as "New Request", its default).
+  const combinedApprovalOptions = useMemo(() => {
+    const internalOpts = getFieldChoiceNames(fields?.approvalStatus ?? null).map(o => `Internal ${o}`);
+    const clientOpts   = getFieldChoiceNames(fields?.clientApprovalStatus ?? null).map(o => `Client ${o}`);
+    return [...internalOpts, ...clientOpts];
+  }, [fields]);
+
+  const getCombinedStatusLabel = useCallback((internalVal: string, clientVal: string) =>
+    clientVal ? `Client ${clientVal}` : `Internal ${internalVal || 'New Request'}`,
+  []);
+
+  // Workdesk default view: hide requests that are already fully resolved
+  // (internally denied outright, or the client already decided) so staff land
+  // on what's still actionable — applied once combinedApprovalOptions is
+  // known, and only if the user hasn't touched the filter yet.
+  const DEFAULT_HIDDEN_APPROVAL_STATUSES = ['Internal Denied', 'Client Approved', 'Client Denied'];
+  const approvalFilterInitialized = useRef(false);
+  useEffect(() => {
+    if (approvalFilterInitialized.current || combinedApprovalOptions.length === 0) return;
+    approvalFilterInitialized.current = true;
+    setFilterApprovalStatus(combinedApprovalOptions.filter(o => !DEFAULT_HIDDEN_APPROVAL_STATUSES.includes(o)));
+  }, [combinedApprovalOptions]);
 
   const filteredRecords = useMemo(() => {
     if (!fields) return [];
@@ -2361,18 +2391,30 @@ function CustomizationApp(): React.ReactElement {
       const saValue     = fields.salesAssociate   ? record.getCellValueAsString(fields.salesAssociate) : '';
       const styleRaw    = fields.customizedStyle  ? record.getCellValue(fields.customizedStyle)        : null;
       const styleValue  = getLinkedRecordName(styleRaw);
-      const approvalVal = fields.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
       const clientValue = fields.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '';
       return (filterSA.length === 0            || filterSA.some(f => saValue.includes(f)))
           && (filterStyle.length === 0          || filterStyle.some(f => styleValue.includes(f)))
-          && (filterApprovalStatus.length === 0 || filterApprovalStatus.includes(approvalVal))
           && (!clientSearch.trim()              || clientValue.toLowerCase().includes(clientSearch.trim().toLowerCase()));
     }).sort((a, b) => {
       const aDate = fields.dateOfRequest ? resolveDateString(a.getCellValue(fields.dateOfRequest)) : '';
       const bDate = fields.dateOfRequest ? resolveDateString(b.getCellValue(fields.dateOfRequest)) : '';
       return bDate.localeCompare(aDate);
     });
-  }, [allCustomizationRecords, filterSA, filterStyle, filterApprovalStatus, clientSearch, fields]);
+  }, [allCustomizationRecords, filterSA, filterStyle, clientSearch, fields]);
+
+  // Approval Status filter applies only to the Workdesk table — the Approval
+  // layout's New Requests/Under Review buckets (derived from filteredRecords
+  // below) are scoped by internal_approval_status directly and should never
+  // be affected by this filter or its "hide resolved requests" default.
+  const workdeskRecords = useMemo(() => {
+    if (!fields) return [];
+    return filteredRecords.filter(record => {
+      const approvalVal = fields.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
+      const clientApprovalVal = fields.clientApprovalStatus ? getSingleSelectName(record.getCellValue(fields.clientApprovalStatus)) : '';
+      const combinedLabel = getCombinedStatusLabel(approvalVal, clientApprovalVal);
+      return filterApprovalStatus.length === 0 || filterApprovalStatus.includes(combinedLabel);
+    });
+  }, [filteredRecords, fields, filterApprovalStatus, getCombinedStatusLabel]);
 
   // Shared row-projection logic — used by both the Ops (single-table) layout
   // and the Approval layout's two split tables, so the two never drift.
@@ -2409,17 +2451,15 @@ function CustomizationApp(): React.ReactElement {
   }, [fields, allCustomizationRecords]);
 
   // Approval layout — same underlying filtered set (search/SA/Style still
-  // apply), split into the two status buckets. "New Requests" includes both
-  // an empty status and the explicit "Request" choice, per Axel's spec.
+  // apply, approval-status filter does not), split by internal_approval_status
+  // only. "New Requests" includes both an empty status and the explicit "New
+  // Request" choice; "Under Review" is exactly that status, nothing else.
   const newRequestRecords = useMemo(
     () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'New Request'; }),
     [filteredRecords, buildRowData]
   );
-  // Counter-Proposed records fold into Under Review here too — they're not
-  // terminal, they still need an Approve/Deny/Counter-Propose decision (see
-  // isStageA in RecordDetailPage).
   const underReviewRecords = useMemo(
-    () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === 'Under Review' || v === 'Counter-Proposed'; }),
+    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Review'),
     [filteredRecords, buildRowData]
   );
 
@@ -2496,7 +2536,7 @@ function CustomizationApp(): React.ReactElement {
         <FilterDropdown label="Sales Associate" values={filterSA}             options={saOptions}               onChange={setFilterSA} />
         <FilterDropdown label="Style"           values={filterStyle}          options={styleOptions}            onChange={setFilterStyle} searchable />
         {layout === 'ops' && (
-          <FilterDropdown label="Approval Status" values={filterApprovalStatus} options={approvalStatusOptions}  onChange={setFilterApprovalStatus} />
+          <FilterDropdown label="Approval Status" values={filterApprovalStatus} options={combinedApprovalOptions}  onChange={setFilterApprovalStatus} />
         )}
         <div className="ml-auto flex items-center gap-3">
           <LayoutDropdown value={layout} onChange={setLayout} />
@@ -2521,7 +2561,7 @@ function CustomizationApp(): React.ReactElement {
                 </tr>
               </thead>
               <tbody>
-                {filteredRecords.map(record => {
+                {workdeskRecords.map(record => {
                   const { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal } = buildRowData(record);
                   const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                   return (
@@ -2538,7 +2578,7 @@ function CustomizationApp(): React.ReactElement {
                     </tr>
                   );
                 })}
-                {filteredRecords.length === 0 && (
+                {workdeskRecords.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
                       No customization records found.
