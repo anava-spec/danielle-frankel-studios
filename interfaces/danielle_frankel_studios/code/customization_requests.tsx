@@ -436,9 +436,11 @@ function StyleSelectSingle({ value, options, placeholder, onChange, disabled }: 
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => !disabled && setOpen(o => !o)} disabled={disabled}
-        className="w-full flex items-center justify-between gap-2 bg-white dark:bg-[#1B1813] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-left outline-none hover:border-gray-400 dark:hover:border-amber-400/50 transition-colors disabled:opacity-50">
+        className={`w-full flex items-center justify-between gap-2 bg-white dark:bg-[#1B1813] border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-left outline-none transition-colors ${disabled ? 'cursor-default' : 'hover:border-gray-400 dark:hover:border-amber-400/50 cursor-pointer'}`}>
         <span className={sel ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}>{sel?.label ?? placeholder}</span>
-        <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {!disabled && (
+          <CaretDownIcon size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        )}
       </button>
       {open && dropdownPos && createPortal(
         <div ref={dropdownRef}
@@ -863,10 +865,14 @@ function HybridChildColumn({
 
       <div>
         <span className={labelCls}>Additional Details</span>
-        <textarea value={detail} onChange={e => setDetail(e.target.value)}
-          onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
-          disabled={!canUpdate} placeholder="Describe the specific customization…"
-          rows={3} className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors resize-none" />
+        {canUpdate ? (
+          <textarea value={detail} onChange={e => setDetail(e.target.value)}
+            onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
+            placeholder="Describe the specific customization…"
+            rows={3} className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors resize-none" />
+        ) : (
+          <div className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-[#1B1813] whitespace-pre-wrap min-h-[74px]">{detail || '—'}</div>
+        )}
       </div>
     </div>
   );
@@ -2086,11 +2092,16 @@ function RecordDetailPage({
 
                 <div>
                   <span className={labelCls}>Additional Details</span>
-                  <textarea value={detail} onChange={e => setDetail(e.target.value)}
-                    onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
-                    disabled={!canEditFields}
-                    placeholder="Describe the specific customization…"
-                    rows={3} className={`${inputCls} resize-none`} />
+                  {canEditFields ? (
+                    <textarea value={detail} onChange={e => setDetail(e.target.value)}
+                      onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
+                      placeholder="Describe the specific customization…"
+                      rows={3} className={`${inputCls} resize-none`} />
+                  ) : (
+                    // Read-only: a div grows with its content instead of a
+                    // fixed-rows textarea that would need internal scrolling.
+                    <div className={`${inputCls} whitespace-pre-wrap min-h-[74px]`}>{detail || '—'}</div>
+                  )}
                 </div>
               </div>
 
