@@ -1826,6 +1826,8 @@ function RecordDetailPage({
       return !!link?.some(l => l.id === rootRecord.id);
     });
   }, [fParentRequest, allCustomizationRecords, rootRecord]);
+  // Chronological (oldest first) — the source of truth for "Original" /
+  // "Counter-Proposal N" labeling, which only makes sense in creation order.
   const threadRecords = useMemo(
     () => [rootRecord, ...threadChildren].sort((a, b) => {
       const aTime = fCreatedAt ? (a.getCellValue(fCreatedAt) as string | null) ?? '' : '';
@@ -1834,6 +1836,9 @@ function RecordDetailPage({
     }),
     [rootRecord, threadChildren, fCreatedAt]
   );
+  // Display order for the History table — most recent first — with labeling
+  // still resolved against threadRecords' chronological order.
+  const threadRecordsDisplay = useMemo(() => [...threadRecords].reverse(), [threadRecords]);
 
   // ── Pricing table fields, shared by every line item and the rush fee row ───
   const pPriceField   = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_PRICE) : null;
@@ -2183,6 +2188,27 @@ function RecordDetailPage({
               </button>
             </div>
           )}
+          {/* Client decision — actionable once internal approval sent this to
+              "Request Review" (client_approval_status). Only executable from
+              Workdesk (the Approval layout's job is the internal decision
+              above). Same slot as the internal buttons — the two never show
+              at once, since they gate on different stages. */}
+          {isClientStageA && canUpdate && sourceLayout === 'ops' && (
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setShowClientApproveConfirm(true)} disabled={saving}
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
+                Client Approved
+              </button>
+              <button type="button" onClick={() => setShowClientDenyConfirm(true)} disabled={saving}
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+                Client Denied
+              </button>
+              <button type="button" onClick={() => setShowClientCounterModal(true)} disabled={saving}
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
+                Client Counter-Proposed
+              </button>
+            </div>
+          )}
           {canDelete && (
             <button type="button" onClick={() => setShowDeleteModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex-shrink-0">
@@ -2216,6 +2242,14 @@ function RecordDetailPage({
         <div className="flex-1 overflow-y-auto py-5">
           <div className="mx-auto space-y-5" style={{ width: '60%' }}>
 
+            {/* Approved banner — up top, above everything, so it's the first
+                thing seen once a request is ready to go to the client. */}
+            {approvalStatus === 'Approved' && (
+              <div className="w-1/2 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-base text-green-700 dark:text-green-300">
+                Customization Request Approved - review with the client.
+              </div>
+            )}
+
             {/* Fields (60%) + sticky Summary (40%) — same split as recap.tsx's
                 edit-mode layout, for both Regular and Hybrid (parity: the two
                 interfaces share one field layout, only the page chrome
@@ -2224,18 +2258,31 @@ function RecordDetailPage({
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-5">
                 <div className="flex gap-4 items-start">
-                  <div className="w-[20%] shrink-0">
+                  <div className="w-1/3 min-w-0">
                     <span className={labelCls}>Created By</span>
                     {fCreatedBy ? <CellRenderer record={record} field={fCreatedBy} /> : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
                   </div>
-                  <div className="w-[80%] min-w-0">
-                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                      <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
-                    </div>
-                    <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                      onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
+                  <div className="w-1/3 min-w-0">
+                    <span className={labelCls}>Internal Approval</span>
+                    {approvalStatus ? <ApprovalStatusPill status={approvalStatus} colorMap={approvalColorMap} /> : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
                   </div>
+                  {/* Same width as the other two even when empty — client
+                      review hasn't started yet for most of a request's life,
+                      so this column just goes blank rather than collapsing
+                      and shifting the row's rhythm. */}
+                  <div className="w-1/3 min-w-0">
+                    <span className={labelCls}>Client Approval</span>
+                    {clientApprovalStatus && <ApprovalStatusPill status={clientApprovalStatus} colorMap={clientApprovalColorMap} />}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+                  </div>
+                  <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
+                    onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
                 </div>
 
                 <div>
@@ -2278,17 +2325,25 @@ function RecordDetailPage({
 
               <div className="w-[40%] shrink-0">
                 <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                  {/* Counter-Proposed Price sits here, not at the bottom of the
-                      page — same shape as the Counter-Proposal form's own
-                      Summary panel: the revised price up top, then a divider,
-                      then the ROOT's original cost breakdown below it. Keyed
-                      off parent_customization_request being non-empty, not
-                      this record's own status — a counter-proposal reads as
-                      one here at any stage (New Request, Under Review, etc). */}
-                  {isCounterProposal && fApproved && (
+                  {/* Approved Price and Counter-Proposed Price are the same
+                      underlying field (APPROVED_PRICING) read two ways — once
+                      a request is actually Approved, that's the number that
+                      matters, so it takes the top slot and the largest font.
+                      While still mid-review, the same value reads as
+                      "Counter-Proposed" instead, at a smaller size since it
+                      isn't final yet. Never both at once. */}
+                  {approvalStatus === 'Approved' && fApproved ? (
+                    <>
+                      <span className={labelCls}>Approved Price</span>
+                      <div className="text-3xl font-bold text-gray-900 dark:text-gray-100 pb-2">
+                        {record.getCellValueAsString(fApproved) || '—'}
+                      </div>
+                      <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
+                    </>
+                  ) : isCounterProposal && fApproved && (
                     <>
                       <span className={labelCls}>Counter-Proposed Price</span>
-                      <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 pb-2">
+                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 pb-2">
                         {record.getCellValueAsString(fApproved) || '—'}
                       </div>
                       <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
@@ -2370,44 +2425,11 @@ function RecordDetailPage({
               );
             })()}
 
-            {/* Client Decision — actionable once internal approval sent this to
-                "Request Review" (client_approval_status). Only executable from
-                Workdesk (the Approval layout's job is the internal decision
-                above) — labeled with the "Client" prefix here since, unlike
-                the internal buttons, this is the one that needs disambiguating
-                from the other action set a Workdesk user could otherwise
-                confuse it with. */}
-            {isClientStageA && (
-              <div className="border-t border-gray-200 dark:border-white/10 pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className={labelCls.replace(' mb-1.5 block', '')}>Client Decision</span>
-                  {clientApprovalStatus && (
-                    <ApprovalStatusPill status={clientApprovalStatus} colorMap={clientApprovalColorMap} />
-                  )}
-                </div>
-                {canUpdate && sourceLayout === 'ops' && (
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setShowClientApproveConfirm(true)} disabled={saving}
-                      className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
-                      Client Approved
-                    </button>
-                    <button type="button" onClick={() => setShowClientDenyConfirm(true)} disabled={saving}
-                      className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
-                      Client Denied
-                    </button>
-                    <button type="button" onClick={() => setShowClientCounterModal(true)} disabled={saving}
-                      className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
-                      Client Counter-Proposed
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Counter-Proposal History — every record in this thread (the
                 root + all its counter-proposals, all linked directly to the
-                same root under the one-to-many model). Collapsed by default;
-                quick-review inline table, not the full detail view. */}
+                same root under the one-to-many model), most recent first.
+                Collapsed by default; quick-review inline table, not the full
+                detail view. */}
             {threadRecords.length > 1 && (
               <div className="border-t border-gray-200 dark:border-white/10 pt-4">
                 <button type="button" onClick={() => setShowHistory(v => !v)}
@@ -2427,11 +2449,23 @@ function RecordDetailPage({
                         </tr>
                       </thead>
                       <tbody>
-                        {threadRecords.map((r, i) => {
+                        {threadRecordsDisplay.map(r => {
+                          // Chronological position (for the Original/Counter-
+                          // Proposal N label) comes from threadRecords, not
+                          // from this display-order pass.
+                          const i = threadRecords.indexOf(r);
                           const isCurrent = r.id === record.id;
                           const rStatus = fApprStatus ? getSingleSelectName(r.getCellValue(fApprStatus)) : '';
                           const rCreatedAt = fCreatedAt ? (r.getCellValue(fCreatedAt) as string | null) : null;
-                          const rAmount = fApproved ? r.getCellValueAsString(fApproved) : '';
+                          // Approved Pricing is only ever populated once this
+                          // specific record was itself internally approved or
+                          // created as a counter (see CounterProposalModal) —
+                          // a request that was denied straight into a counter
+                          // (the common case for every non-final thread
+                          // member) never got one, so fall back to its own
+                          // Proposed Total Custom Price (the SA's original ask).
+                          const rAmount = (fApproved ? r.getCellValueAsString(fApproved) : '')
+                            || (fProposedTotal ? r.getCellValueAsString(fProposedTotal) : '');
                           return (
                             <tr key={r.id} className={`border-b border-gray-100 dark:border-white/5 last:border-0 ${isCurrent ? 'bg-amber-50/40 dark:bg-white/5' : ''}`}>
                               <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
@@ -2461,20 +2495,6 @@ function RecordDetailPage({
                 {approvalStatus === 'Denied • Counter-Proposal'
                   ? 'This customization request was denied — a counter-proposal was submitted in its place.'
                   : 'This customization request was denied.'}
-              </div>
-            )}
-            {approvalStatus === 'Approved' && (
-              <div className="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
-                Approved — proposed to the client.
-              </div>
-            )}
-            {/* Counter-Proposed Price moved to the Summary panel above — see
-                the Regular-body Summary block. Approved Price stays here,
-                since it isn't mentioned as needing to move. */}
-            {approvalStatus === 'Approved' && fApproved && (
-              <div>
-                <span className={labelCls}>Approved Price</span>
-                <div className="text-sm text-gray-900 dark:text-gray-200">{record.getCellValueAsString(fApproved) || '—'}</div>
               </div>
             )}
             {(clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') && (
