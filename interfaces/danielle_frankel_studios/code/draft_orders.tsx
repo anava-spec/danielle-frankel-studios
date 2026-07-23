@@ -16,6 +16,8 @@ import {
   LockOpen as LockOpenIcon,
   ArrowLeft as ArrowLeftIcon,
   CaretDown as CaretDownIcon,
+  CurrencyDollar as CurrencyDollarIcon,
+  Percent as PercentIcon,
 } from '@phosphor-icons/react';
 
 const FIELD_IDS = {
@@ -26,7 +28,10 @@ const FIELD_IDS = {
   DRAFT_RUSH_FEE: 'fldWXGAL7RkCbfQ5h',
   DRAFT_SHIPPING: 'fldcItXhwxpimLdyR',
   DRAFT_TAXES: 'fldLzzEF6NIoYdKMF',
-  DRAFT_DISCOUNT: 'fldjyvFWtv5cr05nV',
+  // Discount can be entered as a flat dollar amount or a percentage — only
+  // one of these two fields is ever meant to hold a value at a time.
+  DRAFT_DISCOUNT_CURRENCY: 'fldjyvFWtv5cr05nV',
+  DRAFT_DISCOUNT_PERCENTAGE: 'fldMFPOvXbdRwLIlt',
   DRAFT_SHIPPING_NOTES: 'fld8I8RAeCknwwOJQ',
   DRAFT_TAXES_NOTES: 'fldcfJOub8fF9ZOPM',
   DRAFT_DISCOUNT_NOTES: 'fld8nhM0InrdrqXWh',
@@ -151,6 +156,15 @@ function formatDate(dateStr: string | null | undefined): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
 
+// Shipping is a multipleLookupValues field — its cell value is an array (one
+// entry per linked record), even though the state_costs link only ever holds
+// one. Unwrap to the first numeric entry instead of casting the array itself
+// to `number` (which silently produced NaN/0 in the detail page).
+function unwrapLookupNumber(value: unknown): number | null {
+  if (Array.isArray(value)) return typeof value[0] === 'number' ? value[0] : null;
+  return typeof value === 'number' ? value : null;
+}
+
 function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined || typeof value !== 'number' || isNaN(value)) return '$0.00';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -194,6 +208,62 @@ function parseCurrency(value: string): number {
   const cleaned = value.replace(/[^0-9.-]/g, '');
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+// Percent fields store a fraction (0.1 = 10%) — parse a typed "10" into 0.1,
+// and format the stored fraction back into a "10%" display string.
+function parsePercentInput(value: string): number {
+  const cleaned = value.replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed / 100;
+}
+
+function formatPercentDisplay(value: number): string {
+  if (typeof value !== 'number' || isNaN(value)) return '0%';
+  return `${Math.round(value * 100)}%`;
+}
+
+// Borderless currency/percent icon toggle for the Discount row — no border so
+// it sits flush inside the table cell, matching the row's own transparent inputs.
+function DiscountModeToggle({
+  mode,
+  onChange,
+  theme,
+  disabled,
+}: {
+  mode: 'currency' | 'percentage';
+  onChange: (mode: 'currency' | 'percentage') => void;
+  theme: typeof COLORS.LIGHT;
+  disabled?: boolean;
+}) {
+  const iconButtonStyle = (active: boolean): React.CSSProperties => ({
+    color: active ? theme.text : theme.textMuted,
+    backgroundColor: active ? theme.bgHover : 'transparent',
+  });
+  return (
+    <div className="flex items-center gap-0.5 rounded-md p-0.5">
+      <button
+        type="button"
+        onClick={() => onChange('currency')}
+        disabled={disabled}
+        title="Dollar amount"
+        className="p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:cursor-pointer"
+        style={iconButtonStyle(mode === 'currency')}
+      >
+        <CurrencyDollarIcon size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('percentage')}
+        disabled={disabled}
+        title="Percentage"
+        className="p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:cursor-pointer"
+        style={iconButtonStyle(mode === 'percentage')}
+      >
+        <PercentIcon size={14} />
+      </button>
+    </div>
+  );
 }
 
 function StatusPill({ label, variant }: { label: string; variant: 'locked' | 'unlocked' | 'tentative' }) {
@@ -963,6 +1033,8 @@ function Layer2({
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
   const [selectedStateCostId, setSelectedStateCostId] = useState<string | null>(null);
   const [discount, setDiscount] = useState('');
+  const [discountPercent, setDiscountPercent] = useState('');
+  const [discountMode, setDiscountMode] = useState<'currency' | 'percentage'>('currency');
   const [shippingNotes, setShippingNotes] = useState('');
   const [taxesNotes, setTaxesNotes] = useState('');
   const [discountNotes, setDiscountNotes] = useState('');
@@ -1026,7 +1098,8 @@ function Layer2({
   const hasUnsavedChanges = selectedStyleIds.length > 0
     || selectedCustomizationIds.length > 0
     || !!selectedStateCostId
-    || discount.trim() !== '';
+    || discount.trim() !== ''
+    || discountPercent.trim() !== '';
 
   const handleCloseAttempt = () => {
     if (hasUnsavedChanges) {
@@ -1232,10 +1305,16 @@ function Layer2({
     return getRushFeeExplanation(standaloneCount, weeksUntilDueDate, clientDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField);
   }, [selectedStyles, selectedCustomizations, clientDueDate, weeksUntilDueDate, rushFeeRuleRecords, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
+  const discountAmount = useMemo(() => {
+    if (discountMode === 'percentage') {
+      return (styleSubtotal + customizationSubtotal) * parsePercentInput(discountPercent);
+    }
+    return parseCurrency(discount);
+  }, [discountMode, discount, discountPercent, styleSubtotal, customizationSubtotal]);
+
   const total = useMemo(() => {
-    const disc = parseCurrency(discount);
-    return rushFee + previewShipping + previewTaxes - disc;
-  }, [rushFee, previewShipping, previewTaxes, discount]);
+    return rushFee + previewShipping + previewTaxes - discountAmount;
+  }, [rushFee, previewShipping, previewTaxes, discountAmount]);
 
   const grandTotal = useMemo(() => {
     return styleSubtotal + customizationSubtotal + total;
@@ -1255,7 +1334,8 @@ function Layer2({
       const customizationsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATIONS);
       const stateCostsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_STATE_COSTS);
       const rushFeeFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
-      const discountFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
+      const discountCurrencyFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_CURRENCY);
+      const discountPercentageFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_PERCENTAGE);
       const shippingNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
       const taxesNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
       const discountNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
@@ -1269,7 +1349,13 @@ function Layer2({
       if (rushFeeFieldObj) fields[rushFeeFieldObj.id] = rushFee;
       // Shipping/Taxes are no longer writable — shipping is a lookup and taxes
       // a formula, both derived from state_costs, so they aren't in this payload.
-      if (discountFieldObj) fields[discountFieldObj.id] = parseCurrency(discount);
+      // Discount is entered as either a dollar amount or a percentage — only
+      // write to whichever field matches the selected mode.
+      if (discountMode === 'percentage') {
+        if (discountPercentageFieldObj) fields[discountPercentageFieldObj.id] = parsePercentInput(discountPercent);
+      } else {
+        if (discountCurrencyFieldObj) fields[discountCurrencyFieldObj.id] = parseCurrency(discount);
+      }
       if (shippingNotesFieldObj && shippingNotes.trim()) fields[shippingNotesFieldObj.id] = shippingNotes.trim();
       if (taxesNotesFieldObj && taxesNotes.trim()) fields[taxesNotesFieldObj.id] = taxesNotes.trim();
       if (discountNotesFieldObj && discountNotes.trim()) fields[discountNotesFieldObj.id] = discountNotes.trim();
@@ -1757,15 +1843,18 @@ function Layer2({
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">Discount</td>
                         <td className="py-3">
-                          <input
-                            type="text"
-                            placeholder="$0.00"
-                            value={discount}
-                            onChange={e => setDiscount(e.target.value)}
-                            disabled={!clientId}
-                            className="w-full px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
-                          />
+                          <div className="flex items-center justify-end gap-1">
+                            <DiscountModeToggle mode={discountMode} onChange={setDiscountMode} theme={theme} disabled={!clientId} />
+                            <input
+                              type="text"
+                              placeholder={discountMode === 'percentage' ? '0%' : '$0.00'}
+                              value={discountMode === 'percentage' ? discountPercent : discount}
+                              onChange={e => discountMode === 'percentage' ? setDiscountPercent(e.target.value) : setDiscount(e.target.value)}
+                              disabled={!clientId}
+                              className="flex-1 min-w-0 px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
+                            />
+                          </div>
                         </td>
                         <td className="py-3 pl-3 pr-4">
                           <input
@@ -1828,10 +1917,10 @@ function Layer2({
                     <span>{formatCurrency(previewTaxes)}</span>
                   </div>
                 )}
-                {parseCurrency(discount) !== 0 && (
+                {discountAmount !== 0 && (
                   <div className="flex justify-between">
                     <span style={{ color: theme.textSecondary }}>Discount</span>
-                    <span>-{formatCurrency(parseCurrency(discount))}</span>
+                    <span>-{formatCurrency(discountAmount)}</span>
                   </div>
                 )}
                 {total !== 0 && (
@@ -1978,7 +2067,8 @@ function Layer4({
   const rushFeeField = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
   const shippingField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
   const taxesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
-  const discountField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
+  const discountField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_CURRENCY);
+  const discountPercentageField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_PERCENTAGE);
   const shippingNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
   const taxesNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
   const discountNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
@@ -2004,6 +2094,7 @@ function Layer4({
   const clientFavoriteStylesAppointmentField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_APPOINTMENT);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [discountMode, setDiscountMode] = useState<'currency' | 'percentage'>('currency');
   const [styleSearchQuery, setStyleSearchQuery] = useState('');
   const [showStyleSearch, setShowStyleSearch] = useState(false);
   const [styleHighlightIndex, setStyleHighlightIndex] = useState(-1);
@@ -2179,9 +2270,16 @@ function Layer4({
   const stateCostRecord = stateCostId ? stateCostRecords.find(r => r.id === stateCostId) ?? null : null;
   const stateCostName = stateCostRecord && stateCostNameField ? stateCostRecord.getCellValueAsString(stateCostNameField) : '';
   const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
-  const shipping = shippingField ? (draft.getCellValue(shippingField) as number | null) ?? 0 : 0;
+  const shipping = shippingField ? unwrapLookupNumber(draft.getCellValue(shippingField)) ?? 0 : 0;
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
+  const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
+
+  // Default the toggle to whichever of the two discount fields actually has a
+  // value for this draft, once per draft loaded.
+  useEffect(() => {
+    setDiscountMode(discountPercentage > 0 && discount === 0 ? 'percentage' : 'currency');
+  }, [draftId]); // eslint-disable-line react-hooks/exhaustive-deps
   const shippingNotes = shippingNotesField ? draft.getCellValueAsString(shippingNotesField) : '';
   const taxesNotes = taxesNotesField ? draft.getCellValueAsString(taxesNotesField) : '';
   const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
@@ -2360,6 +2458,20 @@ function Layer4({
   const handleCurrencyBlur = async (field: Field | null, value: string, fieldKey: string) => {
     if (!isEditable || !field) return;
     const numValue = parseCurrency(value);
+    try {
+      await draftOrdersTable.updateRecordAsync(draftId, {
+        [field.id]: numValue,
+      });
+      setFieldErrors({ ...fieldErrors, [fieldKey]: '' });
+    } catch (error) {
+      console.error(`Failed to update ${fieldKey}:`, error);
+      setFieldErrors({ ...fieldErrors, [fieldKey]: `Failed to update ${fieldKey}.` });
+    }
+  };
+
+  const handlePercentBlur = async (field: Field | null, value: string, fieldKey: string) => {
+    if (!isEditable || !field) return;
+    const numValue = parsePercentInput(value);
     try {
       await draftOrdersTable.updateRecordAsync(draftId, {
         [field.id]: numValue,
@@ -2674,23 +2786,25 @@ function Layer4({
           )}
 
           <div>
-              <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
               <div className="flex items-center justify-between gap-3 mb-3">
-                <h2 className="text-base font-semibold">
-                  State Costs<span style={{ color: theme.danger }}> *</span>
-                </h2>
-                {isEditable ? (
-                  <StateCostPicker
-                    theme={theme}
-                    records={stateCostRecords}
-                    nameField={stateCostNameField}
-                    selectedId={stateCostId}
-                    onSelect={handleStateCostChange}
-                    placeholder="Select a state..."
-                  />
-                ) : (
-                  <span className="text-sm">{stateCostName || '—'}</span>
-                )}
+                <h2 className="text-base font-semibold">Additional Charges</h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">
+                    State Costs<span style={{ color: theme.danger }}> *</span>
+                  </span>
+                  {isEditable ? (
+                    <StateCostPicker
+                      theme={theme}
+                      records={stateCostRecords}
+                      nameField={stateCostNameField}
+                      selectedId={stateCostId}
+                      onSelect={handleStateCostChange}
+                      placeholder="Select a state..."
+                    />
+                  ) : (
+                    <span className="text-sm">{stateCostName || '—'}</span>
+                  )}
+                </div>
               </div>
               {!clientDueDate && (
                 <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
@@ -2749,8 +2863,21 @@ function Layer4({
                     <td className="py-3 pl-4">Discount</td>
                     <td className="py-3">
                       {isEditable ? (
-                        <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
-                      ) : <span className="block text-right">{`-${formatCurrency(discount)}`}</span>}
+                        <div className="flex items-center justify-end gap-1">
+                          <DiscountModeToggle mode={discountMode} onChange={setDiscountMode} theme={theme} />
+                          <div className="flex-1 min-w-0">
+                            {discountMode === 'percentage' ? (
+                              <PercentInput label="Discount" value={discountPercentage} field={discountPercentageField} fieldKey="discountPercentage" error={fieldErrors.discountPercentage} theme={theme} onBlur={handlePercentBlur} hideLabel borderless />
+                            ) : (
+                              <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="block text-right">
+                          {discountMode === 'percentage' ? `-${formatPercentDisplay(discountPercentage)}` : `-${formatCurrency(discount)}`}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
@@ -2849,6 +2976,45 @@ function CurrencyInput({ label, value, field, fieldKey, error, theme, onBlur, hi
 
   useEffect(() => {
     setLocalValue(formatCurrency(value));
+  }, [value]);
+
+  return (
+    <div>
+      {!hideLabel && <label className="block text-xs mb-1" style={{ color: theme.textSecondary }}>{label}</label>}
+      <input
+        type="text"
+        value={localValue}
+        onChange={e => setLocalValue(e.target.value)}
+        onBlur={() => onBlur(field, localValue, fieldKey)}
+        className={borderless ? 'w-full px-2 py-1 text-sm text-right' : 'w-full px-3 py-2 rounded-md text-sm'}
+        style={borderless ? { backgroundColor: 'transparent', border: 'none', color: theme.text } : {
+          backgroundColor: theme.bg,
+          border: `1px solid ${error ? theme.danger : theme.border}`,
+          color: theme.text
+        }}
+      />
+      {error && <p className="text-xs mt-1" style={{ color: theme.danger }}>{error}</p>}
+    </div>
+  );
+}
+
+interface PercentInputProps {
+  label: string;
+  value: number;
+  field: Field | null;
+  fieldKey: string;
+  error?: string;
+  theme: typeof COLORS.LIGHT;
+  onBlur: (field: Field | null, value: string, fieldKey: string) => Promise<void>;
+  hideLabel?: boolean;
+  borderless?: boolean;
+}
+
+function PercentInput({ label, value, field, fieldKey, error, theme, onBlur, hideLabel, borderless }: PercentInputProps) {
+  const [localValue, setLocalValue] = useState(formatPercentDisplay(value));
+
+  useEffect(() => {
+    setLocalValue(formatPercentDisplay(value));
   }, [value]);
 
   return (
