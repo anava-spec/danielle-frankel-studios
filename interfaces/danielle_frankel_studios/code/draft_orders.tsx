@@ -71,6 +71,8 @@ const FIELD_IDS = {
   // and Taxes (formula) are calculated from.
   DRAFT_STATE_COSTS: 'fldtrW4LVfozdSTqK',
   STATE_COST_NAME: 'fldsKpV6cPlPA767U',
+  STATE_COST_SHIPPING_FEE: 'fldz4DHNqBy8RMtlo',
+  STATE_COST_TAX_RATE: 'fld3we9X0lJ1X8jMc',
 
   RUSH_RULE_WEEKS: 'fldQXdvm2BiegkSeM',
   RUSH_RULE_NON_CUSTOMIZED_PCT: 'flds560NGzla4hbfu',
@@ -150,7 +152,7 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 function formatCurrency(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '$0.00';
+  if (value === null || value === undefined || typeof value !== 'number' || isNaN(value)) return '$0.00';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 }
 
@@ -926,8 +928,6 @@ function Layer2({
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
   const [selectedStateCostId, setSelectedStateCostId] = useState<string | null>(null);
-  const [shipping, setShipping] = useState('');
-  const [taxes, setTaxes] = useState('');
   const [discount, setDiscount] = useState('');
   const [shippingNotes, setShippingNotes] = useState('');
   const [taxesNotes, setTaxesNotes] = useState('');
@@ -982,6 +982,8 @@ function Layer2({
   const customizationEffectivePriceField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_EFFECTIVE_PRICE);
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
   const stateCostNameField = getField(stateCostsTable, FIELD_IDS.STATE_COST_NAME);
+  const stateCostShippingFeeField = getField(stateCostsTable, FIELD_IDS.STATE_COST_SHIPPING_FEE);
+  const stateCostTaxRateField = getField(stateCostsTable, FIELD_IDS.STATE_COST_TAX_RATE);
   const rushRuleWeeksField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_WEEKS);
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
   const clientFavoriteStylesAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_ACUITY);
@@ -990,7 +992,7 @@ function Layer2({
   const hasUnsavedChanges = selectedStyleIds.length > 0
     || selectedCustomizationIds.length > 0
     || !!selectedStateCostId
-    || [shipping, taxes, discount].some(v => v.trim() !== '');
+    || discount.trim() !== '';
 
   const handleCloseAttempt = () => {
     if (hasUnsavedChanges) {
@@ -1107,6 +1109,24 @@ function Layer2({
     }, 0);
   }, [selectedCustomizations, customizationEffectivePriceField]);
 
+  const selectedStateCost = useMemo(() => {
+    return selectedStateCostId ? stateCostRecords.find(r => r.id === selectedStateCostId) ?? null : null;
+  }, [stateCostRecords, selectedStateCostId]);
+
+  // Live preview of Shipping (lookup) and Taxes (formula), computed here since
+  // Airtable can't calculate either until the draft is actually saved with a
+  // linked state_costs record.
+  const previewShipping = useMemo(() => {
+    if (!selectedStateCost || !stateCostShippingFeeField) return 0;
+    return (selectedStateCost.getCellValue(stateCostShippingFeeField) as number | null) ?? 0;
+  }, [selectedStateCost, stateCostShippingFeeField]);
+
+  const previewTaxes = useMemo(() => {
+    if (!selectedStateCost || !stateCostTaxRateField) return 0;
+    const rate = (selectedStateCost.getCellValue(stateCostTaxRateField) as number | null) ?? 0;
+    return (styleSubtotal + customizationSubtotal) * rate;
+  }, [selectedStateCost, stateCostTaxRateField, styleSubtotal, customizationSubtotal]);
+
   const clientDueDate = useMemo(() => {
     if (!clientId) return null;
     const client = clientRecords.find(c => c.id === clientId);
@@ -1170,11 +1190,9 @@ function Layer2({
   }, [selectedStyles, selectedCustomizations, clientDueDate, weeksUntilDueDate, rushFeeRuleRecords, stylePriceField, rushRuleWeeksField, rushRuleNonCustomizedPctField, customizationCustomizedStyleField, getLinkedRecordIds]);
 
   const total = useMemo(() => {
-    const ship = parseCurrency(shipping);
-    const tax = parseCurrency(taxes);
     const disc = parseCurrency(discount);
-    return rushFee + ship + tax - disc;
-  }, [rushFee, shipping, taxes, discount]);
+    return rushFee + previewShipping + previewTaxes - disc;
+  }, [rushFee, previewShipping, previewTaxes, discount]);
 
   const grandTotal = useMemo(() => {
     return styleSubtotal + customizationSubtotal + total;
@@ -1666,9 +1684,7 @@ function Layer2({
                       )}
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">Shipping</td>
-                        <td className="py-3 pr-2 text-right text-sm" style={{ color: theme.textMuted }}>
-                          {selectedStateCostId ? 'Calculated after saving' : '—'}
-                        </td>
+                        <td className="py-3 pr-2 text-right">{formatCurrency(previewShipping)}</td>
                         <td className="py-3 pl-3 pr-4">
                           <input
                             type="text"
@@ -1683,9 +1699,7 @@ function Layer2({
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">Taxes</td>
-                        <td className="py-3 pr-2 text-right text-sm" style={{ color: theme.textMuted }}>
-                          {selectedStateCostId ? 'Calculated after saving' : '—'}
-                        </td>
+                        <td className="py-3 pr-2 text-right">{formatCurrency(previewTaxes)}</td>
                         <td className="py-3 pl-3 pr-4">
                           <input
                             type="text"
@@ -1760,16 +1774,16 @@ function Layer2({
                     <span>{formatCurrency(rushFee)}</span>
                   </div>
                 )}
-                {parseCurrency(shipping) !== 0 && (
+                {previewShipping !== 0 && (
                   <div className="flex justify-between">
                     <span style={{ color: theme.textSecondary }}>Shipping</span>
-                    <span>{formatCurrency(parseCurrency(shipping))}</span>
+                    <span>{formatCurrency(previewShipping)}</span>
                   </div>
                 )}
-                {parseCurrency(taxes) !== 0 && (
+                {previewTaxes !== 0 && (
                   <div className="flex justify-between">
                     <span style={{ color: theme.textSecondary }}>Taxes</span>
-                    <span>{formatCurrency(parseCurrency(taxes))}</span>
+                    <span>{formatCurrency(previewTaxes)}</span>
                   </div>
                 )}
                 {parseCurrency(discount) !== 0 && (
@@ -2610,6 +2624,23 @@ function Layer4({
 
           <div>
               <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h2 className="text-base font-semibold">
+                  State Costs<span style={{ color: theme.danger }}> *</span>
+                </h2>
+                {isEditable ? (
+                  <StateCostPicker
+                    theme={theme}
+                    records={stateCostRecords}
+                    nameField={stateCostNameField}
+                    selectedId={stateCostId}
+                    onSelect={handleStateCostChange}
+                    placeholder="Select a state..."
+                  />
+                ) : (
+                  <span className="text-sm">{stateCostName || '—'}</span>
+                )}
+              </div>
               {!clientDueDate && (
                 <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
                   Rush fee requires a wedding date on file.
@@ -2640,25 +2671,6 @@ function Layer4({
                       </td>
                     </tr>
                   )}
-                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-3 pl-4">
-                      State Costs<span style={{ color: theme.danger }}> *</span>
-                    </td>
-                    <td className="py-3" colSpan={2}>
-                      {isEditable ? (
-                        <StateCostPicker
-                          theme={theme}
-                          records={stateCostRecords}
-                          nameField={stateCostNameField}
-                          selectedId={stateCostId}
-                          onSelect={handleStateCostChange}
-                          placeholder="Select a state..."
-                        />
-                      ) : (
-                        <span>{stateCostName || '—'}</span>
-                      )}
-                    </td>
-                  </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">Shipping</td>
                     {/* Shipping is now a lookup off state_costs — always read-only, regardless of isEditable. */}
