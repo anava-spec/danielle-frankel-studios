@@ -187,7 +187,7 @@ function getRushFeeExplanation(
     : 0;
   const pctLabel = `${Math.round(rushPct * 100)}%`;
 
-  return `Applies a ${pctLabel} rush fee to ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'} — only ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} remain until the due date (${formatDate(dueDate.toISOString())}), which falls in the ≤${ruleWeeks}-week rush tier. Customized styles are excluded since their pricing already accounts for rush timing.`;
+  return `Applies a ${pctLabel} rush fee to ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'} — only ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} remain until the due date (${formatDate(dueDate.toISOString())}), which falls in the ≤${ruleWeeks}-week rush tier.`;
 }
 
 function parseCurrency(value: string): number {
