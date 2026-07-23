@@ -2312,13 +2312,13 @@ function RecordDetailPage({
                     {hybridChildRecords[0] && (
                       <HybridChildColumn
                         title="Style 1" childRecord={hybridChildRecords[0]} table={table}
-                        styleOptions={styleOptions} canUpdate={canEditFields}
+                        styleOptions={styleOptions} canUpdate={canEditStyleCustomizations}
                       />
                     )}
                     {hybridChildRecords[1] && (
                       <HybridChildColumn
                         title="Style 2" childRecord={hybridChildRecords[1]} table={table}
-                        styleOptions={styleOptions} canUpdate={canEditFields}
+                        styleOptions={styleOptions} canUpdate={canEditStyleCustomizations}
                       />
                     )}
                   </div>
