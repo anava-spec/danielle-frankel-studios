@@ -2229,21 +2229,22 @@ function RecordDetailPage({
           )}
           {/* Internal decision — Under Review is Margo's call (Approval layout);
               Counter-Proposed is the SA's call, reviewing Margo's own counter
-              (Workdesk). See canActInternally above. No prefix needed on these
-              labels since there's only one meaning in either context. */}
+              (Workdesk). See canActInternally above. The SA's turn gets an
+              "SA " prefix so these don't get confused with the client-facing
+              set of buttons in the same slot. */}
           {canActInternally && (
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowApproveConfirm(true)} disabled={saving}
                 className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
-                Approve
+                {sourceLayout === 'ops' ? 'SA Approve' : 'Approve'}
               </button>
               <button type="button" onClick={() => setShowDenyConfirm(true)} disabled={saving}
                 className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
-                Deny
+                {sourceLayout === 'ops' ? 'SA Deny' : 'Deny'}
               </button>
               <button type="button" onClick={() => setShowCounterModal(true)} disabled={saving}
                 className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-amber-600 dark:bg-amber-500 hover:bg-amber-700 dark:hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50">
-                Counter-Propose
+                {sourceLayout === 'ops' ? 'SA Counter-Propose' : 'Counter-Propose'}
               </button>
             </div>
           )}
