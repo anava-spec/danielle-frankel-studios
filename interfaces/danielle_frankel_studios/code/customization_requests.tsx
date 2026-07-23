@@ -372,6 +372,13 @@ function LayoutDropdown({ value, onChange }: { value: typeof LAYOUT_OPTIONS[numb
   );
 }
 
+// Type column colors — not a real Airtable field's choices (requestType is
+// purely derived, see buildRowData), so its colors are just hardcoded here.
+const REQUEST_TYPE_COLORS: Record<string, string> = {
+  'New Request': '#6B7280',
+  'Counter-Proposal': '#B45309',
+};
+
 // ─── ApprovalStatusPill — colors read from field choices at runtime ───────────
 // colorMap is built via getChoiceColorMap(field) so it adapts as options change.
 // Sizes are each 1pt smaller than the previous iteration:
@@ -2961,7 +2968,7 @@ function CustomizationApp(): React.ReactElement {
                           className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-move transition-colors">
                           <td className={cellCls}>{clientText}</td>
                           <td className={cellCls}>{styleText}</td>
-                          <td className={cellCls}>{requestType}</td>
+                          <td className="px-3 py-2.5"><ApprovalStatusPill status={requestType} colorMap={REQUEST_TYPE_COLORS} /></td>
                           <td className={cellCls}>{saText}</td>
                           <td className={cellCls}>{formatDate(dateStr)}</td>
                           <td className={cellCls}>{proposedVal || '—'}</td>
@@ -3005,7 +3012,7 @@ function CustomizationApp(): React.ReactElement {
                           className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
                           <td className={cellCls}>{clientText}</td>
                           <td className={cellCls}>{styleText}</td>
-                          <td className={cellCls}>{requestType}</td>
+                          <td className="px-3 py-2.5"><ApprovalStatusPill status={requestType} colorMap={REQUEST_TYPE_COLORS} /></td>
                           <td className={cellCls}>{saText}</td>
                           <td className={cellCls}>{formatDate(dateStr)}</td>
                           <td className={cellCls}>{proposedVal || '—'}</td>
