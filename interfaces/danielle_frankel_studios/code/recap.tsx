@@ -1220,7 +1220,7 @@ function HybridSectionFields({
           check below, unchanged). */}
       {showCustomizations && (
         <div>
-          <span className={labelCls}>Embroidery Amount</span>
+          <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
           <StyleSelectSingle value={value.embroidery} options={embroideryOptions} placeholder="Select…" onChange={id => onChange({ embroidery: id })} />
         </div>
       )}

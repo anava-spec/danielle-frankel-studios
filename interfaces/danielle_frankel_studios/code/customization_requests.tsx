@@ -1033,7 +1033,7 @@ function DraftSectionFields({
           any selected line item happens to be flagged is_embroidery. */}
       {showCustomizations && (
         <div>
-          <span className={labelCls}>Embroidery Amount</span>
+          <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
           <StyleSelectSingle value={value.embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…" onChange={id => onChange({ embroidery: id })} />
         </div>
       )}
@@ -1646,7 +1646,7 @@ function CounterProposalModal({
                   Details below. */}
               {!isHybrid && (
                 <div>
-                  <span className={labelCls}>Embroidery Amount</span>
+                  <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
                   <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
                     onChange={setEmbroidery} />
                 </div>
@@ -2234,7 +2234,7 @@ function RecordDetailPage({
                     is_embroidery. Same editable/non-editable rule as every
                     other field here (canEditFields). */}
                 <div>
-                  <span className={labelCls}>Embroidery Amount</span>
+                  <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
                   <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
                     onChange={handleEmbroidery} disabled={!canEditFields} />
                 </div>
