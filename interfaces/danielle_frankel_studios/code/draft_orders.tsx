@@ -1841,20 +1841,22 @@ function Layer2({
                         </td>
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-3 pl-4">Discount</td>
-                        <td className="py-3">
-                          <div className="flex items-center justify-end gap-1">
+                        <td className="py-3 pl-4">
+                          <div className="flex items-center gap-2">
+                            <span>Discount</span>
                             <DiscountModeToggle mode={discountMode} onChange={setDiscountMode} theme={theme} disabled={!clientId} />
-                            <input
-                              type="text"
-                              placeholder={discountMode === 'percentage' ? '0%' : '$0.00'}
-                              value={discountMode === 'percentage' ? discountPercent : discount}
-                              onChange={e => discountMode === 'percentage' ? setDiscountPercent(e.target.value) : setDiscount(e.target.value)}
-                              disabled={!clientId}
-                              className="flex-1 min-w-0 px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
-                            />
                           </div>
+                        </td>
+                        <td className="py-3">
+                          <input
+                            type="text"
+                            placeholder={discountMode === 'percentage' ? '0%' : '$0.00'}
+                            value={discountMode === 'percentage' ? discountPercent : discount}
+                            onChange={e => discountMode === 'percentage' ? setDiscountPercent(e.target.value) : setDiscount(e.target.value)}
+                            disabled={!clientId}
+                            className="w-full px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
+                          />
                         </td>
                         <td className="py-3 pl-3 pr-4">
                           <input
@@ -2860,19 +2862,21 @@ function Layer4({
                     </td>
                   </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-3 pl-4">Discount</td>
+                    <td className="py-3 pl-4">
+                      <div className="flex items-center gap-2">
+                        <span>Discount</span>
+                        {isEditable && (
+                          <DiscountModeToggle mode={discountMode} onChange={setDiscountMode} theme={theme} />
+                        )}
+                      </div>
+                    </td>
                     <td className="py-3">
                       {isEditable ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <DiscountModeToggle mode={discountMode} onChange={setDiscountMode} theme={theme} />
-                          <div className="flex-1 min-w-0">
-                            {discountMode === 'percentage' ? (
-                              <PercentInput label="Discount" value={discountPercentage} field={discountPercentageField} fieldKey="discountPercentage" error={fieldErrors.discountPercentage} theme={theme} onBlur={handlePercentBlur} hideLabel borderless />
-                            ) : (
-                              <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
-                            )}
-                          </div>
-                        </div>
+                        discountMode === 'percentage' ? (
+                          <PercentInput label="Discount" value={discountPercentage} field={discountPercentageField} fieldKey="discountPercentage" error={fieldErrors.discountPercentage} theme={theme} onBlur={handlePercentBlur} hideLabel borderless />
+                        ) : (
+                          <CurrencyInput label="Discount" value={discount} field={discountField} fieldKey="discount" error={fieldErrors.discount} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
+                        )
                       ) : (
                         <span className="block text-right">
                           {discountMode === 'percentage' ? `-${formatPercentDisplay(discountPercentage)}` : `-${formatCurrency(discount)}`}
