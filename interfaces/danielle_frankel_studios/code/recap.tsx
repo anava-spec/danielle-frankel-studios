@@ -1214,7 +1214,11 @@ function HybridSectionFields({
         </div>
       )}
 
-      {showCustomizations && embroideryApplicable && (
+      {/* Always shown below Customizations, per Julia — not gated on whether
+          any selected line item happens to be flagged is_embroidery
+          (embroideryApplicable still feeds proposalMissing's requiredness
+          check below, unchanged). */}
+      {showCustomizations && (
         <div>
           <span className={labelCls}>Embroidery Amount</span>
           <StyleSelectSingle value={value.embroidery} options={embroideryOptions} placeholder="Select…" onChange={id => onChange({ embroidery: id })} />

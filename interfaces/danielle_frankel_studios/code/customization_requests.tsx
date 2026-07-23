@@ -94,10 +94,6 @@ const FIELD_IDS = {
   PRICING_PERCENT:             'fldzVvl1ZMSfEGQdQ',
   PRICING_MULTIPLE:            'fldEKZTpnJ5Y1gjOw',
   PRICING_IS_ACTIVE:           'fldWqVqCtMi5MVq9T',
-  // Gates Embroidery Amount visibility: true iff any currently-selected
-  // Customization Pricing line item has this checkbox checked (per Julia's
-  // 2026-07-20 demo feedback — Embroidery is no longer tied to Style).
-  PRICING_IS_EMBROIDERY:       'fldXgmTz2GNW969Mw',
   STAFF_FULL_NAME:             'fldc8INBZmwC3xeH7',
   STAFF_ROLE_NAME:             'fld1P7ZjPabKLrlPG',
   STAFF_IS_ACTIVE:             'fldB6rPTjxATp7uMf',
@@ -967,12 +963,12 @@ function emptyDraftSection(): DraftSectionValue {
 // show Style + Additional Details (per Julia's 2026-07-20 demo feedback).
 function DraftSectionFields({
   title, value, onChange, styleOptions, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
-  basePriceNumber, multiplierFactor, showCustomizations = true, embroideryApplicable = false,
+  basePriceNumber, multiplierFactor, showCustomizations = true,
 }: {
   title?: string; value: DraftSectionValue; onChange: (patch: Partial<DraftSectionValue>) => void;
   styleOptions: { id: string; label: string }[]; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   preApprovalField: Field | null; preApprovalColorMap: Record<string, string>;
-  basePriceNumber: number; multiplierFactor: number; showCustomizations?: boolean; embroideryApplicable?: boolean;
+  basePriceNumber: number; multiplierFactor: number; showCustomizations?: boolean;
 }) {
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
@@ -1032,7 +1028,9 @@ function DraftSectionFields({
         </div>
       )}
 
-      {showCustomizations && embroideryApplicable && (
+      {/* Always shown below Customizations, per Julia — not gated on whether
+          any selected line item happens to be flagged is_embroidery. */}
+      {showCustomizations && (
         <div>
           <span className={labelCls}>Embroidery Amount</span>
           <StyleSelectSingle value={value.embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…" onChange={id => onChange({ embroidery: id })} />
@@ -1090,15 +1088,6 @@ function NewRequestModal({
     const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
     return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
   }).sort((a, b) => a.label.localeCompare(b.label)), [stylesRecords, stylesBasePriceField]);
-
-  const pIsEmbroideryField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_IS_EMBROIDERY) ?? null;
-  const embroideryApplicableFor = useCallback((section: DraftSectionValue) => {
-    if (!pIsEmbroideryField) return false;
-    return section.pricingIds.some(id => {
-      const r = pricingRecords.find(pr => pr.id === id);
-      return r ? !!(r.getCellValue(pIsEmbroideryField) as boolean | null) : false;
-    });
-  }, [pIsEmbroideryField, pricingRecords]);
 
   const sectionTotals = useCallback((section: DraftSectionValue) => {
     const styleRec = section.styleId ? (stylesRecords.find(r => r.id === section.styleId) ?? null) : null;
@@ -1243,7 +1232,6 @@ function NewRequestModal({
                   styleOptions={styleOptions} pricingRecords={pricingRecords} pricingTable={pricingTable}
                   preApprovalField={preApprovalField} preApprovalColorMap={preApprovalColorMap}
                   basePriceNumber={regularTotals.basePriceNumber} multiplierFactor={regularTotals.multiplierFactor}
-                  embroideryApplicable={embroideryApplicableFor(regularSection)}
                 />
               </div>
               <div className="w-[40%] shrink-0">
@@ -1464,11 +1452,12 @@ function CounterProposalModal({
   }, [isHybrid, fPricing, parentRecord]);
 
   const basePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0;
-  // Same embroidery value the child will inherit (see handleSubmit) — reused
-  // here so the read-only preview matches what the child actually ends up
-  // priced at, instead of assuming a flat multiplier of 1.
-  const parentEmbroidery = fEmbroidery ? (parentRecord.getCellValueAsString(fEmbroidery) || null) : null;
-  const multiplierFactor = computeMultiplierFactor(0, parentEmbroidery);
+  // Embroidery Amount — defaults to the parent's own value but is editable
+  // here (same as everywhere else this field appears), always shown below
+  // Customizations per Julia. Drives the live multiplier preview and is what
+  // actually gets written to the child on submit (not a raw parent copy).
+  const [embroidery, setEmbroidery] = useState<string | null>(fEmbroidery ? (parentRecord.getCellValueAsString(fEmbroidery) || null) : null);
+  const multiplierFactor = computeMultiplierFactor(0, embroidery);
 
   const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
   const selectedItems = useMemo(() => {
@@ -1557,14 +1546,10 @@ function CounterProposalModal({
           childFields[FIELD_IDS.CUSTOMIZED_STYLE] = styleLink ? styleLink.map(s => ({ id: s.id })) : null;
         }
         childFields[FIELD_IDS.CUSTOMIZATION_PRICING] = pricingIds.map(id => ({ id }));
-        // Embroidery Amount wasn't being copied — the child inherited the
-        // parent's line items but not this, so its own multiplier-priced rows
-        // (e.g. Hand Painted) silently computed against a blank embroidery
-        // value (multiplier factor 0) instead of the parent's real one.
-        if (fEmbroidery) {
-          const embroideryVal = parentRecord.getCellValueAsString(fEmbroidery);
-          childFields[FIELD_IDS.AMOUNT_EMBROIDERY] = embroideryVal ? { name: embroideryVal } : null;
-        }
+        // Writes whatever's currently in the (editable) Embroidery Amount
+        // field above — defaults to the parent's value but can be adjusted
+        // as part of the counter, same as any other field in this form.
+        if (fEmbroidery) childFields[FIELD_IDS.AMOUNT_EMBROIDERY] = embroidery ? { name: embroidery } : null;
       }
       await customizationsTable.createRecordAsync(childFields);
       onSubmitted();
@@ -1641,6 +1626,17 @@ function CounterProposalModal({
                     totalAmount={totalCustomizationCost}
                     disabled
                   />
+                </div>
+              )}
+
+              {/* Always shown below Customizations, per Julia — defaults to
+                  the parent's value but is editable, same as Additional
+                  Details below. */}
+              {!isHybrid && (
+                <div>
+                  <span className={labelCls}>Embroidery Amount</span>
+                  <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
+                    onChange={setEmbroidery} />
                 </div>
               )}
 
@@ -1781,7 +1777,6 @@ function RecordDetailPage({
   const pMultiField   = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) : null;
   const pTypeField    = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_CUSTOMIZATION_TYPE) : null;
   const pActiveField  = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_IS_ACTIVE) : null;
-  const pIsEmbroideryField = pricingTable ? pricingTable.getFieldIfExists(FIELD_IDS.PRICING_IS_EMBROIDERY) : null;
   // Pre-Approval (per-line-item approval status) has no fixed field ID, so
   // unlike the rest of this file it's bound via the custom-properties panel
   // (see getCustomProperties above) rather than a hardcoded FIELD_IDS lookup —
@@ -2061,14 +2056,6 @@ function RecordDetailPage({
     [hybridChildBasePrices]
   );
 
-  const embroideryApplicable = useMemo(() => {
-    if (!pIsEmbroideryField || !pricingRecords) return false;
-    return pricingIds.some(id => {
-      const r = pricingRecords.find(pr => pr.id === id);
-      return r ? !!(r.getCellValue(pIsEmbroideryField) as boolean | null) : false;
-    });
-  }, [pIsEmbroideryField, pricingRecords, pricingIds]);
-
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
 
@@ -2182,13 +2169,15 @@ function RecordDetailPage({
                   />
                 </div>
 
-                {embroideryApplicable && (
-                  <div>
-                    <span className={labelCls}>Embroidery Amount</span>
-                    <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
-                      onChange={handleEmbroidery} disabled={!canEditFields} />
-                  </div>
-                )}
+                {/* Always shown below Customizations, per Julia — not gated on
+                    whether a selected line item happens to be flagged
+                    is_embroidery. Same editable/non-editable rule as every
+                    other field here (canEditFields). */}
+                <div>
+                  <span className={labelCls}>Embroidery Amount</span>
+                  <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
+                    onChange={handleEmbroidery} disabled={!canEditFields} />
+                </div>
 
                 <div>
                   <span className={labelCls}>Additional Details</span>
