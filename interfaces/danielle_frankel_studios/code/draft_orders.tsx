@@ -67,6 +67,11 @@ const FIELD_IDS = {
   CUSTOMIZATION_PROPOSED_TOTAL: 'fldtF37zwwAPb5hjS',
   CUSTOMIZATION_EFFECTIVE_PRICE: 'fldFjHCKBNcWz6z0V',
 
+  // state_costs: single linked record on Draft Orders that Shipping (lookup)
+  // and Taxes (formula) are calculated from.
+  DRAFT_STATE_COSTS: 'fldtrW4LVfozdSTqK',
+  STATE_COST_NAME: 'fldsKpV6cPlPA767U',
+
   RUSH_RULE_WEEKS: 'fldQXdvm2BiegkSeM',
   RUSH_RULE_NON_CUSTOMIZED_PCT: 'flds560NGzla4hbfu',
 } as const;
@@ -254,6 +259,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
     { key: 'clientsTable', label: 'Clients', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c') },
     { key: 'stylesTable', label: 'Styles', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl0hWIRBbcB4UkVC') },
     { key: 'customizationsTable', label: 'Customizations', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl7HUWDI7IRjWY92') },
+    { key: 'stateCostsTable', label: 'State costs', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblMnPV8Z00QePma9') },
     { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') },
     { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') },
   ];
@@ -268,6 +274,7 @@ function DraftOrdersApp() {
   const clientsTable = customPropertyValueByKey.clientsTable as Table | undefined;
   const stylesTable = customPropertyValueByKey.stylesTable as Table | undefined;
   const customizationsTable = customPropertyValueByKey.customizationsTable as Table | undefined;
+  const stateCostsTable = customPropertyValueByKey.stateCostsTable as Table | undefined;
   const rushFeeRulesTable = customPropertyValueByKey.rushFeeRulesTable as Table | undefined;
   const staffTable = customPropertyValueByKey.staffTable as Table | undefined;
 
@@ -275,6 +282,7 @@ function DraftOrdersApp() {
   const clientRecords = useRecords(clientsTable ?? null);
   const styleRecords = useRecords(stylesTable ?? null);
   const customizationRecords = useRecords(customizationsTable ?? null);
+  const stateCostRecords = useRecords(stateCostsTable ?? null);
   const rushFeeRuleRecords = useRecords(rushFeeRulesTable ?? null);
   const staffRecords = useRecords(staffTable ?? null);
 
@@ -291,7 +299,7 @@ function DraftOrdersApp() {
     );
   }
 
-  if (!draftOrdersTable || !clientsTable || !stylesTable || !customizationsTable || !rushFeeRulesTable) {
+  if (!draftOrdersTable || !clientsTable || !stylesTable || !customizationsTable || !stateCostsTable || !rushFeeRulesTable) {
     return (
       <div className="h-screen flex items-center justify-center p-8" style={{ backgroundColor: theme.bg }}>
         <div className="text-center" style={{ color: theme.textSecondary }}>
@@ -362,11 +370,13 @@ function DraftOrdersApp() {
           draftRecords={draftRecords ?? []}
           styleRecords={styleRecords ?? []}
           customizationRecords={customizationRecords ?? []}
+          stateCostRecords={stateCostRecords ?? []}
           rushFeeRuleRecords={rushFeeRuleRecords ?? []}
           clientRecords={clientRecords ?? []}
           draftOrdersTable={draftOrdersTable}
           stylesTable={stylesTable}
           customizationsTable={customizationsTable}
+          stateCostsTable={stateCostsTable}
           rushFeeRulesTable={rushFeeRulesTable}
           clientsTable={clientsTable}
           getField={getField}
@@ -412,11 +422,13 @@ function DraftOrdersApp() {
               clientRecords={clientRecords ?? []}
               styleRecords={styleRecords ?? []}
               customizationRecords={customizationRecords ?? []}
+              stateCostRecords={stateCostRecords ?? []}
               rushFeeRuleRecords={rushFeeRuleRecords ?? []}
               draftOrdersTable={draftOrdersTable}
               clientsTable={clientsTable}
               stylesTable={stylesTable}
               customizationsTable={customizationsTable}
+              stateCostsTable={stateCostsTable}
               rushFeeRulesTable={rushFeeRulesTable}
               getField={getField}
               getLinkedRecordIds={getLinkedRecordIds}
@@ -740,17 +752,144 @@ function Layer3({
   );
 }
 
+// Single-select linked-record combobox for state_costs (Shipping/Taxes are
+// calculated from whichever state is linked here) — same search/dropdown/
+// keyboard-nav pattern as the Client/Style/Customization pickers in this
+// file, but replaces the selection instead of toggling into an array.
+function StateCostPicker({
+  theme,
+  records,
+  nameField,
+  selectedId,
+  onSelect,
+  disabled,
+  placeholder = 'Search state...',
+}: {
+  theme: typeof COLORS.LIGHT;
+  records: AirtableRecord[];
+  nameField: Field | null;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedRecord = selectedId ? records.find(r => r.id === selectedId) ?? null : null;
+  const selectedLabel = selectedRecord && nameField ? selectedRecord.getCellValueAsString(nameField) : '';
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return records.slice(0, 60);
+    const q = query.toLowerCase();
+    return records.filter(r => (nameField ? r.getCellValueAsString(nameField).toLowerCase() : '').includes(q)).slice(0, 60);
+  }, [records, query, nameField]);
+
+  return (
+    <div ref={containerRef} className="relative w-64">
+      <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: theme.textMuted }} />
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={open ? query : selectedLabel}
+        onChange={e => {
+          setQuery(e.target.value);
+          setOpen(true);
+          setHighlightIndex(-1);
+        }}
+        onFocus={() => {
+          setOpen(true);
+          setQuery('');
+          setHighlightIndex(-1);
+        }}
+        onKeyDown={e => {
+          if (!open || filtered.length === 0) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlightIndex(i => Math.min(i + 1, filtered.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlightIndex(i => Math.max(i - 1, 0));
+          } else if (e.key === 'Enter' && highlightIndex >= 0) {
+            e.preventDefault();
+            onSelect(filtered[highlightIndex].id);
+            setOpen(false);
+            setQuery('');
+          }
+        }}
+        disabled={disabled}
+        className={`w-full pl-9 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed ${selectedId ? 'pr-9' : 'pr-3'}`}
+        style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+      />
+      {selectedId && !open && (
+        <button
+          onClick={() => onSelect(null)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 hover:cursor-pointer"
+          style={{ color: theme.textMuted }}
+        >
+          <XIcon size={16} />
+        </button>
+      )}
+      {open && (
+        <div
+          className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+        >
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>No matches.</p>
+          ) : (
+            filtered.map((r, index) => {
+              const isSelected = r.id === selectedId;
+              const isHighlighted = index === highlightIndex;
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => {
+                    onSelect(r.id);
+                    setOpen(false);
+                    setQuery('');
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer"
+                  style={{
+                    color: theme.text,
+                    backgroundColor: isHighlighted ? theme.bgHover : (isSelected ? theme.accentSoft : 'transparent')
+                  }}
+                  onMouseEnter={() => setHighlightIndex(index)}
+                >
+                  <span className={isSelected ? 'font-medium' : ''}>{nameField ? r.getCellValueAsString(nameField) : 'Unknown'}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Layer2Props {
   theme: typeof COLORS.LIGHT;
   clientId: string | null;
   clientRecords: AirtableRecord[];
   styleRecords: AirtableRecord[];
   customizationRecords: AirtableRecord[];
+  stateCostRecords: AirtableRecord[];
   rushFeeRuleRecords: AirtableRecord[];
   draftOrdersTable: Table;
   clientsTable: Table;
   stylesTable: Table;
   customizationsTable: Table;
+  stateCostsTable: Table;
   rushFeeRulesTable: Table;
   getField: (table: Table, fieldId: string) => Field | null;
   getLinkedRecordIds: (record: AirtableRecord, field: Field | null) => string[];
@@ -766,11 +905,13 @@ function Layer2({
   clientRecords,
   styleRecords,
   customizationRecords,
+  stateCostRecords,
   rushFeeRuleRecords,
   draftOrdersTable,
   clientsTable,
   stylesTable,
   customizationsTable,
+  stateCostsTable,
   rushFeeRulesTable,
   getField,
   getLinkedRecordIds,
@@ -784,6 +925,7 @@ function Layer2({
 
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
+  const [selectedStateCostId, setSelectedStateCostId] = useState<string | null>(null);
   const [shipping, setShipping] = useState('');
   const [taxes, setTaxes] = useState('');
   const [discount, setDiscount] = useState('');
@@ -839,6 +981,7 @@ function Layer2({
   const customizationDetailField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_DETAIL);
   const customizationEffectivePriceField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_EFFECTIVE_PRICE);
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
+  const stateCostNameField = getField(stateCostsTable, FIELD_IDS.STATE_COST_NAME);
   const rushRuleWeeksField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_WEEKS);
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
   const clientFavoriteStylesAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_ACUITY);
@@ -846,6 +989,7 @@ function Layer2({
 
   const hasUnsavedChanges = selectedStyleIds.length > 0
     || selectedCustomizationIds.length > 0
+    || !!selectedStateCostId
     || [shipping, taxes, discount].some(v => v.trim() !== '');
 
   const handleCloseAttempt = () => {
@@ -912,13 +1056,18 @@ function Layer2({
     }).slice(0, 20);
   }, [eligibleStyles, styleSearchQuery, styleNameField]);
 
+  // Only customizations linked to the client AND to one of the currently
+  // selected styles — a customization tied to a style that isn't in this
+  // draft has nothing to do with it.
   const clientCustomizations = useMemo(() => {
-    if (!clientId) return [];
+    if (!clientId || selectedStyleIds.length === 0) return [];
     return customizationRecords.filter(customization => {
       const linkedClients = getLinkedRecordIds(customization, customizationClientField);
-      return linkedClients.includes(clientId);
+      if (!linkedClients.includes(clientId)) return false;
+      const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
+      return linkedStyles.some(id => selectedStyleIds.includes(id));
     });
-  }, [customizationRecords, clientId, customizationClientField, getLinkedRecordIds]);
+  }, [customizationRecords, clientId, customizationClientField, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -937,6 +1086,12 @@ function Layer2({
   const selectedCustomizations = useMemo(() => {
     return customizationRecords.filter(c => selectedCustomizationIds.includes(c.id));
   }, [customizationRecords, selectedCustomizationIds]);
+
+  // If a style gets deselected, drop any selected customization that was only
+  // tied to that style — it's no longer eligible for this draft.
+  useEffect(() => {
+    setSelectedCustomizationIds(prev => prev.filter(id => clientCustomizations.some(c => c.id === id)));
+  }, [clientCustomizations]);
 
   const styleSubtotal = useMemo(() => {
     return selectedStyles.reduce((sum, style) => {
@@ -1025,7 +1180,7 @@ function Layer2({
     return styleSubtotal + customizationSubtotal + total;
   }, [styleSubtotal, customizationSubtotal, total]);
 
-  const canSave = canCreate && !!clientId && selectedStyleIds.length > 0;
+  const canSave = canCreate && !!clientId && selectedStyleIds.length > 0 && !!selectedStateCostId;
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -1037,9 +1192,8 @@ function Layer2({
       const clientFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CLIENT);
       const styleFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE);
       const customizationsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATIONS);
+      const stateCostsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_STATE_COSTS);
       const rushFeeFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
-      const shippingFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
-      const taxesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
       const discountFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT);
       const shippingNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
       const taxesNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
@@ -1050,9 +1204,10 @@ function Layer2({
       if (clientFieldObj) fields[clientFieldObj.id] = [{ id: clientId }];
       if (styleFieldObj) fields[styleFieldObj.id] = selectedStyleIds.map(id => ({ id }));
       if (customizationsFieldObj) fields[customizationsFieldObj.id] = selectedCustomizationIds.map(id => ({ id }));
+      if (stateCostsFieldObj && selectedStateCostId) fields[stateCostsFieldObj.id] = [{ id: selectedStateCostId }];
       if (rushFeeFieldObj) fields[rushFeeFieldObj.id] = rushFee;
-      if (shippingFieldObj) fields[shippingFieldObj.id] = parseCurrency(shipping);
-      if (taxesFieldObj) fields[taxesFieldObj.id] = parseCurrency(taxes);
+      // Shipping/Taxes are no longer writable — shipping is a lookup and taxes
+      // a formula, both derived from state_costs, so they aren't in this payload.
       if (discountFieldObj) fields[discountFieldObj.id] = parseCurrency(discount);
       if (shippingNotesFieldObj && shippingNotes.trim()) fields[shippingNotesFieldObj.id] = shippingNotes.trim();
       if (taxesNotesFieldObj && taxesNotes.trim()) fields[taxesNotesFieldObj.id] = taxesNotes.trim();
@@ -1184,6 +1339,19 @@ function Layer2({
                 </div>
               </div>
               )}
+
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold">
+                  State Costs<span style={{ color: theme.danger }}> *</span>
+                </h2>
+                <StateCostPicker
+                  theme={theme}
+                  records={stateCostRecords}
+                  nameField={stateCostNameField}
+                  selectedId={selectedStateCostId}
+                  onSelect={setSelectedStateCostId}
+                />
+              </div>
 
               <div>
                   <div className="flex items-center justify-between gap-3 mb-3">
@@ -1498,16 +1666,8 @@ function Layer2({
                       )}
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">Shipping</td>
-                        <td className="py-3">
-                          <input
-                            type="text"
-                            placeholder="$0.00"
-                            value={shipping}
-                            onChange={e => setShipping(e.target.value)}
-                            disabled={!clientId}
-                            className="w-full px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
-                          />
+                        <td className="py-3 pr-2 text-right text-sm" style={{ color: theme.textMuted }}>
+                          {selectedStateCostId ? 'Calculated after saving' : '—'}
                         </td>
                         <td className="py-3 pl-3 pr-4">
                           <input
@@ -1523,16 +1683,8 @@ function Layer2({
                       </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">Taxes</td>
-                        <td className="py-3">
-                          <input
-                            type="text"
-                            placeholder="$0.00"
-                            value={taxes}
-                            onChange={e => setTaxes(e.target.value)}
-                            disabled={!clientId}
-                            className="w-full px-2 py-1 text-sm text-right disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
-                          />
+                        <td className="py-3 pr-2 text-right text-sm" style={{ color: theme.textMuted }}>
+                          {selectedStateCostId ? 'Calculated after saving' : '—'}
                         </td>
                         <td className="py-3 pl-3 pr-4">
                           <input
@@ -1648,7 +1800,7 @@ function Layer2({
             {saveError && <p className="text-sm" style={{ color: theme.danger }}>{saveError}</p>}
             {!canCreate && <p className="text-sm" style={{ color: theme.danger }}>You don't have permission to create drafts.</p>}
             {canCreate && (!clientId || selectedStyleIds.length === 0) && (
-              <p className="text-sm" style={{ color: theme.textSecondary }}>Client and at least one Style are required.</p>
+              <p className="text-sm" style={{ color: theme.textSecondary }}>Client, at least one Style, and State Costs are required.</p>
             )}
           </div>
           <button
@@ -1720,11 +1872,13 @@ interface Layer4Props {
   draftRecords: AirtableRecord[];
   styleRecords: AirtableRecord[];
   customizationRecords: AirtableRecord[];
+  stateCostRecords: AirtableRecord[];
   rushFeeRuleRecords: AirtableRecord[];
   clientRecords: AirtableRecord[];
   draftOrdersTable: Table;
   stylesTable: Table;
   customizationsTable: Table;
+  stateCostsTable: Table;
   rushFeeRulesTable: Table;
   clientsTable: Table;
   getField: (table: Table, fieldId: string) => Field | null;
@@ -1741,11 +1895,13 @@ function Layer4({
   draftRecords,
   styleRecords,
   customizationRecords,
+  stateCostRecords,
   rushFeeRuleRecords,
   clientRecords,
   draftOrdersTable,
   stylesTable,
   customizationsTable,
+  stateCostsTable,
   rushFeeRulesTable,
   clientsTable,
   getField,
@@ -1761,6 +1917,8 @@ function Layer4({
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
   const styleField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE);
   const customizationsField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATIONS);
+  const stateCostsField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STATE_COSTS);
+  const stateCostNameField = getField(stateCostsTable, FIELD_IDS.STATE_COST_NAME);
   const rushFeeField = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
   const shippingField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING);
   const taxesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
@@ -1961,6 +2119,9 @@ function Layer4({
   const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
   const linkedStyleIds = getLinkedRecordIds(draft, styleField);
   const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
+  const stateCostId = getLinkedRecordIds(draft, stateCostsField)[0] ?? null;
+  const stateCostRecord = stateCostId ? stateCostRecords.find(r => r.id === stateCostId) ?? null : null;
+  const stateCostName = stateCostRecord && stateCostNameField ? stateCostRecord.getCellValueAsString(stateCostNameField) : '';
   const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
   const shipping = shippingField ? (draft.getCellValue(shippingField) as number | null) ?? 0 : 0;
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
@@ -1994,6 +2155,17 @@ function Layer4({
       });
     } catch (error) {
       console.error('Failed to toggle lock:', error);
+    }
+  };
+
+  const handleStateCostChange = async (id: string | null) => {
+    if (!isEditable || !stateCostsField) return;
+    try {
+      await draftOrdersTable.updateRecordAsync(draftId, {
+        [stateCostsField.id]: id ? [{ id }] : null,
+      });
+    } catch (error) {
+      console.error('Failed to update state costs:', error);
     }
   };
 
@@ -2469,12 +2641,28 @@ function Layer4({
                     </tr>
                   )}
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-3 pl-4">Shipping</td>
-                    <td className="py-3">
-                      {isEditable ? (
-                        <CurrencyInput label="Shipping" value={shipping} field={shippingField} fieldKey="shipping" error={fieldErrors.shipping} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
-                      ) : <span className="block text-right">{formatCurrency(shipping)}</span>}
+                    <td className="py-3 pl-4">
+                      State Costs<span style={{ color: theme.danger }}> *</span>
                     </td>
+                    <td className="py-3" colSpan={2}>
+                      {isEditable ? (
+                        <StateCostPicker
+                          theme={theme}
+                          records={stateCostRecords}
+                          nameField={stateCostNameField}
+                          selectedId={stateCostId}
+                          onSelect={handleStateCostChange}
+                          placeholder="Select a state..."
+                        />
+                      ) : (
+                        <span>{stateCostName || '—'}</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                    <td className="py-3 pl-4">Shipping</td>
+                    {/* Shipping is now a lookup off state_costs — always read-only, regardless of isEditable. */}
+                    <td className="py-3 pr-2 text-right">{formatCurrency(shipping)}</td>
                     <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={shippingNotes} field={shippingNotesField} fieldKey="shippingNotes" theme={theme} onBlur={handleNotesBlur} borderless />
@@ -2485,11 +2673,8 @@ function Layer4({
                   </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">Taxes</td>
-                    <td className="py-3">
-                      {isEditable ? (
-                        <CurrencyInput label="Taxes" value={taxes} field={taxesField} fieldKey="taxes" error={fieldErrors.taxes} theme={theme} onBlur={handleCurrencyBlur} hideLabel borderless />
-                      ) : <span className="block text-right">{formatCurrency(taxes)}</span>}
-                    </td>
+                    {/* Taxes is now a formula off state_costs — always read-only, regardless of isEditable. */}
+                    <td className="py-3 pr-2 text-right">{formatCurrency(taxes)}</td>
                     <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={taxesNotes} field={taxesNotesField} fieldKey="taxesNotes" theme={theme} onBlur={handleNotesBlur} borderless />
