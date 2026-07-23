@@ -2249,36 +2249,52 @@ function RecordDetailPage({
             {/* Status banners — every one of them lives up top by default, so
                 whatever's most relevant about this request's state is the
                 first thing seen, above both panels. Same width as the left
-                (fields) column below, not the panel pair combined. */}
-            {approvalStatus === 'Approved' && (
-              <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
-                Customization Request Approved - review with the client.
-              </div>
-            )}
-            {isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed') && (
-              <div className="w-[60%] bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-                This is a counter-proposal — review the revised price in the Summary panel above.
-              </div>
-            )}
-            {(approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') && (
-              <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
-                {approvalStatus === 'Denied • Counter-Proposal'
+                (fields) column below, not the panel pair combined. Grouped
+                by color into a single box per color — e.g. an internally-
+                and client-approved request shares one green banner instead
+                of two stacked identical-looking ones. */}
+            {(() => {
+              const greenMsgs: string[] = [];
+              if (approvalStatus === 'Approved') greenMsgs.push('Customization Request Approved - review with the client.');
+              if (clientApprovalStatus === 'Approved') greenMsgs.push('The client approved — sent to production.');
+
+              const amberMsgs: string[] = [];
+              if (isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed')) {
+                amberMsgs.push('This is a counter-proposal — review the revised price in the Summary panel above.');
+              }
+
+              const redMsgs: string[] = [];
+              if (approvalStatus === 'Denied' || approvalStatus === 'Denied • Counter-Proposal') {
+                redMsgs.push(approvalStatus === 'Denied • Counter-Proposal'
                   ? 'This customization request was denied — a counter-proposal was submitted in its place.'
-                  : 'This customization request was denied.'}
-              </div>
-            )}
-            {(clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') && (
-              <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300">
-                {clientApprovalStatus === 'Denied • Counter-Proposal'
+                  : 'This customization request was denied.');
+              }
+              if (clientApprovalStatus === 'Denied' || clientApprovalStatus === 'Denied • Counter-Proposal') {
+                redMsgs.push(clientApprovalStatus === 'Denied • Counter-Proposal'
                   ? 'The client denied this proposal — a counter-proposal was submitted in its place.'
-                  : 'The client denied this proposal.'}
-              </div>
-            )}
-            {clientApprovalStatus === 'Approved' && (
-              <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
-                The client approved — sent to production.
-              </div>
-            )}
+                  : 'The client denied this proposal.');
+              }
+
+              return (
+                <>
+                  {greenMsgs.length > 0 && (
+                    <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300 space-y-1">
+                      {greenMsgs.map((msg, i) => <div key={i}>{msg}</div>)}
+                    </div>
+                  )}
+                  {amberMsgs.length > 0 && (
+                    <div className="w-[60%] bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300 space-y-1">
+                      {amberMsgs.map((msg, i) => <div key={i}>{msg}</div>)}
+                    </div>
+                  )}
+                  {redMsgs.length > 0 && (
+                    <div className="w-[60%] bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-300 space-y-1">
+                      {redMsgs.map((msg, i) => <div key={i}>{msg}</div>)}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* Fields (60%) + sticky Summary (40%) — same split as recap.tsx's
                 edit-mode layout, for both Regular and Hybrid (parity: the two
