@@ -67,7 +67,10 @@ const FIELD_IDS = {
   CUSTOMIZATION_CLIENT: 'fldOeL4VVcXaKwwlN',
   CUSTOMIZATION_CUSTOMIZED_STYLE: 'fldCaKP1d4C0aohQE',
   CUSTOMIZATION_DETAIL: 'fldg1hEoZe9MFQj02',
+  // internal_approval_status
   CUSTOMIZATION_APPROVAL_STATUS: 'fldEfOYgxOhyDiMEH',
+  // client_approval_status
+  CUSTOMIZATION_CLIENT_APPROVAL_STATUS: 'fldwE1BTp4G5eF2jR',
   CUSTOMIZATION_APPROVED_PRICING: 'fldFRRjwVlCgHhPdA',
   CUSTOMIZATION_PROPOSED_TOTAL: 'fldtF37zwwAPb5hjS',
   CUSTOMIZATION_EFFECTIVE_PRICE: 'fldFjHCKBNcWz6z0V',
@@ -227,6 +230,18 @@ function parsePercentInput(value: string): number {
 function formatPercentDisplay(value: number): string {
   if (typeof value !== 'number' || isNaN(value)) return '0%';
   return `${Math.round(value * 100)}%`;
+}
+
+// A customization is only usable on a draft order once it's actually
+// approved: internal sign-off happened, and the client hasn't rejected it.
+function isCustomizationApproved(
+  customization: AirtableRecord,
+  internalApprovalStatusField: Field | null,
+  clientApprovalStatusField: Field | null,
+): boolean {
+  const internalStatus = internalApprovalStatusField ? customization.getCellValueAsString(internalApprovalStatusField) : '';
+  const clientStatus = clientApprovalStatusField ? customization.getCellValueAsString(clientApprovalStatusField) : '';
+  return internalStatus === 'Approved' && clientStatus !== 'Denied' && clientStatus !== 'Denied • Counter-Proposal';
 }
 
 // Borderless currency/percent icon toggle for the Discount row — no border so
@@ -1093,6 +1108,8 @@ function Layer2({
   const customizationDetailField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_DETAIL);
   const customizationEffectivePriceField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_EFFECTIVE_PRICE);
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
+  const customizationApprovalStatusField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_APPROVAL_STATUS);
+  const customizationClientApprovalStatusField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CLIENT_APPROVAL_STATUS);
   const stateCostNameField = getField(stateCostsTable, FIELD_IDS.STATE_COST_NAME);
   const stateCostShippingFeeField = getField(stateCostsTable, FIELD_IDS.STATE_COST_SHIPPING_FEE);
   const stateCostTaxRateField = getField(stateCostsTable, FIELD_IDS.STATE_COST_TAX_RATE);
@@ -1171,18 +1188,35 @@ function Layer2({
     }).slice(0, 20);
   }, [eligibleStyles, styleSearchQuery, styleNameField]);
 
-  // Only customizations linked to the client AND to one of the currently
-  // selected styles — a customization tied to a style that isn't in this
-  // draft has nothing to do with it.
-  const clientCustomizations = useMemo(() => {
-    if (!clientId || selectedStyleIds.length === 0) return [];
+  // All of the client's customizations, regardless of style/approval — used
+  // only to detect "client has customizations, but none are usable yet" so we
+  // can show the approval-needed banner instead of just hiding the section.
+  const clientCustomizationsUnfiltered = useMemo(() => {
+    if (!clientId) return [];
     return customizationRecords.filter(customization => {
       const linkedClients = getLinkedRecordIds(customization, customizationClientField);
-      if (!linkedClients.includes(clientId)) return false;
+      return linkedClients.includes(clientId);
+    });
+  }, [customizationRecords, clientId, customizationClientField, getLinkedRecordIds]);
+
+  // Approved-only, regardless of style — used to tell "no approved
+  // customizations at all" apart from "approved, but not for this style".
+  const clientApprovedCustomizations = useMemo(() => {
+    return clientCustomizationsUnfiltered.filter(c =>
+      isCustomizationApproved(c, customizationApprovalStatusField, customizationClientApprovalStatusField)
+    );
+  }, [clientCustomizationsUnfiltered, customizationApprovalStatusField, customizationClientApprovalStatusField]);
+
+  // Only customizations linked to the client AND to one of the currently
+  // selected styles AND approved — a customization tied to a style that isn't
+  // in this draft, or that hasn't cleared approval, has nothing to do with it.
+  const clientCustomizations = useMemo(() => {
+    if (selectedStyleIds.length === 0) return [];
+    return clientApprovedCustomizations.filter(customization => {
       const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
       return linkedStyles.some(id => selectedStyleIds.includes(id));
     });
-  }, [customizationRecords, clientId, customizationClientField, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
+  }, [clientApprovedCustomizations, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -1664,10 +1698,11 @@ function Layer2({
                   )}
               </div>
 
-              {clientId && clientCustomizations.length > 0 && (
+              {clientId && clientCustomizationsUnfiltered.length > 0 && (
                 <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <h2 className="text-base font-semibold">Customizations</h2>
+                      {clientApprovedCustomizations.length > 0 && (
                       <div ref={customizationSearchRef} className="relative w-64">
                         <MagnifyingGlassIcon
                           size={16}
@@ -1751,8 +1786,13 @@ function Layer2({
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
-                    {selectedCustomizations.length === 0 ? (
+                    {clientApprovedCustomizations.length === 0 ? (
+                      <div className="rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
+                        This client has customization request{clientCustomizationsUnfiltered.length === 1 ? '' : 's'}, but none are approved yet — internal approval is required, and the client can't have denied it, before it can be added to a draft order. Coordinate the internal approval for this customization, then come back to add it here.
+                      </div>
+                    ) : selectedCustomizations.length === 0 ? (
                       <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
                     ) : (
                       <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
@@ -2114,6 +2154,8 @@ function Layer4({
   const customizationEffectivePriceField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_EFFECTIVE_PRICE);
   const customizationClientField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CLIENT);
   const customizationCustomizedStyleField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CUSTOMIZED_STYLE);
+  const customizationApprovalStatusField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_APPROVAL_STATUS);
+  const customizationClientApprovalStatusField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_CLIENT_APPROVAL_STATUS);
   const clientDueDateField = getField(clientsTable, FIELD_IDS.CLIENT_DUE_DATE);
   const rushRuleWeeksField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_WEEKS);
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
@@ -2148,9 +2190,10 @@ function Layer4({
   const clientCustomizations = useMemo(() => {
     return customizationRecords.filter(customization => {
       const linkedClients = getLinkedRecordIds(customization, customizationClientField);
-      return linkedClients.includes(clientId);
+      if (!linkedClients.includes(clientId)) return false;
+      return isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField);
     });
-  }, [customizationRecords, clientId, customizationClientField, getLinkedRecordIds]);
+  }, [customizationRecords, clientId, customizationClientField, customizationApprovalStatusField, customizationClientApprovalStatusField, getLinkedRecordIds]);
 
   const eligibleStyleIds = useMemo(() => {
     const client = clientRecords.find(c => c.id === clientId);
@@ -2327,9 +2370,7 @@ function Layer4({
   const stateCostRecord = stateCostId ? stateCostRecords.find(r => r.id === stateCostId) ?? null : null;
   const stateCostName = stateCostRecord && stateCostNameField ? stateCostRecord.getCellValueAsString(stateCostNameField) : '';
   const rushFee = rushFeeField ? (draft.getCellValue(rushFeeField) as number | null) ?? 0 : 0;
-  const shippingRaw = shippingField ? draft.getCellValue(shippingField) : null;
-  const shipping = unwrapLookupNumber(shippingRaw) ?? 0;
-  const shippingDebug = `field: shipping (${FIELD_IDS.DRAFT_SHIPPING}) | raw: ${JSON.stringify(shippingRaw)} | resolved: ${unwrapLookupNumber(shippingRaw) ?? 'none (falls back to 0)'}`;
+  const shipping = shippingField ? unwrapLookupNumber(draft.getCellValue(shippingField)) ?? 0 : 0;
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
   const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
@@ -2885,7 +2926,7 @@ function Layer4({
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">Shipping</td>
                     {/* Shipping is now a lookup off state_costs — always read-only, regardless of isEditable. */}
-                    <td className="py-3 pr-2 text-right cursor-help" title={shippingDebug}>{formatCurrency(shipping)}</td>
+                    <td className="py-3 pr-2 text-right">{formatCurrency(shipping)}</td>
                     <td className="py-3 pl-3 pr-4">
                       {isEditable ? (
                         <NotesInput value={shippingNotes} field={shippingNotesField} fieldKey="shippingNotes" theme={theme} onBlur={handleNotesBlur} borderless />
