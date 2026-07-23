@@ -1432,6 +1432,7 @@ function CounterProposalModal({
   const fEmbroidery       = customizationsTable.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fApproved         = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
   const fParentRequest    = customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
+  const fApprStatus       = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS);
   const pPriceField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
   const pPercentField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null;
   const pMultiField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null;
@@ -1540,13 +1541,20 @@ function CounterProposalModal({
       // otherwise parentRecord itself is the root.
       const parentsOwnRootLink = fParentRequest ? (parentRecord.getCellValue(fParentRequest) as Array<{ id: string }> | null) : null;
       const rootId = parentsOwnRootLink?.[0]?.id ?? parentRecord.id;
+      // The new record's own internal_approval_status flips whose court it's
+      // in next: a client counter always re-enters at "New Request" (Margo
+      // has to review the revised price from scratch, same as any request).
+      // An internal counter is opened either by Margo (parentRecord is
+      // "Under Review", her own queue) or by the SA re-countering Margo's own
+      // counter (parentRecord is "Counter-Proposed", the SA's queue) — either
+      // way the new record hands off to whichever side didn't just act.
+      const parentInternalStatus = fApprStatus ? getSingleSelectName(parentRecord.getCellValue(fApprStatus)) : '';
+      const childApprovalStatusName = source === 'client'
+        ? 'New Request'
+        : (parentInternalStatus === 'Counter-Proposed' ? 'New Request' : 'Counter-Proposed');
       const childFields: Record<string, unknown> = {
         [FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST]: [{ id: rootId }],
-        // New Request, not "Counter-Proposed" — it re-enters the normal
-        // pipeline (Move to Under Review → Approve/Deny/Counter-Propose) like
-        // any other request. Being a counter-proposal is now purely signaled
-        // by parent_customization_request being non-empty.
-        [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
+        [FIELD_IDS.APPROVAL_STATUS]: { name: childApprovalStatusName },
         [FIELD_IDS.APPROVED_PRICING]: priceNum,
         [FIELD_IDS.CUSTOMIZATION_DETAIL]: additionalDetails || null,
       };
@@ -1998,16 +2006,19 @@ function RecordDetailPage({
 
   // Within Stage A, New Request only ever offers "Move to Under Review" — the
   // Approve/Deny/Counter-Propose decision only makes sense once someone has
-  // actually picked it up for review. A counter-proposal is created directly
-  // as "New Request" now (see CounterProposalModal) — it re-enters this exact
-  // same pipeline like any other request, so "Counter-Proposed" as a status
-  // is legacy/unused going forward (being a counter-proposal is now signaled
-  // purely by parent_customization_request being non-empty — see isCounterProposal).
+  // actually picked it up for review.
   const isNewRequestStage = approvalStatus === '' || approvalStatus === 'New Request';
 
-  // Internal decision (Approve/Deny/Counter-Propose) is Margo's call, from
-  // the Approval layout, once a request is Under Review.
-  const canActInternally = canUpdate && sourceLayout === 'approval' && approvalStatus === 'Under Review';
+  // Internal decision — who can act depends on which stage it's in, not just
+  // the layout: "Under Review" is Margo's queue (Approval layout only); a
+  // "Counter-Proposed" record is Margo's own counter, now on the SA's desk to
+  // approve/deny/re-counter before it moves on (Workdesk only). Same
+  // underlying handlers either way — internal_approval_status doesn't care
+  // who clicked, only the field-write logic (see CounterProposalModal) does.
+  const canActInternally = canUpdate && (
+    (sourceLayout === 'approval' && approvalStatus === 'Under Review') ||
+    (sourceLayout === 'ops'      && approvalStatus === 'Counter-Proposed')
+  );
 
   // Field-level editability. Entering from Workdesk allows editing the
   // record's own fields, but only while it's still early in the pipeline
@@ -2429,7 +2440,7 @@ function RecordDetailPage({
             )}
 
             {/* Status banners */}
-            {isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review') && (
+            {isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed') && (
               <div className="bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/30 rounded-lg px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
                 This is a counter-proposal — review the revised price in the Summary panel above.
               </div>
@@ -2765,7 +2776,15 @@ function CustomizationApp(): React.ReactElement {
           return formatCurrency(computeHybridCombinedTotal(b1, b2));
         })()
       : (fields?.proposedTotalCustomPrice ? record.getCellValueAsString(fields.proposedTotalCustomPrice) : '');
-    return { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal };
+    // Type — purely derived from parent_customization_request, regardless of
+    // the record's own internal_approval_status: empty means it's a brand
+    // new request, non-empty means it's a counter-proposal somewhere in an
+    // existing thread. Lets Margo tell the two apart at a glance in both the
+    // New Requests and Under Review buckets.
+    const requestType = fields?.parentRequest
+      ? (((record.getCellValue(fields.parentRequest) as Array<{ id: string }> | null)?.length ?? 0) > 0 ? 'Counter-Proposal' : 'New Request')
+      : 'New Request';
+    return { approvalVal, clientText, styleText, saText, dateStr, weddingStr, proposedVal, approvedVal, requestType };
   }, [fields, allCustomizationRecords]);
 
   // Approval layout — same underlying filtered set (search/SA/Style still
@@ -2921,14 +2940,14 @@ function CustomizationApp(): React.ReactElement {
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 sticky top-0">
                     <tr>
-                      {['Client', 'Style', 'Sales Associate', 'Date of Request', 'Proposed Total'].map(h => (
+                      {['Client', 'Style', 'Type', 'Sales Associate', 'Date of Request', 'Proposed Total'].map(h => (
                         <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {newRequestRecords.map(record => {
-                      const { clientText, styleText, saText, dateStr, proposedVal } = buildRowData(record);
+                      const { clientText, styleText, saText, dateStr, proposedVal, requestType } = buildRowData(record);
                       const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                       return (
                         <tr key={record.id} draggable
@@ -2938,6 +2957,7 @@ function CustomizationApp(): React.ReactElement {
                           className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-move transition-colors">
                           <td className={cellCls}>{clientText}</td>
                           <td className={cellCls}>{styleText}</td>
+                          <td className={cellCls}>{requestType}</td>
                           <td className={cellCls}>{saText}</td>
                           <td className={cellCls}>{formatDate(dateStr)}</td>
                           <td className={cellCls}>{proposedVal || '—'}</td>
@@ -2946,7 +2966,7 @@ function CustomizationApp(): React.ReactElement {
                     })}
                     {newRequestRecords.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                        <td colSpan={6} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
                           No new requests.
                         </td>
                       </tr>
@@ -2967,20 +2987,21 @@ function CustomizationApp(): React.ReactElement {
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10 sticky top-0">
                     <tr>
-                      {['Client', 'Style', 'Sales Associate', 'Date of Request', 'Proposed Total'].map(h => (
+                      {['Client', 'Style', 'Type', 'Sales Associate', 'Date of Request', 'Proposed Total'].map(h => (
                         <th key={h} className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 capitalize tracking-wide text-left whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {underReviewRecords.map(record => {
-                      const { clientText, styleText, saText, dateStr, proposedVal } = buildRowData(record);
+                      const { clientText, styleText, saText, dateStr, proposedVal, requestType } = buildRowData(record);
                       const cellCls = 'px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300';
                       return (
                         <tr key={record.id} onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'approval' })}
                           className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50/40 dark:hover:bg-white/5 cursor-pointer transition-colors">
                           <td className={cellCls}>{clientText}</td>
                           <td className={cellCls}>{styleText}</td>
+                          <td className={cellCls}>{requestType}</td>
                           <td className={cellCls}>{saText}</td>
                           <td className={cellCls}>{formatDate(dateStr)}</td>
                           <td className={cellCls}>{proposedVal || '—'}</td>
@@ -2989,7 +3010,7 @@ function CustomizationApp(): React.ReactElement {
                     })}
                     {underReviewRecords.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                        <td colSpan={6} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
                           Drag a new request here to send it for review.
                         </td>
                       </tr>
