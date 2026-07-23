@@ -186,7 +186,11 @@ function queueWrite(fn: () => Promise<void>): Promise<void> {
 // RecordDetailPage uses it to decide whether the record's fields can be
 // edited at all (Approval layout is always read-only; Workdesk is editable
 // only while the record is still in an early stage).
-type ViewState = { layer: 1 } | { layer: 2; recordId: string; previousRecordId?: string; sourceLayout: 'ops' | 'approval' };
+// readOnly: opened by clicking a Counter-Proposal History row — a read-only
+// look at that specific thread member, with its own History section hidden
+// (so users can't drill infinitely deep). "Go back" returns to
+// previousRecordId, the record whose History was actually clicked.
+type ViewState = { layer: 1 } | { layer: 2; recordId: string; previousRecordId?: string; sourceLayout: 'ops' | 'approval'; readOnly?: boolean };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getSingleSelectName(cell: unknown): string {
@@ -1769,6 +1773,7 @@ function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, stylesBasePriceField, preApprovalField,
   selfUsageField,
   clientRecords, favoriteStylesApptField, allCustomizationRecords, sourceLayout, onBack, onCounterProposalSent,
+  readOnly = false, onOpenHistoryRecord,
 }: {
   record: AirtableRecord; table: Table; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   stylesRecords: AirtableRecord[]; stylesBasePriceField: Field | null; preApprovalField: Field | null;
@@ -1778,8 +1783,14 @@ function RecordDetailPage({
   sourceLayout: 'ops' | 'approval';
   onBack: () => void;
   onCounterProposalSent: () => void;
+  // Set when opened from a Counter-Proposal History row — forces this view
+  // read-only (no edits, no actions, no delete) and hides its own History
+  // section, so a user can look at one other thread member without being
+  // able to act on it or drill any deeper.
+  readOnly?: boolean;
+  onOpenHistoryRecord?: (recordId: string) => void;
 }) {
-  const canUpdate = table.hasPermissionToUpdateRecords();
+  const canUpdate = !readOnly && table.hasPermissionToUpdateRecords();
 
   const fApprStatus = table.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS);
   const fCreatedBy  = table.getFieldIfExists(FIELD_IDS.CREATED_BY);
@@ -1869,7 +1880,7 @@ function RecordDetailPage({
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const canDelete = table.hasPermissionToDeleteRecords();
+  const canDelete = !readOnly && table.hasPermissionToDeleteRecords();
 
   const handleDelete = async () => {
     try {
@@ -1920,16 +1931,21 @@ function RecordDetailPage({
   const removeLineItem = (id: string) => handlePricing(pricingIds.filter(x => x !== id));
 
   // Approved: internal_approval_status -> Approved, AND client_approval_status
-  // -> "Request Client Review" (moves it to the client-facing pipeline), with
-  // internal_approved_pricing set to the current proposed_total_custom_price
-  // at the moment of approval (a snapshot, not a live-linked value).
+  // -> "Request Client Review" (moves it to the client-facing pipeline). For
+  // a plain request, internal_approved_pricing is set from the current
+  // proposed_total_custom_price at the moment of approval (a snapshot, not a
+  // live-linked value). A counter-proposal already carries its own
+  // negotiated internal_approved_pricing from when it was created — approving
+  // it just confirms that number, never recomputes it from this record's own
+  // proposed_total_custom_price (which reflects its own Customizations
+  // selection, not the price actually agreed on).
   const handleApprove = async () => {
     setSaving(true);
     try {
       const proposedTotal = fProposedTotal ? (record.getCellValue(fProposedTotal) as number | null) : null;
       const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Approved' } };
       if (fClientApprovalStatus) patch[FIELD_IDS.CLIENT_APPROVAL_STATUS] = { name: 'Request Review' };
-      if (fApproved) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
+      if (fApproved && !isCounterProposal) patch[FIELD_IDS.APPROVED_PRICING] = proposedTotal;
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Approved');
       if (fClientApprovalStatus) setClientApprovalStatus('Request Review');
@@ -2115,7 +2131,12 @@ function RecordDetailPage({
   // original pricing, however long the counter-proposal thread gets.
   const rootBasePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(rootRecord.getCellValueAsString(fBasePrice)) : 0;
   const rootEmbroidery = fEmbroidery ? (rootRecord.getCellValueAsString(fEmbroidery) || null) : null;
-  const rootMultiplierFactor = computeMultiplierFactor(0, rootEmbroidery);
+  // Self Usage must be read from the ROOT's own value here too — hardcoding
+  // 0 (as if Self Usage never applied) silently dropped the multiplier back
+  // to 1x instead of the root's actual factor, understating Customization
+  // Total whenever Self Usage was anything other than empty/0.
+  const rootSelfUsageValue = selfUsageField ? parseCurrencyString(rootRecord.getCellValueAsString(selfUsageField)) : 0;
+  const rootMultiplierFactor = computeMultiplierFactor(rootSelfUsageValue, rootEmbroidery);
   const rootPricingIds = useMemo(() => {
     if (isHybrid || !fPricing) return [];
     const v = rootRecord.getCellValue(fPricing) as Array<{ id: string }> | null;
@@ -2156,10 +2177,6 @@ function RecordDetailPage({
           Go back
         </button>
         <span className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] truncate">{clientName}</span>
-        {/* Production Status chip — non-editable, colors from field choices */}
-        {approvalStatus && (
-          <ApprovalStatusPill status={approvalStatus} colorMap={approvalColorMap} size="header" />
-        )}
         {/* Action buttons pushed to the right — field-sync-source legend removed, not used here */}
         <div className="ml-auto flex items-center gap-4 flex-shrink-0">
           {canUpdate && isNewRequestStage && sourceLayout === 'approval' && (
@@ -2243,9 +2260,11 @@ function RecordDetailPage({
           <div className="mx-auto space-y-5" style={{ width: '60%' }}>
 
             {/* Approved banner — up top, above everything, so it's the first
-                thing seen once a request is ready to go to the client. */}
+                thing seen once a request is ready to go to the client. Same
+                width as the left (fields) column below it, not the panel
+                pair combined. */}
             {approvalStatus === 'Approved' && (
-              <div className="w-1/2 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-base text-green-700 dark:text-green-300">
+              <div className="w-[60%] bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30 rounded-lg px-4 py-3 text-sm text-green-700 dark:text-green-300">
                 Customization Request Approved - review with the client.
               </div>
             )}
@@ -2429,8 +2448,9 @@ function RecordDetailPage({
                 root + all its counter-proposals, all linked directly to the
                 same root under the one-to-many model), most recent first.
                 Collapsed by default; quick-review inline table, not the full
-                detail view. */}
-            {threadRecords.length > 1 && (
+                detail view. Hidden entirely on a read-only (History-opened)
+                page — no drilling more than one level deep. */}
+            {!readOnly && threadRecords.length > 1 && (
               <div className="border-t border-gray-200 dark:border-white/10 pt-4">
                 <button type="button" onClick={() => setShowHistory(v => !v)}
                   className="flex items-center gap-2 text-left">
@@ -2466,8 +2486,16 @@ function RecordDetailPage({
                           // Proposed Total Custom Price (the SA's original ask).
                           const rAmount = (fApproved ? r.getCellValueAsString(fApproved) : '')
                             || (fProposedTotal ? r.getCellValueAsString(fProposedTotal) : '');
+                          // The most recent thread member is always the one
+                          // already reachable directly from a list view (that's
+                          // the "live" record) — never worth opening again from
+                          // here, same as the one actually being viewed now.
+                          const isMostRecent = i === threadRecords.length - 1;
+                          const clickable = !!onOpenHistoryRecord && !isCurrent && !isMostRecent;
                           return (
-                            <tr key={r.id} className={`border-b border-gray-100 dark:border-white/5 last:border-0 ${isCurrent ? 'bg-amber-50/40 dark:bg-white/5' : ''}`}>
+                            <tr key={r.id}
+                              onClick={clickable ? () => onOpenHistoryRecord!(r.id) : undefined}
+                              className={`border-b border-gray-100 dark:border-white/5 last:border-0 ${isCurrent ? 'bg-amber-50/40 dark:bg-white/5' : ''} ${clickable ? 'cursor-pointer hover:bg-amber-50/40 dark:hover:bg-white/5' : ''}`}>
                               <td className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
                                 {i === 0 ? 'Original' : `Counter-Proposal ${i}`}{isCurrent ? ' — viewing' : ''}
                               </td>
@@ -2885,6 +2913,10 @@ function CustomizationApp(): React.ReactElement {
             : setViewState({ layer: 1 })
         }
         onCounterProposalSent={() => setToastMessage('Counter-proposal sent.')}
+        readOnly={viewState.readOnly}
+        onOpenHistoryRecord={recordId =>
+          setViewState({ layer: 2, recordId, previousRecordId: viewState.recordId, sourceLayout: viewState.sourceLayout, readOnly: true })
+        }
       />
     );
   }
