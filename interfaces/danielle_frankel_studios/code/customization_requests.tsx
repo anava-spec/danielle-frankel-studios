@@ -70,6 +70,7 @@ const FIELD_IDS = {
   INTERNAL_DENIAL_REASON:      'fldMaJF9el2FKX3jT',   // internal_denial_reason — Margo's reason for denying an Under Review request
   SA_DENIAL_REASON:            'fldpouuzI4UeesdS3',   // sa_denial_reason — the SA's reason for denying a Counter-Proposed record (killing Margo's own counter)
   CLIENT_DENIAL_REASON:        'fldaNnUvdDPIdg3kN',   // client_denial_reason — the client's reason for denying a proposal
+  LAST_DECISION_BY:            'fldQry5GGLTemQwZX',   // last_decision_by — Margo / SA / Client, whoever made the most recent Approve/Deny decision (drives the notification automations)
   PARENT_CUSTOMIZATION_REQUEST: 'fldh9tKr0Vmo84Yu6',  // parent_customization_request — self-link, set on a counter-proposal child
   CUSTOMIZED_STYLE:            'fldCaKP1d4C0aohQE',
   CUSTOMIZATION_DETAIL:        'fldg1hEoZe9MFQj02',
@@ -1830,6 +1831,7 @@ function RecordDetailPage({
   const fInternalDenialReason = table.getFieldIfExists(FIELD_IDS.INTERNAL_DENIAL_REASON);
   const fSaDenialReason       = table.getFieldIfExists(FIELD_IDS.SA_DENIAL_REASON);
   const fClientDenialReason   = table.getFieldIfExists(FIELD_IDS.CLIENT_DENIAL_REASON);
+  const fLastDecisionBy       = table.getFieldIfExists(FIELD_IDS.LAST_DECISION_BY);
 
   // One-to-many counter-proposal chain: every CP links directly to the same
   // root request. If this record has its own parent link, it IS a CP — the
@@ -1973,6 +1975,11 @@ function RecordDetailPage({
           patch[FIELD_IDS.APPROVED_PRICING] = clientProposedValue;
         }
       }
+      // Under Review is Margo's queue, Counter-Proposed is the SA's — same
+      // distinction canActInternally uses. Drives the notification
+      // automations, which can't otherwise tell who made this decision since
+      // internal_approval_status ends up "Approved" either way.
+      if (fLastDecisionBy) patch[FIELD_IDS.LAST_DECISION_BY] = { name: approvalStatus === 'Counter-Proposed' ? 'SA' : 'Margo' };
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Approved');
       if (fClientApprovalStatus) setClientApprovalStatus('Request Review');
@@ -1992,8 +1999,10 @@ function RecordDetailPage({
       const patch: Record<string, unknown> = { [FIELD_IDS.APPROVAL_STATUS]: { name: 'Denied' } };
       if (approvalStatus === 'Counter-Proposed') {
         if (fSaDenialReason) patch[FIELD_IDS.SA_DENIAL_REASON] = reason;
+        if (fLastDecisionBy) patch[FIELD_IDS.LAST_DECISION_BY] = { name: 'SA' };
       } else {
         if (fInternalDenialReason) patch[FIELD_IDS.INTERNAL_DENIAL_REASON] = reason;
+        if (fLastDecisionBy) patch[FIELD_IDS.LAST_DECISION_BY] = { name: 'Margo' };
       }
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setApprovalStatus('Denied');
@@ -2025,6 +2034,7 @@ function RecordDetailPage({
     try {
       const patch: Record<string, unknown> = { [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Approved' } };
       if (fProductionStatus) patch[FIELD_IDS.PRODUCTION_STATUS] = { name: 'Sent to Production' };
+      if (fLastDecisionBy) patch[FIELD_IDS.LAST_DECISION_BY] = { name: 'Client' };
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setClientApprovalStatus('Approved');
     } catch (e) { setError('Failed to record client approval.'); }
@@ -2036,6 +2046,7 @@ function RecordDetailPage({
     try {
       const patch: Record<string, unknown> = { [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Denied' } };
       if (fClientDenialReason) patch[FIELD_IDS.CLIENT_DENIAL_REASON] = reason;
+      if (fLastDecisionBy) patch[FIELD_IDS.LAST_DECISION_BY] = { name: 'Client' };
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setClientApprovalStatus('Denied');
     } catch (e) { setError('Failed to record client denial.'); }
