@@ -2113,6 +2113,18 @@ function RecordDetailPage({
     }).sort((a, b) => a.label.localeCompare(b.label));
   }, [stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
 
+  // Hybrid children pick their own style independently of the linked client's
+  // Favorite Styles (that filter only ever made sense for a single-style
+  // Regular request) — using the favorites-filtered `styleOptions` above for
+  // a Hybrid child meant its actual saved style could fall outside the
+  // filtered list and render blank in the dropdown even though the record's
+  // data was perfectly intact (caught 2026-07-24: styles showed in the raw
+  // table but not in the interface).
+  const hybridStyleOptions = useMemo(() => stylesRecords.map(r => {
+    const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
+    return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
+  }).sort((a, b) => a.label.localeCompare(b.label)), [stylesRecords, stylesBasePriceField]);
+
   // Within Stage A, New Request only ever offers "Move to Under Review" — the
   // Approve/Deny/Counter-Propose decision only makes sense once someone has
   // actually picked it up for review.
@@ -2549,13 +2561,13 @@ function RecordDetailPage({
                     {hybridChildRecords[0] && (
                       <HybridChildColumn
                         title="Style 1" childRecord={hybridChildRecords[0]} table={table}
-                        styleOptions={styleOptions} canUpdate={canEditStyleCustomizations}
+                        styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
                       />
                     )}
                     {hybridChildRecords[1] && (
                       <HybridChildColumn
                         title="Style 2" childRecord={hybridChildRecords[1]} table={table}
-                        styleOptions={styleOptions} canUpdate={canEditStyleCustomizations}
+                        styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
                       />
                     )}
                   </div>

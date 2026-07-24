@@ -5,7 +5,19 @@ BASE       : app6Q4xMZ1ngJxiV8 (sandbox — mirror to Production when ready)
 TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record created — customization_requests
-VERSION    : 1.4.0 — proposedTotal now prefers the actual negotiated price
+VERSION    : 1.5.0 — creating a Hybrid request creates 3 records (2 Style
+                     1/Style 2 children + the parent), and the "record
+                     created" trigger previously fired a notification for
+                     all 3. Now checks hybrid_link_inverse (Airtable's
+                     auto-generated reverse of hybrid_link — non-empty means
+                     THIS record is a Hybrid child) and no-ops with
+                     shouldNotify=false for children, mirroring the
+                     interface's own exclusion of children from every list
+                     view. Added `shouldNotify` output — gate the Slack/
+                     Gmail action steps on it in Airtable, same as the
+                     Decision Notification automation already does.
+                     ---
+                     v1.4.0 — proposedTotal now prefers the actual negotiated price
                      (internal_approved_pricing, else client_proposed_
                      pricing) over any calculated total, for both Regular
                      and Hybrid — same priority the interface itself uses.
@@ -85,6 +97,7 @@ const FIELDS_REQUEST = {
   proposed_total_custom_price: 'fldtF37zwwAPb5hjS', // formula, currency-formatted — Regular only, always empty/0 for Hybrid
   parent_customization_request: 'fldh9tKr0Vmo84Yu6', // self-link — non-empty means this record is a counter-proposal
   last_decision_by           : 'fldQry5GGLTemQwZX', // Margo / SA / Client — who created THIS record (stamped by the interface at creation) or made the most recent decision on it
+  hybrid_link_inverse        : 'fldm2oHXY3MgjAFiz', // Airtable's auto-generated reverse of hybrid_link — non-empty means THIS record is a Hybrid child, not its own request
 };
 
 // Fields — staff (tblbYk88xJ8FQrLS4)
@@ -229,6 +242,12 @@ class RequestDataMapper {
       // land at the same "New Request" status.
       isCounterProposal  : this._linkIds(record, FIELDS_REQUEST.parent_customization_request).length > 0,
       decidedBy          : this._str(record, FIELDS_REQUEST.last_decision_by),
+      // Non-empty hybrid_link_inverse means THIS record is one of a Hybrid
+      // parent's two structural Style 1/Style 2 children, not its own
+      // request — creating one Hybrid request creates 3 rows (2 children +
+      // the parent) and the "record created" trigger fires once per row.
+      // Only the parent should ever notify.
+      isHybridChild      : this._linkIds(record, FIELDS_REQUEST.hybrid_link_inverse).length > 0,
     };
     this.logger.debug(`Extracted → ${JSON.stringify(data)}`);
     return data;
@@ -421,6 +440,20 @@ class NewRequestNotificationService {
   async run(recordId) {
     this.logger.audit(`Service started → record: ${recordId}`);
 
+    // Step 0 — Quick unpolled fetch just to check whether this is a Hybrid
+    // child (structural Style 1/Style 2 record, not its own request). No
+    // settle-poll needed here — we're not reading its price, and if it's a
+    // child we're about to skip entirely.
+    const quickRecord = await this.requestRepo.getById(recordId);
+    if (this.mapper.extract(quickRecord).isHybridChild) {
+      this.logger.minimal('NO-OP → record is a Hybrid child (structural), not its own request — skipping notification');
+      return {
+        status: 'SUCCESS', shouldNotify: false,
+        recipientName: null, recipientEmail: null, slackId: null,
+        subject: null, slackMessage: null, gmailMessage: null, error_message: null,
+      };
+    }
+
     // Step 1 — Load record, polling until proposed_total_custom_price has
     // actually settled (see RequestRepository.getById for why).
     const record = await this.requestRepo.getById(recordId, {
@@ -460,6 +493,7 @@ class NewRequestNotificationService {
 
     return {
       status         : 'SUCCESS',
+      shouldNotify   : true,
       recipientName  : recipientQuery,
       recipientEmail,
       slackId,
@@ -487,6 +521,7 @@ const logger = new Logger(CONFIG.LOG_LEVEL);
 
 let result = {
   status         : 'ERROR',
+  shouldNotify   : false,
   recipientName  : null,
   recipientEmail : null,
   slackId        : null,
@@ -530,6 +565,7 @@ try {
 // ─────────────────────────────────────────────────────────────────────────────
 
 output.set('status',         result.status);
+output.set('shouldNotify',   result.shouldNotify);
 output.set('recipientName',  result.recipientName);
 output.set('recipientEmail', result.recipientEmail);
 output.set('slackId',        result.slackId);
