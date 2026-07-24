@@ -62,6 +62,7 @@ const FIELD_IDS = {
   CUSTOMIZATION_ID:            'fldl9cIcV80nYEDwe',
   CREATED_BY:                  'fldXjqAayXy8f5P8O',   // created_by — Airtable createdBy field, rendered via CellRenderer for the user chip
   CREATED_AT:                  'fldMAmHSS7Ose9zf0',   // created_at — used to order the counter-proposal history
+  LAST_MODIFIED_AT:            'fldCXmJotsUT9iexB',   // last_modified_at — used to order the Under Review bucket by most recently touched
   CLIENT:                      'fldOeL4VVcXaKwwlN',
   DATE_OF_REQUEST:             'fldQdHAp256vsImBt',
   PRODUCTION_STATUS:           'fld5qkNKygBkRYF4v',   // production_status — Sent to Production / Making at DF / At Factory / Ready to Cut / Pattern Making / Need Info / Complete
@@ -2794,6 +2795,7 @@ function CustomizationApp(): React.ReactElement {
       basePrice:                customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE),
       parentRequest:            customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST),
       createdAt:                customizationsTable.getFieldIfExists(FIELD_IDS.CREATED_AT),
+      lastModifiedAt:           customizationsTable.getFieldIfExists(FIELD_IDS.LAST_MODIFIED_AT),
     };
   }, [customizationsTable]);
 
@@ -2944,13 +2946,29 @@ function CustomizationApp(): React.ReactElement {
   // apply, approval-status filter does not), split by internal_approval_status
   // only. "New Requests" includes both an empty status and the explicit "New
   // Request" choice; "Under Review" is exactly that status, nothing else.
+  // Each bucket has its own sort, independent of filteredRecords' own
+  // (dateOfRequest) order — New Requests by most recently created (so a
+  // fresh ask or a re-counter always surfaces first), Under Review by most
+  // recently touched (so whatever Margo just moved or edited stays on top).
   const newRequestRecords = useMemo(
-    () => filteredRecords.filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'New Request'; }),
-    [filteredRecords, buildRowData]
+    () => filteredRecords
+      .filter(r => { const v = buildRowData(r).approvalVal; return v === '' || v === 'New Request'; })
+      .sort((a, b) => {
+        const aVal = fields?.createdAt ? (a.getCellValue(fields.createdAt) as string | null) ?? '' : '';
+        const bVal = fields?.createdAt ? (b.getCellValue(fields.createdAt) as string | null) ?? '' : '';
+        return bVal.localeCompare(aVal);
+      }),
+    [filteredRecords, buildRowData, fields]
   );
   const underReviewRecords = useMemo(
-    () => filteredRecords.filter(r => buildRowData(r).approvalVal === 'Under Review'),
-    [filteredRecords, buildRowData]
+    () => filteredRecords
+      .filter(r => buildRowData(r).approvalVal === 'Under Review')
+      .sort((a, b) => {
+        const aVal = fields?.lastModifiedAt ? (a.getCellValue(fields.lastModifiedAt) as string | null) ?? '' : '';
+        const bVal = fields?.lastModifiedAt ? (b.getCellValue(fields.lastModifiedAt) as string | null) ?? '' : '';
+        return bVal.localeCompare(aVal);
+      }),
+    [filteredRecords, buildRowData, fields]
   );
 
   const handleDropToUnderReview = useCallback(() => {
