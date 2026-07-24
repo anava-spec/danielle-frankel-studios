@@ -6,7 +6,15 @@ TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record updated — customization_requests
              (watched fields: internal_approval_status, client_approval_status)
-VERSION    : 1.0.0 — all field IDs verified against live base
+VERSION    : 1.1.0 — fixed proposedTotal always reading $0/blank for Hybrid
+                     requests: proposed_total_custom_price is a Regular-only
+                     formula that Hybrid never populates (its base_price and
+                     customization pricing live on its two Style 1/Style 2
+                     children, not the parent). Added PricingHelper, which
+                     computes Hybrid's real total from those two children's
+                     base_price — same formula the interface itself uses
+                     (base + 85% surcharge off the higher child). All field
+                     IDs verified against live base.
 
 OBJECTIVE
   Whenever Margo, the SA, or the client makes an Approve/Deny decision,
@@ -65,8 +73,10 @@ const FIELDS_REQUEST = {
   customized_style           : 'fldCaKP1d4C0aohQE', // multipleRecordLinks
   is_hybrid                  : 'fld1stC4sHuPT4pT4', // singleSelect — Regular / Hybrid
   hybrid_style_names         : 'fldMHwhsQ7rmvjqBb', // rollup — already-formatted "Style A & Style B"
+  hybrid_link                : 'fldewS0eFvZsoS30g', // multipleRecordLinks — the 2 Style 1/Style 2 child records
+  base_price                 : 'fldLBXbdD3SUfXSgL', // lookup — used to compute the Hybrid total (see below)
   date_of_request            : 'fldQdHAp256vsImBt',
-  proposed_total_custom_price: 'fldtF37zwwAPb5hjS', // formula, currency-formatted
+  proposed_total_custom_price: 'fldtF37zwwAPb5hjS', // formula, currency-formatted — Regular only, always empty/0 for Hybrid
 };
 
 // Fields — staff (tblbYk88xJ8FQrLS4)
@@ -120,6 +130,31 @@ class Logger {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PRICING HELPER CLASS
+// Pure math — mirrors the interface's own computeHybridCombinedTotal(),
+// since Hybrid requests never populate proposed_total_custom_price (it's a
+// Regular-only formula; the interface computes Hybrid's own total
+// client-side from its two children's base prices instead).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PricingHelper {
+  static parseCurrencyString(str) {
+    if (!str) return 0;
+    const n = Number(String(str).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  static formatCurrency(n) {
+    const safe = Number.isFinite(n) ? n : 0;
+    return `$${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  // Same formula as the interface: base + 85% surcharge, off the HIGHER of
+  // the two children's base prices.
+  static computeHybridTotal(basePrice1, basePrice2) {
+    return Math.max(basePrice1, basePrice2) * 1.85;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // REQUEST DATA MAPPER CLASS
 // Pure field-extraction logic. No Airtable writes. No side effects.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,6 +165,7 @@ class RequestDataMapper {
   _str(r, f)  { const v = r?.getCellValue(f); if (v === null || v === undefined) return null; if (typeof v === 'object' && v?.name) return v.name; return String(v); }
   _lookupStr(r, f) { const v = r?.getCellValue(f); if (!v || !Array.isArray(v)) return null; return v[0] ?? null; }
   _linkName(r, f)  { const v = r?.getCellValue(f); if (!v || !Array.isArray(v)) return null; return v[0]?.name ?? null; }
+  _linkIds(r, f)   { const v = r?.getCellValue(f); if (!v || !Array.isArray(v)) return []; return v.map(x => x.id); }
   // Dates and formula-currency read cleanest via Airtable's own formatted
   // string representation rather than re-deriving the format by hand.
   _asString(r, f) { const v = r?.getCellValueAsString ? r.getCellValueAsString(f) : null; return v || null; }
@@ -143,11 +179,15 @@ class RequestDataMapper {
       clientStatus   : this._str(record, FIELDS_REQUEST.client_approval_status),
       saName         : this._lookupStr(record, FIELDS_REQUEST.sales_associate),
       clientName     : this._linkName(record, FIELDS_REQUEST.client) ?? 'a client',
+      isHybrid,
+      hybridLinkIds  : isHybrid ? this._linkIds(record, FIELDS_REQUEST.hybrid_link) : [],
       styleText      : isHybrid
         ? (this._asString(record, FIELDS_REQUEST.hybrid_style_names) ?? 'Hybrid')
         : (this._linkName(record, FIELDS_REQUEST.customized_style) ?? '—'),
       dateOfRequest  : this._asString(record, FIELDS_REQUEST.date_of_request) ?? '—',
-      proposedTotal  : this._asString(record, FIELDS_REQUEST.proposed_total_custom_price) ?? '—',
+      // Regular only — Hybrid's real total is filled in by the Service after
+      // this, once the two child records have been fetched (see PricingHelper).
+      proposedTotal  : isHybrid ? null : (this._asString(record, FIELDS_REQUEST.proposed_total_custom_price) ?? '—'),
       internalDenialReason : this._str(record, FIELDS_REQUEST.internal_denial_reason),
       saDenialReason       : this._str(record, FIELDS_REQUEST.sa_denial_reason),
       clientDenialReason   : this._str(record, FIELDS_REQUEST.client_denial_reason),
@@ -220,6 +260,15 @@ class RequestRepository {
     if (!record) throw new Error(`Guard clause: request record not found → recordId: ${recordId}`);
     this.logger.audit(`Record loaded → ${recordId}`);
     return record;
+  }
+
+  // Fetches specific records by ID from the same table — used to pull a
+  // Hybrid request's two Style 1/Style 2 child records (linked via
+  // hybrid_link) so their base_price can feed PricingHelper.computeHybridTotal.
+  async getByIds(ids, fieldIds) {
+    if (!ids.length) return [];
+    const result = await this.table.selectRecordsAsync({ fields: fieldIds });
+    return ids.map(id => result.records.find(r => r.id === id)).filter(Boolean);
   }
 }
 
@@ -316,6 +365,18 @@ class DecisionNotificationService {
 
     // Step 2 — Extract plain data
     const data = this.mapper.extract(record);
+
+    // Hybrid's real proposed total isn't a field on this record at all — it
+    // has to be computed from its two Style 1/Style 2 children's base_price,
+    // same as the interface does.
+    if (data.isHybrid) {
+      const children = await this.requestRepo.getByIds(data.hybridLinkIds, [FIELDS_REQUEST.base_price]);
+      const [c1, c2] = children;
+      const b1 = c1 ? PricingHelper.parseCurrencyString(c1.getCellValueAsString(FIELDS_REQUEST.base_price)) : 0;
+      const b2 = c2 ? PricingHelper.parseCurrencyString(c2.getCellValueAsString(FIELDS_REQUEST.base_price)) : 0;
+      data.proposedTotal = PricingHelper.formatCurrency(PricingHelper.computeHybridTotal(b1, b2));
+      this.logger.audit(`Hybrid total computed from children → ${data.proposedTotal}`);
+    }
 
     // Step 3 — Resolve scenario (may resolve to shouldNotify: false — not an error)
     const { shouldNotify, recipientQuery, scenario, reason } = this.resolver.resolve(data);
