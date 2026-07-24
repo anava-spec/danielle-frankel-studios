@@ -57,6 +57,12 @@ function useSmoothToggle(open: boolean, durationMs = 150) {
   return { mounted, visible };
 }
 
+// Production and Sandbox are two separate bases with mirrored table/field
+// IDs — this is the only thing that actually differs between them at
+// runtime, used to gate behavior that should only apply once live (e.g.
+// hiding past Wedding Dates) without affecting testing in Sandbox.
+const PRODUCTION_BASE_ID = 'appUC2NFAlURayLx9';
+
 // ─── Table / Field IDs ────────────────────────────────────────────────────────
 const FIELD_IDS = {
   CUSTOMIZATION_ID:            'fldl9cIcV80nYEDwe',
@@ -2786,6 +2792,7 @@ function CustomizationApp(): React.ReactElement {
       clientApprovalStatus:     customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS),
       salesAssociate:           customizationsTable.getFieldIfExists(FIELD_IDS.SALES_ASSOCIATE),
       dateOfRequest:            customizationsTable.getFieldIfExists(FIELD_IDS.DATE_OF_REQUEST),
+      weddingDate:              customizationsTable.getFieldIfExists(FIELD_IDS.WEDDING_DATE),
       proposedTotalCustomPrice: customizationsTable.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE),
       approvedPricing:          customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING),
       isHybrid:                 customizationsTable.getFieldIfExists(FIELD_IDS.IS_HYBRID),
@@ -2798,6 +2805,28 @@ function CustomizationApp(): React.ReactElement {
       lastModifiedAt:           customizationsTable.getFieldIfExists(FIELD_IDS.LAST_MODIFIED_AT),
     };
   }, [customizationsTable]);
+
+  // Deep link support — a ?record=recXXXXXXXXXXXXXXX URL param (used by the
+  // notification automations' "Click here to review" links) jumps straight
+  // to that record's Detail Page on first load, instead of landing on the
+  // list. Runs once, the first time allCustomizationRecords/fields are ready
+  // — a ref (not state) guards against re-triggering on every re-render or
+  // if the user navigates back to the list afterward.
+  const deepLinkConsumedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumedRef.current) return;
+    if (!allCustomizationRecords.length || !fields) return;
+    deepLinkConsumedRef.current = true;
+    const targetId = new URLSearchParams(window.location.search).get('record');
+    if (!targetId) return;
+    const target = allCustomizationRecords.find(r => r.id === targetId);
+    if (!target) return;
+    const status = fields.approvalStatus ? getSingleSelectName(target.getCellValue(fields.approvalStatus)) : '';
+    // Under Review is Margo's queue (Approval layout has her action buttons);
+    // everything else — Counter-Proposed, New Request, already-decided — is
+    // reachable/actionable from the Workdesk (ops) context.
+    setViewState({ layer: 2, recordId: targetId, sourceLayout: status === 'Under Review' ? 'approval' : 'ops' });
+  }, [allCustomizationRecords, fields]);
 
   // One-to-many counter-proposal threads: every non-root record links
   // directly to the same root via parent_customization_request. Only the
@@ -2861,8 +2890,13 @@ function CustomizationApp(): React.ReactElement {
     setFilterApprovalStatus(combinedApprovalOptions.filter(o => !DEFAULT_HIDDEN_APPROVAL_STATUSES.includes(o)));
   }, [combinedApprovalOptions]);
 
+  // Production-only: Sandbox is used for testing, including with old/expired
+  // test data, so this must never hide anything there.
+  const isProduction = base.id === PRODUCTION_BASE_ID;
+
   const filteredRecords = useMemo(() => {
     if (!fields) return [];
+    const todayStr = new Date().toISOString().slice(0, 10);
     return allCustomizationRecords.filter(record => {
       // A hybrid's two child Customizations (one per style) only ever exist
       // to feed the parent's price — they're never their own row here, only
@@ -2874,6 +2908,10 @@ function CustomizationApp(): React.ReactElement {
         : false;
       if (isHybridChild) return false;
       if (nonLatestThreadIds.has(record.id)) return false;
+      if (isProduction && fields.weddingDate) {
+        const weddingStr = resolveDateString(record.getCellValue(fields.weddingDate));
+        if (weddingStr && weddingStr < todayStr) return false;
+      }
       const saValue     = fields.salesAssociate   ? record.getCellValueAsString(fields.salesAssociate) : '';
       const styleRaw    = fields.customizedStyle  ? record.getCellValue(fields.customizedStyle)        : null;
       const styleValue  = getLinkedRecordName(styleRaw);
@@ -2886,7 +2924,7 @@ function CustomizationApp(): React.ReactElement {
       const bDate = fields.dateOfRequest ? resolveDateString(b.getCellValue(fields.dateOfRequest)) : '';
       return bDate.localeCompare(aDate);
     });
-  }, [allCustomizationRecords, filterSA, filterStyle, clientSearch, fields, nonLatestThreadIds]);
+  }, [allCustomizationRecords, filterSA, filterStyle, clientSearch, fields, nonLatestThreadIds, isProduction]);
 
   // Approval Status filter applies only to the Workdesk table — the Approval
   // layout's New Requests/Under Review buckets (derived from filteredRecords
