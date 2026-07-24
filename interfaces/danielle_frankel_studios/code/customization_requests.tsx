@@ -1588,6 +1588,13 @@ function CounterProposalModal({
       };
       if (clientLink) childFields[FIELD_IDS.CLIENT] = clientLink.map(c => ({ id: c.id }));
       if (fIsHybrid) childFields[FIELD_IDS.IS_HYBRID] = { name: typeText };
+      if (isHybrid && fHybridLink) {
+        // Inherit the same two Style 1/Style 2 child records the parent
+        // already has — without this, the counter-proposal's own
+        // hybrid_customization link stays empty and it has no styles at all.
+        const hybridLink = parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null;
+        childFields[FIELD_IDS.HYBRID_LINK] = hybridLink ? hybridLink.map(h => ({ id: h.id })) : null;
+      }
       if (!isHybrid) {
         if (fStyled) {
           const styleLink = parentRecord.getCellValue(fStyled) as Array<{ id: string }> | null;
