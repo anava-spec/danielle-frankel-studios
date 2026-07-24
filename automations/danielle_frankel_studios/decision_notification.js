@@ -6,15 +6,26 @@ TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record updated — customization_requests
              (watched fields: internal_approval_status, client_approval_status)
-VERSION    : 1.1.0 — fixed proposedTotal always reading $0/blank for Hybrid
-                     requests: proposed_total_custom_price is a Regular-only
-                     formula that Hybrid never populates (its base_price and
-                     customization pricing live on its two Style 1/Style 2
-                     children, not the parent). Added PricingHelper, which
-                     computes Hybrid's real total from those two children's
-                     base_price — same formula the interface itself uses
-                     (base + 85% surcharge off the higher child). All field
-                     IDs verified against live base.
+VERSION    : 1.2.0 — proposedTotal now prefers the actual negotiated price
+                     (internal_approved_pricing, else client_proposed_
+                     pricing) over any calculated total, for both Regular
+                     and Hybrid — same priority the interface itself uses.
+                     The Hybrid child-based fallback now only applies when
+                     NEITHER negotiated field has a value (a genuinely
+                     fresh Hybrid ask, never countered) — v1.1.0 mistakenly
+                     always showed the calculated total for Hybrid, even
+                     when a real negotiated price existed (e.g. right after
+                     Margo approves a Hybrid counter-proposal).
+                     ---
+                     v1.1.0 — fixed proposedTotal always reading $0/blank
+                     for Hybrid requests: proposed_total_custom_price is a
+                     Regular-only formula that Hybrid never populates (its
+                     base_price and customization pricing live on its two
+                     Style 1/Style 2 children, not the parent). Added
+                     PricingHelper, which computes Hybrid's real total from
+                     those two children's base_price (base + 85% surcharge
+                     off the higher child).
+                     All field IDs verified against live base.
 
 OBJECTIVE
   Whenever Margo, the SA, or the client makes an Approve/Deny decision,
@@ -74,7 +85,9 @@ const FIELDS_REQUEST = {
   is_hybrid                  : 'fld1stC4sHuPT4pT4', // singleSelect — Regular / Hybrid
   hybrid_style_names         : 'fldMHwhsQ7rmvjqBb', // rollup — already-formatted "Style A & Style B"
   hybrid_link                : 'fldewS0eFvZsoS30g', // multipleRecordLinks — the 2 Style 1/Style 2 child records
-  base_price                 : 'fldLBXbdD3SUfXSgL', // lookup — used to compute the Hybrid total (see below)
+  base_price                 : 'fldLBXbdD3SUfXSgL', // lookup — used to compute the Hybrid fallback total (see below)
+  internal_approved_pricing  : 'fldFRRjwVlCgHhPdA', // the negotiated price once Margo has approved/countered
+  client_proposed_pricing    : 'fldNLwgg5sVAnoo4S', // the client's own counter-proposal price, before Margo reviews it
   date_of_request            : 'fldQdHAp256vsImBt',
   proposed_total_custom_price: 'fldtF37zwwAPb5hjS', // formula, currency-formatted — Regular only, always empty/0 for Hybrid
 };
@@ -173,6 +186,17 @@ class RequestDataMapper {
   extract(record) {
     this.logger.step(2, 'Extracting plain values from record');
     const isHybrid = this._str(record, FIELDS_REQUEST.is_hybrid) === 'Hybrid';
+    // A negotiated price always wins over any computed/calculated total —
+    // internal_approved_pricing once Margo has weighed in (an internal
+    // counter, or an approved client counter), otherwise
+    // client_proposed_pricing while the client's own ask hasn't been
+    // reviewed yet. Same priority the interface itself uses
+    // (currentProposedPriceStr). Only a request with NEITHER — a genuinely
+    // fresh ask, never countered — falls through to a calculated total:
+    // proposed_total_custom_price for Regular, or the Hybrid child-based
+    // fallback the Service computes next.
+    const negotiatedPrice = this._asString(record, FIELDS_REQUEST.internal_approved_pricing)
+      || this._asString(record, FIELDS_REQUEST.client_proposed_pricing);
     const data = {
       decidedBy      : this._str(record, FIELDS_REQUEST.last_decision_by),
       internalStatus : this._str(record, FIELDS_REQUEST.internal_approval_status),
@@ -185,9 +209,9 @@ class RequestDataMapper {
         ? (this._asString(record, FIELDS_REQUEST.hybrid_style_names) ?? 'Hybrid')
         : (this._linkName(record, FIELDS_REQUEST.customized_style) ?? '—'),
       dateOfRequest  : this._asString(record, FIELDS_REQUEST.date_of_request) ?? '—',
-      // Regular only — Hybrid's real total is filled in by the Service after
-      // this, once the two child records have been fetched (see PricingHelper).
-      proposedTotal  : isHybrid ? null : (this._asString(record, FIELDS_REQUEST.proposed_total_custom_price) ?? '—'),
+      proposedTotal  : negotiatedPrice
+        ?? (isHybrid ? null : (this._asString(record, FIELDS_REQUEST.proposed_total_custom_price) ?? '—')),
+      needsHybridFallback: isHybrid && !negotiatedPrice,
       internalDenialReason : this._str(record, FIELDS_REQUEST.internal_denial_reason),
       saDenialReason       : this._str(record, FIELDS_REQUEST.sa_denial_reason),
       clientDenialReason   : this._str(record, FIELDS_REQUEST.client_denial_reason),
@@ -366,16 +390,19 @@ class DecisionNotificationService {
     // Step 2 — Extract plain data
     const data = this.mapper.extract(record);
 
-    // Hybrid's real proposed total isn't a field on this record at all — it
-    // has to be computed from its two Style 1/Style 2 children's base_price,
-    // same as the interface does.
-    if (data.isHybrid) {
+    // Only a Hybrid request with NO negotiated price at all (a genuinely
+    // fresh ask, never countered) needs this — the mapper already prefers
+    // internal_approved_pricing/client_proposed_pricing when either exists.
+    // Hybrid never populates proposed_total_custom_price on its own, so this
+    // fallback mirrors the interface's own computeHybridCombinedTotal from
+    // its two Style 1/Style 2 children's base_price.
+    if (data.needsHybridFallback) {
       const children = await this.requestRepo.getByIds(data.hybridLinkIds, [FIELDS_REQUEST.base_price]);
       const [c1, c2] = children;
       const b1 = c1 ? PricingHelper.parseCurrencyString(c1.getCellValueAsString(FIELDS_REQUEST.base_price)) : 0;
       const b2 = c2 ? PricingHelper.parseCurrencyString(c2.getCellValueAsString(FIELDS_REQUEST.base_price)) : 0;
       data.proposedTotal = PricingHelper.formatCurrency(PricingHelper.computeHybridTotal(b1, b2));
-      this.logger.audit(`Hybrid total computed from children → ${data.proposedTotal}`);
+      this.logger.audit(`No negotiated price on record — Hybrid fallback total computed from children → ${data.proposedTotal}`);
     }
 
     // Step 3 — Resolve scenario (may resolve to shouldNotify: false — not an error)
