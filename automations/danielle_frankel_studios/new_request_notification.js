@@ -5,13 +5,14 @@ BASE       : app6Q4xMZ1ngJxiV8 (sandbox — mirror to Production when ready)
 TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record created — customization_requests
-VERSION    : 1.1.1 — added a 3s delay before reading the record, to avoid
-                     reading proposed_total_custom_price (and anything else
-                     downstream of the newly-written style/pricing links)
-                     before Airtable finishes recalculating it. Uses a
-                     synchronous busy-wait (DateManager.sleepSync) since
-                     the Automation script sandbox has no setTimeout. All
-                     field IDs verified against live base.
+VERSION    : 1.2.0 — replaced the fixed delay with a poll-until-settled
+                     read (RequestRepository.getById now retries up to 4x,
+                     2s apart, until proposed_total_custom_price actually
+                     has a value) instead of trusting a fixed wait or
+                     re-deriving the formula in script. Uses a synchronous
+                     busy-wait (DateManager.sleepSync) between attempts
+                     since the Automation script sandbox has no setTimeout.
+                     All field IDs verified against live base.
 
 OBJECTIVE
   Whenever a new customization_requests record is created — a brand-new ask
@@ -204,13 +205,34 @@ class RequestRepository {
     this.table  = base.getTable(TABLE_IDS.REQUESTS);
     this.logger = logger;
   }
-  async getById(recordId) {
+  // On "record created", a formula/rollup field downstream of the just-
+  // written style/customization_pricing links (proposed_total_custom_price,
+  // here) can still be mid-recalculation on Airtable's side for a moment —
+  // reading it immediately can return 0 even though the record itself is
+  // fully written. Rather than trust a fixed delay (which either wastes
+  // time or isn't long enough) or re-derive the formula ourselves in script
+  // (fragile — proposed_total_custom_price is a 5-field-deep formula chain
+  // that would silently drift out of sync with any future change to the
+  // base), poll: re-fetch up to maxAttempts times, stopping as soon as
+  // settleOnFieldId actually has a value.
+  async getById(recordId, { settleOnFieldId = null, maxAttempts = 4, waitMs = 2000 } = {}) {
     this.logger.step(1, `Loading request record → ${recordId}`);
-    const result = await this.table.selectRecordsAsync({ fields: Object.values(FIELDS_REQUEST) });
-    const record = result.records.find(r => r.id === recordId);
-    if (!record) throw new Error(`Guard clause: request record not found → recordId: ${recordId}`);
-    this.logger.audit(`Record loaded → ${recordId}`);
-    return record;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = await this.table.selectRecordsAsync({ fields: Object.values(FIELDS_REQUEST) });
+      const record = result.records.find(r => r.id === recordId);
+      if (!record) throw new Error(`Guard clause: request record not found → recordId: ${recordId}`);
+      if (!settleOnFieldId || record.getCellValue(settleOnFieldId)) {
+        this.logger.audit(`Record loaded → ${recordId} (settled on attempt ${attempt}/${maxAttempts})`);
+        return record;
+      }
+      if (attempt < maxAttempts) {
+        this.logger.audit(`${settleOnFieldId} still empty on attempt ${attempt}/${maxAttempts} — waiting ${waitMs}ms and retrying`);
+        DateManager.sleepSync(waitMs);
+      } else {
+        this.logger.audit(`${settleOnFieldId} still empty after ${maxAttempts} attempts — proceeding with whatever it has`);
+        return record;
+      }
+    }
   }
 }
 
@@ -301,19 +323,11 @@ class NewRequestNotificationService {
   async run(recordId) {
     this.logger.audit(`Service started → record: ${recordId}`);
 
-    // On "record created", proposed_total_custom_price (and anything else
-    // downstream of the just-written customized_style/customization_pricing
-    // links) can still be mid-recalculation on Airtable's side for a moment
-    // after the record actually exists — reading it immediately can return
-    // 0/blank even though the record itself is fully written. A short delay
-    // here is the standard workaround (recomputing the formula ourselves
-    // from source fields would be more brittle, since it'd have to be kept
-    // in lockstep with the formula's own logic).
-    DateManager.sleepSync(3000);
-    this.logger.audit('Waited 3s for dependent formulas to settle');
-
-    // Step 1 — Load record
-    const record = await this.requestRepo.getById(recordId);
+    // Step 1 — Load record, polling until proposed_total_custom_price has
+    // actually settled (see RequestRepository.getById for why).
+    const record = await this.requestRepo.getById(recordId, {
+      settleOnFieldId: FIELDS_REQUEST.proposed_total_custom_price,
+    });
 
     // Step 2 — Extract plain data
     const data = this.mapper.extract(record);
