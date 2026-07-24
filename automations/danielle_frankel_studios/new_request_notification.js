@@ -5,11 +5,13 @@ BASE       : app6Q4xMZ1ngJxiV8 (sandbox — mirror to Production when ready)
 TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record created — customization_requests
-VERSION    : 1.1.0 — added a 3s delay before reading the record, to avoid
+VERSION    : 1.1.1 — added a 3s delay before reading the record, to avoid
                      reading proposed_total_custom_price (and anything else
                      downstream of the newly-written style/pricing links)
-                     before Airtable finishes recalculating it. All field
-                     IDs verified against live base.
+                     before Airtable finishes recalculating it. Uses a
+                     synchronous busy-wait (DateManager.sleepSync) since
+                     the Automation script sandbox has no setTimeout. All
+                     field IDs verified against live base.
 
 OBJECTIVE
   Whenever a new customization_requests record is created — a brand-new ask
@@ -121,6 +123,13 @@ class Logger {
 
 class DateManager {
   static now() { return new Date().toISOString(); }
+  // Airtable's Automation script sandbox has no setTimeout/setInterval —
+  // this is the standard synchronous busy-wait workaround for "just pause
+  // for a bit" inside a script step.
+  static sleepSync(ms) {
+    const start = Date.now();
+    while (Date.now() - start < ms) { /* busy wait */ }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,7 +309,7 @@ class NewRequestNotificationService {
     // here is the standard workaround (recomputing the formula ourselves
     // from source fields would be more brittle, since it'd have to be kept
     // in lockstep with the formula's own logic).
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    DateManager.sleepSync(3000);
     this.logger.audit('Waited 3s for dependent formulas to settle');
 
     // Step 1 — Load record
