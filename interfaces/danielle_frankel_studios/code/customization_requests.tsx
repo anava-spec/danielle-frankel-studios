@@ -1207,7 +1207,7 @@ function NewRequestModal({
             <>
               <div>
                 <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Client</span>
-                <ClientSearchBar value={clientId} options={clientOptions} placeholder="Search clients…" onChange={setClientId} widthPercent={30} />
+                <ClientSearchBar value={clientId} options={clientOptions} placeholder="Search clients…" onChange={setClientId} widthPercent={100} />
               </div>
 
               <div>
