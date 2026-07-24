@@ -2341,7 +2341,7 @@ function RecordDetailPage({
 
               const amberMsgs: string[] = [];
               if (isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed')) {
-                amberMsgs.push('This is a counter-proposal — review the revised price in the Summary panel above.');
+                amberMsgs.push('This is a counter-proposal — review the revised price in the Summary panel below.');
               }
 
               const redMsgs: string[] = [];
@@ -2545,6 +2545,25 @@ function RecordDetailPage({
 
                   <div className="w-[40%] shrink-0">
                     <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
+                      {/* Same Approved/Counter-Proposed Price block as the
+                          Regular summary panel — see currentProposedPriceStr. */}
+                      {approvalStatus === 'Approved' && fApproved ? (
+                        <>
+                          <span className={labelCls}>Approved Price</span>
+                          <div className="text-3xl font-bold text-gray-900 dark:text-gray-100 pb-2">
+                            {record.getCellValueAsString(fApproved) || '—'}
+                          </div>
+                          <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
+                        </>
+                      ) : isCounterProposal && currentProposedPriceStr && (
+                        <>
+                          <span className={labelCls}>Counter-Proposed Price</span>
+                          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 pb-2">
+                            {currentProposedPriceStr}
+                          </div>
+                          <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
+                        </>
+                      )}
                       <span className={labelCls}>Summary</span>
                       <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
                         <span className="text-base text-gray-600 dark:text-gray-400">Style 1 Base Price{higherIsStyle1 && ' (higher)'}</span>
