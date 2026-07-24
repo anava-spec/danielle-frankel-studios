@@ -1456,6 +1456,7 @@ function CounterProposalModal({
   const fClientProposedPricing = customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_PROPOSED_PRICING);
   const fParentRequest    = customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
   const fApprStatus       = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS);
+  const fLastDecisionBy   = customizationsTable.getFieldIfExists(FIELD_IDS.LAST_DECISION_BY);
   const pPriceField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
   const pPercentField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null;
   const pMultiField   = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null;
@@ -1563,9 +1564,16 @@ function CounterProposalModal({
       // completes its cached value flips to "Denied • Counter-Proposal" and
       // reading it after that point would always land on the wrong branch.
       const parentInternalStatus = fApprStatus ? getSingleSelectName(parentRecord.getCellValue(fApprStatus)) : '';
-      await queueWrite(() => customizationsTable.updateRecordAsync(parentRecord.id, {
+      const parentPatch: Record<string, unknown> = {
         [parentStatusField]: { name: 'Denied • Counter-Proposal' },
-      }));
+      };
+      // Clear last_decision_by on the record being superseded — it's now
+      // stale (describes whatever decision happened before this counter),
+      // and if left in place a later unrelated status change on this same
+      // record could combine with the stale value to falsely match a
+      // notification scenario in the decision automation.
+      if (fLastDecisionBy) parentPatch[FIELD_IDS.LAST_DECISION_BY] = null;
+      await queueWrite(() => customizationsTable.updateRecordAsync(parentRecord.id, parentPatch));
       const clientLink = fClient ? (parentRecord.getCellValue(fClient) as Array<{ id: string }> | null) : null;
       // One-to-many chain: every counter-proposal links directly to the same
       // ROOT request, not to whichever record it's countering. If parentRecord
