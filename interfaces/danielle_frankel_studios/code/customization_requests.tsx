@@ -1591,6 +1591,14 @@ function CounterProposalModal({
       const childApprovalStatusName = source === 'client'
         ? 'New Request'
         : (parentInternalStatus === 'Counter-Proposed' ? 'New Request' : 'Counter-Proposed');
+      // Who created THIS counter — mirrors the same three-way split as
+      // childApprovalStatusName above. Stamped on the new record (not just
+      // cleared on the parent) so the notification automation can tell a
+      // genuinely new ask apart from a client/SA re-counter that happens to
+      // land at the same "New Request" status.
+      const childDecisionBy = source === 'client'
+        ? 'Client'
+        : (parentInternalStatus === 'Counter-Proposed' ? 'SA' : 'Margo');
       const childFields: Record<string, unknown> = {
         [FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST]: [{ id: rootId }],
         [FIELD_IDS.APPROVAL_STATUS]: { name: childApprovalStatusName },
@@ -1601,6 +1609,7 @@ function CounterProposalModal({
         [source === 'client' ? FIELD_IDS.CLIENT_PROPOSED_PRICING : FIELD_IDS.APPROVED_PRICING]: priceNum,
         [FIELD_IDS.CUSTOMIZATION_DETAIL]: additionalDetails || null,
       };
+      if (fLastDecisionBy) childFields[FIELD_IDS.LAST_DECISION_BY] = { name: childDecisionBy };
       if (clientLink) childFields[FIELD_IDS.CLIENT] = clientLink.map(c => ({ id: c.id }));
       if (fIsHybrid) childFields[FIELD_IDS.IS_HYBRID] = { name: typeText };
       if (isHybrid && fHybridLink) {
