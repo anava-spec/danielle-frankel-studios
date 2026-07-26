@@ -126,6 +126,12 @@ const FIELD_IDS = {
   ADDITIONAL_CUSTOMIZED_STYLE: 'fldFGUnQBWnfiGwkE',
   ADDITIONAL_BASE_PRICE:       'fldrn1gH5BcladIxo',
   ADDITIONAL_SELF_USAGE:       'fldSO6qbpDzk0wUJD',
+  // Hardcoded now that the real ID is known (2026-07-27) — was previously a
+  // fuzzy name-matched custom property ('includes selfusage'), which could
+  // silently resolve to additional_self_usage instead once that field
+  // existed, scaling every multiple-fee-type Rate by the wrong style's Self
+  // Usage. A hardcoded ID can't collide with anything, ever.
+  SELF_USAGE:                  'fldAhZaX0VHwZz3fW',
   HYBRID_STYLE_NAMES:          'fldEGgSq6Tohw9Xvz', // formula — "Style A & Style B", built off customized_style + additional_customized_style directly
 } as const;
 
@@ -680,17 +686,6 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       type: 'field' as const,
       table: customizationsTable,
       defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'rushfeepercent') || normalizedIncludes(f.name, 'rushfee%')),
-    },
-    customizationsTable && {
-      key: 'selfUsageField',
-      label: 'Self Usage field (Customizations)',
-      type: 'field' as const,
-      table: customizationsTable,
-      // Excludes additional_self_usage (Hybrid's Style B, 2026-07-26) —
-      // without this, a fuzzy "includes 'selfusage'" match could pick that
-      // one instead of the real self_usage, silently scaling every
-      // multiple-fee-type rate by the wrong style's Self Usage.
-      defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage') && !normalizedIncludes(f.name, 'additional')),
     },
   ].filter(Boolean);
 }
@@ -1461,6 +1456,8 @@ function CounterProposalModal({
   const fPricing          = customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
   const fBasePrice        = customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fAdditionalBasePrice = customizationsTable.getFieldIfExists(FIELD_IDS.ADDITIONAL_BASE_PRICE);
+  const fSelfUsage        = customizationsTable.getFieldIfExists(FIELD_IDS.SELF_USAGE);
+  const fAdditionalSelfUsage = customizationsTable.getFieldIfExists(FIELD_IDS.ADDITIONAL_SELF_USAGE);
   const fEmbroidery       = customizationsTable.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fApproved         = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
   const fClientProposedPricing = customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_PROPOSED_PRICING);
@@ -1506,7 +1503,19 @@ function CounterProposalModal({
   // Customizations per Julia. Drives the live multiplier preview and is what
   // actually gets written to the child on submit (not a raw parent copy).
   const [embroidery, setEmbroidery] = useState<string | null>(fEmbroidery ? (parentRecord.getCellValueAsString(fEmbroidery) || null) : null);
-  const multiplierFactor = computeMultiplierFactor(0, embroidery);
+  // Self Usage — same source RecordDetailPage uses: Regular's own self_usage
+  // lookup, or for Hybrid, whichever style's Self Usage matches the higher
+  // Base Price (exact match, not an approximation). Previously hardcoded to
+  // 0 here, which happened to be harmless for Regular (computeMultiplierFactor
+  // treats 0 as "no Self Usage on record" and falls back to 1) but was never
+  // correct once a real value existed — same class of bug as the recap.tsx
+  // decimal mismatch (2026-07-27).
+  const selfUsageValue = isHybrid
+    ? (hybridBaseA >= hybridBaseB
+        ? (fSelfUsage ? parseCurrencyString(parentRecord.getCellValueAsString(fSelfUsage)) : 0)
+        : (fAdditionalSelfUsage ? parseCurrencyString(parentRecord.getCellValueAsString(fAdditionalSelfUsage)) : 0))
+    : (fSelfUsage ? parseCurrencyString(parentRecord.getCellValueAsString(fSelfUsage)) : 0);
+  const multiplierFactor = computeMultiplierFactor(selfUsageValue, embroidery);
 
   const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
   const selectedItems = useMemo(() => {
@@ -1831,13 +1840,11 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
 // ─── RecordDetailPage ─────────────────────────────────────────────────────────
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, stylesBasePriceField, preApprovalField,
-  selfUsageField,
   clientRecords, allCustomizationRecords, sourceLayout, onBack, onCounterProposalSent,
   readOnly = false, onOpenHistoryRecord,
 }: {
   record: AirtableRecord; table: Table; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   stylesRecords: AirtableRecord[]; stylesBasePriceField: Field | null; preApprovalField: Field | null;
-  selfUsageField: Field | null;
   clientRecords: AirtableRecord[];
   allCustomizationRecords: AirtableRecord[];
   sourceLayout: 'ops' | 'approval';
@@ -1865,6 +1872,7 @@ function RecordDetailPage({
   const fAdditionalStyled     = table.getFieldIfExists(FIELD_IDS.ADDITIONAL_CUSTOMIZED_STYLE);
   const fAdditionalBasePrice  = table.getFieldIfExists(FIELD_IDS.ADDITIONAL_BASE_PRICE);
   const fAdditionalSelfUsage  = table.getFieldIfExists(FIELD_IDS.ADDITIONAL_SELF_USAGE);
+  const selfUsageField       = table.getFieldIfExists(FIELD_IDS.SELF_USAGE);
   const isHybrid = !!(fIsHybrid && record.getCellValueAsString(fIsHybrid) === 'Hybrid');
   const fDetail     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
   const fEmbroidery = table.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
@@ -2765,7 +2773,6 @@ function CustomizationApp(): React.ReactElement {
   const preApprovalField     = (customPropertyValueByKey?.preApprovalField as Field | undefined) ?? null;
   const rushFeeProposedField = (customPropertyValueByKey?.rushFeeProposedField as Field | undefined) ?? null;
   const rushFeePercentField  = (customPropertyValueByKey?.rushFeePercentField as Field | undefined) ?? null;
-  const selfUsageField       = (customPropertyValueByKey?.selfUsageField as Field | undefined) ?? null;
 
   const allCustomizationRecords = useRecords(customizationsTable);
   const pricingRecords          = useRecords(pricingTable);
@@ -3068,7 +3075,6 @@ function CustomizationApp(): React.ReactElement {
         stylesRecords={styleRecords}
         stylesBasePriceField={stylesBasePriceField}
         preApprovalField={preApprovalField}
-        selfUsageField={selfUsageField}
         clientRecords={clientRecords}
         allCustomizationRecords={allCustomizationRecords}
         sourceLayout={viewState.sourceLayout}
