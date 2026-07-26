@@ -838,52 +838,34 @@ function LineItemsTable({
 // ─── HybridChildColumn ──────────────────────────────────────────────────────────
 // One of a Hybrid parent's two child Customizations records, scoped to just
 // this child and auto-saving straight to its own record id.
-// Hybrid no longer has Customizations, Embroidery, Flags, or a per-style
-// weight (per Julia, 2026-07-20 demo feedback) — a Hybrid child is just its
-// Style and Additional Details. The combined price (85% over the higher
-// Base Price) is shown once, at the parent level, not per child.
+// Hybrid is architecturally "Regular but merging two styles" (per Julia,
+// 2026-07-24 feedback) — a Hybrid child now only carries its own Style.
+// Customizations, Embroidery/Paint/Lace Amount, and Additional Details all
+// live once, at the parent level (see RecordDetailPage's unified fields
+// block), computed against whichever child has the higher Base Price. No
+// card/border here — both children render inline, side by side, as a single
+// horizontal panel, not two stacked cards.
 function HybridChildColumn({
   title, childRecord, table, styleOptions, canUpdate,
 }: {
   title: string; childRecord: AirtableRecord; table: Table;
   styleOptions: { id: string; label: string }[]; canUpdate: boolean;
 }) {
-  const fStyled    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
-  const fDetail    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
+  const fStyled = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
 
   const [styleId, setStyleId] = useState<string | null>(() => (fStyled ? (childRecord.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null : null));
-  const [detail,  setDetail]  = useState(fDetail ? childRecord.getCellValueAsString(fDetail) : '');
 
-  const autoSave = useCallback((patch: Record<string, unknown>) => {
-    queueWrite(() => table.updateRecordAsync(childRecord.id, patch)).catch(err => console.error('Hybrid child auto-save failed:', err));
-  }, [table, childRecord.id]);
-  const handleStyleId = (id: string | null) => { setStyleId(id); if (fStyled) autoSave({ [fStyled.id]: id ? [{ id }] : null }); };
+  const handleStyleId = (id: string | null) => {
+    setStyleId(id);
+    if (fStyled) queueWrite(() => table.updateRecordAsync(childRecord.id, { [fStyled.id]: id ? [{ id }] : null })).catch(err => console.error('Hybrid child auto-save failed:', err));
+  };
 
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
 
   return (
-    <div className="border border-gray-200 dark:border-[#38322A] rounded-xl p-4 space-y-4">
-      <div className="font-bold text-gray-900 dark:text-gray-100">{title}</div>
-
-      <div>
-        <div className="flex items-baseline justify-between gap-2 mb-1.5">
-          <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
-        </div>
-        <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId} disabled={!canUpdate} />
-      </div>
-
-      <div>
-        <span className={labelCls}>Additional Details</span>
-        {canUpdate ? (
-          <textarea value={detail} onChange={e => setDetail(e.target.value)}
-            onBlur={() => { if (fDetail) autoSave({ [fDetail.id]: detail || null }); }}
-            placeholder="Describe the specific customization…"
-            rows={3} className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors resize-none" />
-        ) : (
-          <div className="w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-[#1B1813] whitespace-pre-wrap min-h-[74px]">{detail || '—'}</div>
-        )}
-      </div>
+    <div className="flex-1 min-w-0">
+      <span className={labelCls}>{title}</span>
+      <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId} disabled={!canUpdate} />
     </div>
   );
 }
@@ -974,12 +956,12 @@ function emptyDraftSection(): DraftSectionValue {
 // show Style + Additional Details (per Julia's 2026-07-20 demo feedback).
 function DraftSectionFields({
   title, value, onChange, styleOptions, pricingRecords, pricingTable, preApprovalField, preApprovalColorMap,
-  basePriceNumber, multiplierFactor, showCustomizations = true,
+  basePriceNumber, multiplierFactor, showCustomizations = true, showStyle = true,
 }: {
   title?: string; value: DraftSectionValue; onChange: (patch: Partial<DraftSectionValue>) => void;
   styleOptions: { id: string; label: string }[]; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   preApprovalField: Field | null; preApprovalColorMap: Record<string, string>;
-  basePriceNumber: number; multiplierFactor: number; showCustomizations?: boolean;
+  basePriceNumber: number; multiplierFactor: number; showCustomizations?: boolean; showStyle?: boolean;
 }) {
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
@@ -1019,13 +1001,15 @@ function DraftSectionFields({
     <div className="border border-gray-200 dark:border-[#38322A] rounded-xl p-4 space-y-4">
       {title && <div className="font-semibold text-base text-gray-900 dark:text-gray-100">{title}</div>}
 
-      <div>
-        <div className="flex items-baseline justify-between gap-2 mb-1.5">
-          <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+      {showStyle && (
+        <div>
+          <div className="flex items-baseline justify-between gap-2 mb-1.5">
+            <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+          </div>
+          <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
         </div>
-        <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
-      </div>
+      )}
 
       {showCustomizations && (
         <div>
@@ -1091,7 +1075,12 @@ function NewRequestModal({
   // 'form': the field-editing form, reached via Continue.
   const [stage, setStage] = useState<'select' | 'form'>('select');
   const [regularSection, setRegularSection] = useState<DraftSectionValue>(emptyDraftSection());
-  const [hybridSections, setHybridSections] = useState<[DraftSectionValue, DraftSectionValue]>([emptyDraftSection(), emptyDraftSection()]);
+  // Hybrid is "Regular but merging two styles" — the two styles are picked
+  // independently (inline, side by side), but Customizations/Embroidery/
+  // Additional Details are shared, single fields, priced against whichever
+  // style ends up with the higher Base Price (per Julia, 2026-07-24).
+  const [hybridStyleIds, setHybridStyleIds] = useState<[string | null, string | null]>([null, null]);
+  const [hybridCustomization, setHybridCustomization] = useState<DraftSectionValue>(emptyDraftSection());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1117,13 +1106,33 @@ function NewRequestModal({
   }, [stylesRecords, stylesBasePriceField, pricingTable, pricingRecords]);
 
   const regularTotals = sectionTotals(regularSection);
-  const hybridTotals: [ReturnType<typeof sectionTotals>, ReturnType<typeof sectionTotals>] = [sectionTotals(hybridSections[0]), sectionTotals(hybridSections[1])];
-  const hybridCombinedTotal = computeHybridCombinedTotal(hybridTotals[0].basePriceNumber, hybridTotals[1].basePriceNumber);
+
+  // Hybrid's two style Base Prices, resolved independently of any section
+  // (styles live in hybridStyleIds, not a DraftSectionValue) — the higher of
+  // the two is what Customizations/Embroidery below actually price against.
+  const hybridStyleBasePrices: [number, number] = useMemo(() => hybridStyleIds.map(id => {
+    const styleRec = id ? stylesRecords.find(r => r.id === id) ?? null : null;
+    return styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
+  }) as [number, number], [hybridStyleIds, stylesRecords, stylesBasePriceField]);
+  const hybridHigherBasePrice = Math.max(hybridStyleBasePrices[0], hybridStyleBasePrices[1]);
+  const hybridCombinedTotal = computeHybridCombinedTotal(hybridStyleBasePrices[0], hybridStyleBasePrices[1]);
+  const hybridCustomizationMultiplier = computeMultiplierFactor(0, hybridCustomization.embroidery); // Self Usage only exists post-save
+  const hybridCustomizationTotal = useMemo(() => {
+    const pPriceField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PRICE) ?? null;
+    const pPercentField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_PERCENT) ?? null;
+    const pMultiField = pricingTable?.getFieldIfExists(FIELD_IDS.PRICING_MULTIPLE) ?? null;
+    return hybridCustomization.pricingIds.reduce((sum, id) => {
+      const r = pricingRecords.find(pr => pr.id === id);
+      if (!r) return sum;
+      return sum + resolvePricingRow(r, { priceField: pPriceField, percentField: pPercentField, multiField: pMultiField }, hybridHigherBasePrice, hybridCustomizationMultiplier).amount;
+    }, 0);
+  }, [hybridCustomization.pricingIds, pricingRecords, pricingTable, hybridHigherBasePrice, hybridCustomizationMultiplier]);
+  const hybridGrandTotal = hybridCombinedTotal + hybridCustomizationTotal;
 
   const canSubmit = kind === 'Regular'
     ? !!clientId && !!regularSection.styleId
     : kind === 'Hybrid'
-      ? !!clientId && !!hybridSections[0].styleId && !!hybridSections[1].styleId
+      ? !!clientId && !!hybridStyleIds[0] && !!hybridStyleIds[1]
       : false;
 
   const handleSubmit = async () => {
@@ -1144,23 +1153,25 @@ function NewRequestModal({
         const newId = await customizationsTable.createRecordAsync(fields);
         onCreated(newId);
       } else {
-        // Hybrid children carry only Style + Additional Details (no
-        // Customizations/Embroidery/Flags/Weight — those are Regular-only
-        // or removed entirely per Julia's 2026-07-20 demo feedback).
-        const buildChildFields = (s: DraftSectionValue): Record<string, unknown> => ({
+        // Hybrid children carry only their own Style — Customizations,
+        // Embroidery/Paint/Lace Amount, and Additional Details all live once,
+        // on the parent, same fields Regular uses (per Julia, 2026-07-24).
+        const buildChildFields = (styleId: string | null): Record<string, unknown> => ({
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
           [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
           [FIELD_IDS.IS_HYBRID]: { name: 'Regular' },
-          [FIELD_IDS.CUSTOMIZED_STYLE]: s.styleId ? [{ id: s.styleId }] : null,
-          [FIELD_IDS.CUSTOMIZATION_DETAIL]: s.detail || null,
+          [FIELD_IDS.CUSTOMIZED_STYLE]: styleId ? [{ id: styleId }] : null,
         });
-        const child1Id = await customizationsTable.createRecordAsync(buildChildFields(hybridSections[0]));
-        const child2Id = await customizationsTable.createRecordAsync(buildChildFields(hybridSections[1]));
+        const child1Id = await customizationsTable.createRecordAsync(buildChildFields(hybridStyleIds[0]));
+        const child2Id = await customizationsTable.createRecordAsync(buildChildFields(hybridStyleIds[1]));
         const parentId = await customizationsTable.createRecordAsync({
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
           [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
           [FIELD_IDS.IS_HYBRID]: { name: 'Hybrid' },
           [FIELD_IDS.HYBRID_LINK]: [{ id: child1Id }, { id: child2Id }],
+          [FIELD_IDS.CUSTOMIZATION_PRICING]: hybridCustomization.pricingIds.map(id => ({ id })),
+          [FIELD_IDS.CUSTOMIZATION_DETAIL]: hybridCustomization.detail || null,
+          [FIELD_IDS.AMOUNT_EMBROIDERY]: hybridCustomization.embroidery ? { name: hybridCustomization.embroidery } : null,
         });
         onCreated(parentId);
       }
@@ -1269,45 +1280,56 @@ function NewRequestModal({
           {stage === 'form' && kind === 'Hybrid' && (
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-4">
+                {/* Two styles, inline horizontal — not stacked cards. No
+                    Favorite-Styles filter (per Julia, 2026-07-24: doesn't
+                    make sense for a merge of two styles). */}
+                <div className="flex gap-4">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Style 1</span>
+                    <StyleSelectSingle value={hybridStyleIds[0]} options={styleOptions} placeholder="Select a style…"
+                      onChange={id => setHybridStyleIds(([, b]) => [id, b])} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Style 2</span>
+                    <StyleSelectSingle value={hybridStyleIds[1]} options={styleOptions} placeholder="Select a style…"
+                      onChange={id => setHybridStyleIds(([a]) => [a, id])} />
+                  </div>
+                </div>
                 <DraftSectionFields
-                  title="Style 1" value={hybridSections[0]}
-                  onChange={patch => setHybridSections(prev => [{ ...prev[0], ...patch }, prev[1]])}
+                  value={hybridCustomization} onChange={patch => setHybridCustomization(prev => ({ ...prev, ...patch }))}
                   styleOptions={styleOptions} pricingRecords={pricingRecords} pricingTable={pricingTable}
                   preApprovalField={preApprovalField} preApprovalColorMap={preApprovalColorMap}
-                  basePriceNumber={hybridTotals[0].basePriceNumber} multiplierFactor={hybridTotals[0].multiplierFactor}
-                  showCustomizations={false}
-                />
-                <DraftSectionFields
-                  title="Style 2" value={hybridSections[1]}
-                  onChange={patch => setHybridSections(prev => [prev[0], { ...prev[1], ...patch }])}
-                  styleOptions={styleOptions} pricingRecords={pricingRecords} pricingTable={pricingTable}
-                  preApprovalField={preApprovalField} preApprovalColorMap={preApprovalColorMap}
-                  basePriceNumber={hybridTotals[1].basePriceNumber} multiplierFactor={hybridTotals[1].multiplierFactor}
-                  showCustomizations={false}
+                  basePriceNumber={hybridHigherBasePrice} multiplierFactor={hybridCustomizationMultiplier}
+                  showStyle={false}
                 />
               </div>
               <div className="w-[40%] shrink-0">
                 <div className="sticky top-0 p-4 rounded-lg space-y-1 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
                   <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Summary</span>
                   {(() => {
-                    const higherIsStyle1 = hybridTotals[0].basePriceNumber >= hybridTotals[1].basePriceNumber;
+                    const [b1, b2] = hybridStyleBasePrices;
+                    const higherIsStyle1 = b1 >= b2;
                     return (
                       <>
                         <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
                           <span className="text-base text-gray-600 dark:text-gray-400">Style 1 Base Price{higherIsStyle1 && ' (higher)'}</span>
-                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(hybridTotals[0].basePriceNumber)}</span>
+                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(b1)}</span>
                         </div>
                         <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
                           <span className="text-base text-gray-600 dark:text-gray-400">Style 2 Base Price{!higherIsStyle1 && ' (higher)'}</span>
-                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(hybridTotals[1].basePriceNumber)}</span>
+                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(b2)}</span>
                         </div>
                         <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
                           <span className="text-base text-gray-600 dark:text-gray-400">+85% Surcharge</span>
-                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(Math.max(hybridTotals[0].basePriceNumber, hybridTotals[1].basePriceNumber) * 0.85)}</span>
+                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(Math.max(b1, b2) * 0.85)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                          <span className="text-base text-gray-600 dark:text-gray-400">Customization Total</span>
+                          <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(hybridCustomizationTotal)}</span>
                         </div>
                         <div className="flex justify-between items-center font-bold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
                           <span className="text-lg">Grand Total</span>
-                          <span className="text-lg">{formatCurrency(hybridCombinedTotal)}</span>
+                          <span className="text-lg">{formatCurrency(hybridGrandTotal)}</span>
                         </div>
                       </>
                     );
@@ -1477,12 +1499,29 @@ function CounterProposalModal({
     : (fStyled ? getLinkedRecordName(parentRecord.getCellValue(fStyled)) : '—');
 
   const pricingIds = useMemo(() => {
-    if (isHybrid || !fPricing) return [];
+    if (!fPricing) return [];
     const v = parentRecord.getCellValue(fPricing) as Array<{ id: string }> | null;
     return v?.map(x => x.id) ?? [];
-  }, [isHybrid, fPricing, parentRecord]);
+  }, [fPricing, parentRecord]);
 
-  const basePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0;
+  // Hybrid has no Base Price of its own — Customizations/Embroidery here are
+  // priced against whichever of its two linked children has the higher Base
+  // Price (per Julia, 2026-07-24: "the only difference between hybrid and
+  // regular is that hybrid is a merge of two styles"). Computed ahead of
+  // basePriceNumber since that value depends on it.
+  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
+    if (!isHybrid || !fHybridLink) return [];
+    const ids = ((parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+  }, [isHybrid, fHybridLink, parentRecord, allCustomizationRecords]);
+  const basePriceNumber = isHybrid
+    ? (() => {
+        const [c1, c2] = hybridChildRecords;
+        const b1 = c1 && fBasePrice ? parseCurrencyString(c1.getCellValueAsString(fBasePrice)) : 0;
+        const b2 = c2 && fBasePrice ? parseCurrencyString(c2.getCellValueAsString(fBasePrice)) : 0;
+        return Math.max(b1, b2);
+      })()
+    : (fBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0);
   // Embroidery Amount — defaults to the parent's own value but is editable
   // here (same as everywhere else this field appears), always shown below
   // Customizations per Julia. Drives the live multiplier preview and is what
@@ -1492,7 +1531,7 @@ function CounterProposalModal({
 
   const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
   const selectedItems = useMemo(() => {
-    if (isHybrid || !pTypeField) return [];
+    if (!pTypeField) return [];
     return pricingIds.map(id => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return null;
@@ -1502,14 +1541,10 @@ function CounterProposalModal({
   }, [isHybrid, pricingIds, pricingRecords, pTypeField, pPriceField, pPercentField, pMultiField, basePriceNumber, preApprovalField, multiplierFactor]);
   const totalCustomizationCost = selectedItems.reduce((sum, i) => sum + i.amount, 0);
 
-  // Hybrid has no per-request Base Price/Customizations of its own — its
-  // "original cost" is the 85%-over-the-higher-child-Base-Price total,
-  // computed from its two linked children (same math as RecordDetailPage).
-  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
-    if (!isHybrid || !fHybridLink) return [];
-    const ids = ((parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-  }, [isHybrid, fHybridLink, parentRecord, allCustomizationRecords]);
+  // Hybrid's "original cost" is the 85%-over-the-higher-child-Base-Price
+  // merge surcharge (same math as RecordDetailPage) PLUS whatever
+  // Customizations/Embroidery were on the parent, same as Regular's own
+  // Base Price + Customization Total.
   const hybridOriginalTotal = useMemo(() => {
     if (!isHybrid || !fBasePrice) return 0;
     const [c1, c2] = hybridChildRecords;
@@ -1518,7 +1553,7 @@ function CounterProposalModal({
     return computeHybridCombinedTotal(b1, b2);
   }, [isHybrid, fBasePrice, hybridChildRecords]);
 
-  const originalTotal = isHybrid ? hybridOriginalTotal : (basePriceNumber + totalCustomizationCost);
+  const originalTotal = isHybrid ? (hybridOriginalTotal + totalCustomizationCost) : (basePriceNumber + totalCustomizationCost);
   // If parentRecord is itself a counter-proposal (i.e. this is a counter-
   // proposal of a counter-proposal), it already carries its own approved
   // price from that earlier decision — show it so the reviewer can compare
@@ -1619,17 +1654,18 @@ function CounterProposalModal({
         const hybridLink = parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null;
         childFields[FIELD_IDS.HYBRID_LINK] = hybridLink ? hybridLink.map(h => ({ id: h.id })) : null;
       }
-      if (!isHybrid) {
-        if (fStyled) {
-          const styleLink = parentRecord.getCellValue(fStyled) as Array<{ id: string }> | null;
-          childFields[FIELD_IDS.CUSTOMIZED_STYLE] = styleLink ? styleLink.map(s => ({ id: s.id })) : null;
-        }
-        childFields[FIELD_IDS.CUSTOMIZATION_PRICING] = pricingIds.map(id => ({ id }));
-        // Writes whatever's currently in the (editable) Embroidery Amount
-        // field above — defaults to the parent's value but can be adjusted
-        // as part of the counter, same as any other field in this form.
-        if (fEmbroidery) childFields[FIELD_IDS.AMOUNT_EMBROIDERY] = embroidery ? { name: embroidery } : null;
+      if (!isHybrid && fStyled) {
+        const styleLink = parentRecord.getCellValue(fStyled) as Array<{ id: string }> | null;
+        childFields[FIELD_IDS.CUSTOMIZED_STYLE] = styleLink ? styleLink.map(s => ({ id: s.id })) : null;
       }
+      // Customizations/Embroidery live on the counter-proposal itself for
+      // both Regular and Hybrid (per Julia, 2026-07-24) — Hybrid's are
+      // priced against the higher-priced linked child (see basePriceNumber).
+      childFields[FIELD_IDS.CUSTOMIZATION_PRICING] = pricingIds.map(id => ({ id }));
+      // Writes whatever's currently in the (editable) Embroidery Amount
+      // field above — defaults to the parent's value but can be adjusted
+      // as part of the counter, same as any other field in this form.
+      if (fEmbroidery) childFields[FIELD_IDS.AMOUNT_EMBROIDERY] = embroidery ? { name: embroidery } : null;
       await customizationsTable.createRecordAsync(childFields);
       onSubmitted();
     } catch (e) {
@@ -1693,31 +1729,28 @@ function CounterProposalModal({
                 </div>
               </div>
 
-              {!isHybrid && (
-                <div>
-                  <span className={labelCls}>Customizations</span>
-                  <LineItemsTable
-                    selectedItems={selectedItems}
-                    suggestions={[]}
-                    onAdd={() => {}}
-                    onRemove={() => {}}
-                    preApprovalColorMap={preApprovalColorMap}
-                    totalAmount={totalCustomizationCost}
-                    disabled
-                  />
-                </div>
-              )}
+              <div>
+                <span className={labelCls}>Customizations</span>
+                <LineItemsTable
+                  selectedItems={selectedItems}
+                  suggestions={[]}
+                  onAdd={() => {}}
+                  onRemove={() => {}}
+                  preApprovalColorMap={preApprovalColorMap}
+                  totalAmount={totalCustomizationCost}
+                  disabled
+                />
+              </div>
 
               {/* Always shown below Customizations, per Julia — defaults to
                   the parent's value but is editable, same as Additional
-                  Details below. */}
-              {!isHybrid && (
-                <div>
-                  <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
-                  <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
-                    onChange={setEmbroidery} />
-                </div>
-              )}
+                  Details below. Hybrid included (per Julia, 2026-07-24) —
+                  priced against whichever child has the higher Base Price. */}
+              <div>
+                <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
+                <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
+                  onChange={setEmbroidery} />
+              </div>
 
               <div>
                 <span className={labelCls}>Additional Details</span>
@@ -1749,10 +1782,16 @@ function CounterProposalModal({
                       </div>
                     </>
                   ) : (
-                    <div className="flex justify-between items-center py-1.5">
-                      <span className="text-base text-gray-600 dark:text-gray-400">Hybrid Combined Total</span>
-                      <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(hybridOriginalTotal)}</span>
-                    </div>
+                    <>
+                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">Hybrid Combined Total (+85% Surcharge)</span>
+                        <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(hybridOriginalTotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">Customization Total</span>
+                        <span className="text-base text-gray-900 dark:text-gray-100">{formatCurrency(totalCustomizationCost)}</span>
+                      </div>
+                    </>
                   )}
                   <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
                     <span className="text-base">Original Total</span>
@@ -1849,6 +1888,32 @@ function RecordDetailPage({
     return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
   }, [isHybrid, fHybridLink, record, allCustomizationRecords]);
   const fDetail     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
+  const fBasePriceForHybrid = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
+  // Reused for both the currently-open record and (further down, for a
+  // counter-proposal) the thread's root — a Hybrid record's own Base Price/
+  // Self Usage don't exist on itself, only on its two linked children, so
+  // "this record's effective pricing basis" always has to be resolved this
+  // way for Hybrid, never read directly off the record.
+  const getHybridChildBasePrices = useCallback((rec: AirtableRecord): [number, number] => {
+    if (!fHybridLink || !fBasePriceForHybrid) return [0, 0];
+    const ids = ((rec.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+    const kids = ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+    const [c1, c2] = kids;
+    const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fBasePriceForHybrid)) : 0;
+    const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fBasePriceForHybrid)) : 0;
+    return [b1, b2];
+  }, [fHybridLink, fBasePriceForHybrid, allCustomizationRecords]);
+  const getHigherHybridChild = useCallback((rec: AirtableRecord): AirtableRecord | null => {
+    if (!fHybridLink) return null;
+    const ids = ((rec.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
+    const kids = ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
+    const [c1, c2] = kids;
+    if (!c1) return c2 ?? null;
+    if (!c2) return c1;
+    const b1 = fBasePriceForHybrid ? parseCurrencyString(c1.getCellValueAsString(fBasePriceForHybrid)) : 0;
+    const b2 = fBasePriceForHybrid ? parseCurrencyString(c2.getCellValueAsString(fBasePriceForHybrid)) : 0;
+    return b1 >= b2 ? c1 : c2;
+  }, [fHybridLink, fBasePriceForHybrid, allCustomizationRecords]);
   const fEmbroidery = table.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fBasePrice  = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fApproved   = table.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
@@ -2161,14 +2226,29 @@ function RecordDetailPage({
   const isClientStageA = clientApprovalStatus === 'Request Review';
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
-  // Base Price is shown as-is from its stored field. Total Customization
-  // Costs is computed live from the line items table above.
+  // Base Price is shown as-is from its stored field for Regular. Hybrid has
+  // no Base Price of its own — everything Customizations/Embroidery-related
+  // is priced against whichever of its two linked children has the higher
+  // Base Price (per Julia, 2026-07-24: "the only difference between hybrid
+  // and regular is that hybrid is a merge of two styles").
   const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
-  const basePriceNumber = fBasePrice ? parseCurrencyString(record.getCellValueAsString(fBasePrice)) : 0;
+  const hybridChildBasePrices = useMemo(() => getHybridChildBasePrices(record), [getHybridChildBasePrices, record]);
+  const higherHybridChild = useMemo(() => getHigherHybridChild(record), [getHigherHybridChild, record]);
+  const hybridCombinedTotal = useMemo(
+    () => computeHybridCombinedTotal(hybridChildBasePrices[0], hybridChildBasePrices[1]),
+    [hybridChildBasePrices]
+  );
+  const basePriceNumber = isHybrid
+    ? Math.max(hybridChildBasePrices[0], hybridChildBasePrices[1])
+    : (fBasePrice ? parseCurrencyString(record.getCellValueAsString(fBasePrice)) : 0);
 
   // Self Usage is a lookup off Customized Style (DF Styles), same wrapped-cell
   // caveat as Base Price — read via getCellValueAsString, not raw getCellValue.
-  const selfUsageValue = selfUsageField ? parseCurrencyString(record.getCellValueAsString(selfUsageField)) : 0;
+  // For Hybrid, read off the higher-priced child (which actually has a
+  // Customized Style set — the parent doesn't).
+  const selfUsageValue = isHybrid
+    ? (selfUsageField && higherHybridChild ? parseCurrencyString(higherHybridChild.getCellValueAsString(selfUsageField)) : 0)
+    : (selfUsageField ? parseCurrencyString(record.getCellValueAsString(selfUsageField)) : 0);
   const multiplierFactor = useMemo(
     () => computeMultiplierFactor(selfUsageValue, embroidery),
     [selfUsageValue, embroidery]
@@ -2211,47 +2291,49 @@ function RecordDetailPage({
     [selectedItems]
   );
 
-  const grandTotal = basePriceNumber + totalCustomizationCost;
+  // Hybrid's Grand Total is the 85%-over-the-higher-Base-Price merge
+  // surcharge PLUS whatever Customizations/Embroidery were added on top
+  // (computed against that same higher-priced child, above) — Regular has
+  // no separate surcharge, so its Grand Total is just Base + Customizations.
+  const grandTotal = isHybrid ? (hybridCombinedTotal + totalCustomizationCost) : (basePriceNumber + totalCustomizationCost);
 
   // Original Total — always computed from the ROOT record's own Style/
   // Customizations/Embroidery, never from whichever CP is currently open.
   // Style/Customizations are read-only on every CP (see canEditStyleCustomizations
   // below), so the root's own fields are guaranteed to still reflect the true
   // original pricing, however long the counter-proposal thread gets.
-  const rootBasePriceNumber = (!isHybrid && fBasePrice) ? parseCurrencyString(rootRecord.getCellValueAsString(fBasePrice)) : 0;
+  const rootHybridChildBasePrices = useMemo(() => getHybridChildBasePrices(rootRecord), [getHybridChildBasePrices, rootRecord]);
+  const rootHigherHybridChild = useMemo(() => getHigherHybridChild(rootRecord), [getHigherHybridChild, rootRecord]);
+  const rootHybridCombinedTotal = useMemo(
+    () => computeHybridCombinedTotal(rootHybridChildBasePrices[0], rootHybridChildBasePrices[1]),
+    [rootHybridChildBasePrices]
+  );
+  const rootBasePriceNumber = isHybrid
+    ? Math.max(rootHybridChildBasePrices[0], rootHybridChildBasePrices[1])
+    : (fBasePrice ? parseCurrencyString(rootRecord.getCellValueAsString(fBasePrice)) : 0);
   const rootEmbroidery = fEmbroidery ? (rootRecord.getCellValueAsString(fEmbroidery) || null) : null;
   // Self Usage must be read from the ROOT's own value here too — hardcoding
   // 0 (as if Self Usage never applied) silently dropped the multiplier back
   // to 1x instead of the root's actual factor, understating Customization
   // Total whenever Self Usage was anything other than empty/0.
-  const rootSelfUsageValue = selfUsageField ? parseCurrencyString(rootRecord.getCellValueAsString(selfUsageField)) : 0;
+  const rootSelfUsageValue = isHybrid
+    ? (selfUsageField && rootHigherHybridChild ? parseCurrencyString(rootHigherHybridChild.getCellValueAsString(selfUsageField)) : 0)
+    : (selfUsageField ? parseCurrencyString(rootRecord.getCellValueAsString(selfUsageField)) : 0);
   const rootMultiplierFactor = computeMultiplierFactor(rootSelfUsageValue, rootEmbroidery);
   const rootPricingIds = useMemo(() => {
-    if (isHybrid || !fPricing) return [];
+    if (!fPricing) return [];
     const v = rootRecord.getCellValue(fPricing) as Array<{ id: string }> | null;
     return v?.map(x => x.id) ?? [];
-  }, [isHybrid, fPricing, rootRecord]);
+  }, [fPricing, rootRecord]);
   const rootCustomizationTotal = useMemo(() => {
-    if (isHybrid || !pTypeField) return 0;
+    if (!pTypeField) return 0;
     return rootPricingIds.reduce((sum, id) => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return sum;
       return sum + resolvePricingRow(r, priceableFields, rootBasePriceNumber, rootMultiplierFactor).amount;
     }, 0);
-  }, [isHybrid, pTypeField, rootPricingIds, pricingRecords, priceableFields, rootBasePriceNumber, rootMultiplierFactor]);
-  const rootOriginalTotal = rootBasePriceNumber + rootCustomizationTotal;
-
-  const hybridChildBasePrices = useMemo<[number, number]>(() => {
-    if (!isHybrid || !fBasePrice) return [0, 0];
-    const [c1, c2] = hybridChildRecords;
-    const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fBasePrice)) : 0;
-    const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fBasePrice)) : 0;
-    return [b1, b2];
-  }, [isHybrid, fBasePrice, hybridChildRecords]);
-  const hybridCombinedTotal = useMemo(
-    () => computeHybridCombinedTotal(hybridChildBasePrices[0], hybridChildBasePrices[1]),
-    [hybridChildBasePrices]
-  );
+  }, [pTypeField, rootPricingIds, pricingRecords, priceableFields, rootBasePriceNumber, rootMultiplierFactor]);
+  const rootOriginalTotal = isHybrid ? (rootHybridCombinedTotal + rootCustomizationTotal) : (rootBasePriceNumber + rootCustomizationTotal);
 
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-[#38322A] rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 bg-white dark:bg-[#1B1813] transition-colors';
@@ -2425,7 +2507,6 @@ function RecordDetailPage({
                 edit-mode layout, for both Regular and Hybrid (parity: the two
                 interfaces share one field layout, only the page chrome
                 around it differs — modal in recap.tsx, full page here). */}
-            {!isHybrid && (
             <div className="flex gap-6 items-stretch">
               <div className="w-[60%] min-w-0 space-y-5">
                 <div className="flex gap-4 items-start">
@@ -2447,15 +2528,48 @@ function RecordDetailPage({
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                    <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+                {/* Style — single picker for Regular (scoped to the client's
+                    own Favorite Styles in Appointment); one inline horizontal
+                    row of two pickers for Hybrid, unfiltered (per Julia,
+                    2026-07-24: the favorites filter never made sense for a
+                    merge of two styles). */}
+                {isHybrid ? (
+                  <div>
+                    {hybridChildRecords.length < 2 && (
+                      <div className="text-sm text-red-500 dark:text-red-400 mb-2">
+                        Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
+                      </div>
+                    )}
+                    <div className="flex gap-4">
+                      {hybridChildRecords[0] && (
+                        <HybridChildColumn
+                          title="Style 1" childRecord={hybridChildRecords[0]} table={table}
+                          styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
+                        />
+                      )}
+                      {hybridChildRecords[1] && (
+                        <HybridChildColumn
+                          title="Style 2" childRecord={hybridChildRecords[1]} table={table}
+                          styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
+                        />
+                      )}
+                    </div>
                   </div>
-                  <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                    onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
-                </div>
+                ) : (
+                  <div>
+                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                      <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
+                    </div>
+                    <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
+                      onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
+                  </div>
+                )}
 
+                {/* Customizations + Embroidery, Paint, or Lace Amount — same
+                    fields/rules for Regular and Hybrid alike (Hybrid priced
+                    against whichever child has the higher Base Price, see
+                    basePriceNumber/selfUsageValue above). */}
                 <div>
                   <span className={labelCls}>Customizations</span>
                   <LineItemsTable
@@ -2522,15 +2636,41 @@ function RecordDetailPage({
                     </>
                   )}
                   <span className={labelCls}>{isCounterProposal ? 'Original Costs' : 'Summary'}</span>
-                  {[
-                    { label: 'Base Price',         display: formatCurrency(isCounterProposal ? rootBasePriceNumber : basePriceNumber) },
-                    { label: 'Customization Total', display: formatCurrency(isCounterProposal ? rootCustomizationTotal : totalCustomizationCost) },
-                  ].map(({ label, display }) => (
-                    <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
-                      <span className="text-base text-gray-600 dark:text-gray-400">{label}</span>
-                      <span className="text-base text-gray-900 dark:text-gray-200">{display}</span>
-                    </div>
-                  ))}
+                  {isHybrid ? (() => {
+                    const [b1, b2] = isCounterProposal ? rootHybridChildBasePrices : hybridChildBasePrices;
+                    const higherIsStyle1 = b1 >= b2;
+                    const custTotal = isCounterProposal ? rootCustomizationTotal : totalCustomizationCost;
+                    return (
+                      <>
+                        <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                          <span className="text-base text-gray-600 dark:text-gray-400">Style 1 Base Price{higherIsStyle1 && ' (higher)'}</span>
+                          <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(b1)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                          <span className="text-base text-gray-600 dark:text-gray-400">Style 2 Base Price{!higherIsStyle1 && ' (higher)'}</span>
+                          <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(b2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                          <span className="text-base text-gray-600 dark:text-gray-400">+85% Surcharge</span>
+                          <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(Math.max(b1, b2) * 0.85)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                          <span className="text-base text-gray-600 dark:text-gray-400">Customization Total</span>
+                          <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(custTotal)}</span>
+                        </div>
+                      </>
+                    );
+                  })() : (
+                    [
+                      { label: 'Base Price',         display: formatCurrency(isCounterProposal ? rootBasePriceNumber : basePriceNumber) },
+                      { label: 'Customization Total', display: formatCurrency(isCounterProposal ? rootCustomizationTotal : totalCustomizationCost) },
+                    ].map(({ label, display }) => (
+                      <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
+                        <span className="text-base text-gray-600 dark:text-gray-400">{label}</span>
+                        <span className="text-base text-gray-900 dark:text-gray-200">{display}</span>
+                      </div>
+                    ))
+                  )}
                   <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
                     <span className="text-lg">{isCounterProposal ? 'Original Total' : 'Grand Total'}</span>
                     <span className="text-lg">{formatCurrency(isCounterProposal ? rootOriginalTotal : grandTotal)}</span>
@@ -2538,83 +2678,6 @@ function RecordDetailPage({
                 </div>
               </div>
             </div>
-            )}
-
-            {/* Hybrid: Style 1 / Style 2 stacked in the 60% column, one
-                sticky Summary panel in the 40% column — mirrors recap.tsx's
-                isHybridMode block exactly. Each child auto-saves to its own
-                record; the Hybrid Grand Total is 85% over the higher of the
-                two Base Prices, computed client-side (per Julia's 2026-07-20
-                demo feedback), not the stale hybrid_proposed_total_custom_price
-                rollup, which still reflects the old per-child-weight formula. */}
-            {isHybrid && (() => {
-              const [b1, b2] = hybridChildBasePrices;
-              const higherIsStyle1 = b1 >= b2;
-              return (
-                <div className="flex gap-6 items-stretch">
-                  <div className="w-[60%] min-w-0 space-y-4">
-                    {hybridChildRecords.length < 2 && (
-                      <div className="text-sm text-red-500 dark:text-red-400">
-                        Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
-                      </div>
-                    )}
-                    {hybridChildRecords[0] && (
-                      <HybridChildColumn
-                        title="Style 1" childRecord={hybridChildRecords[0]} table={table}
-                        styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
-                      />
-                    )}
-                    {hybridChildRecords[1] && (
-                      <HybridChildColumn
-                        title="Style 2" childRecord={hybridChildRecords[1]} table={table}
-                        styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
-                      />
-                    )}
-                  </div>
-
-                  <div className="w-[40%] shrink-0">
-                    <div className="sticky top-0 p-4 rounded-lg space-y-1.5 border border-gray-200 dark:border-[#38322A] bg-gray-50 dark:bg-white/5">
-                      {/* Same Approved/Counter-Proposed Price block as the
-                          Regular summary panel — see currentProposedPriceStr. */}
-                      {approvalStatus === 'Approved' && fApproved ? (
-                        <>
-                          <span className={labelCls}>Approved Price</span>
-                          <div className="text-3xl font-bold text-gray-900 dark:text-gray-100 pb-2">
-                            {record.getCellValueAsString(fApproved) || '—'}
-                          </div>
-                          <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
-                        </>
-                      ) : isCounterProposal && currentProposedPriceStr && (
-                        <>
-                          <span className={labelCls}>Counter-Proposed Price</span>
-                          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 pb-2">
-                            {currentProposedPriceStr}
-                          </div>
-                          <div className="border-t border-gray-300 dark:border-white/20 pt-3" />
-                        </>
-                      )}
-                      <span className={labelCls}>Summary</span>
-                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
-                        <span className="text-base text-gray-600 dark:text-gray-400">Style 1 Base Price{higherIsStyle1 && ' (higher)'}</span>
-                        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(b1)}</span>
-                      </div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
-                        <span className="text-base text-gray-600 dark:text-gray-400">Style 2 Base Price{!higherIsStyle1 && ' (higher)'}</span>
-                        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(b2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-gray-100 dark:border-white/5">
-                        <span className="text-base text-gray-600 dark:text-gray-400">+85% Surcharge</span>
-                        <span className="text-base text-gray-900 dark:text-gray-200">{formatCurrency(Math.max(b1, b2) * 0.85)}</span>
-                      </div>
-                      <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
-                        <span className="text-lg">Grand Total</span>
-                        <span className="text-lg">{formatCurrency(hybridCombinedTotal)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* Counter-Proposal History — every record in this thread (the
                 root + all its counter-proposals, all linked directly to the
