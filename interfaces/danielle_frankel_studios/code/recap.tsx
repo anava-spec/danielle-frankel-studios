@@ -147,6 +147,7 @@ const CUSTOM = {
   // child records.
   IS_HYBRID:             'fld1stC4sHuPT4pT4',
   ADDITIONAL_CUSTOMIZED_STYLE: 'fldFGUnQBWnfiGwkE',
+  ADDITIONAL_SELF_USAGE: 'fldSO6qbpDzk0wUJD', // lookup — Style B's own Self Usage, matches self_usage's edit-mode-authoritative role
   HYBRID_STYLE_NAMES:    'fldEGgSq6Tohw9Xvz', // formula — "Style A & Style B", built off customized_style + additional_customized_style directly
 } as const;
 
@@ -835,6 +836,29 @@ interface HybridCustomizationValue {
 function emptyHybridCustomization(): HybridCustomizationValue {
   return { pricingIds: [], embroidery: null, detail: '' };
 }
+
+// Lives in the parent (PostAppointmentModal), not CustomizationModal itself
+// — so dismissing the "add" modal (outside click, Escape, closing and
+// reopening) doesn't lose whatever the user already entered. Only resets on
+// a successful submit; a page refresh or navigating away clears it
+// naturally, since it's still just in-memory React state (per Julia,
+// 2026-07-27). Not used at all in "edit" mode — that already autosaves
+// straight to the record on every change, so there's nothing to lose.
+interface CustomizationAddDraft {
+  kind: 'Hybrid' | 'Regular' | null;
+  styleId: string | null;
+  pricingIds: string[];
+  detail: string;
+  embroidery: string | null;
+  hybridStyleIds: [string | null, string | null];
+  hybridCustomization: HybridCustomizationValue;
+}
+function emptyCustomizationAddDraft(): CustomizationAddDraft {
+  return {
+    kind: null, styleId: null, pricingIds: [], detail: '', embroidery: null,
+    hybridStyleIds: [null, null], hybridCustomization: emptyHybridCustomization(),
+  };
+}
 // The 85%-over-the-higher-style rule, applied to a pair of Base Prices.
 function computeHybridCombinedTotal(basePrice1: number, basePrice2: number): number {
   return Math.max(basePrice1, basePrice2) * 1.85;
@@ -1177,10 +1201,7 @@ function HybridSectionFields({
 
       {showStyle && (
         <div>
-          <div className="flex items-baseline justify-between gap-2 mb-1.5">
-            <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
-          </div>
+          <span className={labelCls}>Style</span>
           <StyleSelectSingle value={value.styleId ?? null} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
         </div>
       )}
@@ -1241,7 +1262,6 @@ interface CustomizationModalProps {
   rushFeePercentField: ReturnType<Table['getFieldIfExists']>;
   leadtimeWeeksField: ReturnType<Table['getFieldIfExists']>;
   linkedClientId: string | null;
-  favoriteStyleIds: string[];
   clientWeddingIso: string | null;
   clientName: string;
   saName: string;
@@ -1253,15 +1273,18 @@ interface CustomizationModalProps {
   allCustomizationRecords: AirtableRecord[] | null;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
+  // Only meaningful in "add" mode — see CustomizationAddDraft.
+  addDraft: CustomizationAddDraft;
+  onAddDraftChange: (patch: Partial<CustomizationAddDraft>) => void;
 }
 
 function CustomizationModal({
   mode, existingRecord, customizationsTable, pricingTable, pricingRecords, stylesRecords,
   stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, stylesSelfUsageField,
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField,
-  linkedClientId, favoriteStyleIds, clientWeddingIso,
+  linkedClientId, clientWeddingIso,
   clientName, saName, saRecordId, proposalsTable, proposalRecords, allCustomizationRecords,
-  base, onClose
+  base, onClose, addDraft, onAddDraftChange
 }: CustomizationModalProps) {
   // ── Open/close transition — fade + scale, matches the brand modal spec ────
   const [isVisible, setIsVisible] = useState(false);
@@ -1280,6 +1303,7 @@ function CustomizationModal({
   const fSlack      = custTable?.getFieldIfExists(CUSTOM.SEND_TO_SLACK)         ?? null;
   const fIsHybrid   = custTable?.getFieldIfExists(CUSTOM.IS_HYBRID)            ?? null;
   const fAdditionalStyled = custTable?.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE) ?? null;
+  const fAdditionalSelfUsage = custTable?.getFieldIfExists(CUSTOM.ADDITIONAL_SELF_USAGE) ?? null;
 
   // ── Hybrid ────────────────────────────────────────────────────────────────
   // Hybrid is a single record now (2026-07-26 rework) — Style A lives on
@@ -1295,15 +1319,18 @@ function CustomizationModal({
     return v?.[0]?.id ?? null;
   };
 
-  // "add" mode: local-only state, no record yet.
-  const [addKind, setAddKind] = useState<'Hybrid' | 'Regular' | null>(null);
-  const [hybridAddStyleIds, setHybridAddStyleIds] = useState<[string | null, string | null]>([null, null]);
-  const [hybridAddCustomization, setHybridAddCustomization] = useState<HybridCustomizationValue>(emptyHybridCustomization());
+  // "add" mode: backed by the parent's lifted addDraft (see
+  // CustomizationAddDraft) instead of local state, so dismissing/reopening
+  // this modal keeps whatever the user already entered.
+  const addKind = addDraft.kind;
+  const setAddKind = (v: 'Hybrid' | 'Regular' | null) => onAddDraftChange({ kind: v });
+  const hybridAddStyleIds = addDraft.hybridStyleIds;
+  const hybridAddCustomization = addDraft.hybridCustomization;
   const updateHybridAddStyleId = (idx: 0 | 1, id: string | null) => {
-    setHybridAddStyleIds(prev => (idx === 0 ? [id, prev[1]] : [prev[0], id]));
+    onAddDraftChange({ hybridStyleIds: idx === 0 ? [id, addDraft.hybridStyleIds[1]] : [addDraft.hybridStyleIds[0], id] });
   };
   const updateHybridAddCustomization = (patch: Partial<HybridCustomizationValue>) => {
-    setHybridAddCustomization(prev => ({ ...prev, ...patch }));
+    onAddDraftChange({ hybridCustomization: { ...addDraft.hybridCustomization, ...patch } });
   };
 
   const isHybridMode = (mode === 'add' && addKind === 'Hybrid') || (mode === 'edit' && existingIsHybrid);
@@ -1326,6 +1353,7 @@ function CustomizationModal({
       if (fClient && linkedClientId) fields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
       if (fSlack) fields[CUSTOM.SEND_TO_SLACK] = true;
       await queueWrite(() => custTable!.createRecordAsync(fields));
+      onAddDraftChange(emptyCustomizationAddDraft());
       requestClose();
     } catch (err) { console.error('Failed to add hybrid customization:', err); }
     finally { setHybridSaving(false); }
@@ -1348,13 +1376,26 @@ function CustomizationModal({
   };
 
   const [status,      setStatus]      = useState(initStatus());
-  const [styleId,     setStyleId]     = useState<string|null>(initStyle());
+  // Regular's own Style/Customizations/Details/Embroidery — in "edit" mode
+  // these are local state that autosaves straight to existingRecord (see
+  // autoSave below); in "add" mode they're backed by the parent's lifted
+  // addDraft instead, so dismissing/reopening the modal keeps whatever the
+  // user already entered (2026-07-27).
+  const [localStyleId,    setLocalStyleId]    = useState<string|null>(initStyle());
+  const [localPricingIds, setLocalPricingIds] = useState<string[]>(initPricing());
+  const [localDetail,     setLocalDetail]     = useState(existingRecord && fDetail ? existingRecord.getCellValueAsString(fDetail) : '');
+  const [localEmbroidery, setLocalEmbroidery] = useState<string|null>(existingRecord && fEmbroidery ? existingRecord.getCellValueAsString(fEmbroidery)||null : null);
+  const styleId    = mode === 'add' ? addDraft.styleId    : localStyleId;
+  const pricingIds = mode === 'add' ? addDraft.pricingIds : localPricingIds;
+  const detail      = mode === 'add' ? addDraft.detail     : localDetail;
+  const embroidery  = mode === 'add' ? addDraft.embroidery  : localEmbroidery;
+  const setStyleId    = mode === 'add' ? (v: string|null) => onAddDraftChange({ styleId: v })    : setLocalStyleId;
+  const setPricingIds = mode === 'add' ? (v: string[])     => onAddDraftChange({ pricingIds: v }) : setLocalPricingIds;
+  const setDetail      = mode === 'add' ? (v: string)        => onAddDraftChange({ detail: v })     : setLocalDetail;
+  const setEmbroidery  = mode === 'add' ? (v: string|null)   => onAddDraftChange({ embroidery: v })  : setLocalEmbroidery;
   // Hybrid Style B (edit mode) — additional_customized_style, same record as
   // Style A (2026-07-26 rework).
   const [additionalStyleId, setAdditionalStyleId] = useState<string|null>(initAdditionalStyle());
-  const [pricingIds,  setPricingIds]  = useState<string[]>(initPricing());
-  const [detail,      setDetail]      = useState(existingRecord && fDetail ? existingRecord.getCellValueAsString(fDetail) : '');
-  const [embroidery,  setEmbroidery]  = useState<string|null>(existingRecord && fEmbroidery ? existingRecord.getCellValueAsString(fEmbroidery)||null : null);
   const [saving, setSaving] = useState(false);
 
   // Pre-Approval has no fixed field ID — matched by normalized name, same as
@@ -1505,16 +1546,33 @@ function CustomizationModal({
     const rec = stylesRecords.find(r => r.id === hybridStyleIds[1]);
     return rec ? parseCurrencyString(rec.getCellValueAsString(stylesBasePriceField)) : 0;
   }, [hybridStyleIds[1], stylesRecords, stylesBasePriceField]);
+  // Self Usage — in edit mode, prefer THIS record's own lookup (self_usage
+  // for Style A, additional_self_usage for Style B), same authoritative
+  // source Regular's own selfUsageValue uses; only fall back to reading the
+  // Styles record directly in add mode (no Customizations record yet).
+  // Reading straight off Styles in edit mode too (as this used to) diverged
+  // from Regular's own value for the same style whenever the two disagreed,
+  // producing a visibly wrong Rate multiplier (2026-07-27).
   const hybridSelfUsageA = useMemo(() => {
-    if (!hybridStyleIds[0] || !stylesRecords || !stylesSelfUsageField) return 0;
-    const rec = stylesRecords.find(r => r.id === hybridStyleIds[0]);
-    return rec ? parseCurrencyString(rec.getCellValueAsString(stylesSelfUsageField)) : 0;
-  }, [hybridStyleIds[0], stylesRecords, stylesSelfUsageField]);
+    if (mode === 'edit' && existingRecord && selfUsageField) {
+      return parseCurrencyString(existingRecord.getCellValueAsString(selfUsageField));
+    }
+    if (hybridStyleIds[0] && stylesRecords && stylesSelfUsageField) {
+      const rec = stylesRecords.find(r => r.id === hybridStyleIds[0]);
+      if (rec) return parseCurrencyString(rec.getCellValueAsString(stylesSelfUsageField));
+    }
+    return 0;
+  }, [mode, existingRecord, selfUsageField, hybridStyleIds[0], stylesRecords, stylesSelfUsageField]);
   const hybridSelfUsageB = useMemo(() => {
-    if (!hybridStyleIds[1] || !stylesRecords || !stylesSelfUsageField) return 0;
-    const rec = stylesRecords.find(r => r.id === hybridStyleIds[1]);
-    return rec ? parseCurrencyString(rec.getCellValueAsString(stylesSelfUsageField)) : 0;
-  }, [hybridStyleIds[1], stylesRecords, stylesSelfUsageField]);
+    if (mode === 'edit' && existingRecord && fAdditionalSelfUsage) {
+      return parseCurrencyString(existingRecord.getCellValueAsString(fAdditionalSelfUsage));
+    }
+    if (hybridStyleIds[1] && stylesRecords && stylesSelfUsageField) {
+      const rec = stylesRecords.find(r => r.id === hybridStyleIds[1]);
+      if (rec) return parseCurrencyString(rec.getCellValueAsString(stylesSelfUsageField));
+    }
+    return 0;
+  }, [mode, existingRecord, fAdditionalSelfUsage, hybridStyleIds[1], stylesRecords, stylesSelfUsageField]);
 
   // Combined Hybrid total: 85% surcharge on top of the higher-priced style's
   // Base Price (per Julia, 2026-07-20 demo feedback), plus whatever
@@ -1666,6 +1724,7 @@ function CustomizationModal({
       if (fClient && linkedClientId) fields[CUSTOM.CLIENT] = [{ id: linkedClientId }];
       if (fSlack)    fields[CUSTOM.SEND_TO_SLACK] = true;
       await queueWrite(()=>custTable!.createRecordAsync(fields));
+      onAddDraftChange(emptyCustomizationAddDraft());
       requestClose();
     } catch (err) { console.error('Failed to add customization:', err); }
     finally { setSaving(false); }
@@ -1676,24 +1735,17 @@ function CustomizationModal({
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[requestClose]);
 
-  // Style dropdown is scoped to the client's own Favorite Styles in
-  // Appointment, not every style in the base. Falls back to the full list
-  // when the client has none recorded, and always keeps whatever style is
-  // already selected even if it isn't a favorite — narrows new picks,
-  // doesn't hide an existing one.
+  // Style dropdown — every style in the base, unfiltered (per Julia,
+  // 2026-07-27: no Favorite-Styles-in-Acuity scoping for Regular or Hybrid).
   const styleOptions = useMemo(()=>{
-    const all = stylesRecords ?? [];
-    const base = favoriteStyleIds.length > 0
-      ? all.filter(r=>favoriteStyleIds.includes(r.id) || r.id===styleId)
-      : all;
     // Base Price is folded into the option label itself (both the closed/
     // selected view and each dropdown row use `label` as-is) so the price
     // shows inside the Style picker instead of as a separate column.
-    return base.map(r=>{
+    return (stylesRecords ?? []).map(r=>{
       const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
       return { id:r.id, label:`${r.name} — ${formatCurrency(price)}` };
     }).sort((a,b)=>a.label.localeCompare(b.label));
-  },[stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
+  },[stylesRecords, stylesBasePriceField]);
 
   // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
@@ -2580,6 +2632,10 @@ function PostAppointmentModal({
   const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
 
   const [openCustomizationAdd, setOpenCustomizationAdd] = useState(false);
+  // Lives here, not inside CustomizationModal, so dismissing the "add" modal
+  // doesn't lose whatever the user already typed — only a successful submit
+  // resets it (see CustomizationModal's handleSave/handleHybridSave).
+  const [customizationAddDraft, setCustomizationAddDraft] = useState<CustomizationAddDraft>(emptyCustomizationAddDraft());
   const [editCustomizationId, setEditCustomizationId]   = useState<string|null>(null);
 
   const fClientLink = apptTable.getFieldIfExists(APPT.CLIENT_LINK);
@@ -2657,22 +2713,18 @@ function PostAppointmentModal({
     const fIsHybrid   = customizationsTable.getFieldIfExists(CUSTOM.IS_HYBRID);
     const fHybridStyleNames = customizationsTable.getFieldIfExists(CUSTOM.HYBRID_STYLE_NAMES);
     const fEmbroideryField = customizationsTable.getFieldIfExists(CUSTOM.EMBROIDERY_AMOUNT);
+    const fAdditionalSelfUsage = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_SELF_USAGE);
     const fSourceP    = proposalsTable?.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION) ?? null;
     const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
 
-    // A style link's own Base Price/Self Usage, resolved via stylesRecords —
-    // same lookup Regular's own basePriceNumber below uses, just reusable
-    // for Hybrid's two direct style links (customized_style +
+    // A style link's own Base Price, resolved via stylesRecords — same
+    // lookup Regular's own basePriceNumber below uses, just reusable for
+    // Hybrid's two direct style links (customized_style +
     // additional_customized_style, 2026-07-26 rework — no more child records).
     const styleBasePrice = (styleLinkField: ReturnType<Table['getFieldIfExists']>, rec: AirtableRecord): number => {
       const styleId = styleLinkField ? ((rec.getCellValue(styleLinkField) as Array<{ id: string }> | null)?.[0]?.id ?? null) : null;
       const styleRec = styleId ? (stylesRecords?.find(r => r.id === styleId) ?? null) : null;
       return styleRec && stylesBasePriceField ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField)) : 0;
-    };
-    const styleSelfUsage = (styleLinkField: ReturnType<Table['getFieldIfExists']>, rec: AirtableRecord): number => {
-      const styleId = styleLinkField ? ((rec.getCellValue(styleLinkField) as Array<{ id: string }> | null)?.[0]?.id ?? null) : null;
-      const styleRec = styleId ? (stylesRecords?.find(r => r.id === styleId) ?? null) : null;
-      return styleRec && stylesSelfUsageField ? parseCurrencyString(styleRec.getCellValueAsString(stylesSelfUsageField)) : 0;
     };
 
     return linkedCustomizations
@@ -2707,8 +2759,12 @@ function PostAppointmentModal({
           const base1 = styleBasePrice(fStyled, rec);
           const base2 = styleBasePrice(fAdditionalStyled, rec);
           const higherBasePrice = Math.max(base1, base2);
-          const selfUsageA = styleSelfUsage(fStyled, rec);
-          const selfUsageB = styleSelfUsage(fAdditionalStyled, rec);
+          // Self Usage read straight off THIS record's own lookups (self_usage
+          // for Style A, additional_self_usage for Style B) — every row here
+          // is an already-saved record, so there's no "add mode" fallback
+          // needed (matching CustomizationModal's own edit-mode preference).
+          const selfUsageA = selfUsageField ? parseCurrencyString(rec.getCellValueAsString(selfUsageField)) : 0;
+          const selfUsageB = fAdditionalSelfUsage ? parseCurrencyString(rec.getCellValueAsString(fAdditionalSelfUsage)) : 0;
           const effectiveSelfUsage = base1 >= base2 ? selfUsageA : selfUsageB;
           const embroideryStr = fEmbroideryField ? (rec.getCellValueAsString(fEmbroideryField) || '') : '';
           const multiplierFactor = computeMultiplierFactor(effectiveSelfUsage, embroideryStr || null);
@@ -3087,7 +3143,6 @@ function PostAppointmentModal({
           rushFeePercentField={rushFeePercentField}
           leadtimeWeeksField={leadtimeWeeksField}
           linkedClientId={clientId}
-          favoriteStyleIds={existingFavStyles.map(s=>s.id)}
           clientWeddingIso={clientWeddingIso}
           clientName={clientName || 'Unknown Client'}
           saName={saName}
@@ -3097,6 +3152,8 @@ function PostAppointmentModal({
           allCustomizationRecords={customizationRecords}
           base={base}
           onClose={()=>setOpenCustomizationAdd(false)}
+          addDraft={customizationAddDraft}
+          onAddDraftChange={patch => setCustomizationAddDraft(prev => ({ ...prev, ...patch }))}
         />
       )}
 
@@ -3117,7 +3174,6 @@ function PostAppointmentModal({
           rushFeePercentField={rushFeePercentField}
           leadtimeWeeksField={leadtimeWeeksField}
           linkedClientId={clientId}
-          favoriteStyleIds={existingFavStyles.map(s=>s.id)}
           clientWeddingIso={clientWeddingIso}
           clientName={clientName || 'Unknown Client'}
           saName={saName}
@@ -3127,6 +3183,8 @@ function PostAppointmentModal({
           allCustomizationRecords={customizationRecords}
           base={base}
           onClose={()=>setEditCustomizationId(null)}
+          addDraft={customizationAddDraft}
+          onAddDraftChange={patch => setCustomizationAddDraft(prev => ({ ...prev, ...patch }))}
         />
       )}
     </>

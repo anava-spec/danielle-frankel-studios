@@ -133,10 +133,8 @@ const FIELD_IDS = {
 // and the custom-property panel definition point at the same table.
 const PRICING_TABLE_ID = 'tblccTHYe8BCqutyD';
 const CUSTOMIZATIONS_TABLE_ID = 'tbl7HUWDI7IRjWY92';
-// Same base as the Appointments interface — reuses its DF Clients table ID
-// and "Favorite Styles in Appointment" field ID for the style-dropdown filter.
+// Same base as the Appointments interface — reuses its DF Clients table ID.
 const CLIENTS_TABLE_ID = 'tblLLUlDgJ4ktzF7c';
-const CLIENT_FAV_STYLES_APPT_FIELD_ID = 'fldVw8wCgPKvxN1jD';
 
 const SA_ROLES = ['Client Specialist', 'General Manager', 'Account Manager', 'Client Relationships Director'];
 
@@ -653,7 +651,6 @@ function normalizedIncludes(value: string, keyword: string): boolean {
 function getCustomProperties(base: ReturnType<typeof useBase>) {
   const pricingTable = base.getTableByIdIfExists(PRICING_TABLE_ID);
   const customizationsTable = base.getTableByIdIfExists(CUSTOMIZATIONS_TABLE_ID);
-  const clientsTable = base.getTableByIdIfExists(CLIENTS_TABLE_ID);
   const isSingleSelect = (f: { config: { type: FieldType } }) => f.config.type === FieldType.SINGLE_SELECT;
 
   return [
@@ -694,19 +691,6 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       // one instead of the real self_usage, silently scaling every
       // multiple-fee-type rate by the wrong style's Self Usage.
       defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage') && !normalizedIncludes(f.name, 'additional')),
-    },
-    // Favorite Styles in Appointment (DF Clients) — used to scope the Style
-    // dropdown to the client's own favorites. No known field ID was
-    // confirmed for this interface's connection to the Clients table, so
-    // (same reasoning as every other property here) it's exposed rather
-    // than trusted as a hardcoded FIELD_IDS-style constant.
-    clientsTable && {
-      key: 'favoriteStylesApptField',
-      label: 'Favorite Styles in Appointment field (Clients)',
-      type: 'field' as const,
-      table: clientsTable,
-      defaultValue: clientsTable.getFieldIfExists(CLIENT_FAV_STYLES_APPT_FIELD_ID)
-        ?? clientsTable.fields.find(f => normalizedIncludes(f.name, 'favoritestyle')),
     },
   ].filter(Boolean);
 }
@@ -934,6 +918,28 @@ function emptyDraftSection(): DraftSectionValue {
   return { styleId: null, pricingIds: [], embroidery: null, detail: '' };
 }
 
+// Lives in CustomizationApp, not NewRequestModal itself — so an accidental
+// dismiss (outside click, Escape, closing and reopening the modal) doesn't
+// lose whatever the user already typed. Only resets on a successful submit;
+// a page refresh or navigating away clears it naturally, since it's still
+// just in-memory React state (per Julia, 2026-07-27).
+interface NewRequestDraft {
+  clientId: string | null;
+  kind: 'Hybrid' | 'Regular' | null;
+  stage: 'select' | 'form';
+  regularSection: DraftSectionValue;
+  hybridStyleIds: [string | null, string | null];
+  hybridCustomization: DraftSectionValue;
+}
+function emptyNewRequestDraft(): NewRequestDraft {
+  return {
+    clientId: null, kind: null, stage: 'select',
+    regularSection: emptyDraftSection(),
+    hybridStyleIds: [null, null],
+    hybridCustomization: emptyDraftSection(),
+  };
+}
+
 // Same field set as HybridChildColumn / RecordDetailPage's Regular body
 // (Style, Customizations, conditional Embroidery, Additional Details), but
 // for a record that doesn't exist yet — local state only. showCustomizations
@@ -988,10 +994,7 @@ function DraftSectionFields({
 
       {showStyle && (
         <div>
-          <div className="flex items-baseline justify-between gap-2 mb-1.5">
-            <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
-          </div>
+          <span className={labelCls}>Style</span>
           <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
         </div>
       )}
@@ -1029,11 +1032,13 @@ function DraftSectionFields({
 function NewRequestModal({
   customizationsTable, pricingTable, pricingRecords, stylesRecords, stylesBasePriceField,
   clientsTable, clientRecords, preApprovalField, onClose, onCreated,
+  draft, onDraftChange,
 }: {
   customizationsTable: Table; pricingTable: Table | null; pricingRecords: AirtableRecord[];
   stylesRecords: AirtableRecord[]; stylesBasePriceField: Field | null;
   clientsTable: Table | null; clientRecords: AirtableRecord[]; preApprovalField: Field | null;
   onClose: () => void; onCreated: (recordId: string) => void;
+  draft: NewRequestDraft; onDraftChange: (patch: Partial<NewRequestDraft>) => void;
 }) {
   const [isVisible, setIsVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
@@ -1054,18 +1059,22 @@ function NewRequestModal({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [clientRecords, fClientFullName]);
 
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [kind, setKind] = useState<'Hybrid' | 'Regular' | null>(null);
-  // 'select': Client + Regular/Hybrid chooser, both visible at once.
-  // 'form': the field-editing form, reached via Continue.
-  const [stage, setStage] = useState<'select' | 'form'>('select');
-  const [regularSection, setRegularSection] = useState<DraftSectionValue>(emptyDraftSection());
-  // Hybrid is "Regular but merging two styles" — the two styles are picked
-  // independently (inline, side by side), but Customizations/Embroidery/
-  // Additional Details are shared, single fields, priced against whichever
-  // style ends up with the higher Base Price (per Julia, 2026-07-24).
-  const [hybridStyleIds, setHybridStyleIds] = useState<[string | null, string | null]>([null, null]);
-  const [hybridCustomization, setHybridCustomization] = useState<DraftSectionValue>(emptyDraftSection());
+  // Backed by the parent's lifted draft state (see NewRequestDraft) instead
+  // of local useState — so dismissing/reopening this modal keeps whatever
+  // the user already entered. 'select' stage: Client + Regular/Hybrid
+  // chooser, both visible at once. 'form' stage: the field-editing form,
+  // reached via Continue.
+  const { clientId, kind, stage, regularSection, hybridStyleIds, hybridCustomization } = draft;
+  const setClientId = (v: string | null) => onDraftChange({ clientId: v });
+  const setKind = (v: 'Hybrid' | 'Regular' | null) => onDraftChange({ kind: v });
+  const setStage = (v: 'select' | 'form') => onDraftChange({ stage: v });
+  const setRegularSection = (updater: DraftSectionValue | ((prev: DraftSectionValue) => DraftSectionValue)) =>
+    onDraftChange({ regularSection: typeof updater === 'function' ? (updater as (prev: DraftSectionValue) => DraftSectionValue)(draft.regularSection) : updater });
+  const setHybridStyleIds = (
+    updater: [string | null, string | null] | ((prev: [string | null, string | null]) => [string | null, string | null])
+  ) => onDraftChange({ hybridStyleIds: typeof updater === 'function' ? (updater as (prev: [string | null, string | null]) => [string | null, string | null])(draft.hybridStyleIds) : updater });
+  const setHybridCustomization = (updater: DraftSectionValue | ((prev: DraftSectionValue) => DraftSectionValue)) =>
+    onDraftChange({ hybridCustomization: typeof updater === 'function' ? (updater as (prev: DraftSectionValue) => DraftSectionValue)(draft.hybridCustomization) : updater });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1823,13 +1832,13 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
 function RecordDetailPage({
   record, table, pricingRecords, pricingTable, stylesRecords, stylesBasePriceField, preApprovalField,
   selfUsageField,
-  clientRecords, favoriteStylesApptField, allCustomizationRecords, sourceLayout, onBack, onCounterProposalSent,
+  clientRecords, allCustomizationRecords, sourceLayout, onBack, onCounterProposalSent,
   readOnly = false, onOpenHistoryRecord,
 }: {
   record: AirtableRecord; table: Table; pricingRecords: AirtableRecord[]; pricingTable: Table | null;
   stylesRecords: AirtableRecord[]; stylesBasePriceField: Field | null; preApprovalField: Field | null;
   selfUsageField: Field | null;
-  clientRecords: AirtableRecord[]; favoriteStylesApptField: Field | null;
+  clientRecords: AirtableRecord[];
   allCustomizationRecords: AirtableRecord[];
   sourceLayout: 'ops' | 'approval';
   onBack: () => void;
@@ -2102,41 +2111,11 @@ function RecordDetailPage({
 
   const clientName   = fClient ? getLinkedRecordName(record.getCellValue(fClient)) : '—';
 
-  // Style dropdown is scoped to the linked client's own Favorite Styles in
-  // Appointment (DF Clients), not every style in the base. Falls back to the
-  // full list when the client link, table, or field can't be resolved, and
-  // always keeps whatever style is already selected in the list even if it
-  // isn't one of the client's favorites — narrows new picks, doesn't hide
-  // an existing one.
-  const linkedClientId = fClient ? ((record.getCellValue(fClient) as Array<{ id: string }> | null)?.[0]?.id ?? null) : null;
-  const favoriteStyleIds = useMemo(() => {
-    if (!linkedClientId || !favoriteStylesApptField) return null;
-    const clientRec = clientRecords.find(c => c.id === linkedClientId);
-    if (!clientRec) return null;
-    const v = clientRec.getCellValue(favoriteStylesApptField) as Array<{ id: string }> | null;
-    return v ? v.map(x => x.id) : [];
-  }, [linkedClientId, clientRecords, favoriteStylesApptField]);
-
-  const styleOptions = useMemo(() => {
-    const base = favoriteStyleIds && favoriteStyleIds.length > 0
-      ? stylesRecords.filter(r => favoriteStyleIds.includes(r.id) || r.id === styleId)
-      : stylesRecords;
+  // Style dropdown — every style in the base, unfiltered (per Julia,
+  // 2026-07-27: no Favorite-Styles-in-Acuity scoping for Regular or Hybrid).
+  const styleOptions = useMemo(() => stylesRecords.map(r => {
     // Base Price folded into the label itself (shown in both the closed/
     // selected view and each dropdown row), matching recap.tsx's Style picker.
-    return base.map(r => {
-      const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
-      return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
-    }).sort((a, b) => a.label.localeCompare(b.label));
-  }, [stylesRecords, favoriteStyleIds, styleId, stylesBasePriceField]);
-
-  // Hybrid children pick their own style independently of the linked client's
-  // Favorite Styles (that filter only ever made sense for a single-style
-  // Regular request) — using the favorites-filtered `styleOptions` above for
-  // a Hybrid child meant its actual saved style could fall outside the
-  // filtered list and render blank in the dropdown even though the record's
-  // data was perfectly intact (caught 2026-07-24: styles showed in the raw
-  // table but not in the interface).
-  const hybridStyleOptions = useMemo(() => stylesRecords.map(r => {
     const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
     return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
   }).sort((a, b) => a.label.localeCompare(b.label)), [stylesRecords, stylesBasePriceField]);
@@ -2495,21 +2474,18 @@ function RecordDetailPage({
                   <div className="flex gap-4">
                     <div className="flex-1 min-w-0">
                       <span className={labelCls}>Style 1</span>
-                      <StyleSelectSingle value={styleId} options={hybridStyleOptions} placeholder="Select a style…"
+                      <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
                         onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <span className={labelCls}>Style 2</span>
-                      <StyleSelectSingle value={additionalStyleId} options={hybridStyleOptions} placeholder="Select a style…"
+                      <StyleSelectSingle value={additionalStyleId} options={styleOptions} placeholder="Select a style…"
                         onChange={handleAdditionalStyleId} disabled={!canEditStyleCustomizations} />
                     </div>
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                      <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
-                    </div>
+                    <span className={labelCls}>Style</span>
                     <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
                       onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
                   </div>
@@ -2790,7 +2766,6 @@ function CustomizationApp(): React.ReactElement {
   const rushFeeProposedField = (customPropertyValueByKey?.rushFeeProposedField as Field | undefined) ?? null;
   const rushFeePercentField  = (customPropertyValueByKey?.rushFeePercentField as Field | undefined) ?? null;
   const selfUsageField       = (customPropertyValueByKey?.selfUsageField as Field | undefined) ?? null;
-  const favoriteStylesApptField = (customPropertyValueByKey?.favoriteStylesApptField as Field | undefined) ?? null;
 
   const allCustomizationRecords = useRecords(customizationsTable);
   const pricingRecords          = useRecords(pricingTable);
@@ -2805,6 +2780,10 @@ function CustomizationApp(): React.ReactElement {
   const [filterApprovalStatus, setFilterApprovalStatus] = useState<string[]>([]);
   const [clientSearch,         setClientSearch]         = useState('');
   const [showNewRequest,       setShowNewRequest]       = useState(false);
+  // Lives here, not inside NewRequestModal, so dismissing the modal (outside
+  // click, Escape, Cancel) doesn't lose whatever the user already typed —
+  // only a successful submit resets it (see onCreated below).
+  const [newRequestDraft, setNewRequestDraft] = useState<NewRequestDraft>(emptyNewRequestDraft());
   const [draggedRecordId,      setDraggedRecordId]      = useState<string | null>(null);
   const [toastMessage,         setToastMessage]         = useState<string | null>(null);
   useEffect(() => {
@@ -3091,7 +3070,6 @@ function CustomizationApp(): React.ReactElement {
         preApprovalField={preApprovalField}
         selfUsageField={selfUsageField}
         clientRecords={clientRecords}
-        favoriteStylesApptField={favoriteStylesApptField}
         allCustomizationRecords={allCustomizationRecords}
         sourceLayout={viewState.sourceLayout}
         onBack={() =>
@@ -3286,7 +3264,13 @@ function CustomizationApp(): React.ReactElement {
         clientRecords={clientRecords}
         preApprovalField={preApprovalField}
         onClose={() => setShowNewRequest(false)}
-        onCreated={recordId => { setShowNewRequest(false); setViewState({ layer: 2, recordId, sourceLayout: 'ops' }); }}
+        draft={newRequestDraft}
+        onDraftChange={patch => setNewRequestDraft(prev => ({ ...prev, ...patch }))}
+        onCreated={recordId => {
+          setShowNewRequest(false);
+          setNewRequestDraft(emptyNewRequestDraft());
+          setViewState({ layer: 2, recordId, sourceLayout: 'ops' });
+        }}
       />
     )}
     {toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}
