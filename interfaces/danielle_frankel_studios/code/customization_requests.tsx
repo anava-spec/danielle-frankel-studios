@@ -561,17 +561,17 @@ function resolvePricingRow(
   fields: { priceField: unknown; percentField: unknown; multiField: unknown },
   basisAmount: number,
   multiplierFactor: number
-): { amount: number; label: string | null } {
+): { amount: number; label: string | null; needsAmount: boolean } {
   const priceField = fields.priceField as Parameters<AirtableRecord['getCellValue']>[0] | null;
   const percentField = fields.percentField as Parameters<AirtableRecord['getCellValue']>[0] | null;
   const multiField = fields.multiField as Parameters<AirtableRecord['getCellValue']>[0] | null;
-  if (priceField) { const p = r.getCellValue(priceField); if (typeof p === 'number' && p > 0) return { amount: p, label: null }; }
+  if (priceField) { const p = r.getCellValue(priceField); if (typeof p === 'number' && p > 0) return { amount: p, label: null, needsAmount: false }; }
   if (percentField) {
     const p = r.getCellValue(percentField);
     // A percent-based row's dollar amount is derived, not stored — surface the
     // rate itself (e.g. "20% base cost") next to the name, or it silently
     // reads just like any flat-priced row.
-    if (typeof p === 'number' && p > 0) return { amount: basisAmount * p, label: `${Math.round(p * 100)}% base cost` };
+    if (typeof p === 'number' && p > 0) return { amount: basisAmount * p, label: `${Math.round(p * 100)}% base cost`, needsAmount: false };
   }
   if (multiField) {
     const raw = r.getCellValue(multiField);
@@ -580,9 +580,16 @@ function resolvePricingRow(
     // before it's the actual charge. Surface the raw rate and the scaling
     // factor as a label (e.g. "$1,500.00 x 0.67") since the Price column
     // shows the scaled amount.
-    if (typeof raw === 'number' && raw > 0) return { amount: raw * multiplierFactor, label: `${formatCurrency(raw)} x ${multiplierFactor.toFixed(2)}` };
+    if (typeof raw === 'number' && raw > 0) {
+      // multiplierFactor is 0 exactly when Embroidery/Paint/Lace Amount isn't
+      // selected yet (embroideryFactor is 0 only for a blank tier — Light/
+      // Medium/Full always resolve non-zero) — this item's real price can't
+      // be calculated until that's chosen.
+      const needsAmount = multiplierFactor === 0;
+      return { amount: raw * multiplierFactor, label: `${formatCurrency(raw)} x ${multiplierFactor.toFixed(2)}`, needsAmount };
+    }
   }
-  return { amount: 0, label: null };
+  return { amount: 0, label: null, needsAmount: false };
 }
 
 // IF({Customization - Multiple Fee}, {Customization - Multiple Fee}, 0)
@@ -713,7 +720,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
 function LineItemsTable({
   selectedItems, suggestions, onAdd, onRemove, preApprovalColorMap, totalAmount, disabled,
 }: {
-  selectedItems: Array<{ id: string; name: string; label: string | null; amount: number; approval: string }>;
+  selectedItems: Array<{ id: string; name: string; label: string | null; amount: number; needsAmount?: boolean; approval: string }>;
   suggestions: Array<{ id: string; name: string; label: string | null; amount: number }>;
   onAdd: (id: string) => void; onRemove: (id: string) => void;
   preApprovalColorMap: Record<string, string>; totalAmount: number; disabled?: boolean;
@@ -825,7 +832,14 @@ function LineItemsTable({
                     <td className="px-3 py-2.5 text-center">
                       <ApprovalStatusPill status={item.approval} colorMap={preApprovalColorMap} />
                     </td>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
+                    <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">
+                      {item.needsAmount ? (
+                        <span className="inline-flex items-center gap-1 justify-end" title="Select the Embroidery, Paint, or Lace Amount to calculate this value.">
+                          <span>amount</span>
+                          <span className="text-red-500">*</span>
+                        </span>
+                      ) : formatCurrency(item.amount)}
+                    </td>
                   </tr>
                 ))}
                 <tr className="border-t border-gray-200 dark:border-white/10">
@@ -951,9 +965,9 @@ function DraftSectionFields({
     return value.pricingIds.map(id => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return null;
-      const { amount, label } = resolvePricingRow(r, priceableFields, basePriceNumber, multiplierFactor);
-      return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
-    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
+      const { amount, label, needsAmount } = resolvePricingRow(r, priceableFields, basePriceNumber, multiplierFactor);
+      return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, needsAmount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
+    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; needsAmount: boolean; approval: string } => x !== null);
   }, [value.pricingIds, pricingRecords, pTypeField, priceableFields, basePriceNumber, multiplierFactor, preApprovalField]);
 
   const suggestions = useMemo(() => {
@@ -1492,9 +1506,9 @@ function CounterProposalModal({
     return pricingIds.map(id => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return null;
-      const { amount, label } = resolvePricingRow(r, { priceField: pPriceField, percentField: pPercentField, multiField: pMultiField }, basePriceNumber, multiplierFactor);
-      return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
-    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
+      const { amount, label, needsAmount } = resolvePricingRow(r, { priceField: pPriceField, percentField: pPercentField, multiField: pMultiField }, basePriceNumber, multiplierFactor);
+      return { id: r.id, name: r.getCellValueAsString(pTypeField), label, amount, needsAmount, approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '' };
+    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; needsAmount: boolean; approval: string } => x !== null);
   }, [isHybrid, pricingIds, pricingRecords, pTypeField, pPriceField, pPercentField, pMultiField, basePriceNumber, preApprovalField, multiplierFactor]);
   const totalCustomizationCost = selectedItems.reduce((sum, i) => sum + i.amount, 0);
 
@@ -2206,15 +2220,16 @@ function RecordDetailPage({
     return pricingIds.map(id => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return null;
-      const { amount, label } = resolvePricingRow(r, priceableFields, basePriceNumber, multiplierFactor);
+      const { amount, label, needsAmount } = resolvePricingRow(r, priceableFields, basePriceNumber, multiplierFactor);
       return {
         id: r.id,
         name: r.getCellValueAsString(pTypeField),
         label,
         amount,
+        needsAmount,
         approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
       };
-    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
+    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; needsAmount: boolean; approval: string } => x !== null);
   }, [pricingIds, pricingRecords, pTypeField, priceableFields, basePriceNumber, multiplierFactor, preApprovalField]);
 
   const suggestions = useMemo(() => {
