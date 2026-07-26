@@ -544,7 +544,7 @@ function FieldLabel({ label, fieldId, className }: { label: string; fieldId?: st
 // ─── Editable field wrappers ──────────────────────────────────────────────────
 // Each wrapper checks isFieldReadOnlyBySource(fieldId) and falls back to a
 // plain read-only display whenever the field comes from an external integration.
-const _inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
+const _inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
 interface EditableTextProps {
   label: string; fieldId?: string; readOnly?: boolean;
@@ -986,7 +986,7 @@ function PricingLineItemsTable({
           <MagnifyingGlassIcon size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"/>
           <input type="text" placeholder="Search customizations to add…" value={query}
             onFocus={()=>setOpen(true)} onChange={e=>{setQuery(e.target.value);setOpen(true);}}
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] transition-colors"/>
+            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] transition-colors bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6]"/>
         </div>
         {open && dropdownPos && createPortal(
           <div ref={dropdownRef}
@@ -994,7 +994,7 @@ function PricingLineItemsTable({
             className="z-[60] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filteredSuggestions.map(s=>(
               <button key={s.id} type="button" onClick={()=>addAndClear(s.id)}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:bg-[#3A2E12] transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[#FEF3C7] dark:hover:bg-[#3A2E12] transition-colors border-b border-gray-50 dark:border-white/5 last:border-0">
                 <span>{s.name}{s.label && <span className="text-xs font-medium text-gray-400 dark:text-gray-500"> ({s.label})</span>}</span>
                 <span className="text-xs font-medium text-gray-400 dark:text-gray-500">{formatCurrency(s.amount)}</span>
               </button>
@@ -1154,7 +1154,7 @@ function HybridSectionFields({
   showCustomizations = true, showStyle = true, embroideryApplicable = false,
 }: HybridSectionFieldsProps) {
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
-  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
+  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
   const embroideryOptions = [{ id: 'Light', label: 'Light' }, { id: 'Medium', label: 'Medium' }, { id: 'Full', label: 'Full' }];
   return (
     <div className="border border-gray-200 dark:border-white/10 rounded-xl p-4 space-y-4">
@@ -1682,7 +1682,7 @@ function CustomizationModal({
 
   // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
-  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
+  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
   // Past the chooser, clicking outside or the back arrow returns to the
   // chooser instead of closing the modal — only the chooser step itself
@@ -2796,7 +2796,7 @@ function PostAppointmentModal({
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[requestClose]);
 
-  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
+  const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
   // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
 

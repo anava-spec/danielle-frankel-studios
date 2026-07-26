@@ -403,13 +403,9 @@ function ApprovalStatusPill({ status, colorMap, size = 'table' }: {
 // ─── StyleSelectSingle ────────────────────────────────────────────────────────
 const EMBROIDERY_OPTIONS = [{ id: 'Light', label: 'Light' }, { id: 'Medium', label: 'Medium' }, { id: 'Full', label: 'Full' }];
 
-function StyleSelectSingle({ value, options, placeholder, onChange, disabled, maxVisible }: {
+function StyleSelectSingle({ value, options, placeholder, onChange, disabled }: {
   value: string | null; options: Array<{ id: string; label: string }>; placeholder: string;
   onChange: (id: string | null) => void; disabled?: boolean;
-  // Caps how many rows render at once when the user hasn't typed a search
-  // yet — search still filters against the full list regardless. Used to
-  // keep the Style dropdown from turning into a wall of options.
-  maxVisible?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -433,7 +429,11 @@ function StyleSelectSingle({ value, options, placeholder, onChange, disabled, ma
     if (!ref.current) return;
     const r = ref.current.getBoundingClientRect();
     const margin = 12;
-    setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: Math.max(160, window.innerHeight - r.bottom - margin) });
+    // 30% shorter than the full available viewport space — every option is
+    // still reachable via scroll, this just keeps the panel itself from
+    // towering over the form (per Julia, 2026-07-27).
+    const available = Math.max(160, window.innerHeight - r.bottom - margin);
+    setDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: available * 0.7 });
   }, []);
   useEffect(() => {
     if (!open) return;
@@ -443,12 +443,7 @@ function StyleSelectSingle({ value, options, placeholder, onChange, disabled, ma
     return () => { window.removeEventListener('scroll', updateDropdownPos, true); window.removeEventListener('resize', updateDropdownPos); };
   }, [open, updateDropdownPos]);
 
-  const filtered = useMemo(() => {
-    const base = q.trim() ? options.filter(o => o.label.toLowerCase().includes(q.toLowerCase())) : options;
-    // Only cap the no-search, default view — once the user types, they've
-    // narrowed it down themselves and should see every match.
-    return (!q.trim() && maxVisible) ? base.slice(0, maxVisible) : base;
-  }, [options, q, maxVisible]);
+  const filtered = useMemo(() => q.trim() ? options.filter(o => o.label.toLowerCase().includes(q.toLowerCase())) : options, [options, q]);
   const sel = options.find(o => o.id === value);
   return (
     <div ref={ref} className="relative">
@@ -993,7 +988,7 @@ function DraftSectionFields({
             <span className={labelCls.replace(' mb-1.5 block', '')}>Style</span>
             <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
           </div>
-          <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} maxVisible={8} />
+          <StyleSelectSingle value={value.styleId} options={styleOptions} placeholder="Select a style…" onChange={id => onChange({ styleId: id })} />
         </div>
       )}
 
@@ -1266,12 +1261,12 @@ function NewRequestModal({
                   <div className="flex-1 min-w-0">
                     <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Style 1</span>
                     <StyleSelectSingle value={hybridStyleIds[0]} options={styleOptions} placeholder="Select a style…"
-                      onChange={id => setHybridStyleIds(([, b]) => [id, b])} maxVisible={8} />
+                      onChange={id => setHybridStyleIds(([, b]) => [id, b])} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block">Style 2</span>
                     <StyleSelectSingle value={hybridStyleIds[1]} options={styleOptions} placeholder="Select a style…"
-                      onChange={id => setHybridStyleIds(([a]) => [a, id])} maxVisible={8} />
+                      onChange={id => setHybridStyleIds(([a]) => [a, id])} />
                   </div>
                 </div>
                 <DraftSectionFields
@@ -2497,12 +2492,12 @@ function RecordDetailPage({
                     <div className="flex-1 min-w-0">
                       <span className={labelCls}>Style 1</span>
                       <StyleSelectSingle value={styleId} options={hybridStyleOptions} placeholder="Select a style…"
-                        onChange={handleStyleId} disabled={!canEditStyleCustomizations} maxVisible={8} />
+                        onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <span className={labelCls}>Style 2</span>
                       <StyleSelectSingle value={additionalStyleId} options={hybridStyleOptions} placeholder="Select a style…"
-                        onChange={handleAdditionalStyleId} disabled={!canEditStyleCustomizations} maxVisible={8} />
+                        onChange={handleAdditionalStyleId} disabled={!canEditStyleCustomizations} />
                     </div>
                   </div>
                 ) : (
@@ -2512,7 +2507,7 @@ function RecordDetailPage({
                       <span className="text-xs text-gray-400 dark:text-gray-500">Only shows styles the bride chose in Acuity or during the appointment.</span>
                     </div>
                     <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…"
-                      onChange={handleStyleId} disabled={!canEditStyleCustomizations} maxVisible={8} />
+                      onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
                   </div>
                 )}
 
