@@ -689,7 +689,11 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       label: 'Self Usage field (Customizations)',
       type: 'field' as const,
       table: customizationsTable,
-      defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage')),
+      // Excludes additional_self_usage (Hybrid's Style B, 2026-07-26) —
+      // without this, a fuzzy "includes 'selfusage'" match could pick that
+      // one instead of the real self_usage, silently scaling every
+      // multiple-fee-type rate by the wrong style's Self Usage.
+      defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage') && !normalizedIncludes(f.name, 'additional')),
     },
     // Favorite Styles in Appointment (DF Clients) — used to scope the Style
     // dropdown to the client's own favorites. No known field ID was
@@ -823,18 +827,18 @@ function LineItemsTable({
                       </td>
                     )}
                     <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100">{item.name}</td>
-                    <td className="px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-center">
-                      <ApprovalStatusPill status={item.approval} colorMap={preApprovalColorMap} />
-                    </td>
-                    <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">
+                    <td className="px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400">
                       {item.needsAmount ? (
-                        <span className="inline-flex items-center gap-1 justify-end" title="Select the Embroidery, Paint, or Lace Amount to calculate this value.">
+                        <span className="inline-flex items-center gap-1" title="Select the Embroidery, Paint, or Lace Amount to calculate this value.">
                           <span>amount</span>
                           <span className="text-red-500">*</span>
                         </span>
-                      ) : formatCurrency(item.amount)}
+                      ) : (item.label ?? '—')}
                     </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <ApprovalStatusPill status={item.approval} colorMap={preApprovalColorMap} />
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
                   </tr>
                 ))}
                 <tr className="border-t border-gray-200 dark:border-white/10">

@@ -407,16 +407,16 @@ function resolvePricingRowAmount(
   multipleField: ReturnType<Table['getFieldIfExists']>,
   basisAmount: number,
   multiplierFactor: number
-): { amount: number; label: string | null } {
+): { amount: number; label: string | null; needsAmount: boolean } {
   if (priceField) {
     const p = r.getCellValue(priceField);
-    if (typeof p === 'number' && p > 0) return { amount: p, label: null };
+    if (typeof p === 'number' && p > 0) return { amount: p, label: null, needsAmount: false };
   }
   if (percentField) {
     const p = r.getCellValue(percentField);
     // A percent-based row's dollar amount is derived, not stored — surface the
     // rate itself (e.g. "20% base cost") next to the name.
-    if (typeof p === 'number' && p > 0) return { amount: basisAmount * p, label: `${Math.round(p * 100)}% base cost` };
+    if (typeof p === 'number' && p > 0) return { amount: basisAmount * p, label: `${Math.round(p * 100)}% base cost`, needsAmount: false };
   }
   if (multipleField) {
     const raw = r.getCellValue(multipleField);
@@ -424,9 +424,16 @@ function resolvePricingRowAmount(
     // formula scales it by Self Usage and the embroidery/paint/lace tier.
     // Surface the raw rate and the scaling factor as a label (e.g.
     // "$1,500.00 x 0.67") since the Price column shows the scaled amount.
-    if (typeof raw === 'number' && raw > 0) return { amount: raw * multiplierFactor, label: `${formatCurrency(raw)} x ${multiplierFactor.toFixed(2)}` };
+    if (typeof raw === 'number' && raw > 0) {
+      // multiplierFactor is 0 exactly when Embroidery/Paint/Lace Amount isn't
+      // selected yet (embroideryFactor is 0 only for a blank tier — Light/
+      // Medium/Full always resolve non-zero) — this item's real price can't
+      // be calculated until that's chosen.
+      const needsAmount = multiplierFactor === 0;
+      return { amount: raw * multiplierFactor, label: `${formatCurrency(raw)} x ${multiplierFactor.toFixed(2)}`, needsAmount };
+    }
   }
-  return { amount: 0, label: null };
+  return { amount: 0, label: null, needsAmount: false };
 }
 
 // IF({Customization - Multiple Fee}, {Customization - Multiple Fee}, 0)
@@ -944,15 +951,16 @@ function PricingLineItemsTable({
     return selected.map(id => {
       const r = pricingRecords.find(pr => pr.id === id);
       if (!r) return null;
-      const { amount, label } = resolvePricingRowAmount(r, priceField, percentField, multipleField, basisAmount, multiplierFactor);
+      const { amount, label, needsAmount } = resolvePricingRowAmount(r, priceField, percentField, multipleField, basisAmount, multiplierFactor);
       return {
         id: r.id,
         name: r.getCellValueAsString(typeField),
         label,
         amount,
+        needsAmount,
         approval: preApprovalField ? getSingleSelectName(r.getCellValue(preApprovalField)) : '',
       };
-    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; approval: string } => x !== null);
+    }).filter((x): x is { id: string; name: string; label: string | null; amount: number; needsAmount: boolean; approval: string } => x !== null);
   }, [selected, pricingRecords, typeField, priceField, percentField, multipleField, basisAmount, multiplierFactor, preApprovalField]);
 
   const suggestions = useMemo(() => {
@@ -1031,7 +1039,14 @@ function PricingLineItemsTable({
                       </button>
                     </td>
                     <td className="px-3 py-2.5 text-sm text-gray-900 dark:text-[#F3EFE6]">{item.name}</td>
-                    <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">{item.label ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {item.needsAmount ? (
+                        <span className="inline-flex items-center gap-1" title="Select the Embroidery, Paint, or Lace Amount to calculate this value.">
+                          <span>amount</span>
+                          <span className="text-red-500">*</span>
+                        </span>
+                      ) : (item.label ?? '—')}
+                    </td>
                     <td className="px-3 py-2.5 text-center"><ApprovalPill status={item.approval} colorMap={preApprovalColorMap}/></td>
                     <td className="px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 text-right">{formatCurrency(item.amount)}</td>
                   </tr>
@@ -3186,7 +3201,11 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       label: 'Self Usage field (Customizations)',
       type: 'field' as const,
       table: customizationsTable,
-      defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage')),
+      // Excludes additional_self_usage (Hybrid's Style B, 2026-07-26) —
+      // without this, a fuzzy "includes 'selfusage'" match could pick that
+      // one instead of the real self_usage, silently scaling every
+      // multiple-fee-type rate by the wrong style's Self Usage.
+      defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage') && !normalizedIncludes(f.name, 'additional')),
     },
     // The underlying number Self Usage looks up, bound directly on Styles —
     // used only as an "add" mode pre-save preview (see CustomizationModal),
