@@ -1291,6 +1291,10 @@ function CustomizationModal({
     setHybridAddCustomization(prev => ({ ...prev, ...patch }));
   };
 
+  const isHybridMode = (mode === 'add' && addKind === 'Hybrid') || (mode === 'edit' && existingIsHybrid);
+  const isRegularBody = (mode === 'add' && addKind === 'Regular') || (mode === 'edit' && !existingIsHybrid);
+  const showHybridChooser = mode === 'add' && addKind === null;
+
   const [hybridSaving, setHybridSaving] = useState(false);
   const handleHybridSave = async () => {
     if (!custTable || mode !== 'add') return;
