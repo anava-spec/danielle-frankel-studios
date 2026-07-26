@@ -112,23 +112,21 @@ const FIELD_IDS = {
   STAFF_IS_ACTIVE:             'fldB6rPTjxATp7uMf',
   STYLE_NAME:                  'fldEs3chQAeplPc1w',
   STYLE_BASE_PRICE:            'flduZuxPxxMqXzNxD',
-  // Hybrid customizations — customization_type (formerly is_hybrid_customization) lives on the parent
-  // record only (children default to 'Regular'). hybrid_customization is a
-  // self-link parent -> children; HYBRID_LINK_INVERSE is Airtable's own
-  // auto-generated symmetric reverse of that link (children -> parent) — a
-  // record is a hybrid CHILD iff this reverse field is non-empty, no
-  // cross-query needed to identify it.
+  // Hybrid customizations — customization_type (formerly is_hybrid_customization)
+  // marks Regular vs Hybrid. As of the 2026-07-26 rework, Hybrid is a single
+  // record with two direct Styles links — customized_style (Style A, same
+  // field Regular uses) and additional_customized_style (Style B) — instead
+  // of a parent linking to 2 structural child records. base_price/self_usage
+  // (Style A) and additional_base_price/additional_self_usage (Style B) are
+  // plain lookups off those two link fields; effective_base_price/
+  // effective_self_usage (Airtable formulas) pick the higher-priced style's
+  // values automatically, feeding the same proposed_total_custom_price
+  // formula chain Regular already used.
   IS_HYBRID:                   'fld1stC4sHuPT4pT4',
-  HYBRID_LINK:                 'fldewS0eFvZsoS30g',
-  HYBRID_LINK_INVERSE:         'fldm2oHXY3MgjAFiz',
-  HYBRID_WEIGHT:               'fldIQdVmgJzBwYbwl',
-  HYBRID_TOTAL_PRICE:          'fldunhb83qALkU71Y',
-  HYBRID_STYLE_NAMES:          'fldMHwhsQ7rmvjqBb', // rollup — already-formatted "Style A & Style B"
-  // Client name rollup through hybrid_customization — resolves correctly for
-  // both Regular and Hybrid parent rows (unlike CLIENT, which isn't always
-  // populated directly on a Hybrid parent), so the main list table reads
-  // this for its Client column instead.
-  HYBRID_CUSTOMIZATION_CLIENT: 'fldW1QVWXgwqI0cJu',
+  ADDITIONAL_CUSTOMIZED_STYLE: 'fldFGUnQBWnfiGwkE',
+  ADDITIONAL_BASE_PRICE:       'fldrn1gH5BcladIxo',
+  ADDITIONAL_SELF_USAGE:       'fldSO6qbpDzk0wUJD',
+  HYBRID_STYLE_NAMES:          'fldEGgSq6Tohw9Xvz', // formula — "Style A & Style B", built off customized_style + additional_customized_style directly
 } as const;
 
 // Shared with getCustomProperties() below, so both the direct table lookup
@@ -835,41 +833,6 @@ function LineItemsTable({
   );
 }
 
-// ─── HybridChildColumn ──────────────────────────────────────────────────────────
-// One of a Hybrid parent's two child Customizations records, scoped to just
-// this child and auto-saving straight to its own record id.
-// Hybrid is architecturally "Regular but merging two styles" (per Julia,
-// 2026-07-24 feedback) — a Hybrid child now only carries its own Style.
-// Customizations, Embroidery/Paint/Lace Amount, and Additional Details all
-// live once, at the parent level (see RecordDetailPage's unified fields
-// block), computed against whichever child has the higher Base Price. No
-// card/border here — both children render inline, side by side, as a single
-// horizontal panel, not two stacked cards.
-function HybridChildColumn({
-  title, childRecord, table, styleOptions, canUpdate,
-}: {
-  title: string; childRecord: AirtableRecord; table: Table;
-  styleOptions: { id: string; label: string }[]; canUpdate: boolean;
-}) {
-  const fStyled = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
-
-  const [styleId, setStyleId] = useState<string | null>(() => (fStyled ? (childRecord.getCellValue(fStyled) as Array<{ id: string }> | null)?.[0]?.id ?? null : null));
-
-  const handleStyleId = (id: string | null) => {
-    setStyleId(id);
-    if (fStyled) queueWrite(() => table.updateRecordAsync(childRecord.id, { [fStyled.id]: id ? [{ id }] : null })).catch(err => console.error('Hybrid child auto-save failed:', err));
-  };
-
-  const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
-
-  return (
-    <div className="flex-1 min-w-0">
-      <span className={labelCls}>{title}</span>
-      <StyleSelectSingle value={styleId} options={styleOptions} placeholder="Select a style…" onChange={handleStyleId} disabled={!canUpdate} />
-    </div>
-  );
-}
-
 // ─── DeleteConfirmModal ────────────────────────────────────────────────────────
 // Standard centered modal (backdrop + rounded-2xl container). The Delete button
 // stays disabled behind a 5-second countdown so an accidental click can't
@@ -1153,27 +1116,20 @@ function NewRequestModal({
         const newId = await customizationsTable.createRecordAsync(fields);
         onCreated(newId);
       } else {
-        // Hybrid children carry only their own Style — Customizations,
-        // Embroidery/Paint/Lace Amount, and Additional Details all live once,
-        // on the parent, same fields Regular uses (per Julia, 2026-07-24).
-        const buildChildFields = (styleId: string | null): Record<string, unknown> => ({
-          [FIELD_IDS.CLIENT]: [{ id: clientId }],
-          [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
-          [FIELD_IDS.IS_HYBRID]: { name: 'Regular' },
-          [FIELD_IDS.CUSTOMIZED_STYLE]: styleId ? [{ id: styleId }] : null,
-        });
-        const child1Id = await customizationsTable.createRecordAsync(buildChildFields(hybridStyleIds[0]));
-        const child2Id = await customizationsTable.createRecordAsync(buildChildFields(hybridStyleIds[1]));
-        const parentId = await customizationsTable.createRecordAsync({
+        // Hybrid is a single record now (2026-07-26 rework) — Style A/B live
+        // directly on it (customized_style + additional_customized_style),
+        // no more separate child records to create.
+        const newId = await customizationsTable.createRecordAsync({
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
           [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
           [FIELD_IDS.IS_HYBRID]: { name: 'Hybrid' },
-          [FIELD_IDS.HYBRID_LINK]: [{ id: child1Id }, { id: child2Id }],
+          [FIELD_IDS.CUSTOMIZED_STYLE]: hybridStyleIds[0] ? [{ id: hybridStyleIds[0] }] : null,
+          [FIELD_IDS.ADDITIONAL_CUSTOMIZED_STYLE]: hybridStyleIds[1] ? [{ id: hybridStyleIds[1] }] : null,
           [FIELD_IDS.CUSTOMIZATION_PRICING]: hybridCustomization.pricingIds.map(id => ({ id })),
           [FIELD_IDS.CUSTOMIZATION_DETAIL]: hybridCustomization.detail || null,
           [FIELD_IDS.AMOUNT_EMBROIDERY]: hybridCustomization.embroidery ? { name: hybridCustomization.embroidery } : null,
         });
-        onCreated(parentId);
+        onCreated(newId);
       }
     } catch (e) {
       console.error('Failed to create customization request:', e);
@@ -1469,10 +1425,11 @@ function CounterProposalModal({
   const fClient          = customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT);
   const fIsHybrid         = customizationsTable.getFieldIfExists(FIELD_IDS.IS_HYBRID);
   const fStyled           = customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
+  const fAdditionalStyled = customizationsTable.getFieldIfExists(FIELD_IDS.ADDITIONAL_CUSTOMIZED_STYLE);
   const fHybridStyleNames = customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_STYLE_NAMES);
-  const fHybridLink       = customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK);
   const fPricing          = customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
   const fBasePrice        = customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE);
+  const fAdditionalBasePrice = customizationsTable.getFieldIfExists(FIELD_IDS.ADDITIONAL_BASE_PRICE);
   const fEmbroidery       = customizationsTable.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fApproved         = customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
   const fClientProposedPricing = customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_PROPOSED_PRICING);
@@ -1504,24 +1461,15 @@ function CounterProposalModal({
     return v?.map(x => x.id) ?? [];
   }, [fPricing, parentRecord]);
 
-  // Hybrid has no Base Price of its own — Customizations/Embroidery here are
-  // priced against whichever of its two linked children has the higher Base
-  // Price (per Julia, 2026-07-24: "the only difference between hybrid and
-  // regular is that hybrid is a merge of two styles"). Computed ahead of
-  // basePriceNumber since that value depends on it.
-  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
-    if (!isHybrid || !fHybridLink) return [];
-    const ids = ((parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-  }, [isHybrid, fHybridLink, parentRecord, allCustomizationRecords]);
-  const basePriceNumber = isHybrid
-    ? (() => {
-        const [c1, c2] = hybridChildRecords;
-        const b1 = c1 && fBasePrice ? parseCurrencyString(c1.getCellValueAsString(fBasePrice)) : 0;
-        const b2 = c2 && fBasePrice ? parseCurrencyString(c2.getCellValueAsString(fBasePrice)) : 0;
-        return Math.max(b1, b2);
-      })()
-    : (fBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0);
+  // Hybrid has two Base Prices — base_price (Style A) and
+  // additional_base_price (Style B), both plain lookups on this same parent
+  // record (2026-07-26 rework, no more child records) — Customizations/
+  // Embroidery here are priced against whichever is higher (per Julia,
+  // 2026-07-24: "the only difference between hybrid and regular is that
+  // hybrid is a merge of two styles").
+  const hybridBaseA = fBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0;
+  const hybridBaseB = fAdditionalBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fAdditionalBasePrice)) : 0;
+  const basePriceNumber = isHybrid ? Math.max(hybridBaseA, hybridBaseB) : (fBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0);
   // Embroidery Amount — defaults to the parent's own value but is editable
   // here (same as everywhere else this field appears), always shown below
   // Customizations per Julia. Drives the live multiplier preview and is what
@@ -1541,17 +1489,14 @@ function CounterProposalModal({
   }, [isHybrid, pricingIds, pricingRecords, pTypeField, pPriceField, pPercentField, pMultiField, basePriceNumber, preApprovalField, multiplierFactor]);
   const totalCustomizationCost = selectedItems.reduce((sum, i) => sum + i.amount, 0);
 
-  // Hybrid's "original cost" is the 85%-over-the-higher-child-Base-Price
-  // merge surcharge (same math as RecordDetailPage) PLUS whatever
-  // Customizations/Embroidery were on the parent, same as Regular's own
-  // Base Price + Customization Total.
-  const hybridOriginalTotal = useMemo(() => {
-    if (!isHybrid || !fBasePrice) return 0;
-    const [c1, c2] = hybridChildRecords;
-    const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fBasePrice)) : 0;
-    const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fBasePrice)) : 0;
-    return computeHybridCombinedTotal(b1, b2);
-  }, [isHybrid, fBasePrice, hybridChildRecords]);
+  // Hybrid's "original cost" is the 85%-over-the-higher-Base-Price merge
+  // surcharge (same math as RecordDetailPage) PLUS whatever Customizations/
+  // Embroidery were on the parent, same as Regular's own Base Price +
+  // Customization Total.
+  const hybridOriginalTotal = useMemo(
+    () => (isHybrid ? computeHybridCombinedTotal(hybridBaseA, hybridBaseB) : 0),
+    [isHybrid, hybridBaseA, hybridBaseB]
+  );
 
   const originalTotal = isHybrid ? (hybridOriginalTotal + totalCustomizationCost) : (basePriceNumber + totalCustomizationCost);
   // If parentRecord is itself a counter-proposal (i.e. this is a counter-
@@ -1647,16 +1592,17 @@ function CounterProposalModal({
       if (fLastDecisionBy) childFields[FIELD_IDS.LAST_DECISION_BY] = { name: childDecisionBy };
       if (clientLink) childFields[FIELD_IDS.CLIENT] = clientLink.map(c => ({ id: c.id }));
       if (fIsHybrid) childFields[FIELD_IDS.IS_HYBRID] = { name: typeText };
-      if (isHybrid && fHybridLink) {
-        // Inherit the same two Style 1/Style 2 child records the parent
-        // already has — without this, the counter-proposal's own
-        // hybrid_customization link stays empty and it has no styles at all.
-        const hybridLink = parentRecord.getCellValue(fHybridLink) as Array<{ id: string }> | null;
-        childFields[FIELD_IDS.HYBRID_LINK] = hybridLink ? hybridLink.map(h => ({ id: h.id })) : null;
-      }
-      if (!isHybrid && fStyled) {
+      // Style inheritance — Style A (customized_style) always copies over,
+      // Regular and Hybrid alike; Hybrid additionally copies Style B
+      // (additional_customized_style). Both live directly on this same
+      // record now (2026-07-26 rework), no more child records to inherit.
+      if (fStyled) {
         const styleLink = parentRecord.getCellValue(fStyled) as Array<{ id: string }> | null;
         childFields[FIELD_IDS.CUSTOMIZED_STYLE] = styleLink ? styleLink.map(s => ({ id: s.id })) : null;
+      }
+      if (isHybrid && fAdditionalStyled) {
+        const additionalStyleLink = parentRecord.getCellValue(fAdditionalStyled) as Array<{ id: string }> | null;
+        childFields[FIELD_IDS.ADDITIONAL_CUSTOMIZED_STYLE] = additionalStyleLink ? additionalStyleLink.map(s => ({ id: s.id })) : null;
       }
       // Customizations/Embroidery live on the counter-proposal itself for
       // both Regular and Hybrid (per Julia, 2026-07-24) — Hybrid's are
@@ -1880,40 +1826,16 @@ function RecordDetailPage({
   const fStyled     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE);
   const fPricing    = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_PRICING);
   const fIsHybrid   = table.getFieldIfExists(FIELD_IDS.IS_HYBRID);
-  const fHybridLink = table.getFieldIfExists(FIELD_IDS.HYBRID_LINK);
+  // Hybrid is a single record (2026-07-26 rework) — Style A lives on
+  // customized_style (same field Regular uses), Style B on
+  // additional_customized_style. base_price/self_usage (Style A) and
+  // additional_base_price/additional_self_usage (Style B) are plain lookups
+  // read directly off THIS record, no more child records to fetch.
+  const fAdditionalStyled     = table.getFieldIfExists(FIELD_IDS.ADDITIONAL_CUSTOMIZED_STYLE);
+  const fAdditionalBasePrice  = table.getFieldIfExists(FIELD_IDS.ADDITIONAL_BASE_PRICE);
+  const fAdditionalSelfUsage  = table.getFieldIfExists(FIELD_IDS.ADDITIONAL_SELF_USAGE);
   const isHybrid = !!(fIsHybrid && record.getCellValueAsString(fIsHybrid) === 'Hybrid');
-  const hybridChildRecords = useMemo<AirtableRecord[]>(() => {
-    if (!isHybrid || !fHybridLink) return [];
-    const ids = ((record.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-    return ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-  }, [isHybrid, fHybridLink, record, allCustomizationRecords]);
   const fDetail     = table.getFieldIfExists(FIELD_IDS.CUSTOMIZATION_DETAIL);
-  const fBasePriceForHybrid = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
-  // Reused for both the currently-open record and (further down, for a
-  // counter-proposal) the thread's root — a Hybrid record's own Base Price/
-  // Self Usage don't exist on itself, only on its two linked children, so
-  // "this record's effective pricing basis" always has to be resolved this
-  // way for Hybrid, never read directly off the record.
-  const getHybridChildBasePrices = useCallback((rec: AirtableRecord): [number, number] => {
-    if (!fHybridLink || !fBasePriceForHybrid) return [0, 0];
-    const ids = ((rec.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-    const kids = ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-    const [c1, c2] = kids;
-    const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fBasePriceForHybrid)) : 0;
-    const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fBasePriceForHybrid)) : 0;
-    return [b1, b2];
-  }, [fHybridLink, fBasePriceForHybrid, allCustomizationRecords]);
-  const getHigherHybridChild = useCallback((rec: AirtableRecord): AirtableRecord | null => {
-    if (!fHybridLink) return null;
-    const ids = ((rec.getCellValue(fHybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-    const kids = ids.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-    const [c1, c2] = kids;
-    if (!c1) return c2 ?? null;
-    if (!c2) return c1;
-    const b1 = fBasePriceForHybrid ? parseCurrencyString(c1.getCellValueAsString(fBasePriceForHybrid)) : 0;
-    const b2 = fBasePriceForHybrid ? parseCurrencyString(c2.getCellValueAsString(fBasePriceForHybrid)) : 0;
-    return b1 >= b2 ? c1 : c2;
-  }, [fHybridLink, fBasePriceForHybrid, allCustomizationRecords]);
   const fEmbroidery = table.getFieldIfExists(FIELD_IDS.AMOUNT_EMBROIDERY);
   const fBasePrice  = table.getFieldIfExists(FIELD_IDS.BASE_PRICE);
   const fApproved   = table.getFieldIfExists(FIELD_IDS.APPROVED_PRICING);
@@ -1981,6 +1903,10 @@ function RecordDetailPage({
   const [clientApprovalStatus, setClientApprovalStatus] = useState(fClientApprovalStatus ? getSingleSelectName(record.getCellValue(fClientApprovalStatus)) : '');
   const clientApprovalColorMap = useMemo(() => getChoiceColorMap(fClientApprovalStatus), [fClientApprovalStatus]);
   const [styleId,    setStyleId]    = useState<string | null>(() => { const v = fStyled ? record.getCellValue(fStyled) as Array<{id: string}> | null : null; return v?.[0]?.id ?? null; });
+  // Style B — only meaningful for Hybrid, lives on this same record via
+  // additional_customized_style (2026-07-26 rework, replacing the old
+  // 2-child-records model).
+  const [additionalStyleId, setAdditionalStyleId] = useState<string | null>(() => { const v = fAdditionalStyled ? record.getCellValue(fAdditionalStyled) as Array<{id: string}> | null : null; return v?.[0]?.id ?? null; });
   const [pricingIds, setPricingIds] = useState<string[]>(() => { const v = fPricing ? record.getCellValue(fPricing) as Array<{id: string}> | null : null; return v?.map(x => x.id) ?? []; });
   const [detail,     setDetail]     = useState(fDetail ? record.getCellValueAsString(fDetail) : '');
   const [embroidery, setEmbroidery] = useState<string | null>(fEmbroidery ? record.getCellValueAsString(fEmbroidery) || null : null);
@@ -2009,10 +1935,11 @@ function RecordDetailPage({
   const recordHash = useCallback(() => [
     fApprStatus  ? record.getCellValueAsString(fApprStatus)  : '',
     fStyled      ? record.getCellValueAsString(fStyled)      : '',
+    fAdditionalStyled ? record.getCellValueAsString(fAdditionalStyled) : '',
     fPricing     ? record.getCellValueAsString(fPricing)     : '',
     fDetail      ? record.getCellValueAsString(fDetail)      : '',
     fEmbroidery  ? record.getCellValueAsString(fEmbroidery)  : '',
-  ].join('||'), [record, fApprStatus, fStyled, fPricing, fDetail, fEmbroidery]);
+  ].join('||'), [record, fApprStatus, fStyled, fAdditionalStyled, fPricing, fDetail, fEmbroidery]);
 
   const mountedHashRef = useRef(recordHash());
   const [concurrentEditWarning, setConcurrentEditWarning] = useState(false);
@@ -2027,18 +1954,20 @@ function RecordDetailPage({
   const reloadFromRecord = useCallback(() => {
     if (fApprStatus)  setApprovalStatus(getSingleSelectName(record.getCellValue(fApprStatus)));
     if (fStyled)      setStyleId((record.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id ?? null);
+    if (fAdditionalStyled) setAdditionalStyleId((record.getCellValue(fAdditionalStyled) as Array<{id:string}>|null)?.[0]?.id ?? null);
     if (fPricing)     setPricingIds((record.getCellValue(fPricing) as Array<{id:string}>|null)?.map(x => x.id) ?? []);
     if (fDetail)      setDetail(record.getCellValueAsString(fDetail));
     if (fEmbroidery)  setEmbroidery(record.getCellValueAsString(fEmbroidery) || null);
     mountedHashRef.current = recordHash();
     setConcurrentEditWarning(false);
-  }, [record, fApprStatus, fStyled, fPricing, fDetail, fEmbroidery, recordHash]);
+  }, [record, fApprStatus, fStyled, fAdditionalStyled, fPricing, fDetail, fEmbroidery, recordHash]);
 
   const autoSave = useCallback((patch: Record<string, unknown>) => {
     queueWrite(() => table.updateRecordAsync(record.id, patch)).catch(err => console.error('Auto-save failed:', err));
   }, [table, record.id]);
 
   const handleStyleId  = (id: string | null) => { setStyleId(id); if (fStyled) autoSave({ [fStyled.id]: id ? [{ id }] : null }); };
+  const handleAdditionalStyleId = (id: string | null) => { setAdditionalStyleId(id); if (fAdditionalStyled) autoSave({ [fAdditionalStyled.id]: id ? [{ id }] : null }); };
   const handlePricing  = (ids: string[])     => { setPricingIds(ids); if (fPricing) autoSave({ [fPricing.id]: ids.map(id => ({ id })) }); };
   const handleEmbroidery = (v: string | null) => { setEmbroidery(v); if (fEmbroidery) autoSave({ [fEmbroidery.id]: v ? { name: v } : null }); };
   const addLineItem    = (id: string) => handlePricing([...pricingIds, id]);
@@ -2227,27 +2156,31 @@ function RecordDetailPage({
 
   // ── Pricing breakdown ───────────────────────────────────────────────────────
   // Base Price is shown as-is from its stored field for Regular. Hybrid has
-  // no Base Price of its own — everything Customizations/Embroidery-related
-  // is priced against whichever of its two linked children has the higher
-  // Base Price (per Julia, 2026-07-24: "the only difference between hybrid
-  // and regular is that hybrid is a merge of two styles").
+  // two — base_price (Style A) and additional_base_price (Style B), both
+  // plain lookups on this same record — and everything Customizations/
+  // Embroidery-related is priced against whichever is higher (per Julia,
+  // 2026-07-24: "the only difference between hybrid and regular is that
+  // hybrid is a merge of two styles").
   const preApprovalColorMap = useMemo(() => getChoiceColorMap(preApprovalField), [preApprovalField]);
-  const hybridChildBasePrices = useMemo(() => getHybridChildBasePrices(record), [getHybridChildBasePrices, record]);
-  const higherHybridChild = useMemo(() => getHigherHybridChild(record), [getHigherHybridChild, record]);
+  const hybridBaseA = fBasePrice ? parseCurrencyString(record.getCellValueAsString(fBasePrice)) : 0;
+  const hybridBaseB = fAdditionalBasePrice ? parseCurrencyString(record.getCellValueAsString(fAdditionalBasePrice)) : 0;
   const hybridCombinedTotal = useMemo(
-    () => computeHybridCombinedTotal(hybridChildBasePrices[0], hybridChildBasePrices[1]),
-    [hybridChildBasePrices]
+    () => computeHybridCombinedTotal(hybridBaseA, hybridBaseB),
+    [hybridBaseA, hybridBaseB]
   );
   const basePriceNumber = isHybrid
-    ? Math.max(hybridChildBasePrices[0], hybridChildBasePrices[1])
+    ? Math.max(hybridBaseA, hybridBaseB)
     : (fBasePrice ? parseCurrencyString(record.getCellValueAsString(fBasePrice)) : 0);
 
   // Self Usage is a lookup off Customized Style (DF Styles), same wrapped-cell
   // caveat as Base Price — read via getCellValueAsString, not raw getCellValue.
-  // For Hybrid, read off the higher-priced child (which actually has a
-  // Customized Style set — the parent doesn't).
+  // For Hybrid, use whichever style's Self Usage matches the higher Base
+  // Price — an exact comparison now that both styles are named fields on
+  // this same record, not an anonymous MAX() across 2 children.
   const selfUsageValue = isHybrid
-    ? (selfUsageField && higherHybridChild ? parseCurrencyString(higherHybridChild.getCellValueAsString(selfUsageField)) : 0)
+    ? (hybridBaseA >= hybridBaseB
+        ? (selfUsageField ? parseCurrencyString(record.getCellValueAsString(selfUsageField)) : 0)
+        : (fAdditionalSelfUsage ? parseCurrencyString(record.getCellValueAsString(fAdditionalSelfUsage)) : 0))
     : (selfUsageField ? parseCurrencyString(record.getCellValueAsString(selfUsageField)) : 0);
   const multiplierFactor = useMemo(
     () => computeMultiplierFactor(selfUsageValue, embroidery),
@@ -2302,14 +2235,14 @@ function RecordDetailPage({
   // Style/Customizations are read-only on every CP (see canEditStyleCustomizations
   // below), so the root's own fields are guaranteed to still reflect the true
   // original pricing, however long the counter-proposal thread gets.
-  const rootHybridChildBasePrices = useMemo(() => getHybridChildBasePrices(rootRecord), [getHybridChildBasePrices, rootRecord]);
-  const rootHigherHybridChild = useMemo(() => getHigherHybridChild(rootRecord), [getHigherHybridChild, rootRecord]);
+  const rootHybridBaseA = fBasePrice ? parseCurrencyString(rootRecord.getCellValueAsString(fBasePrice)) : 0;
+  const rootHybridBaseB = fAdditionalBasePrice ? parseCurrencyString(rootRecord.getCellValueAsString(fAdditionalBasePrice)) : 0;
   const rootHybridCombinedTotal = useMemo(
-    () => computeHybridCombinedTotal(rootHybridChildBasePrices[0], rootHybridChildBasePrices[1]),
-    [rootHybridChildBasePrices]
+    () => computeHybridCombinedTotal(rootHybridBaseA, rootHybridBaseB),
+    [rootHybridBaseA, rootHybridBaseB]
   );
   const rootBasePriceNumber = isHybrid
-    ? Math.max(rootHybridChildBasePrices[0], rootHybridChildBasePrices[1])
+    ? Math.max(rootHybridBaseA, rootHybridBaseB)
     : (fBasePrice ? parseCurrencyString(rootRecord.getCellValueAsString(fBasePrice)) : 0);
   const rootEmbroidery = fEmbroidery ? (rootRecord.getCellValueAsString(fEmbroidery) || null) : null;
   // Self Usage must be read from the ROOT's own value here too — hardcoding
@@ -2317,7 +2250,9 @@ function RecordDetailPage({
   // to 1x instead of the root's actual factor, understating Customization
   // Total whenever Self Usage was anything other than empty/0.
   const rootSelfUsageValue = isHybrid
-    ? (selfUsageField && rootHigherHybridChild ? parseCurrencyString(rootHigherHybridChild.getCellValueAsString(selfUsageField)) : 0)
+    ? (rootHybridBaseA >= rootHybridBaseB
+        ? (selfUsageField ? parseCurrencyString(rootRecord.getCellValueAsString(selfUsageField)) : 0)
+        : (fAdditionalSelfUsage ? parseCurrencyString(rootRecord.getCellValueAsString(fAdditionalSelfUsage)) : 0))
     : (selfUsageField ? parseCurrencyString(rootRecord.getCellValueAsString(selfUsageField)) : 0);
   const rootMultiplierFactor = computeMultiplierFactor(rootSelfUsageValue, rootEmbroidery);
   const rootPricingIds = useMemo(() => {
@@ -2534,25 +2469,16 @@ function RecordDetailPage({
                     2026-07-24: the favorites filter never made sense for a
                     merge of two styles). */}
                 {isHybrid ? (
-                  <div>
-                    {hybridChildRecords.length < 2 && (
-                      <div className="text-sm text-red-500 dark:text-red-400 mb-2">
-                        Missing {2 - hybridChildRecords.length} of 2 linked style records for this Hybrid request.
-                      </div>
-                    )}
-                    <div className="flex gap-4">
-                      {hybridChildRecords[0] && (
-                        <HybridChildColumn
-                          title="Style 1" childRecord={hybridChildRecords[0]} table={table}
-                          styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
-                        />
-                      )}
-                      {hybridChildRecords[1] && (
-                        <HybridChildColumn
-                          title="Style 2" childRecord={hybridChildRecords[1]} table={table}
-                          styleOptions={hybridStyleOptions} canUpdate={canEditStyleCustomizations}
-                        />
-                      )}
+                  <div className="flex gap-4">
+                    <div className="flex-1 min-w-0">
+                      <span className={labelCls}>Style 1</span>
+                      <StyleSelectSingle value={styleId} options={hybridStyleOptions} placeholder="Select a style…"
+                        onChange={handleStyleId} disabled={!canEditStyleCustomizations} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className={labelCls}>Style 2</span>
+                      <StyleSelectSingle value={additionalStyleId} options={hybridStyleOptions} placeholder="Select a style…"
+                        onChange={handleAdditionalStyleId} disabled={!canEditStyleCustomizations} />
                     </div>
                   </div>
                 ) : (
@@ -2637,7 +2563,7 @@ function RecordDetailPage({
                   )}
                   <span className={labelCls}>{isCounterProposal ? 'Original Costs' : 'Summary'}</span>
                   {isHybrid ? (() => {
-                    const [b1, b2] = isCounterProposal ? rootHybridChildBasePrices : hybridChildBasePrices;
+                    const [b1, b2] = isCounterProposal ? [rootHybridBaseA, rootHybridBaseB] : [hybridBaseA, hybridBaseB];
                     const higherIsStyle1 = b1 >= b2;
                     const custTotal = isCounterProposal ? rootCustomizationTotal : totalCustomizationCost;
                     return (
@@ -2897,7 +2823,6 @@ function CustomizationApp(): React.ReactElement {
     if (!customizationsTable) return null;
     return {
       client:                   customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT),
-      hybridCustomizationClient: customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_CUSTOMIZATION_CLIENT),
       customizedStyle:          customizationsTable.getFieldIfExists(FIELD_IDS.CUSTOMIZED_STYLE),
       approvalStatus:           customizationsTable.getFieldIfExists(FIELD_IDS.APPROVAL_STATUS),
       clientApprovalStatus:     customizationsTable.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS),
@@ -2907,9 +2832,7 @@ function CustomizationApp(): React.ReactElement {
       proposedTotalCustomPrice: customizationsTable.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE),
       approvedPricing:          customizationsTable.getFieldIfExists(FIELD_IDS.APPROVED_PRICING),
       isHybrid:                 customizationsTable.getFieldIfExists(FIELD_IDS.IS_HYBRID),
-      hybridLinkInverse:        customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK_INVERSE),
       hybridStyleNames:         customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_STYLE_NAMES),
-      hybridLink:               customizationsTable.getFieldIfExists(FIELD_IDS.HYBRID_LINK),
       basePrice:                customizationsTable.getFieldIfExists(FIELD_IDS.BASE_PRICE),
       parentRequest:            customizationsTable.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST),
       createdAt:                customizationsTable.getFieldIfExists(FIELD_IDS.CREATED_AT),
@@ -3009,15 +2932,6 @@ function CustomizationApp(): React.ReactElement {
     if (!fields) return [];
     const todayStr = new Date().toISOString().slice(0, 10);
     return allCustomizationRecords.filter(record => {
-      // A hybrid's two child Customizations (one per style) only ever exist
-      // to feed the parent's price — they're never their own row here, only
-      // embedded inside the parent's detail page. Airtable's own auto-
-      // generated reverse of the hybrid_customization self-link (children ->
-      // parent) identifies a child directly: non-empty means "I'm a child".
-      const isHybridChild = fields.hybridLinkInverse
-        ? ((record.getCellValue(fields.hybridLinkInverse) as Array<{ id: string }> | null)?.length ?? 0) > 0
-        : false;
-      if (isHybridChild) return false;
       if (nonLatestThreadIds.has(record.id)) return false;
       if (isProduction && fields.weddingDate) {
         const weddingStr = resolveDateString(record.getCellValue(fields.weddingDate));
@@ -3057,29 +2971,18 @@ function CustomizationApp(): React.ReactElement {
     const isHybridRow = fields?.isHybrid ? record.getCellValueAsString(fields.isHybrid) === 'Hybrid' : false;
     const approvalVal = fields?.approvalStatus ? getSingleSelectName(record.getCellValue(fields.approvalStatus)) : '';
     const clientApprovalVal = fields?.clientApprovalStatus ? getSingleSelectName(record.getCellValue(fields.clientApprovalStatus)) : '';
-    const clientText  = (fields?.hybridCustomizationClient ? record.getCellValueAsString(fields.hybridCustomizationClient) : '')
-      || (fields?.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '')
-      || '—';
+    const clientText  = (fields?.client ? getLinkedRecordName(record.getCellValue(fields.client)) : '') || '—';
     const styleText   = isHybridRow
       ? (fields?.hybridStyleNames ? (record.getCellValueAsString(fields.hybridStyleNames) || 'Hybrid') : 'Hybrid')
       : (fields?.customizedStyle ? getLinkedRecordName(record.getCellValue(fields.customizedStyle)) : '—');
     const saText      = fields?.salesAssociate ? record.getCellValueAsString(fields.salesAssociate) || '—' : '—';
     const dateStr     = fields?.dateOfRequest  ? resolveDateString(record.getCellValue(fields.dateOfRequest)) : '';
     const approvedVal = fields?.approvedPricing ? record.getCellValueAsString(fields.approvedPricing) : '';
-    // Hybrid total is computed client-side (85% over the higher child Base
-    // Price) rather than trusted from the stale hybrid_proposed_total_custom_price
-    // rollup, which still reflects the old per-child-weight formula — see recap.tsx.
-    const proposedVal = isHybridRow
-      ? (() => {
-          if (!fields?.hybridLink || !fields.basePrice) return '';
-          const childIds = ((record.getCellValue(fields.hybridLink) as Array<{ id: string }> | null) ?? []).map(x => x.id);
-          const children = childIds.map(id => allCustomizationRecords.find(r => r.id === id)).filter((r): r is AirtableRecord => !!r);
-          const [c1, c2] = children;
-          const b1 = c1 ? parseCurrencyString(c1.getCellValueAsString(fields.basePrice)) : 0;
-          const b2 = c2 ? parseCurrencyString(c2.getCellValueAsString(fields.basePrice)) : 0;
-          return formatCurrency(computeHybridCombinedTotal(b1, b2));
-        })()
-      : (fields?.proposedTotalCustomPrice ? record.getCellValueAsString(fields.proposedTotalCustomPrice) : '');
+    // proposed_total_custom_price is correct for both Regular and Hybrid now
+    // (2026-07-26 schema rework: effective_base_price computes the 85%
+    // surcharge over whichever of Hybrid's two directly-linked styles is
+    // pricier, feeding the same formula chain Regular already used).
+    const proposedVal = fields?.proposedTotalCustomPrice ? record.getCellValueAsString(fields.proposedTotalCustomPrice) : '';
     // Type — purely derived from parent_customization_request, regardless of
     // the record's own internal_approval_status: empty means it's a brand
     // new request, non-empty means it's a counter-proposal somewhere in an
