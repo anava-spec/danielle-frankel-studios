@@ -6,7 +6,7 @@ import {
   useCustomProperties,
   useColorScheme,
 } from '@airtable/blocks/interface/ui';
-import type { Table } from '@airtable/blocks/interface/models';
+import type { Table, Field } from '@airtable/blocks/interface/models';
 import {
   CaretDown as CaretDownIcon,
   CaretLeft as CaretLeftIcon,
@@ -14,7 +14,6 @@ import {
   CalendarBlank as CalendarBlankIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   X as XIcon,
-  Check as CheckIcon,
   WarningCircle as WarningCircleIcon,
 } from '@phosphor-icons/react';
 
@@ -145,10 +144,11 @@ function DatePicker({ label, value, onChange }: DatePickerProps) {
   );
 }
 
-// ─── SingleToggleDropdown (always exactly one of two options active) ──────────
+// ─── SingleSelectDropdown (one option or cleared — label acts as its own
+// placeholder when nothing is selected, matching BRANDING.md §5) ──────────────
 interface ToggleOption { value: string; label: string; }
-interface SingleToggleDropdownProps { value: string; options: ToggleOption[]; onChange: (v: string) => void; align?: 'left' | 'right'; }
-function SingleToggleDropdown({ value, options, onChange, align = 'left' }: SingleToggleDropdownProps) {
+interface SingleSelectDropdownProps { label: string; value: string | null; options: ToggleOption[]; onChange: (v: string | null) => void; align?: 'left' | 'right'; }
+function SingleSelectDropdown({ label, value, options, onChange, align = 'left' }: SingleSelectDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -156,13 +156,21 @@ function SingleToggleDropdown({ value, options, onChange, align = 'left' }: Sing
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const current = options.find(o => o.value === value) ?? options[0];
+  const current = options.find(o => o.value === value) ?? null;
+  const hasValue = !!current;
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center justify-between gap-2 min-w-[160px] bg-white dark:bg-[#242220] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300">
-        <span className="truncate">{current.label}</span>
-        <CaretDownIcon size={14} className={`text-amber-600 dark:text-amber-300 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
+        className={`inline-flex items-center justify-between gap-2 min-w-[170px] bg-white dark:bg-[#242220] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+          hasValue ? 'border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300'
+                   : 'border-gray-300 dark:border-[#34312C] text-gray-400 dark:text-gray-500 hover:border-gray-400 dark:hover:border-gray-500'}`}>
+        <span className="truncate">{current ? current.label : label}</span>
+        {hasValue ? (
+          <XIcon size={14} className="text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 flex-shrink-0"
+            onClick={e => { e.stopPropagation(); onChange(null); }} />
+        ) : (
+          <CaretDownIcon size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
+        )}
       </button>
       {open && (
         <div className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg w-[200px] py-1`}>
@@ -198,18 +206,57 @@ function renderPills(value: string): React.ReactElement {
   );
 }
 
-// ─── Checkbox ───────────────────────────────────────────────────────────────────
-interface CheckboxProps { checked: boolean; onChange: () => void; disabled?: boolean; hasError?: boolean; }
-function Checkbox({ checked, onChange, disabled = false, hasError = false }: CheckboxProps) {
+// ─── Airtable select-color resolution ──────────────────────────────────────────
+// All four Airtable intensity tiers (base/Bright/Light1/Light2) resolve to the
+// same high-contrast bg-100/text-800 formula per hue, matching this project's
+// established pattern (see appointments.tsx) for turning real field-choice
+// colors into pill classes instead of a hardcoded per-value map.
+const AIRTABLE_COLOR_MAP: Record<string, string> = {
+  blue: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  blueBright: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  blueLight1: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  blueLight2: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700',
+  cyan: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  cyanBright: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  cyanLight1: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  cyanLight2: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 border-cyan-200 dark:border-cyan-700',
+  green: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  greenBright: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  greenLight1: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  greenLight2: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+  gray: 'bg-gray-200 dark:bg-white/15 text-gray-800 dark:text-[#F3EFE6] border-gray-300 dark:border-white/15',
+  grayBright: 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-[#38322A]',
+  grayLight1: 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-[#38322A]',
+  grayLight2: 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-[#38322A]',
+};
+const DEFAULT_STATUS_PILL_CLASSES = 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
+
+// Resolves the actual Airtable option color for a singleSelect field's choices
+// so pill colors stay in sync with whatever colors are set on the field in
+// Airtable, instead of hardcoding a status→color map (per BRANDING.md §9).
+function getFieldChoiceColorMap(field: Field | null | undefined): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!field) return map;
+  const opts = field.options as unknown as { choices?: Array<{ name: string; color?: string }> } | undefined;
+  for (const choice of opts?.choices ?? []) {
+    if (choice?.name) map.set(choice.name, choice.color ?? '');
+  }
+  return map;
+}
+
+// ─── StatusPill ─────────────────────────────────────────────────────────────────
+interface StatusPillProps { value: string | null; colorMap: Map<string, string>; onClick: () => void; disabled?: boolean; hasError?: boolean; }
+function StatusPill({ value, colorMap, onClick, disabled = false, hasError = false }: StatusPillProps) {
+  const colorName = value ? colorMap.get(value) : null;
+  const colorClasses = hasError
+    ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-300 dark:border-red-500/40'
+    : (colorName ? (AIRTABLE_COLOR_MAP[colorName] ?? DEFAULT_STATUS_PILL_CLASSES) : DEFAULT_STATUS_PILL_CLASSES);
   return (
     <button type="button" disabled={disabled}
-      onClick={e => { e.stopPropagation(); onChange(); }}
-      className={`w-4 h-4 rounded flex items-center justify-center border transition-colors flex-shrink-0 ${
-        hasError ? 'border-red-400 dark:border-red-500'
-        : checked ? 'bg-amber-600 dark:bg-amber-400 border-amber-600 dark:border-amber-400'
-                  : 'bg-white dark:bg-[#1e1d1b] border-gray-300 dark:border-[#34312C]'} ${
-        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-      {checked && <CheckIcon size={11} weight="bold" className="text-white dark:text-[#25211A]" />}
+      onClick={e => { e.stopPropagation(); onClick(); }}
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap transition-colors ${colorClasses} ${
+        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:brightness-95'}`}>
+      {value || '—'}
     </button>
   );
 }
@@ -231,8 +278,8 @@ function CalligraphyCardsApp(): React.ReactElement {
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = (customPropertyValueByKey.clientsTable as Table | undefined) ?? null;
 
-  const [calligraphyFilter, setCalligraphyFilter] = useState<'pending' | 'done'>('pending');
-  const [weddingDateFilter, setWeddingDateFilter] = useState<'upcoming' | 'all'>('upcoming');
+  const [calligraphyFilter, setCalligraphyFilter] = useState<string | null>('Pending');
+  const [weddingDateFilter, setWeddingDateFilter] = useState<'upcoming' | 'past' | null>('upcoming');
   const [selectedDueDate, setSelectedDueDate] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -248,12 +295,13 @@ function CalligraphyCardsApp(): React.ReactElement {
   const allRecords = useRecords(clientsTable ?? null);
   const canWrite = clientsTable ? clientsTable.hasPermissionToUpdateRecords() : false;
 
-  const handleToggleCalligraphyCard = useCallback(async (recordId: string, current: boolean) => {
+  const handleToggleCalligraphyCard = useCallback(async (recordId: string, currentValue: string | null) => {
     const field = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
     if (!clientsTable || !field) return;
+    const next = currentValue === 'Sent' ? 'Pending' : 'Sent';
     setUpdateErrors(prev => ({ ...prev, [recordId]: false }));
     try {
-      await clientsTable.updateRecordAsync(recordId, { [field.id]: !current });
+      await clientsTable.updateRecordAsync(recordId, { [field.id]: { name: next } });
     } catch (err) {
       console.error('Failed to update calligraphy_card_sent', err);
       setUpdateErrors(prev => ({ ...prev, [recordId]: true }));
@@ -280,18 +328,16 @@ function CalligraphyCardsApp(): React.ReactElement {
     const selectedDueStr = selectedDueDate ? getLocalDateString(selectedDueDate) : null;
 
     let recs = allRecords.filter(rec => {
-      if (fSent) {
-        const sent = !!rec.getCellValue(fSent);
-        if (calligraphyFilter === 'pending' && sent) return false;
-        if (calligraphyFilter === 'done' && !sent) return false;
+      if (calligraphyFilter && fSent) {
+        const statusName = (rec.getCellValue(fSent) as { name: string } | null)?.name ?? null;
+        if (statusName !== calligraphyFilter) return false;
       }
-      if (fWedding) {
+      if (weddingDateFilter && fWedding) {
         const wd = rec.getCellValue(fWedding) as string | null;
-        if (weddingDateFilter === 'upcoming') {
-          if (!wd) return false;
-          const wdLocal = getLocalDateString(new Date(wd));
-          if (wdLocal < today) return false;
-        }
+        if (!wd) return false;
+        const wdLocal = getLocalDateString(new Date(wd));
+        if (weddingDateFilter === 'upcoming' && wdLocal < today) return false;
+        if (weddingDateFilter === 'past' && wdLocal >= today) return false;
       }
       if (selectedDueStr && fDue) {
         const due = rec.getCellValue(fDue) as string | null;
@@ -367,20 +413,22 @@ function CalligraphyCardsApp(): React.ReactElement {
           )}
         </div>
         <DatePicker label="Due Date" value={selectedDueDate} onChange={setSelectedDueDate} />
-        <SingleToggleDropdown
+        <SingleSelectDropdown
+          label="Wedding Date"
           value={weddingDateFilter}
-          onChange={v => setWeddingDateFilter(v as 'upcoming' | 'all')}
+          onChange={v => setWeddingDateFilter(v as 'upcoming' | 'past' | null)}
           options={[
             { value: 'upcoming', label: 'Upcoming Wedding Dates' },
-            { value: 'all', label: 'All Wedding Dates' },
+            { value: 'past', label: 'Past Wedding Dates' },
           ]}
         />
-        <SingleToggleDropdown
+        <SingleSelectDropdown
+          label="Calligraphy Status"
           value={calligraphyFilter}
-          onChange={v => setCalligraphyFilter(v as 'pending' | 'done')}
+          onChange={setCalligraphyFilter}
           options={[
-            { value: 'pending', label: 'Pending' },
-            { value: 'done', label: 'Done' },
+            { value: 'Pending', label: 'Pending' },
+            { value: 'Sent', label: 'Sent' },
           ]}
           align="right"
         />
@@ -393,7 +441,7 @@ function CalligraphyCardsApp(): React.ReactElement {
             <table className="w-full min-w-[760px] border-collapse">
               <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1e1d1b]">
                 <tr className="border-b border-gray-200 dark:border-white/10">
-                  <th className="px-3 py-2.5 w-[36px]"></th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[90px]">Status</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Client</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Due Date</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[180px]">Items Sold</th>
@@ -419,16 +467,18 @@ function CalligraphyCardsApp(): React.ReactElement {
                   const itemsStr = fItems ? (rec.getCellValueAsString(fItems) ?? '') : '';
                   const gownStr = fGown ? (rec.getCellValueAsString(fGown) ?? '') : '';
                   const weddingStr = fWedding ? (rec.getCellValue(fWedding) as string | null) : null;
-                  const sent = fSent ? !!rec.getCellValue(fSent) : false;
+                  const statusValue = fSent ? (rec.getCellValue(fSent) as { name: string } | null)?.name ?? null : null;
+                  const statusColorMap = getFieldChoiceColorMap(fSent);
 
                   return (
                     <tr key={rec.id} className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                       <td className="px-3 py-2.5">
-                        <Checkbox
-                          checked={sent}
+                        <StatusPill
+                          value={statusValue}
+                          colorMap={statusColorMap}
                           disabled={!canWrite}
                           hasError={!!updateErrors[rec.id]}
-                          onChange={() => handleToggleCalligraphyCard(rec.id, sent)}
+                          onClick={() => handleToggleCalligraphyCard(rec.id, statusValue)}
                         />
                       </td>
                       <td className="px-3 py-2.5 text-sm font-medium text-gray-900 dark:text-[#F5F3EF]">{name || '—'}</td>
