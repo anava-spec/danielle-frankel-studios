@@ -320,23 +320,32 @@ function AlterationsApp(): React.ReactElement {
 
   const allRecords = useRecords(clientsTable ?? null);
 
-  // Records eligible for this page — stage, the hidden future-wedding-date
-  // filter, and the Wedding Date picker, but NOT the search selection itself.
-  // Both the search typeahead and the final table read from this same set,
-  // so the search box can never suggest a client the page's own filters
-  // would exclude from the list.
+  // Records eligible for this page — an OR of three baseline signals (stage,
+  // an alterations appointment, or Item Sold containing "Alterations"), plus
+  // the hidden future-wedding-date filter and the Wedding Date picker, but
+  // NOT the search selection itself. Both the search typeahead and the final
+  // table read from this same set, so the search box can never suggest a
+  // client the page's own filters would exclude from the list.
   const eligibleRecords = useMemo(() => {
     if (!allRecords) return [];
     const fStage = fields[FIELD_IDS.CLIENT_STAGE];
     const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
     const fItems = fields[FIELD_IDS.CLIENT_ITEMS_SOLD];
+    const fFirstAppt = fields[FIELD_IDS.CLIENT_FIRST_ALTERATIONS_APPT];
+    const fNextAppt = fields[FIELD_IDS.CLIENT_NEXT_ALTERATIONS_APPT];
     const today = getTodayLocalString();
     const selectedWeddingStr = selectedWeddingDate ? getLocalDateString(selectedWeddingDate) : null;
 
     return allRecords.filter(rec => {
-      if (!fStage) return false;
-      const stage = (rec.getCellValue(fStage) as { name: string } | null)?.name ?? null;
-      if (stage !== ALTERATIONS_STAGE) return false;
+      // Baseline scope — OR of three signals, any one qualifies a client:
+      // In Alterations stage, a first/next alterations appointment on file,
+      // or "Alterations" showing up in their Item Sold.
+      const stage = fStage ? (rec.getCellValue(fStage) as { name: string } | null)?.name ?? null : null;
+      const isInAlterationsStage = stage === ALTERATIONS_STAGE;
+      const hasAlterationsAppt = !!extractFirstLookupDate(rec, fFirstAppt) || !!extractFirstLookupDate(rec, fNextAppt);
+      const itemsStrForScope = fItems ? (rec.getCellValueAsString(fItems) ?? '') : '';
+      const hasAlterationsItem = isPaidForAlterations(itemsStrForScope);
+      if (!isInAlterationsStage && !hasAlterationsAppt && !hasAlterationsItem) return false;
 
       // Hidden filter — always applied, not user-facing: excludes clients
       // with a wedding date already in the past. Blank wedding dates are
@@ -463,7 +472,7 @@ function AlterationsApp(): React.ReactElement {
           </span>
           {showFilterInfo && (
             <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2 z-30 w-[260px] bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 text-xs text-gray-600 dark:text-gray-300">
-              This list always shows only clients whose stage is "In Alterations," and always excludes clients whose wedding date is already in the past — regardless of the filters above.
+              This list always shows clients who match at least one of: stage is "In Alterations," have an alterations appointment on file, or have "Alterations" in Item Sold. It always excludes clients whose wedding date is already in the past — regardless of the filters above.
             </div>
           )}
         </div>
