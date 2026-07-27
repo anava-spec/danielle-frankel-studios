@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   initializeBlock,
   useBase,
@@ -7,7 +7,14 @@ import {
   useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import type { Table, Record as AirtableRecord, Field } from '@airtable/blocks/interface/models';
-import { WarningCircle as WarningCircleIcon } from '@phosphor-icons/react';
+import {
+  CaretLeft as CaretLeftIcon,
+  CaretRight as CaretRightIcon,
+  CalendarBlank as CalendarBlankIcon,
+  MagnifyingGlass as MagnifyingGlassIcon,
+  X as XIcon,
+  WarningCircle as WarningCircleIcon,
+} from '@phosphor-icons/react';
 
 // ─── Dark mode ────────────────────────────────────────────────────────────────
 function useTheme(): 'light' | 'dark' {
@@ -29,7 +36,7 @@ const FIELD_IDS = {
   CLIENT_FIRST_ALTERATIONS_APPT:    'fldRS6ctrPGlEPqlR',  // first_alterations_appointment — lookup, dateTime
   CLIENT_NEXT_ALTERATIONS_APPT:     'fldGiXSJ9p6dGFhLY',  // next_alterations_appointment — lookup, dateTime
   CLIENT_WEDDING_DATE:              'fldbgknumKGS5W5WU',  // Wedding Date (Formatted)
-  CLIENT_PICK_UP:                   'fldwqYAsQ3Iasi8QT',  // pending * — checkbox
+  CLIENT_PICK_UP:                   'fldwqYAsQ3Iasi8QT',  // pending * — checkbox, placeholder for Fulfillment Status
 } as const;
 
 // Duplicated from pipeline.tsx — every interface file here is a fully
@@ -99,6 +106,104 @@ function formatDateTime(value: string | null | undefined): string {
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
   );
 }
+function getLocalDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function getTodayLocalString(): string {
+  return getLocalDateString(new Date());
+}
+
+// ─── Calendar utilities ────────────────────────────────────────────────────────
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_EN = ['MO','TU','WE','TH','FR','SA','SU'];
+function getCalendarDays(year: number, month: number): Date[] {
+  const first = new Date(year, month, 1);
+  const startOffset = (first.getDay() + 6) % 7; // Monday-start
+  const start = new Date(year, month, 1 - startOffset);
+  return Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+}
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// ─── CalendarPopup ──────────────────────────────────────────────────────────────
+interface CalendarPopupProps { selected: Date | null; onSelect: (d: Date | null) => void; onClose: () => void; }
+function CalendarPopup({ selected, onSelect, onClose }: CalendarPopupProps) {
+  const [viewDate, setViewDate] = useState(selected ?? new Date());
+  const today = new Date();
+  const days = getCalendarDays(viewDate.getFullYear(), viewDate.getMonth());
+  return (
+    <div className="absolute z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 w-[272px]">
+      <div className="flex items-center justify-between mb-2">
+        <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
+          className="p-1 rounded-md border border-gray-200 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5">
+          <CaretLeftIcon size={14} />
+        </button>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{MONTHS_EN[viewDate.getMonth()]} {viewDate.getFullYear()}</span>
+        <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
+          className="p-1 rounded-md border border-gray-200 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5">
+          <CaretRightIcon size={14} />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 mb-1">
+        {DAYS_EN.map(d => <div key={d} className="text-center text-[11px] font-medium text-gray-400 dark:text-gray-500 py-1">{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-y-1">
+        {days.map((d, i) => {
+          const inMonth = d.getMonth() === viewDate.getMonth();
+          const isSelected = selected ? isSameDay(d, selected) : false;
+          const isToday = isSameDay(d, today);
+          return (
+            <button key={i} type="button" onClick={() => { onSelect(d); onClose(); }}
+              className={`mx-auto w-7 h-7 rounded-full text-xs flex items-center justify-center transition-colors ${
+                isSelected ? 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] font-semibold'
+                : isToday ? 'border border-amber-500 dark:border-amber-400 text-amber-600 dark:text-amber-400 font-medium'
+                : inMonth ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/10'
+                : 'text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              {d.getDate()}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-white/10">
+        <button type="button" onClick={() => { onSelect(null); onClose(); }}
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Clear</button>
+        <button type="button" onClick={() => { onSelect(today); onClose(); }}
+          className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:text-amber-700 dark:hover:text-amber-300">Today</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── DatePicker ─────────────────────────────────────────────────────────────────
+interface DatePickerProps { label: string; value: Date | null; onChange: (d: Date | null) => void; }
+function DatePicker({ label, value, onChange }: DatePickerProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center justify-between gap-2 min-w-[150px] bg-white dark:bg-[#1e1d1b] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+          value ? 'border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300'
+                : open ? 'border-amber-500 dark:border-amber-400 ring-1 ring-amber-500 dark:ring-amber-400 text-gray-400 dark:text-gray-500'
+                : 'border-gray-300 dark:border-[#34312C] text-gray-400 dark:text-gray-500 hover:border-gray-400 dark:hover:border-gray-500'}`}>
+        <span className="truncate">{value ? formatDate(getLocalDateString(value)) : label}</span>
+        {value ? (
+          <XIcon size={14} className="text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 flex-shrink-0"
+            onClick={e => { e.stopPropagation(); onChange(null); }} />
+        ) : (
+          <CalendarBlankIcon size={14} className="text-gray-400 flex-shrink-0" />
+        )}
+      </button>
+      {open && <CalendarPopup selected={value} onSelect={onChange} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
 
 // ─── Pill ───────────────────────────────────────────────────────────────────────
 function Pill({ children }: { children: React.ReactNode }) {
@@ -112,9 +217,8 @@ function renderPills(value: string): React.ReactElement {
   const parts = value.split(',').map(s => s.trim()).filter(Boolean);
   if (parts.length === 0) return <span className="text-sm text-gray-400 dark:text-gray-500">—</span>;
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap gap-1">
       {parts.map((p, i) => <Pill key={i}>{p}</Pill>)}
-      <PendingAsterisk />
     </div>
   );
 }
@@ -136,6 +240,10 @@ function AlterationsApp(): React.ReactElement {
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = (customPropertyValueByKey.clientsTable as Table | undefined) ?? null;
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedWeddingDate, setSelectedWeddingDate] = useState<Date | null>(null);
+
   const fields = useMemo(() => {
     if (!clientsTable) return {};
     return Object.fromEntries(
@@ -145,16 +253,46 @@ function AlterationsApp(): React.ReactElement {
 
   const allRecords = useRecords(clientsTable ?? null);
 
+  const searchResults = useMemo(() => {
+    if (!allRecords || !searchQuery.trim()) return [];
+    const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
+    if (!fName) return [];
+    const q = searchQuery.trim().toLowerCase();
+    return allRecords
+      .filter(r => (r.getCellValueAsString(fName) ?? '').toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [allRecords, searchQuery, fields]);
+
   const alterationsRecords = useMemo(() => {
     if (!allRecords) return [];
     const fStage = fields[FIELD_IDS.CLIENT_STAGE];
     const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
     const fNextAppt = fields[FIELD_IDS.CLIENT_NEXT_ALTERATIONS_APPT];
+    const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
+    const today = getTodayLocalString();
+    const selectedWeddingStr = selectedWeddingDate ? getLocalDateString(selectedWeddingDate) : null;
 
     const recs = allRecords.filter(rec => {
       if (!fStage) return false;
       const stage = (rec.getCellValue(fStage) as { name: string } | null)?.name ?? null;
-      return stage === ALTERATIONS_STAGE;
+      if (stage !== ALTERATIONS_STAGE) return false;
+
+      // Hidden filter — always applied, not user-facing: only clients whose
+      // wedding date is in the future (excludes blank/past wedding dates).
+      if (fWedding) {
+        const wd = rec.getCellValue(fWedding) as string | null;
+        if (!wd) return false;
+        if (getLocalDateString(new Date(wd)) < today) return false;
+      }
+
+      if (selectedWeddingStr && fWedding) {
+        const wd = rec.getCellValue(fWedding) as string | null;
+        if (!wd || getLocalDateString(new Date(wd)) !== selectedWeddingStr) return false;
+      }
+
+      if (selectedClientId && rec.id !== selectedClientId) return false;
+
+      return true;
     });
 
     return recs.slice().sort((a, b) => {
@@ -170,7 +308,7 @@ function AlterationsApp(): React.ReactElement {
       const nameB = fName ? (b.getCellValueAsString(fName) ?? '') : '';
       return nameA.localeCompare(nameB);
     });
-  }, [allRecords, fields]);
+  }, [allRecords, fields, selectedClientId, selectedWeddingDate]);
 
   if (errorState) return (
     <div className="h-screen flex items-center justify-center bg-[#F6F4F0] dark:bg-[#1A1917]">
@@ -192,11 +330,38 @@ function AlterationsApp(): React.ReactElement {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden antialiased bg-[#F6F4F0] dark:bg-[#1A1917]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <div className="px-6 pt-5 pb-4 flex-shrink-0">
-        <h1 className="text-lg font-bold text-gray-900 dark:text-[#F5F3EF]">Alterations</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Clients currently in the alterations stage.</p>
+      {/* Filter Bar */}
+      <div className="px-6 pt-5 pb-4 flex-shrink-0 flex items-center gap-2">
+        <div className="relative flex-1 max-w-[360px]">
+          <MagnifyingGlassIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input type="text" value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); setSelectedClientId(null); }}
+            placeholder="Search by client name…"
+            className="w-full pl-9 pr-7 py-1.5 text-sm bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 transition-colors" />
+          {searchQuery && (
+            <button type="button" onClick={() => { setSearchQuery(''); setSelectedClientId(null); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <XIcon size={13} />
+            </button>
+          )}
+          {searchQuery.trim() && !selectedClientId && (
+            <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg max-h-[240px] overflow-y-auto w-full py-1">
+              {searchResults.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No matches</div>
+              ) : searchResults.map(r => (
+                <button key={r.id} type="button"
+                  onClick={() => { setSelectedClientId(r.id); setSearchQuery(r.getCellValueAsString(fields[FIELD_IDS.CLIENT_FULL_NAME]!) ?? ''); }}
+                  className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5">
+                  {r.getCellValueAsString(fields[FIELD_IDS.CLIENT_FULL_NAME]!) || '—'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <DatePicker label="Wedding Date" value={selectedWeddingDate} onChange={setSelectedWeddingDate} />
       </div>
 
+      {/* Table */}
       <div className="flex-1 min-h-0 px-6 pb-4 flex flex-col">
         <div className="bg-white dark:bg-[#242220] border border-[#E5E1DA] dark:border-[#34312C] rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="overflow-y-auto flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -207,12 +372,12 @@ function AlterationsApp(): React.ReactElement {
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[200px]">
                     Gown/Garment <PendingAsterisk />
                   </th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">Alterationist(s)</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">Alteration Lead</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">First Alts Appointment</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">Next Alts Appointment</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Wedding Date</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[90px]">
-                    Pick Up <PendingAsterisk />
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[110px]">
+                    Fulfillment Status <PendingAsterisk />
                   </th>
                 </tr>
               </thead>
@@ -246,12 +411,7 @@ function AlterationsApp(): React.ReactElement {
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDateTime(firstApptStr)}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDateTime(nextApptStr)}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDate(weddingStr)}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">
-                        <span className="inline-flex items-center gap-1">
-                          {pickedUp ? '✓' : '—'}
-                          <PendingAsterisk />
-                        </span>
-                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{pickedUp ? '✓' : '—'}</td>
                     </tr>
                   );
                 })}
