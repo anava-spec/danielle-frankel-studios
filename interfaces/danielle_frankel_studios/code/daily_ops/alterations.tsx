@@ -31,12 +31,11 @@ function useTheme(): 'light' | 'dark' {
 const FIELD_IDS = {
   CLIENT_FULL_NAME:                 'fldB3Wyam01D3wR5Q',
   CLIENT_STAGE:                     'fldLcxVZvI1rigBlh',  // singleSelect — used only to filter to "In Alterations"
-  CLIENT_ITEMS_SOLD:                'fldEStULoGtNIjxPO',  // pending * — placeholder for Gown/Garment being altered
+  CLIENT_ITEMS_SOLD:                'fldEStULoGtNIjxPO',  // Item Sold — shown unfiltered, every purchased item
   CLIENT_ALTERATIONS_LEAD:          'fldWxPkO98xA8OF8y',  // most_recent_alterations_lead — lookup of linked record names
   CLIENT_FIRST_ALTERATIONS_APPT:    'fldRS6ctrPGlEPqlR',  // first_alterations_appointment — lookup, dateTime
   CLIENT_NEXT_ALTERATIONS_APPT:     'fldGiXSJ9p6dGFhLY',  // next_alterations_appointment — lookup, dateTime
   CLIENT_WEDDING_DATE:              'fldbgknumKGS5W5WU',  // Wedding Date (Formatted)
-  CLIENT_PICK_UP:                   'fldwqYAsQ3Iasi8QT',  // pending * — checkbox, placeholder for Fulfillment Status
 } as const;
 
 // Duplicated from pipeline.tsx — every interface file here is a fully
@@ -53,12 +52,17 @@ const STAGE_ORDER = [
 
 const ALTERATIONS_STAGE: (typeof STAGE_ORDER)[number] = 'In Alterations';
 
-// ─── Pending-field tooltip ──────────────────────────────────────────────────────
-const PENDING_TOOLTIP = 'This page is under construction — this data is pending confirmation and may change.';
-function PendingAsterisk() {
+// ─── Status pill — semantic red/green pair (BRANDING.md §1/§9), not the
+// champagne accent, since "Unpaid" is a needs-attention state and "Paid" is
+// a satisfied one. ──────────────────────────────────────────────────────────
+function StatusPill({ label, tone }: { label: string; tone: 'green' | 'red' }): React.ReactElement {
+  const cls = tone === 'green'
+    ? 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-200 dark:border-green-500/30'
+    : 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-200 dark:border-red-500/30';
   return (
-    <span title={PENDING_TOOLTIP} aria-label={PENDING_TOOLTIP}
-      className="text-amber-600 dark:text-amber-400 cursor-help font-semibold">*</span>
+    <span className={`inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${cls}`}>
+      {label}
+    </span>
   );
 }
 
@@ -390,16 +394,12 @@ function AlterationsApp(): React.ReactElement {
               <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1e1d1b]">
                 <tr className="border-b border-gray-200 dark:border-white/10">
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Client</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[200px]">
-                    Gown/Garment <PendingAsterisk />
-                  </th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[200px]">Item Sold</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">Alteration Lead</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">First Alts Appointment</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[150px]">Next Alts Appointment</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Wedding Date</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[110px]">
-                    Fulfillment Status <PendingAsterisk />
-                  </th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[110px]">Payment Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -414,7 +414,6 @@ function AlterationsApp(): React.ReactElement {
                   const fFirstAppt = fields[FIELD_IDS.CLIENT_FIRST_ALTERATIONS_APPT];
                   const fNextAppt = fields[FIELD_IDS.CLIENT_NEXT_ALTERATIONS_APPT];
                   const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
-                  const fPickUp = fields[FIELD_IDS.CLIENT_PICK_UP];
 
                   const name = fName ? (rec.getCellValueAsString(fName) ?? '') : '';
                   const itemsStr = fItems ? (rec.getCellValueAsString(fItems) ?? '') : '';
@@ -422,7 +421,9 @@ function AlterationsApp(): React.ReactElement {
                   const firstApptStr = extractFirstLookupDate(rec, fFirstAppt);
                   const nextApptStr = extractFirstLookupDate(rec, fNextAppt);
                   const weddingStr = fWedding ? (rec.getCellValue(fWedding) as string | null) : null;
-                  const pickedUp = fPickUp ? !!rec.getCellValue(fPickUp) : false;
+                  // "Paid" = client purchased Alterations (found in Item Sold);
+                  // "Unpaid" = they need to pay before their alterations appointment.
+                  const isPaid = itemsStr.toLowerCase().includes('alterations');
 
                   return (
                     <tr key={rec.id} className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -434,7 +435,9 @@ function AlterationsApp(): React.ReactElement {
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">
                         {weddingStr ? formatDate(weddingStr) : <MissingDatePill />}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{pickedUp ? '✓' : '—'}</td>
+                      <td className="px-3 py-2.5">
+                        <StatusPill label={isPaid ? 'Paid' : 'Unpaid'} tone={isPaid ? 'green' : 'red'} />
+                      </td>
                     </tr>
                   );
                 })}
