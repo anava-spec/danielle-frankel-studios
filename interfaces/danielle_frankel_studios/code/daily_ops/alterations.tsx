@@ -62,6 +62,15 @@ function PendingAsterisk() {
   );
 }
 
+// ─── Missing-data pill (matches appointments.tsx's MissingDataPill) ───────────
+function MissingDatePill(): React.ReactElement {
+  return (
+    <span className="inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium border bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-200 dark:border-red-500/30 whitespace-nowrap">
+      Missing Date
+    </span>
+  );
+}
+
 // ─── Date helpers ──────────────────────────────────────────────────────────────
 // Reads the raw cell value (ISO 8601 for date/dateTime lookups) instead of
 // getCellValueAsString, which renders using the field's configured display
@@ -270,12 +279,14 @@ function AlterationsApp(): React.ReactElement {
       const stage = (rec.getCellValue(fStage) as { name: string } | null)?.name ?? null;
       if (stage !== ALTERATIONS_STAGE) return false;
 
-      // Hidden filter — always applied, not user-facing: only clients whose
-      // wedding date is in the future (excludes blank/past wedding dates).
+      // Hidden filter — always applied, not user-facing: excludes clients
+      // with a wedding date already in the past. Blank wedding dates are
+      // NOT excluded — most In Alterations clients don't have this field
+      // filled in yet, and hiding them would hide most of the stage. Those
+      // rows show a "Missing Date" pill instead (see Wedding Date column).
       if (fWedding) {
         const wd = rec.getCellValue(fWedding) as string | null;
-        if (!wd) return false;
-        if (getLocalDateString(new Date(wd)) < today) return false;
+        if (wd && getLocalDateString(new Date(wd)) < today) return false;
       }
 
       if (selectedWeddingStr && fWedding) {
@@ -420,7 +431,9 @@ function AlterationsApp(): React.ReactElement {
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{leadStr || '—'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDateTime(firstApptStr)}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDateTime(nextApptStr)}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDate(weddingStr)}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">
+                        {weddingStr ? formatDate(weddingStr) : <MissingDatePill />}
+                      </td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{pickedUp ? '✓' : '—'}</td>
                     </tr>
                   );
