@@ -253,26 +253,19 @@ function AlterationsApp(): React.ReactElement {
 
   const allRecords = useRecords(clientsTable ?? null);
 
-  const searchResults = useMemo(() => {
-    if (!allRecords || !searchQuery.trim()) return [];
-    const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
-    if (!fName) return [];
-    const q = searchQuery.trim().toLowerCase();
-    return allRecords
-      .filter(r => (r.getCellValueAsString(fName) ?? '').toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [allRecords, searchQuery, fields]);
-
-  const alterationsRecords = useMemo(() => {
+  // Records eligible for this page — stage, the hidden future-wedding-date
+  // filter, and the Wedding Date picker, but NOT the search selection itself.
+  // Both the search typeahead and the final table read from this same set,
+  // so the search box can never suggest a client the page's own filters
+  // would exclude from the list.
+  const eligibleRecords = useMemo(() => {
     if (!allRecords) return [];
     const fStage = fields[FIELD_IDS.CLIENT_STAGE];
-    const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
-    const fNextAppt = fields[FIELD_IDS.CLIENT_NEXT_ALTERATIONS_APPT];
     const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
     const today = getTodayLocalString();
     const selectedWeddingStr = selectedWeddingDate ? getLocalDateString(selectedWeddingDate) : null;
 
-    const recs = allRecords.filter(rec => {
+    return allRecords.filter(rec => {
       if (!fStage) return false;
       const stage = (rec.getCellValue(fStage) as { name: string } | null)?.name ?? null;
       if (stage !== ALTERATIONS_STAGE) return false;
@@ -290,10 +283,27 @@ function AlterationsApp(): React.ReactElement {
         if (!wd || getLocalDateString(new Date(wd)) !== selectedWeddingStr) return false;
       }
 
-      if (selectedClientId && rec.id !== selectedClientId) return false;
-
       return true;
     });
+  }, [allRecords, fields, selectedWeddingDate]);
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
+    if (!fName) return [];
+    const q = searchQuery.trim().toLowerCase();
+    return eligibleRecords
+      .filter(r => (r.getCellValueAsString(fName) ?? '').toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [eligibleRecords, searchQuery, fields]);
+
+  const alterationsRecords = useMemo(() => {
+    const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
+    const fNextAppt = fields[FIELD_IDS.CLIENT_NEXT_ALTERATIONS_APPT];
+
+    const recs = selectedClientId
+      ? eligibleRecords.filter(rec => rec.id === selectedClientId)
+      : eligibleRecords;
 
     return recs.slice().sort((a, b) => {
       const nextA = fNextAppt ? extractFirstLookupDate(a, fNextAppt) : null;
@@ -308,7 +318,7 @@ function AlterationsApp(): React.ReactElement {
       const nameB = fName ? (b.getCellValueAsString(fName) ?? '') : '';
       return nameA.localeCompare(nameB);
     });
-  }, [allRecords, fields, selectedClientId, selectedWeddingDate]);
+  }, [eligibleRecords, fields, selectedClientId]);
 
   if (errorState) return (
     <div className="h-screen flex items-center justify-center bg-[#F6F4F0] dark:bg-[#1A1917]">
