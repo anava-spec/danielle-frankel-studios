@@ -437,7 +437,7 @@ function AlterationsApp(): React.ReactElement {
               ) : searchResults.map(r => (
                 <button key={r.id} type="button"
                   onClick={() => { setSelectedClientId(r.id); setSearchQuery(r.getCellValueAsString(fields[FIELD_IDS.CLIENT_FULL_NAME]!) ?? ''); }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5">
+                  className="w-full text-left px-3 py-1.5 text-sm capitalize text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5">
                   {r.getCellValueAsString(fields[FIELD_IDS.CLIENT_FULL_NAME]!) || '—'}
                 </button>
               ))}
@@ -501,7 +501,7 @@ function AlterationsApp(): React.ReactElement {
 
                   return (
                     <tr key={rec.id} className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-3 py-2.5 text-sm font-medium text-gray-900 dark:text-[#F5F3EF]">{name || '—'}</td>
+                      <td className="px-3 py-2.5 text-sm font-medium capitalize text-gray-900 dark:text-[#F5F3EF]">{name || '—'}</td>
                       <td className="px-3 py-2.5">{renderPills(itemsStr)}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{leadStr || '—'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDateTime(firstApptStr)}</td>
