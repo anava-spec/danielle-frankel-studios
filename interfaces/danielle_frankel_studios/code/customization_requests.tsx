@@ -1384,7 +1384,7 @@ function ApproveDenyConfirmModal({ action, clientName, context = 'internal', onC
           <p className="text-sm text-gray-600 dark:text-gray-300">
             {context === 'client'
               ? (isApprove
-                  ? <>This records that <strong>{clientName}</strong> approved the proposal — it will be marked as sent to production.</>
+                  ? <>This records that <strong>{clientName}</strong> approved the proposal — the request moves forward to purchase the items in Shopify, not straight to production.</>
                   : <>This records that <strong>{clientName}</strong> denied the proposal. This action cannot be undone.</>)
               : (isApprove
                   ? <>This will approve the customization request for <strong>{clientName}</strong> and move it forward to be proposed to the client.</>
@@ -1882,7 +1882,6 @@ function RecordDetailPage({
   const fClient     = table.getFieldIfExists(FIELD_IDS.CLIENT);
   const fClientApprovalStatus = table.getFieldIfExists(FIELD_IDS.CLIENT_APPROVAL_STATUS);
   const fProposedTotal        = table.getFieldIfExists(FIELD_IDS.PROPOSED_TOTAL_CUSTOM_PRICE);
-  const fProductionStatus     = table.getFieldIfExists(FIELD_IDS.PRODUCTION_STATUS);
   const fParentRequest        = table.getFieldIfExists(FIELD_IDS.PARENT_CUSTOMIZATION_REQUEST);
   const fCreatedAt            = table.getFieldIfExists(FIELD_IDS.CREATED_AT);
   const fInternalDenialReason = table.getFieldIfExists(FIELD_IDS.INTERNAL_DENIAL_REASON);
@@ -2090,14 +2089,15 @@ function RecordDetailPage({
 
   // Client decision — gated on clientApprovalStatus === 'Request Review'
   // (set by handleApprove above, or by a re-approved counter-proposal child).
-  // Approved: client_approval_status -> Approved AND production_status ->
-  // "Sent to Production" (end of the approval flow — production picks it up
-  // from there). Denied: client_approval_status -> Denied [terminal].
+  // Approved: client_approval_status -> Approved [terminal] — per Julia,
+  // 2026-07-27: an approved request moves to a purchase phase in Shopify,
+  // not straight to production, so production_status stays untouched here
+  // (it used to flip to "Sent to Production", which was wrong). Denied:
+  // client_approval_status -> Denied [terminal].
   const handleClientApprove = async () => {
     setSaving(true);
     try {
       const patch: Record<string, unknown> = { [FIELD_IDS.CLIENT_APPROVAL_STATUS]: { name: 'Approved' } };
-      if (fProductionStatus) patch[FIELD_IDS.PRODUCTION_STATUS] = { name: 'Sent to Production' };
       if (fLastDecisionBy) patch[FIELD_IDS.LAST_DECISION_BY] = { name: 'Client' };
       await queueWrite(() => table.updateRecordAsync(record.id, patch));
       setClientApprovalStatus('Approved');
@@ -2393,7 +2393,7 @@ function RecordDetailPage({
             {(() => {
               const greenMsgs: string[] = [];
               if (approvalStatus === 'Approved') greenMsgs.push('Customization Request Approved - review with the client.');
-              if (clientApprovalStatus === 'Approved') greenMsgs.push('The client approved — sent to production.');
+              if (clientApprovalStatus === 'Approved') greenMsgs.push('The client approved — move forward with the items purchase in Shopify.');
 
               const amberMsgs: string[] = [];
               if (isCounterProposal && (isNewRequestStage || approvalStatus === 'Under Review' || approvalStatus === 'Counter-Proposed')) {
