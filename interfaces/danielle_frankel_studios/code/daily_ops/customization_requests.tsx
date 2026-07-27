@@ -1384,7 +1384,7 @@ function ApproveDenyConfirmModal({ action, clientName, context = 'internal', onC
           <p className="text-sm text-gray-600 dark:text-gray-300">
             {context === 'client'
               ? (isApprove
-                  ? <>This records that <strong>{clientName}</strong> approved the proposal — the request moves forward to purchase the items in Shopify, not straight to production.</>
+                  ? <>This records that <strong>{clientName}</strong> approved the proposal — the request moves forward to purchase the items in Shopify.</>
                   : <>This records that <strong>{clientName}</strong> denied the proposal. This action cannot be undone.</>)
               : (isApprove
                   ? <>This will approve the customization request for <strong>{clientName}</strong> and move it forward to be proposed to the client.</>
