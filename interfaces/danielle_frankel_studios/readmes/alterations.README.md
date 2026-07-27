@@ -6,28 +6,31 @@ Group: Daily Ops · File: `alterations.tsx`
 
 ## Business Objective
 
-Track brides through the Alterations phase of the pipeline (post-sale, pre-fulfillment) — currently exists as a working page, but is flagged by Julia as unclear even to the developer, with a request to simplify it into a plain list. A fuller interface rebuild is identified as a needed future effort.
+Give staff a single, simple list of clients currently in alterations — who's assigned as their alteration lead, when their fittings are, and whether they've paid for alterations yet — so it's usable at a glance instead of the old full pipeline-kanban clone this file used to be.
 
 ## Inputs
 
-- Client records from `DF Clients`, filtered/scoped to clients in the Alterations stage
-- Order item data reflecting paid/unpaid status, synced via Cobalt from Shopify
-- Stakeholders: Julia Collins (requested simplification); Alterations Lead role (a Staff `role_catalog` entry, also referenced as a Slack notification target elsewhere in Appointments)
+- Client records from `DF Clients` (`tblLLUlDgJ4ktzF7c`).
+- Fields: `Full Name`, `Stage`, `Item Sold` (lookup), `most_recent_alterations_lead` (lookup of linked record names), `first_alterations_appointment` / `next_alterations_appointment` (lookups resolving to dateTime), `Wedding Date (Formatted)`.
+- Stakeholder: Julia Collins — "Can we just remove the top bar thing... it just can be a list. It's too confusing" (this file was a full duplicate of `pipeline.tsx`'s kanban board before this rebuild).
 
 ## Outputs
 
-⚠️ **Still open** — no confirmed automations or write-backs specific to Alterations beyond the phase-transition logic shared with the rest of the pipeline (see Rules below). If Alterations gets automations of its own as part of the planned rebuild, document them here once built.
+Read-only list — no write-backs. Every column (Item Sold, Alteration Lead, First/Next Alts Appointment, Wedding Date, Payment Status) is derived display, nothing here edits Airtable.
 
 ## Workflow
 
-1. Clients whose stage is Alterations appear on this page, using the same `STAGE_ORDER`/`STAGE_STEPS` pattern duplicated locally in this file (identical to `pipeline.tsx`'s array, per the isolated-file platform constraint).
-2. Staff currently navigate a page Julia herself finds unclear — pending simplification to a plain list view (not yet built as of this writing).
+1. A client qualifies for this list if **any** of the following is true (OR, not AND): `Stage = "In Alterations"`, they have a first or next alterations appointment on file, or "Alterations" appears in their `Item Sold`.
+2. A hidden, always-on filter excludes clients whose wedding date is already in the past (blank wedding dates are **not** excluded — most alterations clients don't have this field filled in yet, and those rows show a red "Missing Date" pill instead). An info icon at the right of the filter bar explains this on hover.
+3. Visible filters: client search (non-narrowing typeahead — selecting a result narrows to that one client), a Wedding Date calendar filter (exact-date match), and a Payment Status filter (Paid/Unpaid).
+4. Payment Status is derived, not a real Airtable field: "Paid" means `Item Sold` contains "Alterations"; "Unpaid" means it doesn't (client needs to pay before their alterations appointment). Same logic drives the column's `StatusPill` (green/red) and the filter.
+5. Sort order: Next Alts Appointment ascending (blanks last), then Client name A→Z.
+6. Client names render with a `capitalize` CSS class since some `Full Name` values are stored lowercase in Airtable — display-only, doesn't touch the underlying data.
 
 ## Rules
 
-- Phase-transition audit finding: Alterations was found **compliant, no changes needed** in the 7-phase audit (unlike Deliberating/Order Ready/Fulfillment, which needed fixes) — the phase-entry/exit logic itself is correct as of that audit.
-- **However**, a separate, more recent bug was flagged by Julia (Jul 15, High priority): the client should move to the Alterations phase **when the appointment is scheduled**, not at check-in. This appears to contradict or refine the earlier "compliant" audit finding — resolve by checking `docs/PHASE_LOGIC.md` against this specific trigger before assuming either source is fully authoritative; treat Julia's most recent written feedback as taking precedence per the standing precedence rule.
-- Known open bug (Julia, Jul 15, High priority): "Alterations item not marked paid" — an alterations item shows as unpaid in items sold even though it's paid in Shopify. This is a sync/display bug, not a business-logic change.
-- Julia's simplification ask ("simplify Alterations page to a plain list") is Low priority in her feedback log — don't treat as blocking relative to the two High-priority bugs above.
-- A full "Alterations interface rebuild" was identified as a large, not-yet-scoped effort during Sprint 4 feedback triage — treat the current page as a stopgap, not the final shape, when making architectural decisions here.
-- Shares the `STAGE_ORDER`/`STAGE_STEPS` duplication constraint and `docs/PHASE_LOGIC.md` authority with Pipeline — see [pipeline.README.md](pipeline.README.md)'s Rules section for the platform-constraint explanation.
+- Dark mode uses the canonical pattern (`fulfillment.tsx`'s approach): `useColorScheme()` toggles a `dark` class on `document.documentElement`, styling is plain Tailwind `dark:` classes — no bespoke token object.
+- `first_alterations_appointment` / `next_alterations_appointment` are read via the raw cell value (first array element), not `getCellValueAsString` — the latter renders using the field's configured display format and can silently swap day/month for ambiguous dates depending on the viewer's locale.
+- Payment Status intentionally does **not** hard-require `Item Sold` to contain "Alterations" — that would hide every "Unpaid" client, which defeats the point of having a Payment Status filter/pill in the first place. Confirmed with Axel (2026-07-27) to keep it a display+filter signal, not a list-eligibility gate.
+- `STAGE_ORDER` is duplicated from `pipeline.tsx` — every interface file here is a fully self-contained bundle (no cross-file imports), so shared constants are copied per-file rather than imported from a shared module. Only `"In Alterations"` is actually used from it.
+- Never include `import './style.css';` in this file.

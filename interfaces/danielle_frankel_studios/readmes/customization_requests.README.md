@@ -6,35 +6,41 @@ Group: Daily Ops · File: `customization_requests.tsx`
 
 ## Business Objective
 
-Track a customization request through its approval lifecycle (Margo approval, then Production approval) with photo documentation at each stage, so approvals move faster and the Sales team knows exactly when to follow up with a bride. This is explicitly a workflow/approval-tracking surface — separate from where the customization was originally recorded (Recap).
+Track every customization request through its full approval lifecycle — internal (Margo/SA) review, then the client's own decision — with a workdesk view for daily work and a dedicated approval queue for triaging new requests. Distinct from Recap: Recap is where a customization gets recorded during/after an appointment; this interface is where it gets reviewed, approved, denied, or counter-proposed.
 
 ## Inputs
 
-- Photos attached in two contexts: reference photos on the original request, and production result photos on the approval step
-- Underlying customization/recap data originated in Recap (`Customizations` table, `tbl7HUWDI7IRjWY92`)
-- Stakeholders: Julia Collins; Margo Lafontaine (approval role referenced in filters); Production team; Sales team (needs to know when to follow up with a bride)
+- `Customizations` table (`tbl7HUWDI7IRjWY92`) — same underlying records Recap creates.
+- Related: `Customization Pricing`, Styles, Staff (Sales Associates), Clients.
+- Stakeholders: Julia Collins (product owner/feedback), Margo (internal approver), Sales Associates.
 
 ## Outputs
 
-- Slack notification to Production recipients when a request reaches the point where Production approval is required
-- Slack notification to Sales recipients when a request reaches the point where Sales needs to communicate back to the bride
-- Photo attachments visible in the same context where they were added (reference vs. production-result)
+- Two toggleable layouts, switched via a `LayoutDropdown`:
+  - **Workdesk** (`ops`) — a flat table of every request (Client, Style, Internal Status, Client Status, Sales Associate, Date of Request, Proposed Total, Approved Price). Default filter hides already-resolved statuses (Internal Denied, Client Approved, Client Denied, and both "… • Counter-Proposal" variants) so staff land on what's still actionable.
+  - **Approval** — a two-column split view: "New Requests" (draggable rows) and "Under Review" (drop target). Dragging a New Request onto Under Review writes `internal_approval_status: 'Under Review'`.
+- A `RecordDetailPage` per request with the full review/decision flow.
+- A "New Customization Request" creation flow (Regular or Hybrid).
 
 ## Workflow
 
-1. Staff open a customization request's detail page in the Customization Requests interface (this page is separate from Recap/`CustomizationModal` — confirmed explicitly, not a tab or mode inside Recap).
-2. The detail page provides a **Margo filter** and a **Production filter** — not access-gated tabs; any staff member can view or switch between either filter, there is no role-based access restriction (this was explicitly decided: role-based access was originally proposed, then removed — filters remain purely as views anyone can use).
-3. Each filter shows only requests currently pending that specific approval stage's criteria; a request pending Margo's approval does not appear in the Production filter, and vice versa, until its status changes to the other stage's pending state.
-4. When a request reaches the point requiring Production approval, the Production Slack notification fires.
-5. When a request reaches the point where Sales needs to loop back to the bride, the Sales Slack notification fires (separate automation from the Production one).
-6. Staff can attach photos at two points: as reference photos on the original request, and as production-result photos once Production has acted — both are visible later in their original context.
+1. **Counter-proposal threads**: every non-root record links to its thread root via `parent_customization_request`. Only the single latest record in a thread ever shows as its own row in either layout — older thread members (including the root, once it has children) are hidden from the list and reachable only through the Detail Page's Counter-Proposal History.
+2. **Combined status**: the list's displayed status prefers `client_approval_status` once it has any value ("Client …"), otherwise falls back to `internal_approval_status` ("Internal …", defaulting to "New Request" when blank).
+3. **Detail Page actions**, gated by which layout the page was opened from (`sourceLayout`):
+   - Internal Approve/Deny/Counter-Propose: only from Under Review (Approval layout) or Counter-Proposed (Workdesk, prefixed "SA" when the SA acts on it).
+   - Client Approve/Deny/Counter-Propose: only from Workdesk, only once `client_approval_status = "Request Review"`. Client Approve is terminal (no longer flips `production_status`); Client Deny is terminal; a client counter writes "Denied • Counter-Proposal" directly.
+   - Field editability requires Workdesk **and** an early stage (blank/New Request/Under Review) — the Approval layout is always read-only, and Style/Customizations stay frozen on any counter-proposal record even in Workdesk (only editable on the thread's root).
+4. **Hybrid customizations** use the same model as Recap: one record with two direct Style links, priced at `max(baseA, baseB) × 1.85` (the merge surcharge) plus shared customization line items, based on whichever style has the higher base price.
+5. **Deep links**: a `?record=recXXXXX` URL param (used by the notification automations' "Click here to review" links) jumps straight to that record's Detail Page on first load — `sourceLayout` is set to `approval` if the record is Under Review, otherwise `ops`.
+6. **New Customization Request**: pick Regular or Hybrid, search for a client (no stage restriction — any client is selectable), pick style(s), customizations, Embroidery/Paint/Lace Amount, Additional Details. The in-progress draft lives in the parent component's state, so dismissing the modal (outside click, Escape, Cancel) does **not** lose what was typed — only a successful submit clears it.
 
 ## Rules
 
-- No access control/permissions layer on this interface — any staff member can access or edit anything on it (explicit product decision, confirmed by Axel after an access-control proposal was walked back).
-- The Margo/Production split is implemented as **filters**, not as separate access-gated views — do not build permission checks around them.
-- This interface must not show a request in a filter it isn't currently awaiting — filter membership must be derived from live approval-stage state, not a static category.
-- Slack recipient configuration for Production and Sales is separate per notification type — do not combine into a single Slack target list.
-- DFS team Slack member IDs were pending from Julia as of the last review — this blocks the Customization Request approval notifications specifically; verify these are populated before assuming notifications fire correctly.
-- Known open bug (Julia, Jul 15, High priority): "Unable to create a new customization request in the interface."
-- Larger rework in progress/planned: a broader "Customization Requests workflow with approval gates and notifications" was flagged as a large-effort item during Sprint 4 feedback analysis — treat the above as the current confirmed shape, but expect scope to expand (e.g., a new Terms of Customization document was also raised in the same session).
+- "Denied • Counter-Proposal" statuses (internal and client) are always hidden from the default Workdesk filter — that status only means a newer counter-proposal already superseded the record, it's not a real outcome needing action (per Julia, 2026-07-27).
+- Style dropdown (Regular and Hybrid) is intentionally unfiltered — shows every style, no "Favorite Styles in Acuity" scoping (per Julia, 2026-07-24/27).
+- Client-approve no longer flips `production_status` to "Sent to Production" — approved requests now move into a separate Shopify-purchase phase (per Julia, 2026-07-27).
+- "Original Total"/"Original Costs" on a counter-proposal is always computed from the thread's ROOT record's own fields, never the currently-open counter-proposal — Style/Customizations are frozen after the first counter, so the root is the only reliable source.
+- Self Usage field IDs are hardcoded (not fuzzy name-matched) after a 2026-07-27 bug where the wrong style's Self Usage got picked up, scaling a multiplier fee incorrectly.
+- Currency parsing (`parseCurrencyString`) handles both US (`1,990.00`) and EU/LatAm (`1.990,00`) formats by detecting which separator trails 1–2 digits — don't assume US formatting when reading a rollup/lookup number cell as a string.
+- No access-control/permissions layer — any staff member can view or act on any request; this was an explicit product decision (an earlier Margo/Production filter-based access proposal was walked back). Don't reintroduce role-gating without confirming with Axel/Julia first.
+- Never include `import './style.css';` in this file.

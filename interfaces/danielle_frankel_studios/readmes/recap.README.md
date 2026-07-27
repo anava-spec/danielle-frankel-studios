@@ -6,32 +6,33 @@ Group: Daily Ops · File: `recap.tsx`
 
 ## Business Objective
 
-Let Sales Associates record the outcome of a bridal appointment — selected style, customizations, embroidery/paint/lace amount, and calculated pricing — immediately after the appointment, and use that recap as the single source of truth that downstream features (like Customization Proposal generation) read from without re-entering data.
+Give Sales Associates a daily list of consultation appointments and a place to record each one's outcome immediately after — style selected, customizations, embroidery/paint/lace amount, calculated pricing — so that recap becomes the single source of truth Customization Requests and Generate Proposal both read from, without re-entering anything.
 
 ## Inputs
 
-- `Customizations` table (`tbl7HUWDI7IRjWY92`) — the recap record itself
-- Fields captured per recap: Customized Style (link), Amount of Embroidery/Paint/Lace (single select), Customization Pricing (link), Made-to-Measure (checkbox), Alterations (checkbox), Rush (checkbox)
-- Stakeholders: Julia Collins; Sales Associates (primary daily users)
+- `Appointments`, `Clients`, `Styles`, `Customizations`, `Customization Pricing`, `Staff`, and `Proposals` tables.
+- Fields captured per recap: Customized Style (or two styles for Hybrid), Customizations/pricing selections, Amount of Embroidery/Paint/Lace, Additional Details.
+- Stakeholders: Julia Collins; Sales Associates (primary daily users).
 
 ## Outputs
 
-- The completed recap record feeds:
-  - The "Generate Proposal" action (Customization Proposal Document Generation), which reads style, customizations, embroidery amount, and calculated price directly from the open recap
-  - The Customization Requests interface (separate page), which references the same underlying customization/recap data for approval tracking
+- The completed recap record feeds Generate Proposal (reads style, customizations, embroidery amount, and calculated price directly) and the Customization Requests interface, which references the same underlying record for its own approval/decision workflow.
 
 ## Workflow
 
-1. Sales Associate opens `PostAppointmentModal` (the Recap interface) via `CustomizationModal` for a given appointment/client.
-2. SA records: customized style, which customization types apply (checkboxes), embroidery/paint/lace amount, and the calculated price.
-3. Once complete, a "Generate Proposal" button becomes available if all required inputs are present (see Rules) — this is the entry point into proposal generation, but proposal creation is a separate, gated action, not automatic on recap save.
-4. Recap data also flows into the Customization Requests interface as the source-of-truth customization record that gets its own approval/photo workflow there.
+1. `AppointmentsApp` is the main page: a date-picker header (prev/next day, calendar, "Today" shortcut), a client-name search (typeahead with keyboard navigation), Studio/Sales Associate filters, and a table of that day's consultation appointments (Time, Client, Studio, Wedding Date, Sales Associate, Favorite Styles, Measurements, Photos, Follow-Up, Customizations count). Only Consultation-type, non-cancelled, client-linked appointments show.
+2. Clicking a row opens `PostAppointmentModal`, where the SA edits wedding date/confirmation, measurement notes, RTW size, Favorite Styles, appointment notes, and uploads measurement/appointment photos.
+3. Adding or editing a customization opens the nested `CustomizationModal`: pick a Style (or two, for Hybrid), Customizations/pricing, Amount of Embroidery/Paint/Lace (only shown when a selected pricing row needs it), Additional Details — with a live Order Summary (base price, line items, grand total) throughout.
+4. "Generate Proposal" is only enabled once every required input is present (Style, at least one customization, Amount if applicable, a grand total above $0, client, sales associate); its disabled-state title always names exactly what's missing, never a generic error. It is never triggered automatically by saving/editing a recap.
 
 ## Rules
 
-- Proposal generation must NOT occur automatically on recap save or edit — the "Generate Proposal" button is the only trigger, and it must be visible directly on the Recap detail page.
-- `canGenerateProposal` gates the button; when disabled, the button's title attribute must surface exactly which required inputs are missing (Customized Style, at least one selected customization, Embroidery amount, a calculated price greater than $0, client, sales associate) — no generic error message.
-- Default filter on `CustomizationModal`: none — it reflects whatever customization record is currently open in edit mode.
-- Recap is functionally and structurally distinct from the Customization Requests interface — do not merge their code paths; Customization Requests is its own page that happens to reference the same underlying data.
-- Known open bug (Julia, Jul 15): "Unable to create a new customization request in the interface" — flagged High priority; verify whether this is a Recap-side or Customization-Requests-side failure before fixing.
+- Hybrid customizations are a single record with two direct Style links (`customized_style` + `additional_customized_style`), not the old parent+2-children model — reworked 2026-07-26. Pricing is `max(baseA, baseB) × 1.85` (the merge surcharge) plus the shared customization line-item total, both priced/Self-Usage'd against whichever style has the higher base price (per Julia, 2026-07-24: "the only difference between hybrid and regular is that hybrid is a merge of two styles").
+- Rush Fee / M2M / Alterations checkboxes were removed from the Customizations UI entirely — those now live only on the Draft Order, not here (per Julia's 2026-07-20 demo feedback).
+- A multiplier-priced customization line missing its Amount tier shows an "amount *" indicator (red asterisk, hover tooltip) in the Rate column instead of a misleading $0.00.
+- `selfUsageField`/`stylesSelfUsageField` are hardcoded field IDs (not fuzzy name-matched) — a 2026-07-27 fix after the previous fuzzy match risked silently colliding with `additional_self_usage` and scaling a fee against the wrong style.
+- `parseCurrencyString` handles both US (`1,990.00`) and EU/LatAm (`1.990,00`) number formats — don't assume US formatting when reading a rollup/lookup cell as a string.
+- The in-progress "add customization" draft lives in the parent modal's state, not the child's, so dismissing the add modal by accident doesn't lose what was entered — only a successful submit clears it.
+- Proposal generation must never occur automatically on recap save/edit — "Generate Proposal" is the only trigger, and must remain visible directly on the recap/customization detail view.
+- Recap is functionally and structurally distinct from Customization Requests — don't merge their code paths; Customization Requests is its own page that references the same underlying data for its own approval workflow.
 - Never include `import './style.css';` in this file.
