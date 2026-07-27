@@ -13,8 +13,6 @@ import {
   CaretRight as CaretRightIcon,
   CaretDown as CaretDownIcon,
   Calendar as CalendarIcon,
-  Ruler as RulerIcon,
-  Camera as CameraIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   Upload as UploadIcon,
   X as XIcon,
@@ -777,42 +775,6 @@ function AttachmentSection({ label, type, existing, clientId }: AttachSectionPro
         className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
         <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>{hasExisting?'Add More':label}
       </button>
-    </div>
-  );
-}
-
-// ─── TodayCard ────────────────────────────────────────────────────────────────
-interface TodayCardProps { record:AirtableRecord; apptTable:Table; clientRecords:AirtableRecord[]|null; onClick:()=>void; }
-function TodayCard({ record, apptTable, clientRecords, onClick }: TodayCardProps) {
-  const timeField  = apptTable.getFieldIfExists(APPT.TIME);
-  const typeField  = apptTable.getFieldIfExists(APPT.TYPE);
-  const clientLink = apptTable.getFieldIfExists(APPT.CLIENT_LINK);
-  const measField  = apptTable.getFieldIfExists(APPT.MEASUREMENTS);
-  const photosField= apptTable.getFieldIfExists(APPT.APPT_PHOTOS);
-  const timeVal    = timeField ? (record.getCellValue(timeField) as string|null) : null;
-  const typeLabel  = typeField ? record.getCellValueAsString(typeField) : '';
-  const clientName = clientLink ? record.getCellValueAsString(clientLink) : '';
-  const measRaw    = measField ? record.getCellValue(measField) : null;
-  const photosRaw  = photosField ? record.getCellValue(photosField) : null;
-  const measOk     = !(measRaw===null||measRaw===undefined||measRaw===false||(typeof measRaw==='number'&&measRaw===0)||(typeof measRaw==='string'&&(measRaw.trim()===''||measRaw.startsWith('0 ')))||(Array.isArray(measRaw)&&measRaw.length===0));
-  const photosOk   = !(photosRaw===null||photosRaw===undefined||photosRaw===false||(Array.isArray(photosRaw)&&photosRaw.length===0));
-  const needsData  = isConsultation(typeLabel) && (!measOk || !photosOk);
-  return (
-    <div onClick={onClick} className="min-w-[200px] max-w-[220px] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl p-3 cursor-pointer flex-shrink-0 hover:shadow-md transition-shadow space-y-1">
-      <div className="flex justify-between items-start mb-2">
-        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{timeVal?fmtNYTime(new Date(timeVal)):'—'}</span>
-        {needsData && <span className="bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30 rounded-full text-xs font-semibold px-2 py-0.5">Needs data</span>}
-      </div>
-      <div className="font-semibold text-sm text-gray-900 dark:text-[#F3EFE6]">{clientName||'Unknown Client'}</div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 mb-3">{shortTypeLabel(typeLabel)||'Appointment'}</div>
-      <div className="flex gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2.5 py-0.5 ${measOk?'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30':'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30'}`}>
-          <RulerIcon size={11}/>{measOk?'Done':'Missing'}
-        </span>
-        <span className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2.5 py-0.5 ${photosOk?'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30':'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30'}`}>
-          <CameraIcon size={11}/>{photosOk?'Done':'Missing'}
-        </span>
-      </div>
     </div>
   );
 }
@@ -3415,7 +3377,6 @@ function AppointmentsApp(): React.ReactElement {
     });
   },[fTime, fStatus, fType, fSA, fStudio, selectedSA, selectedStudio]);
 
-  const todayAppts    = useMemo(()=>filterAndSort(appointmentRecords??[], todayStr),[appointmentRecords, todayStr, filterAndSort]);
   const filteredRecs  = useMemo(()=>filterAndSort(appointmentRecords??[], fmtDateKey(selectedDate)),[appointmentRecords, selectedDate, filterAndSort]);
   const selectedRecord= useMemo(()=>selectedRecordId?(appointmentRecords?.find(r=>r.id===selectedRecordId)??null):null,[selectedRecordId, appointmentRecords]);
 
@@ -3542,17 +3503,6 @@ function AppointmentsApp(): React.ReactElement {
         </div>
         <FilterDropdown label="Studio" values={selectedStudio} options={studioOptions} onChange={setSelectedStudio}/>
         <FilterDropdown label="Sales Associate" values={selectedSA} options={saOptions} onChange={setSelectedSA}/>
-      </div>
-
-      {/* Today's appointments */}
-      <div className="px-7 pb-3 flex-shrink-0">
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {todayAppts.length===0
-            ? <p className="text-gray-400 dark:text-gray-500 text-xs py-3">No consultation appointments today for the selected filters.</p>
-            : todayAppts.map(rec=>(
-                <TodayCard key={rec.id} record={rec} apptTable={appointmentsTable} clientRecords={clientRecords} onClick={()=>setSelectedRecordId(rec.id)}/>
-              ))}
-        </div>
       </div>
 
       {/* Table */}
