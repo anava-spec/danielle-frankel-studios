@@ -2924,7 +2924,14 @@ function CustomizationApp(): React.ReactElement {
   // (internally denied outright, or the client already decided) so staff land
   // on what's still actionable — applied once combinedApprovalOptions is
   // known, and only if the user hasn't touched the filter yet.
-  const DEFAULT_HIDDEN_APPROVAL_STATUSES = ['Internal Denied', 'Client Approved', 'Client Denied'];
+  // "Denied • Counter-Proposal" (both internal and client) is always hidden
+  // too — that status means a newer counter-proposal already superseded this
+  // record, so only the latest CP in the thread should ever show up (per
+  // Julia, 2026-07-27); it's not a real "denied" outcome someone needs to act on.
+  const DEFAULT_HIDDEN_APPROVAL_STATUSES = [
+    'Internal Denied', 'Client Approved', 'Client Denied',
+    'Internal Denied • Counter-Proposal', 'Client Denied • Counter-Proposal',
+  ];
   const approvalFilterInitialized = useRef(false);
   useEffect(() => {
     if (approvalFilterInitialized.current || combinedApprovalOptions.length === 0) return;
