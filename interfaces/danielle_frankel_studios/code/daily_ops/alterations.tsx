@@ -10,10 +10,12 @@ import type { Table, Record as AirtableRecord, Field } from '@airtable/blocks/in
 import {
   CaretLeft as CaretLeftIcon,
   CaretRight as CaretRightIcon,
+  CaretDown as CaretDownIcon,
   CalendarBlank as CalendarBlankIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   X as XIcon,
   WarningCircle as WarningCircleIcon,
+  Info as InfoIcon,
 } from '@phosphor-icons/react';
 
 // ─── Dark mode ────────────────────────────────────────────────────────────────
@@ -126,6 +128,12 @@ function getTodayLocalString(): string {
   return getLocalDateString(new Date());
 }
 
+// "Paid" = client purchased Alterations (found in Item Sold); "Unpaid" =
+// they need to pay before their alterations appointment.
+function isPaidForAlterations(itemsStr: string): boolean {
+  return itemsStr.toLowerCase().includes('alterations');
+}
+
 // ─── Calendar utilities ────────────────────────────────────────────────────────
 const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_EN = ['MO','TU','WE','TH','FR','SA','SU'];
@@ -218,6 +226,50 @@ function DatePicker({ label, value, onChange }: DatePickerProps) {
   );
 }
 
+// ─── SingleSelectDropdown (one option or cleared — label acts as its own
+// placeholder when nothing is selected, matching BRANDING.md §5) ──────────────
+interface ToggleOption { value: string; label: string; }
+interface SingleSelectDropdownProps { label: string; value: string | null; options: ToggleOption[]; onChange: (v: string | null) => void; align?: 'left' | 'right'; }
+function SingleSelectDropdown({ label, value, options, onChange, align = 'left' }: SingleSelectDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const current = options.find(o => o.value === value) ?? null;
+  const hasValue = !!current;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center justify-between gap-2 min-w-[150px] bg-white dark:bg-[#242220] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+          hasValue ? 'border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300'
+                   : 'border-gray-300 dark:border-[#34312C] text-gray-400 dark:text-gray-500 hover:border-gray-400 dark:hover:border-gray-500'}`}>
+        <span className="truncate">{current ? current.label : label}</span>
+        {hasValue ? (
+          <XIcon size={14} className="text-amber-600 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-100 flex-shrink-0"
+            onClick={e => { e.stopPropagation(); onChange(null); }} />
+        ) : (
+          <CaretDownIcon size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      {open && (
+        <div className={`absolute top-full ${align === 'right' ? 'right-0' : 'left-0'} mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg w-[160px] py-1`}>
+          {options.map(o => (
+            <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
+                o.value === value ? 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] font-medium'
+                                   : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Pill ───────────────────────────────────────────────────────────────────────
 function Pill({ children }: { children: React.ReactNode }) {
   return (
@@ -256,6 +308,7 @@ function AlterationsApp(): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedWeddingDate, setSelectedWeddingDate] = useState<Date | null>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'Paid' | 'Unpaid' | null>(null);
 
   const fields = useMemo(() => {
     if (!clientsTable) return {};
@@ -275,6 +328,7 @@ function AlterationsApp(): React.ReactElement {
     if (!allRecords) return [];
     const fStage = fields[FIELD_IDS.CLIENT_STAGE];
     const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
+    const fItems = fields[FIELD_IDS.CLIENT_ITEMS_SOLD];
     const today = getTodayLocalString();
     const selectedWeddingStr = selectedWeddingDate ? getLocalDateString(selectedWeddingDate) : null;
 
@@ -298,9 +352,16 @@ function AlterationsApp(): React.ReactElement {
         if (!wd || getLocalDateString(new Date(wd)) !== selectedWeddingStr) return false;
       }
 
+      if (paymentStatusFilter && fItems) {
+        const itemsStr = rec.getCellValueAsString(fItems) ?? '';
+        const isPaid = isPaidForAlterations(itemsStr);
+        if (paymentStatusFilter === 'Paid' && !isPaid) return false;
+        if (paymentStatusFilter === 'Unpaid' && isPaid) return false;
+      }
+
       return true;
     });
-  }, [allRecords, fields, selectedWeddingDate]);
+  }, [allRecords, fields, selectedWeddingDate, paymentStatusFilter]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -384,6 +445,21 @@ function AlterationsApp(): React.ReactElement {
           )}
         </div>
         <DatePicker label="Wedding Date" value={selectedWeddingDate} onChange={setSelectedWeddingDate} />
+        <SingleSelectDropdown
+          label="Payment Status"
+          value={paymentStatusFilter}
+          onChange={v => setPaymentStatusFilter(v as 'Paid' | 'Unpaid' | null)}
+          options={[
+            { value: 'Paid', label: 'Paid' },
+            { value: 'Unpaid', label: 'Unpaid' },
+          ]}
+        />
+        <span
+          title="This list always excludes clients whose wedding date is already in the past, regardless of the filters above."
+          aria-label="This list always excludes clients whose wedding date is already in the past, regardless of the filters above."
+          className="ml-auto inline-flex items-center text-gray-400 dark:text-gray-500 cursor-help flex-shrink-0">
+          <InfoIcon size={16} />
+        </span>
       </div>
 
       {/* Table */}
@@ -421,9 +497,7 @@ function AlterationsApp(): React.ReactElement {
                   const firstApptStr = extractFirstLookupDate(rec, fFirstAppt);
                   const nextApptStr = extractFirstLookupDate(rec, fNextAppt);
                   const weddingStr = fWedding ? (rec.getCellValue(fWedding) as string | null) : null;
-                  // "Paid" = client purchased Alterations (found in Item Sold);
-                  // "Unpaid" = they need to pay before their alterations appointment.
-                  const isPaid = itemsStr.toLowerCase().includes('alterations');
+                  const isPaid = isPaidForAlterations(itemsStr);
 
                   return (
                     <tr key={rec.id} className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
