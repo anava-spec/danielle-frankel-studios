@@ -31,6 +31,12 @@ Plain-language log of what changed in this project's Interface Extensions and au
 - Hybrid customizations reworked: replaced the old 2-child-records model with two direct Style links on one record.
 - Client approval no longer auto-flips production_status to "Sent to Production."
 - Hid "Denied • Counter-Proposal" statuses from the default filter (superseded by a newer counter-proposal, not a real outcome to act on).
+- Style dropdown: removed the Favorite-Styles-in-Acuity filter entirely (Regular and Hybrid) — shows every style now, in a panel 30% shorter than before (still scrollable).
+- Customization items missing their Embroidery/Paint/Lace Amount now show "amount *" (red asterisk, hover tooltip) in the Rate column instead of a misleading $0.00 — added to Recap too, which never had it.
+- Recap dark mode fixes: the Customizations search box, its suggestions dropdown, and Additional Details (plus every other text input sharing the same style) had no background color set at all.
+- New Request (Customization Requests) and Add Customization (Recap) forms now keep whatever was typed if the modal is dismissed by accident — only resets on a successful submit, not on outside-click/Escape/Cancel.
+- Counter-Proposal: Embroidery/Paint/Lace Amount is now read-only (inherited from the parent) — nothing is editable once a request is past its first review. Original Total font size settled on a middle tier, consistent between Counter-Proposal and the detail page.
+- Shortened the client-approve confirmation copy.
 
 **Repo organization**
 - Split `code/` into `daily_ops/` and `tracking/` subfolders.
