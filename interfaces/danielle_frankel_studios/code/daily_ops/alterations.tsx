@@ -309,6 +309,7 @@ function AlterationsApp(): React.ReactElement {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedWeddingDate, setSelectedWeddingDate] = useState<Date | null>(null);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'Paid' | 'Unpaid' | null>(null);
+  const [showFilterInfo, setShowFilterInfo] = useState(false);
 
   const fields = useMemo(() => {
     if (!clientsTable) return {};
@@ -454,12 +455,18 @@ function AlterationsApp(): React.ReactElement {
             { value: 'Unpaid', label: 'Unpaid' },
           ]}
         />
-        <span
-          title="This list always excludes clients whose wedding date is already in the past, regardless of the filters above."
-          aria-label="This list always excludes clients whose wedding date is already in the past, regardless of the filters above."
-          className="ml-auto inline-flex items-center text-gray-400 dark:text-gray-500 cursor-help flex-shrink-0">
-          <InfoIcon size={16} />
-        </span>
+        <div className="ml-auto relative flex-shrink-0"
+          onMouseEnter={() => setShowFilterInfo(true)}
+          onMouseLeave={() => setShowFilterInfo(false)}>
+          <span aria-label="Hidden filter info" className="inline-flex items-center text-gray-400 dark:text-gray-500 cursor-help">
+            <InfoIcon size={16} />
+          </span>
+          {showFilterInfo && (
+            <div className="absolute top-full right-0 mt-2 z-30 w-[260px] bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 text-xs text-gray-600 dark:text-gray-300">
+              This list always excludes clients whose wedding date is already in the past, regardless of the filters above.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Table */}
