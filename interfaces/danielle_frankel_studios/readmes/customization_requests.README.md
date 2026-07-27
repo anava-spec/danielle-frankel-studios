@@ -41,6 +41,8 @@ Track every customization request through its full approval lifecycle — intern
 - Client-approve no longer flips `production_status` to "Sent to Production" — approved requests now move into a separate Shopify-purchase phase (per Julia, 2026-07-27).
 - "Original Total"/"Original Costs" on a counter-proposal is always computed from the thread's ROOT record's own fields, never the currently-open counter-proposal — Style/Customizations are frozen after the first counter, so the root is the only reliable source.
 - Self Usage field IDs are hardcoded (not fuzzy name-matched) after a 2026-07-27 bug where the wrong style's Self Usage got picked up, scaling a multiplier fee incorrectly.
+- A multiplier-priced customization line missing its Embroidery/Paint/Lace Amount tier shows an "amount *" indicator (red asterisk, hover tooltip) in the Rate column instead of a misleading $0.00.
+- Counter-Proposal's Embroidery/Paint/Lace Amount is read-only, inherited from the parent request — nothing is editable once a request is past its first review (per Julia, 2026-07-27).
 - Currency parsing (`parseCurrencyString`) handles both US (`1,990.00`) and EU/LatAm (`1.990,00`) formats by detecting which separator trails 1–2 digits — don't assume US formatting when reading a rollup/lookup number cell as a string.
 - No access-control/permissions layer — any staff member can view or act on any request; this was an explicit product decision (an earlier Margo/Production filter-based access proposal was walked back). Don't reintroduce role-gating without confirming with Axel/Julia first.
 - Never include `import './style.css';` in this file.
