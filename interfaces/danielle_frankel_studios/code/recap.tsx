@@ -3249,32 +3249,10 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       table: pricingTable,
       defaultValue: pricingTable.getFieldIfExists(PRICING.MULTIPLE) ?? pricingTable.fields.find(f => normalizedIncludes(f.name, 'multiple')),
     },
-    // Self Usage is a lookup ON THE CUSTOMIZATIONS TABLE (via the Customized
-    // Style link to DF Styles), not a field on Styles itself — same table as
-    // the two Rush Fee properties below, and same reasoning: no known field
-    // ID, added after this interface was first scoped. Only readable off an
-    // existing record, so it's the authoritative "edit" mode value.
-    customizationsTable && {
-      key: 'selfUsageField',
-      label: 'Self Usage field (Customizations)',
-      type: 'field' as const,
-      table: customizationsTable,
-      // Excludes additional_self_usage (Hybrid's Style B, 2026-07-26) —
-      // without this, a fuzzy "includes 'selfusage'" match could pick that
-      // one instead of the real self_usage, silently scaling every
-      // multiple-fee-type rate by the wrong style's Self Usage.
-      defaultValue: customizationsTable.fields.find(f => normalizedIncludes(f.name, 'selfusage') && !normalizedIncludes(f.name, 'additional')),
-    },
-    // The underlying number Self Usage looks up, bound directly on Styles —
-    // used only as an "add" mode pre-save preview (see CustomizationModal),
-    // since there's no Customizations record yet to read the lookup off of.
-    stylesTable && {
-      key: 'stylesSelfUsageField',
-      label: 'Self Usage field (Styles) — used for add-mode preview',
-      type: 'field' as const,
-      table: stylesTable,
-      defaultValue: stylesTable.fields.find(f => normalizedIncludes(f.name, 'selfusage')),
-    },
+    // Self Usage (Customizations table) and its Styles-table counterpart are
+    // no longer custom properties — hardcoded directly in AppointmentsApp as
+    // of 2026-07-27 (real field IDs are known now), after a fuzzy name match
+    // silently resolved to the wrong field more than once.
     // Rush Fee with Proposed Custom Price / Rush Fee % / Leadtime (Weeks)
     // have no known field ID — added to the Customizations table after this
     // interface was first scoped, same reasoning as the other custom
@@ -3313,8 +3291,6 @@ function AppointmentsApp(): React.ReactElement {
   const stylesBasePriceField = (customPropertyValueByKey?.stylesBasePriceField as ReturnType<Table['getFieldIfExists']>) ?? null;
   const pricingPercentField  = (customPropertyValueByKey?.pricingPercentField  as ReturnType<Table['getFieldIfExists']>) ?? null;
   const pricingMultipleField = (customPropertyValueByKey?.pricingMultipleField as ReturnType<Table['getFieldIfExists']>) ?? null;
-  const selfUsageField       = (customPropertyValueByKey?.selfUsageField       as ReturnType<Table['getFieldIfExists']>) ?? null;
-  const stylesSelfUsageField = (customPropertyValueByKey?.stylesSelfUsageField as ReturnType<Table['getFieldIfExists']>) ?? null;
   const rushFeeProposedField = (customPropertyValueByKey?.rushFeeProposedField as ReturnType<Table['getFieldIfExists']>) ?? null;
   const rushFeePercentField  = (customPropertyValueByKey?.rushFeePercentField  as ReturnType<Table['getFieldIfExists']>) ?? null;
   const leadtimeWeeksField   = (customPropertyValueByKey?.leadtimeWeeksField   as ReturnType<Table['getFieldIfExists']>) ?? null;
@@ -3326,6 +3302,14 @@ function AppointmentsApp(): React.ReactElement {
   const customizationsTable = base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATIONS);
   const pricingTable        = base.getTableByIdIfExists(TABLE_IDS.CUSTOMIZATION_PRICING);
   const staffTable          = base.getTableByIdIfExists(TABLE_IDS.STAFF);
+  // Hardcoded (2026-07-27) — was a fuzzy name-matched custom property
+  // ('includes selfusage'), which could resolve to the wrong field once a
+  // same-table field with a similar name existed (additional_self_usage on
+  // Customizations; an unconfirmed lookalike on Styles) — surfaced as a
+  // wildly-off Rate multiplier ("$1,500.00 x 7.00" instead of the expected
+  // tier alone). A hardcoded ID can't collide with anything, ever.
+  const selfUsageField       = customizationsTable?.getFieldIfExists('fldAhZaX0VHwZz3fW') ?? null;
+  const stylesSelfUsageField = stylesTable?.getFieldIfExists('fld5Id6iAWLhueqQ8') ?? null;
   const proposalsTable      = base.getTableByIdIfExists(TABLE_IDS.PROPOSALS);
 
   // useRecords — fall back to appointmentsTable to keep hook count stable
