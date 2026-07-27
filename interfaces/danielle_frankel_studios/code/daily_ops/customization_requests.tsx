@@ -1779,8 +1779,8 @@ function CounterProposalModal({
                     </>
                   )}
                   <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
-                    <span className="text-sm">Original Total</span>
-                    <span className="text-sm">{formatCurrency(originalTotal)}</span>
+                    <span className="text-lg">Original Total</span>
+                    <span className="text-lg">{formatCurrency(originalTotal)}</span>
                   </div>
                   {/* Counter-proposing a counter-proposal: parentRecord already
                       carries its own approved_pricing from whichever decision
