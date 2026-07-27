@@ -1498,11 +1498,11 @@ function CounterProposalModal({
   const hybridBaseA = fBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0;
   const hybridBaseB = fAdditionalBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fAdditionalBasePrice)) : 0;
   const basePriceNumber = isHybrid ? Math.max(hybridBaseA, hybridBaseB) : (fBasePrice ? parseCurrencyString(parentRecord.getCellValueAsString(fBasePrice)) : 0);
-  // Embroidery Amount — defaults to the parent's own value but is editable
-  // here (same as everywhere else this field appears), always shown below
-  // Customizations per Julia. Drives the live multiplier preview and is what
-  // actually gets written to the child on submit (not a raw parent copy).
-  const [embroidery, setEmbroidery] = useState<string | null>(fEmbroidery ? (parentRecord.getCellValueAsString(fEmbroidery) || null) : null);
+  // Embroidery Amount — read-only, inherited straight from the parent. Per
+  // Julia, 2026-07-27: nothing is editable once a request is past its first
+  // review, same as Style/Customization Type/Customizations above (this was
+  // previously the one field left editable here).
+  const embroidery = fEmbroidery ? (parentRecord.getCellValueAsString(fEmbroidery) || null) : null;
   // Self Usage — same source RecordDetailPage uses: Regular's own self_usage
   // lookup, or for Hybrid, whichever style's Self Usage matches the higher
   // Base Price (exact match, not an approximation). Previously hardcoded to
@@ -1728,14 +1728,13 @@ function CounterProposalModal({
                 />
               </div>
 
-              {/* Always shown below Customizations, per Julia — defaults to
-                  the parent's value but is editable, same as Additional
-                  Details below. Hybrid included (per Julia, 2026-07-24) —
-                  priced against whichever child has the higher Base Price. */}
+              {/* Always shown below Customizations, per Julia — read-only,
+                  inherited from the parent (nothing is editable past first
+                  review, 2026-07-27). Hybrid included (per Julia, 2026-07-24)
+                  — priced against whichever child has the higher Base Price. */}
               <div>
                 <span className={labelCls}>Embroidery, Paint, or Lace Amount</span>
-                <StyleSelectSingle value={embroidery} options={EMBROIDERY_OPTIONS} placeholder="Select…"
-                  onChange={setEmbroidery} />
+                <div className={readOnlyCls}>{embroidery || '—'}</div>
               </div>
 
               <div>
@@ -1780,8 +1779,8 @@ function CounterProposalModal({
                     </>
                   )}
                   <div className="flex justify-between items-center font-semibold text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-white/20 pt-1.5 mt-1">
-                    <span className="text-base">Original Total</span>
-                    <span className="text-base">{formatCurrency(originalTotal)}</span>
+                    <span className="text-sm">Original Total</span>
+                    <span className="text-sm">{formatCurrency(originalTotal)}</span>
                   </div>
                   {/* Counter-proposing a counter-proposal: parentRecord already
                       carries its own approved_pricing from whichever decision
