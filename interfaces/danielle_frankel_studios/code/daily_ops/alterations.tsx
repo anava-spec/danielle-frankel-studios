@@ -462,7 +462,7 @@ function AlterationsApp(): React.ReactElement {
             <InfoIcon size={16} />
           </span>
           {showFilterInfo && (
-            <div className="absolute top-full right-0 mt-2 z-30 w-[260px] bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 text-xs text-gray-600 dark:text-gray-300">
+            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2 z-30 w-[260px] bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-3 text-xs text-gray-600 dark:text-gray-300">
               This list always excludes clients whose wedding date is already in the past, regardless of the filters above.
             </div>
           )}
