@@ -46,7 +46,7 @@ const FIELD_IDS = {
   SALES_ASSOCIATE_NAME: 'fldH8lJJHPUjPnyHZ',
   FULFILLMENT_METHOD:   'fldjwCFnGqOToCRnN',
   FULFILLMENT_NOTES:    'fld4dnGW0td7H1dRX',
-  PICKED:               'fldh9IWe29cCm2WKg',
+  PICKED:               'fldkF1OvClIjPj9o7', // rollup of Orders, read-only
   WAREHOUSE:            'fldDwLPMhkptv8SSK',
   STUDIO_NAME:          'fldIenJoxseeHmfIv', // rollup studio name
   ACUITY_ADDRESS:       'fldkpfulLIk0jq34d',

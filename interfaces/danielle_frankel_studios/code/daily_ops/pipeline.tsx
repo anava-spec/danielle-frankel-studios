@@ -82,7 +82,7 @@ const FIELD_IDS = {
   CLIENT_SHIP:                         'fldQjLmwDokAkYPEt',
   CLIENT_PICK_UP:                      'fldwqYAsQ3Iasi8QT',
   CLIENT_ORDER_READY:                  'fldCAak4Hy5RmvXWT',
-  CLIENT_PICKED_PERCENT:               'fldh9IWe29cCm2WKg',
+  CLIENT_PICKED_PERCENT:               'fldkF1OvClIjPj9o7', // rollup of Orders, read-only
   CLIENT_CONTACTED_FOR_ALTERATIONS:    'fldmiD8TdERvJJT0j',
   CLIENT_FULFILLMENT_METHOD:           'fldjwCFnGqOToCRnN',
   CLIENT_FULFILLMENT_NOTES:            'fld4dnGW0td7H1dRX',
@@ -1988,10 +1988,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
               : <EditableText label="Fulfillment Notes" value={client.fulfillmentNotes} fieldId={FIELD_IDS.CLIENT_FULFILLMENT_NOTES} recordId={client.id} base={base} multiline />
             }
             <FieldRow>
-              {readOnly
-                ? <DetailRow label="% Picked" value={client.pickedPercent != null ? `${Math.round(client.pickedPercent * 100)}%` : '—'} />
-                : <EditableNumber label="% Picked" value={client.pickedPercent} fieldId={FIELD_IDS.CLIENT_PICKED_PERCENT} recordId={client.id} base={base} suffix="%" isPercent />
-              }
+              <DetailRow label="% Picked" value={client.pickedPercent != null ? `${Math.round(client.pickedPercent * 100)}%` : '—'} />
               {readOnly
                 ? <DetailRow label="Fulfillment Method" value={client.fulfillmentMethod || '—'} />
                 : <EditableSelect label="Fulfillment Method" value={client.fulfillmentMethod} options={FULFILLMENT_METHOD_OPTIONS} fieldId={FIELD_IDS.CLIENT_FULFILLMENT_METHOD} recordId={client.id} base={base} />

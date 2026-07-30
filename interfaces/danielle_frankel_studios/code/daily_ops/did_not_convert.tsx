@@ -82,7 +82,7 @@ const FIELD_IDS = {
 
   // In Fulfillment
   DETAIL_FULFILLMENT_NOTES:        'fld4dnGW0td7H1dRX',
-  DETAIL_PICKED_PERCENT:           'fldh9IWe29cCm2WKg',
+  DETAIL_PICKED_PERCENT:           'fldkF1OvClIjPj9o7', // rollup of Orders, read-only
   DETAIL_FULFILLMENT_METHOD:       'fldjwCFnGqOToCRnN',
   DETAIL_ACUITY_ADDRESS:           'fldkpfulLIk0jq34d',
   DETAIL_OTHER_ADDRESS:            'fld5uRLRmAXqAH0nu',
