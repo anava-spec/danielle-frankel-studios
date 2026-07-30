@@ -69,6 +69,11 @@ const APPT = {
   MEASUREMENTS:   'fldbXhNAVDZq9fl2u',
   APPT_PHOTOS:    'fldBEBwDmZd29rjkK',
   FOLLOW_UP:      'fldX0ymLcTeOMpBw7',
+  // Main-list Wedding Date / Favorite Styles columns — all three are lookups
+  // (via CLIENT_LINK) onto Clients, not plain fields on Appointments itself.
+  WEDDING_DATE_LOOKUP:        'fldvXj43cLOX8tqXW', // lookup of Clients.WEDDING_IF_NOT_SET (text) — result is a per-linked-record array, needs unwrapping
+  FAV_STYLES_ACUITY_LOOKUP:   'fldCPhdJ885D7ytOf', // lookup of Clients.FAV_STYLES_ACUITY, itself a link field — nested structure, needs unwrapLinkedNames
+  FAV_STYLES_APPT_LOOKUP:     'fldDqAwOc2t1gkjeW', // lookup of Clients.FAV_STYLES_APPT, itself a link field — same nested-structure quirk
 } as const;
 
 const CLIENT = {
@@ -290,6 +295,39 @@ function fmtFriendly(s: string|null|undefined): string {
   const v = day%100;
   const ord = (['th','st','nd','rd'][(v-20)%10]??['th','st','nd','rd'][v]??'th');
   return `${month} ${day}${ord}, ${d.getFullYear()}`;
+}
+// ─── Lookup unwrapping (main-list Wedding Date / Favorite Styles columns) ─────
+// This runtime returns a multipleLookupValues cell as an array of one entry
+// per linked record — either a plain value, or an object shaped like
+// { linkedRecordId, value }, where `value` can itself be nested again for a
+// lookup whose source is a link field (e.g. Favorite Styles, which links to
+// Styles). Same underlying quirk documented in did_not_convert.tsx's
+// unwrapLookupString and calligraphy_cards.tsx's unwrapLinkedNames — recurse
+// and collect rather than assuming a fixed one-level shape.
+function unwrapLookupString(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (Array.isArray(value)) {
+    for (const v of value) { const s = unwrapLookupString(v); if (s) return s; }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.name === 'string') return obj.name.trim() || null;
+    if ('value' in obj) return unwrapLookupString(obj.value);
+  }
+  return null;
+}
+function unwrapLinkedNames(value: unknown): string[] {
+  if (value == null) return [];
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : [];
+  if (Array.isArray(value)) return value.flatMap(unwrapLinkedNames);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.name === 'string') return obj.name.trim() ? [obj.name.trim()] : [];
+    if ('value' in obj) return unwrapLinkedNames(obj.value);
+    return Object.values(obj).flatMap(unwrapLinkedNames);
+  }
+  return [];
 }
 // Same as fmtFriendly but without the ordinal suffix — "July 4, 2026".
 function fmtUSDate(s: string|null|undefined): string {
@@ -3288,27 +3326,6 @@ function AppointmentsApp(): React.ReactElement {
   const _proposalsRaw      = useRecords(proposalsTable ?? appointmentsTable ?? null);
   const proposalRecords    = proposalsTable ? _proposalsRaw : null;
 
-  // Main-list Customizations count — computed reactively from live
-  // Customizations records via CUSTOM.CLIENT (the link field on the
-  // Customizations table pointing back to the client), same source of truth
-  // PostApptModal's linkedCustomizations already uses. NOT read off
-  // CLIENT.CUSTOMIZATION_LINK on the Clients record — that field isn't kept
-  // in sync with actual Customizations records, so it silently under/over
-  // counted (the exact bug this replaces).
-  const custCountByClientId = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!customizationRecords || !customizationsTable) return map;
-    const clientField = customizationsTable.getFieldIfExists(CUSTOM.CLIENT);
-    if (!clientField) return map;
-    for (const r of customizationRecords) {
-      const lnk = r.getCellValue(clientField) as Array<{ id: string }> | null;
-      for (const l of lnk ?? []) {
-        map.set(l.id, (map.get(l.id) ?? 0) + 1);
-      }
-    }
-    return map;
-  }, [customizationRecords, customizationsTable]);
-
   const [selectedDate, setSelectedDate]        = useState(new Date());
   const [showCalendar, setShowCalendar]         = useState(false);
   const [selectedSA, setSelectedSA]             = useState<string[]>([]);
@@ -3331,9 +3348,9 @@ function AppointmentsApp(): React.ReactElement {
   const fSA         = appointmentsTable?.getFieldIfExists(APPT.SA_NAME)     ?? null;
   const fStudio     = appointmentsTable?.getFieldIfExists(APPT.STUDIO_NAME) ?? null;
   const fStatus     = appointmentsTable?.getFieldIfExists(APPT.STATUS)      ?? null;
-  const fMeasField  = appointmentsTable?.getFieldIfExists(APPT.MEASUREMENTS)?? null;
-  const fPhotosField= appointmentsTable?.getFieldIfExists(APPT.APPT_PHOTOS) ?? null;
-  const fFollowUp   = appointmentsTable?.getFieldIfExists(APPT.FOLLOW_UP)   ?? null;
+  const fWeddingLookup    = appointmentsTable?.getFieldIfExists(APPT.WEDDING_DATE_LOOKUP)      ?? null;
+  const fFavAcuityLookup  = appointmentsTable?.getFieldIfExists(APPT.FAV_STYLES_ACUITY_LOOKUP) ?? null;
+  const fFavApptLookup    = appointmentsTable?.getFieldIfExists(APPT.FAV_STYLES_APPT_LOOKUP)   ?? null;
 
   useEffect(()=>{
     if (!clientSearch.trim()||!appointmentRecords||!fClient) { setSearchResults([]); setShowSearchDrop(false); return; }
@@ -3400,20 +3417,6 @@ function AppointmentsApp(): React.ReactElement {
 
   const filteredRecs  = useMemo(()=>filterAndSort(appointmentRecords??[], fmtDateKey(selectedDate)),[appointmentRecords, selectedDate, filterAndSort]);
   const selectedRecord= useMemo(()=>selectedRecordId?(appointmentRecords?.find(r=>r.id===selectedRecordId)??null):null,[selectedRecordId, appointmentRecords]);
-
-  const isEmpty = (v:unknown):boolean => {
-    if (v===null||v===undefined||v===false) return true;
-    if (typeof v==='number') return v===0;
-    if (typeof v==='string') return v.trim()===''||v.startsWith('0 ');
-    if (Array.isArray(v)) return v.length===0;
-    return false;
-  };
-  const pillCls = (v:string) => {
-    const l=v.toLowerCase();
-    if (l==='missing'||l==='pending') return 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30';
-    if (l==='complete'||l==='uploaded'||l==='sent') return 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30';
-    return 'bg-orange-50 text-orange-600 border border-orange-200';
-  };
 
   if (errorState) return <div className="flex items-center justify-center h-full"><p className="text-gray-500 dark:text-gray-400">Error loading configuration.</p></div>;
   if (!appointmentsTable || !clientsTable) return (
@@ -3532,14 +3535,14 @@ function AppointmentsApp(): React.ReactElement {
           <table className="w-full border-collapse min-w-[960px]">
             <thead>
               <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-                {['Time','Client','Studio','Wedding Date','Sales Associate','Favorite Styles','Measurements','Photos','Follow-Up','Customizations'].map(h=>(
+                {['Time','Client','Studio','Wedding Date','Sales Associate','Favorite Styles from Acuity','Favorite Styles from Appointment'].map(h=>(
                   <th key={h} className="text-left px-3 py-2 text-xs text-gray-400 dark:text-gray-500 font-bold tracking-wider capitalize whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filteredRecs.length===0
-                ? <tr><td colSpan={10} className="px-8 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No consultation appointments for {fmtDisplay(selectedDate)}.</td></tr>
+                ? <tr><td colSpan={7} className="px-8 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No consultation appointments for {fmtDisplay(selectedDate)}.</td></tr>
                 : filteredRecs.map((rec,idx)=>{
                     const t      = fTime   ? (rec.getCellValue(fTime!)  as string|null) : null;
                     const name   = fClient ? rec.getCellValueAsString(fClient!) : '';
@@ -3548,16 +3551,15 @@ function AppointmentsApp(): React.ReactElement {
                     const lnk    = fClient ? (rec.getCellValue(fClient!) as Array<{id:string}>|null) : null;
                     const cId    = lnk?.[0]?.id ?? null;
                     const cRec   = cId ? (clientRecords?.find(c=>c.id===cId)??null) : null;
-                    const weddingRaw      = cRec ? getVal<string>(cRec, CLIENT.WEDDING) : null;
                     const wConfirmed      = cRec ? !!(getVal<boolean>(cRec, CLIENT.WEDDING_CONFIRMED)??false) : false;
-                    const favStylesList   = cRec ? (getVal<Array<{id:string;name:string}>>(cRec, CLIENT.FAV_STYLES_APPT)??[]) : [];
-                    const measRaw   = fMeasField   ? rec.getCellValue(fMeasField!)   : null;
-                    const photosRaw = fPhotosField ? rec.getCellValue(fPhotosField!) : null;
-                    const followRaw = fFollowUp    ? rec.getCellValue(fFollowUp!)    : null;
-                    const measStatus   = isEmpty(measRaw)   ? 'Missing' : 'Complete';
-                    const photosStatus = isEmpty(photosRaw) ? 'Missing' : 'Uploaded';
-                    const followStatus = followRaw===true   ? 'Sent'    : 'Pending';
-                    const custCount = cId ? (custCountByClientId.get(cId) ?? 0) : 0;
+                    // Wedding Date / Favorite Styles now come from Appointments-level
+                    // lookups (via CLIENT_LINK), not the Clients record — each needs
+                    // the unwrap helpers above since this runtime returns lookup
+                    // cells as a per-linked-record array, not a plain value.
+                    const weddingLookupRaw = fWeddingLookup ? rec.getCellValue(fWeddingLookup) : null;
+                    const weddingDisplay   = unwrapLookupString(weddingLookupRaw);
+                    const favAcuityNames = fFavAcuityLookup ? unwrapLinkedNames(rec.getCellValue(fFavAcuityLookup)) : [];
+                    const favApptNames   = fFavApptLookup   ? unwrapLinkedNames(rec.getCellValue(fFavApptLookup))   : [];
                     return (
                       <tr key={rec.id} onClick={()=>setSelectedRecordId(rec.id)}
                         className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors ${idx%2===0?'bg-white dark:bg-[#25211A]':'bg-gray-50 dark:bg-white/5'} hover:bg-[#FEF3C7] dark:bg-[#3A2E12]`}>
@@ -3565,21 +3567,22 @@ function AppointmentsApp(): React.ReactElement {
                         <td className="px-3 py-3"><div className="font-semibold text-sm text-gray-900 dark:text-[#F3EFE6]">{name||'Unknown'}</div></td>
                         <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{studio||'—'}</td>
                         <td className="px-3 py-3">
-                          <div className="text-sm text-gray-700 dark:text-gray-300">{weddingRaw?fmtFriendly(weddingRaw):'—'}</div>
-                          {weddingRaw && !wConfirmed && (
+                          <div className="text-sm text-gray-700 dark:text-gray-300">{weddingDisplay?fmtFriendly(weddingDisplay):'—'}</div>
+                          {weddingDisplay && !wConfirmed && (
                             <span className="inline-flex mt-0.5 rounded-full text-xs font-medium px-2.5 py-0.5 bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">Needs confirmation</span>
                           )}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{sa||'—'}</td>
                         <td className="px-3 py-3">
-                          {favStylesList.length>0
-                            ? <div className="flex flex-wrap gap-1">{favStylesList.slice(0,2).map(s=><span key={s.id} className="bg-gray-100 dark:bg-white/10 rounded px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300">{s.name}</span>)}{favStylesList.length>2&&<span className="text-xs text-gray-400 dark:text-gray-500">+{favStylesList.length-2}</span>}</div>
+                          {favAcuityNames.length>0
+                            ? <div className="flex flex-wrap gap-1">{favAcuityNames.slice(0,2).map((n,i)=><span key={i} className="bg-gray-100 dark:bg-white/10 rounded px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300">{n}</span>)}{favAcuityNames.length>2&&<span className="text-xs text-gray-400 dark:text-gray-500">+{favAcuityNames.length-2}</span>}</div>
                             : <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
-                        <td className="px-3 py-3"><span className={`rounded-full text-xs font-medium px-2.5 py-0.5 ${pillCls(measStatus)}`}>{measStatus}</span></td>
-                        <td className="px-3 py-3"><span className={`rounded-full text-xs font-medium px-2.5 py-0.5 ${pillCls(photosStatus)}`}>{photosStatus}</span></td>
-                        <td className="px-3 py-3"><span className={`rounded-full text-xs font-medium px-2.5 py-0.5 ${pillCls(followStatus)}`}>{followStatus}</span></td>
-                        <td className="px-3 py-3">{custCount>0?<span className="text-sm text-gray-700 dark:text-gray-300">{custCount} request{custCount===1?'':'s'}</span>:<span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                        <td className="px-3 py-3">
+                          {favApptNames.length>0
+                            ? <div className="flex flex-wrap gap-1">{favApptNames.slice(0,2).map((n,i)=><span key={i} className="bg-gray-100 dark:bg-white/10 rounded px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300">{n}</span>)}{favApptNames.length>2&&<span className="text-xs text-gray-400 dark:text-gray-500">+{favApptNames.length-2}</span>}</div>
+                            : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                        </td>
                       </tr>
                     );
                   })}
