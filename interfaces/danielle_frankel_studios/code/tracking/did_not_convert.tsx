@@ -3,6 +3,7 @@ import {
   initializeBlock,
   useBase,
   useRecords,
+  useColorScheme,
 } from '@airtable/blocks/interface/ui';
 import {
   X as XIcon,
@@ -11,6 +12,19 @@ import {
   CaretLeft as CaretLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
 } from '@phosphor-icons/react';
+
+// ─── Dark mode ────────────────────────────────────────────────────────────────
+// Champagne color system (BRANDING.md §1): matches pipeline.tsx/fulfillment.tsx —
+// Tailwind arbitrary-value classes with dark: variants, theme read from
+// Airtable's own light/dark preference (not the OS/browser setting).
+function useTheme(): 'light' | 'dark' {
+  const { colorScheme } = useColorScheme();
+  useEffect(() => {
+    const root = document.documentElement;
+    if (colorScheme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
+  }, [colorScheme]);
+  return colorScheme;
+}
 
 // ─── Field IDs ────────────────────────────────────────────────────────────────
 // The DETAIL_* fields below are read-only here even where pipeline.tsx (the
@@ -193,8 +207,8 @@ function yesNo(v: boolean): string {
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs text-gray-400 tracking-wide">{label}</div>
-      <div className="text-sm text-gray-800 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">{label}</div>
+      <div className="text-sm text-gray-800 dark:text-gray-200 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
     </div>
   );
 }
@@ -205,8 +219,8 @@ function FieldRow({ children }: { children: React.ReactNode }) {
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-5">
-      <div className="text-xs text-gray-400 tracking-wide mb-3">{title}</div>
+    <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide mb-3">{title}</div>
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -216,16 +230,16 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
 function SearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div className="relative">
-      <MagnifyingGlassIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+      <MagnifyingGlassIcon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
       <input
         type="text"
-        placeholder="Search client..."
+        placeholder="Search by client name..."
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="pl-8 pr-7 py-1.5 w-64 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400"
+        className="pl-8 pr-7 py-1.5 w-64 text-sm bg-white dark:bg-[#1e1d1b] text-gray-800 dark:text-gray-200 border border-gray-300 dark:border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400 focus:border-amber-500 dark:focus:border-amber-400"
       />
       {value && (
-        <button onClick={() => onChange('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+        <button onClick={() => onChange('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
           <XIcon size={13} />
         </button>
       )}
@@ -265,14 +279,14 @@ function MultiSelectDropdown({
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 dark:border-white/10 rounded-lg bg-white dark:bg-[#1e1d1b] hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
         >
-          <span className="text-gray-700">{displayText}</span>
-          <CaretDownIcon size={13} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <span className="text-gray-700 dark:text-gray-200">{displayText}</span>
+          <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
         {isOpen && (
-          <div className="absolute left-0 mt-1 min-w-[160px] bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+          <div className="absolute left-0 mt-1 min-w-[160px] bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg z-50">
             <div
               className="max-h-60 overflow-y-auto py-1"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
@@ -286,7 +300,7 @@ function MultiSelectDropdown({
                     onChange(next);
                   }}
                   className={`w-full text-left px-3 py-1.5 text-sm transition-colors whitespace-nowrap ${
-                    selected.has(opt) ? 'bg-amber-50 text-amber-700' : 'hover:bg-gray-50 text-gray-700'
+                    selected.has(opt) ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-200'
                   }`}
                 >
                   {opt}
@@ -300,7 +314,7 @@ function MultiSelectDropdown({
       {selected.size > 0 && (
         <button
           onClick={() => onChange(new Set())}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors whitespace-nowrap"
+          className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors whitespace-nowrap"
         >
           Clear
         </button>
@@ -320,7 +334,7 @@ function SortButton({
 }) {
   const dir = sortState[colKey];
   return (
-    <button onClick={onClick} className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-800">
+    <button onClick={onClick} className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100">
       {label}
       {dir === 'desc' && <CaretDownIcon size={11} />}
       {dir === 'asc' && <CaretUpIcon size={11} />}
@@ -373,13 +387,13 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
   })();
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-6 py-3">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50 dark:bg-[#1A1917]" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1A1917] border-b border-gray-200 dark:border-[#34312C] px-6 py-3">
         <div className="max-w-[1200px] mx-auto">
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 bg-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-[#34312C] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors"
           >
             <CaretLeftIcon size={16} />
             Go back
@@ -391,40 +405,40 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
 
         {/* Personal Style Notes — surfaced first, per request */}
         <DetailSection title="Personal Style Notes">
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes || 'No notes yet.'}</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{notes || 'No notes yet.'}</p>
         </DetailSection>
 
         {/* Header card */}
-        <div className="bg-white border border-gray-200 rounded-lg p-5">
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
           <div className="flex items-start gap-6 flex-wrap">
             <div className="min-w-0">
-              <div className="text-2xl font-semibold text-gray-900">{fullName}</div>
+              <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF]">{fullName}</div>
               <div className="flex items-center gap-3 mt-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-white/10">
                   Did Not Convert
                 </span>
-                <span className="text-base text-gray-500">{studio}</span>
+                <span className="text-base text-gray-500 dark:text-gray-400">{studio}</span>
               </div>
             </div>
           </div>
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
             <DetailRow label="Wedding Date" value={weddingDisplay} />
             <div>
-              <div className="text-xs text-gray-400 tracking-wide">Sales Associate</div>
-              <div className="text-sm text-gray-800 font-medium mt-0.5">{saName}</div>
-              {saPhone && <a href={`tel:${saPhone}`} className="text-sm text-[#D97706] block">{saPhone}</a>}
+              <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">Sales Associate</div>
+              <div className="text-sm text-gray-800 dark:text-gray-200 font-medium mt-0.5">{saName}</div>
+              {saPhone && <a href={`tel:${saPhone}`} className="text-sm text-[#D97706] dark:text-[#FBBF24] block">{saPhone}</a>}
             </div>
             <div>
-              <div className="text-xs text-gray-400 tracking-wide">Email</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">Email</div>
               {email
-                ? <a href={`mailto:${email}`} className="text-sm text-[#D97706] font-medium mt-0.5 block truncate">{email}</a>
-                : <div className="text-sm text-gray-400 mt-0.5">—</div>}
+                ? <a href={`mailto:${email}`} className="text-sm text-[#D97706] dark:text-[#FBBF24] font-medium mt-0.5 block truncate">{email}</a>
+                : <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">—</div>}
             </div>
             <div>
-              <div className="text-xs text-gray-400 tracking-wide">Phone</div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">Phone</div>
               {phone
-                ? <a href={`tel:${phone}`} className="text-sm text-[#D97706] font-medium mt-0.5 block">{phone}</a>
-                : <div className="text-sm text-gray-400 mt-0.5">—</div>}
+                ? <a href={`tel:${phone}`} className="text-sm text-[#D97706] dark:text-[#FBBF24] font-medium mt-0.5 block">{phone}</a>
+                : <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">—</div>}
             </div>
           </div>
         </div>
@@ -449,13 +463,13 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
           {styleNames.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {styleNames.map((name, i) => (
-                <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10">
                   {name}
                 </span>
               ))}
             </div>
           ) : (
-            <span className="text-sm text-gray-400">—</span>
+            <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
           )}
         </DetailSection>
 
@@ -470,7 +484,7 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
 
         {/* Post-appointment notes */}
         <DetailSection title="Post-appointment notes">
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{apptNotes || 'No notes yet.'}</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{apptNotes || 'No notes yet.'}</p>
         </DetailSection>
 
         {/* Pre-Appointment */}
@@ -564,8 +578,8 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
           </FieldRow>
           <DetailRow label="Do Not Ship Until" value={holdShipmentDisplay} />
           {holdShipmentIsFuture && (
-            <div className="px-3 py-2 rounded-md bg-red-50 border border-red-200">
-              <span className="text-sm font-semibold text-red-700">🚨 Do not ship until {holdShipmentDisplay}</span>
+            <div className="px-3 py-2 rounded-md bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30">
+              <span className="text-sm font-semibold text-red-700 dark:text-red-300">🚨 Do not ship until {holdShipmentDisplay}</span>
             </div>
           )}
           <FieldRow>
@@ -581,6 +595,7 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 function DidNotConvertApp(): React.ReactElement {
+  useTheme();
   const base = useBase();
 
   const clientsTable = base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c');
@@ -607,8 +622,8 @@ function DidNotConvertApp(): React.ReactElement {
   // Guard — rendered after hooks
   if (!clientsTable || !stylesTable) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-red-500">Required tables not found. Check table IDs.</p>
+      <div className="flex items-center justify-center h-full bg-[#F8F5EE] dark:bg-[#1B1813]">
+        <p className="text-sm text-red-500 dark:text-red-400">Required tables not found. Check table IDs.</p>
       </div>
     );
   }
@@ -735,7 +750,7 @@ function DidNotConvertApp(): React.ReactElement {
 
   if (selectedRecord) {
     return (
-      <div className="font-sans antialiased flex flex-col" style={{ backgroundColor: '#F8F5EE', height: '100vh', overflow: 'hidden' }}>
+      <div className="font-sans antialiased flex flex-col bg-[#F8F5EE] dark:bg-[#1B1813]" style={{ height: '100vh', overflow: 'hidden' }}>
         <ClientDetailPage
           record={selectedRecord}
           getStyleNames={getStyleNames}
@@ -746,7 +761,7 @@ function DidNotConvertApp(): React.ReactElement {
   }
 
   return (
-    <div className="font-sans antialiased flex flex-col" style={{ backgroundColor: '#F8F5EE', height: '100vh', overflow: 'hidden' }}>
+    <div className="font-sans antialiased flex flex-col bg-[#F8F5EE] dark:bg-[#1B1813]" style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-3 flex items-center gap-4 flex-wrap">
         <SearchInput value={searchQuery} onChange={setSearchQuery} />
@@ -762,10 +777,10 @@ function DidNotConvertApp(): React.ReactElement {
 
       {/* Table container */}
       <div className="flex-1 px-6 pb-6 min-h-0">
-        <div className="bg-white border border-[#E9E0CE] rounded-xl h-full flex flex-col overflow-hidden">
+        <div className="bg-white dark:bg-[#242220] border border-[#E9E0CE] dark:border-[#38322A] rounded-xl h-full flex flex-col overflow-hidden">
 
           {/* Sticky header */}
-          <div className="flex-shrink-0 border-b border-gray-200 bg-gray-50">
+          <div className="flex-shrink-0 border-b border-gray-200 dark:border-[#34312C] bg-gray-50 dark:bg-white/5">
             <table className="w-full table-fixed">
               <colgroup>
                 {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
@@ -776,7 +791,7 @@ function DidNotConvertApp(): React.ReactElement {
                     <th key={label} className="px-4 py-2.5 text-left">
                       {key
                         ? <SortButton label={label} colKey={key} sortState={sortState} onClick={() => cycleSort(key)} />
-                        : <span className="text-xs font-semibold text-gray-600">{label}</span>
+                        : <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{label}</span>
                       }
                     </th>
                   ))}
@@ -789,7 +804,7 @@ function DidNotConvertApp(): React.ReactElement {
           <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
             {sortedRecords.length === 0 ? (
               <div className="flex items-center justify-center py-16">
-                <p className="text-sm text-gray-400">No clients match the current filters.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</p>
               </div>
             ) : (
               <table className="w-full table-fixed">
@@ -810,27 +825,27 @@ function DidNotConvertApp(): React.ReactElement {
                       <tr
                         key={record.id}
                         onClick={() => setSelectedId(record.id)}
-                        className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer transition-colors"
+                        className="border-b border-gray-100 dark:border-white/5 hover:bg-amber-50 dark:hover:bg-amber-500/10 cursor-pointer transition-colors"
                       >
-                        <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{fullName}</td>
-                        <td className="px-4 py-2.5 text-sm text-gray-700">{saName}</td>
+                        <td className="px-4 py-2.5 text-sm font-medium text-gray-800 dark:text-gray-200">{fullName}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300">{saName}</td>
                         <td className="px-4 py-2.5">
                           {styleNames.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {styleNames.map((name, i) => (
-                                <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                                <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10">
                                   {name}
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <span className="text-gray-400 text-sm">—</span>
+                            <span className="text-gray-400 dark:text-gray-500 text-sm">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-sm text-gray-700">{lastAppt}</td>
-                        <td className="px-4 py-2.5 text-sm text-gray-700">{appointmentCount}</td>
-                        <td className="px-4 py-2.5 text-sm text-gray-700">{weddingDate}</td>
-                        <td className="px-4 py-2.5 text-sm text-gray-700 truncate">{notes || '—'}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300">{lastAppt}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300">{appointmentCount}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300">{weddingDate}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 truncate">{notes || '—'}</td>
                       </tr>
                     );
                   })}
