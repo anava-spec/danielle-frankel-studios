@@ -3501,7 +3501,7 @@ function AppointmentsApp(): React.ReactElement {
                 if (rec) { setSelectedRecordId(rec.id); setShowSearchDrop(false); setClientSearch(''); }
               } else if (e.key==='Escape') { setShowSearchDrop(false); }
             }}
-            className="pl-9 pr-8 py-1.5 text-sm bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] w-[200px]"/>
+            className="pl-9 pr-8 py-1.5 text-sm bg-white dark:bg-[#25211A] border border-gray-300 dark:border-gray-600 rounded-lg outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] w-[300px]"/>
           {clientSearch && (
             <button type="button" onClick={()=>{setClientSearch('');setShowSearchDrop(false);}}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:dark:text-gray-400">
@@ -3548,10 +3548,6 @@ function AppointmentsApp(): React.ReactElement {
                     const name   = fClient ? rec.getCellValueAsString(fClient!) : '';
                     const studio = fStudio ? rec.getCellValueAsString(fStudio!) : '';
                     const sa     = fSA     ? rec.getCellValueAsString(fSA!)    : '';
-                    const lnk    = fClient ? (rec.getCellValue(fClient!) as Array<{id:string}>|null) : null;
-                    const cId    = lnk?.[0]?.id ?? null;
-                    const cRec   = cId ? (clientRecords?.find(c=>c.id===cId)??null) : null;
-                    const wConfirmed      = cRec ? !!(getVal<boolean>(cRec, CLIENT.WEDDING_CONFIRMED)??false) : false;
                     // Wedding Date / Favorite Styles now come from Appointments-level
                     // lookups (via CLIENT_LINK), not the Clients record — each needs
                     // the unwrap helpers above since this runtime returns lookup
@@ -3568,9 +3564,6 @@ function AppointmentsApp(): React.ReactElement {
                         <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{studio||'—'}</td>
                         <td className="px-3 py-3">
                           <div className="text-sm text-gray-700 dark:text-gray-300">{weddingDisplay?fmtFriendly(weddingDisplay):'—'}</div>
-                          {weddingDisplay && !wConfirmed && (
-                            <span className="inline-flex mt-0.5 rounded-full text-xs font-medium px-2.5 py-0.5 bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">Needs confirmation</span>
-                          )}
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{sa||'—'}</td>
                         <td className="px-3 py-3">
