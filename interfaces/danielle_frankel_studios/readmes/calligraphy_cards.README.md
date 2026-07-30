@@ -21,13 +21,14 @@ Give the internal team a single list of every client's calligraphy card status, 
 
 ## Workflow
 
-1. Filter bar order: Search (long, always-expanded) → Due Date → Wedding Date → Calligraphy Status.
-2. Search is a non-narrowing typeahead: typing never filters the visible list — it shows a dropdown of matching client names, and selecting one narrows the list to that single client.
-3. Wedding Date filter: "Upcoming Wedding Dates" vs. "Past Wedding Dates" — clearable (X), no filter applied when cleared (shows every wedding date, including blanks).
-4. Calligraphy Status filter: "Pending" (default) vs. "Sent" — also clearable.
-5. Due Date filter is an exact-date match, compared as local `YYYY-MM-DD` strings (never UTC ISO).
-6. All active filters compose with AND logic; sort is Wedding Date ascending (blanks last), then Client name A→Z.
-7. Clicking the Status pill in a row toggles `calligraphy_card_sent` between `Pending`/`Sent` directly via `updateRecordAsync`; failures show a red border on that row's pill rather than silently reverting.
+1. **Qualification floor (always-on, not a filter toggle):** a client only ever appears on this list if `Items Sold` contains at least one of `gown`, `custom`, `top`, `skirt`, `pants`, `dress` (case-insensitive substring match, same parsing pattern as `renderPills`). Clients whose `Items Sold` is shoes/veil-only, or empty, never qualify — this is a hard floor applied inside `filteredRecords`, before any of the interactive filters below run. Approved deviation from the original AC: "direct-to-consumer" isn't a separate flag on `DF Clients` yet, so for now this Items Sold floor is the only DTC-qualification signal.
+2. Filter bar order: Search (long, always-expanded) → Due Date → Wedding Date → Calligraphy Status.
+3. Search is a non-narrowing typeahead: typing never filters the visible list — it shows a dropdown of matching client names, and selecting one narrows the list to that single client.
+4. Wedding Date filter: "Upcoming Wedding Dates" vs. "Past Wedding Dates" — clearable (X), no filter applied when cleared (shows every wedding date, including blanks).
+5. Calligraphy Status filter: "Pending" (default) vs. "Sent" — also clearable.
+6. Due Date filter is an exact-date match, compared as local `YYYY-MM-DD` strings (never UTC ISO).
+7. All active filters compose with AND logic, on top of the qualification floor; sort is Wedding Date ascending (blanks last), then Client name A→Z.
+8. Clicking the Status pill in a row toggles `calligraphy_card_sent` between `Pending`/`Sent` directly via `updateRecordAsync`; failures show a red border on that row's pill rather than silently reverting.
 
 ## Rules
 
@@ -38,3 +39,4 @@ Give the internal team a single list of every client's calligraphy card status, 
 - Items Sold and Gown are plain lookup text values (not single-select-colored fields), so their pills use a neutral gray.
 - Never include `import './style.css';` in this file.
 - Omni's first-draft generated code used numerous non-existent Tailwind class names (e.g. `gray-gray100`, `blue-blueLight2`) that rendered with no working colors at all — every color class was rewritten against real Tailwind utilities and `fulfillment.tsx`'s hex-based `dark:` conventions before this file was committed.
+- **Open item — Dress Creation Year column, not yet built:** approved to add a "Dress Year" column between Gown and Wedding Date, sourced from a new `Dress Creation Year` field on `DF Clients`. Recommended field type: `Number`, precision 0 (a whole year needs no decimals and should sort/filter numerically, not as free text). The field must be created via API in the **sandbox** base (`app6Q4xMZ1ngJxiV8` — API field creation is blocked in production, `appUC2NFAlURayLx9`); creating it and publishing it to production is still pending, blocked this session by an environment-level compliance restriction on the Airtable MCP tools (not an Airtable-side limitation). Once the field exists and its real field ID is confirmed via `get_table_schema` (never assume/invent it), add `CLIENT_DRESS_CREATION_YEAR` to `FIELD_IDS` and the column to the table, same display pattern as the other columns (value or `—` if blank).
