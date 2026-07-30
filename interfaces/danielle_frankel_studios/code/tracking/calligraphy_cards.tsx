@@ -377,7 +377,11 @@ function CalligraphyCardsApp(): React.ReactElement {
 
     let recs = allRecords.filter(rec => {
       // Qualification floor — always applied, not a user-facing filter.
-      const itemCategoryForQualify = fItemCategory ? (rec.getCellValueAsString(fItemCategory) ?? '') : '';
+      // Item Category is ALSO a lookup through a link field (shopify_order),
+      // same nested-structure quirk as Items Sold/Gown — getCellValueAsString
+      // returns blank for it too, so it must go through the same raw-value
+      // unwrap as the other two lookup columns, not a plain string read.
+      const itemCategoryForQualify = fItemCategory ? getLinkedNamesDisplay(rec.getCellValue(fItemCategory)) : '';
       if (!hasQualifyingItemCategory(itemCategoryForQualify)) return false;
       if (calligraphyFilter && fSent) {
         const statusName = (rec.getCellValue(fSent) as { name: string } | null)?.name ?? null;
