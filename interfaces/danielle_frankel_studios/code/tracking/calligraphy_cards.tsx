@@ -34,6 +34,7 @@ const FIELD_IDS = {
   CLIENT_DUE_DATE:              'fldnhs2n4z2EdZK9N',
   CLIENT_ITEMS_SOLD:            'fldEStULoGtNIjxPO',
   CLIENT_GOWN_NAME:             'fldJvr5mNgwmhfBlv',
+  CLIENT_DRESS_CREATION_YEAR:   'fldwgDZDs2CNEqPsQ', // number, precision 0 — created in sandbox appMmEE4zyHMGhkkd
   CLIENT_WEDDING_DATE:          'fldbgknumKGS5W5WU',
   CLIENT_CALLIGRAPHY_CARD_SENT: 'fldsBLLXkKPgqlN2e',
 } as const;
@@ -462,19 +463,21 @@ function CalligraphyCardsApp(): React.ReactElement {
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Due Date</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[180px]">Items Sold</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Gown</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[100px]">Dress Year</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Wedding Date</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</td>
+                    <td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</td>
                   </tr>
                 ) : filteredRecords.map(rec => {
                   const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
                   const fDue = fields[FIELD_IDS.CLIENT_DUE_DATE];
                   const fItems = fields[FIELD_IDS.CLIENT_ITEMS_SOLD];
                   const fGown = fields[FIELD_IDS.CLIENT_GOWN_NAME];
+                  const fDressYear = fields[FIELD_IDS.CLIENT_DRESS_CREATION_YEAR];
                   const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
                   const fSent = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
 
@@ -482,6 +485,7 @@ function CalligraphyCardsApp(): React.ReactElement {
                   const dueStr = fDue ? (rec.getCellValue(fDue) as string | null) : null;
                   const itemsStr = fItems ? (rec.getCellValueAsString(fItems) ?? '') : '';
                   const gownStr = fGown ? (rec.getCellValueAsString(fGown) ?? '') : '';
+                  const dressYearStr = fDressYear ? (rec.getCellValueAsString(fDressYear) ?? '') : '';
                   const weddingStr = fWedding ? (rec.getCellValue(fWedding) as string | null) : null;
                   const statusValue = fSent ? (rec.getCellValue(fSent) as { name: string } | null)?.name ?? null : null;
                   const statusColorMap = getFieldChoiceColorMap(fSent);
@@ -501,6 +505,7 @@ function CalligraphyCardsApp(): React.ReactElement {
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDate(dueStr)}</td>
                       <td className="px-3 py-2.5">{renderPills(itemsStr)}</td>
                       <td className="px-3 py-2.5">{renderPills(gownStr)}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{dressYearStr || '—'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDate(weddingStr)}</td>
                     </tr>
                   );
