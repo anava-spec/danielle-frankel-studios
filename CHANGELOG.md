@@ -11,6 +11,15 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Jul 28–29, 2026
+
+**Alterations**
+- Repositioned the filters-explainer tooltip so it no longer opens partly off-screen.
+- Broadened the list to include anyone in the Alterations stage, with an alterations appointment on file, or with "Alterations" in Item Sold (previously required all three at once, which hid some brides who should have shown up).
+
+**Pipeline / Fulfillment / Did Not Convert**
+- Fixed "% Picked" showing incorrect values in a few cases — it now always reflects the real picked status pulled from Orders, and is no longer editable by hand (it was never meant to be).
+
 ## Week of Jul 22–27, 2026
 
 **Alterations**
