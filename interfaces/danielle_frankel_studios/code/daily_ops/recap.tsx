@@ -3288,6 +3288,27 @@ function AppointmentsApp(): React.ReactElement {
   const _proposalsRaw      = useRecords(proposalsTable ?? appointmentsTable ?? null);
   const proposalRecords    = proposalsTable ? _proposalsRaw : null;
 
+  // Main-list Customizations count — computed reactively from live
+  // Customizations records via CUSTOM.CLIENT (the link field on the
+  // Customizations table pointing back to the client), same source of truth
+  // PostApptModal's linkedCustomizations already uses. NOT read off
+  // CLIENT.CUSTOMIZATION_LINK on the Clients record — that field isn't kept
+  // in sync with actual Customizations records, so it silently under/over
+  // counted (the exact bug this replaces).
+  const custCountByClientId = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!customizationRecords || !customizationsTable) return map;
+    const clientField = customizationsTable.getFieldIfExists(CUSTOM.CLIENT);
+    if (!clientField) return map;
+    for (const r of customizationRecords) {
+      const lnk = r.getCellValue(clientField) as Array<{ id: string }> | null;
+      for (const l of lnk ?? []) {
+        map.set(l.id, (map.get(l.id) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [customizationRecords, customizationsTable]);
+
   const [selectedDate, setSelectedDate]        = useState(new Date());
   const [showCalendar, setShowCalendar]         = useState(false);
   const [selectedSA, setSelectedSA]             = useState<string[]>([]);
@@ -3536,8 +3557,7 @@ function AppointmentsApp(): React.ReactElement {
                     const measStatus   = isEmpty(measRaw)   ? 'Missing' : 'Complete';
                     const photosStatus = isEmpty(photosRaw) ? 'Missing' : 'Uploaded';
                     const followStatus = followRaw===true   ? 'Sent'    : 'Pending';
-                    const custRaw  = cRec ? getVal<Array<{id:string;name:string}>>(cRec, CLIENT.CUSTOMIZATION_LINK) : null;
-                    const custCount = custRaw?.length ?? 0;
+                    const custCount = cId ? (custCountByClientId.get(cId) ?? 0) : 0;
                     return (
                       <tr key={rec.id} onClick={()=>setSelectedRecordId(rec.id)}
                         className={`border-b border-gray-100 dark:border-white/5 cursor-pointer transition-colors ${idx%2===0?'bg-white dark:bg-[#25211A]':'bg-gray-50 dark:bg-white/5'} hover:bg-[#FEF3C7] dark:bg-[#3A2E12]`}>
