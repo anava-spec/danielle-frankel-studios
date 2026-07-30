@@ -11,6 +11,17 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Jul 30, 2026
+
+**Did Not Convert**
+- Moved into the Tracking section, alongside Sample Tracker and Calligraphy Cards.
+- Full dark mode support added.
+
+**Calligraphy Cards**
+- Fixed the qualifying-clients rule so it correctly shows anyone whose order isn't shoes/veil-only, instead of an overly narrow list that was hiding some valid clients.
+- Fixed the Items Sold and Gown columns, which were showing blank for every row.
+- Added a "Dress Year" column between Gown and Wedding Date.
+
 ## Week of Jul 28–29, 2026
 
 **Alterations**
