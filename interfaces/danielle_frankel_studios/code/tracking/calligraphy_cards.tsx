@@ -289,20 +289,58 @@ function getFieldChoiceColorMap(field: Field | null | undefined): Map<string, st
   return map;
 }
 
-// ─── StatusPill ─────────────────────────────────────────────────────────────────
-interface StatusPillProps { value: string | null; colorMap: Map<string, string>; onClick: () => void; disabled?: boolean; hasError?: boolean; }
-function StatusPill({ value, colorMap, onClick, disabled = false, hasError = false }: StatusPillProps) {
-  const colorName = value ? colorMap.get(value) : null;
-  const colorClasses = hasError
-    ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-300 dark:border-red-500/40'
-    : (colorName ? (AIRTABLE_COLOR_MAP[colorName] ?? DEFAULT_STATUS_PILL_CLASSES) : DEFAULT_STATUS_PILL_CLASSES);
+// ─── StatusPillDropdown ─────────────────────────────────────────────────────────
+// Clicking the pill opens a small options panel (BRANDING.md §5 dropdown
+// pattern — surface/border/shadow, click-outside-to-close) instead of
+// toggling the value directly, so the user picks the next status explicitly
+// rather than the click silently flipping it to whatever the "other" value
+// happens to be.
+interface StatusPillDropdownProps {
+  value: string | null;
+  colorMap: Map<string, string>;
+  options: string[];
+  onSelect: (next: string) => void;
+  disabled?: boolean;
+  hasError?: boolean;
+}
+function StatusPillDropdown({ value, colorMap, options, onSelect, disabled = false, hasError = false }: StatusPillDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  function pillClasses(forValue: string | null): string {
+    if (hasError) return 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border-red-300 dark:border-red-500/40';
+    const colorName = forValue ? colorMap.get(forValue) : null;
+    return colorName ? (AIRTABLE_COLOR_MAP[colorName] ?? DEFAULT_STATUS_PILL_CLASSES) : DEFAULT_STATUS_PILL_CLASSES;
+  }
+
   return (
-    <button type="button" disabled={disabled}
-      onClick={e => { e.stopPropagation(); onClick(); }}
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap transition-colors ${colorClasses} ${
-        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:brightness-95'}`}>
-      {value || '—'}
-    </button>
+    <div ref={ref} className="relative inline-block" onClick={e => e.stopPropagation()}>
+      <button type="button" disabled={disabled}
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap transition-colors ${pillClasses(value)} ${
+          disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:brightness-95'}`}>
+        {value || '—'}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-lg w-[140px] py-1">
+          {options.map(opt => (
+            <button key={opt} type="button" onClick={() => { onSelect(opt); setOpen(false); }}
+              className={`w-full flex items-center px-3 py-1.5 transition-colors ${
+                opt === value ? 'bg-amber-50 dark:bg-amber-500/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${pillClasses(opt)}`}>
+                {opt}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -340,13 +378,12 @@ function CalligraphyCardsApp(): React.ReactElement {
   const allRecords = useRecords(clientsTable ?? null);
   const canWrite = clientsTable ? clientsTable.hasPermissionToUpdateRecords() : false;
 
-  const handleToggleCalligraphyCard = useCallback(async (recordId: string, currentValue: string | null) => {
+  const handleSetCalligraphyCard = useCallback(async (recordId: string, nextValue: string) => {
     const field = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
     if (!clientsTable || !field) return;
-    const next = currentValue === 'Sent' ? 'Pending' : 'Sent';
     setUpdateErrors(prev => ({ ...prev, [recordId]: false }));
     try {
-      await clientsTable.updateRecordAsync(recordId, { [field.id]: { name: next } });
+      await clientsTable.updateRecordAsync(recordId, { [field.id]: { name: nextValue } });
     } catch (err) {
       console.error('Failed to update calligraphy_card_sent', err);
       setUpdateErrors(prev => ({ ...prev, [recordId]: true }));
@@ -529,12 +566,13 @@ function CalligraphyCardsApp(): React.ReactElement {
                   return (
                     <tr key={rec.id} className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                       <td className="px-3 py-2.5">
-                        <StatusPill
+                        <StatusPillDropdown
                           value={statusValue}
                           colorMap={statusColorMap}
+                          options={['Pending', 'Sent']}
                           disabled={!canWrite}
                           hasError={!!updateErrors[rec.id]}
-                          onClick={() => handleToggleCalligraphyCard(rec.id, statusValue)}
+                          onSelect={next => handleSetCalligraphyCard(rec.id, next)}
                         />
                       </td>
                       <td className="px-3 py-2.5 text-sm font-medium text-gray-900 dark:text-[#F5F3EF]">{name || '—'}</td>

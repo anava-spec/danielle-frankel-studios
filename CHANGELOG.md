@@ -21,6 +21,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Fixed the qualifying-clients rule so it correctly shows anyone whose order isn't shoes/veil-only, instead of an overly narrow list that was hiding some valid clients.
 - Fixed the Items Sold and Gown columns, which were showing blank for every row.
 - Added a "Dress Year" column between Gown and Wedding Date.
+- Clicking the Status pill now opens a dropdown to pick Pending or Sent explicitly, instead of silently flipping to the other value on click.
 
 ## Week of Jul 28–29, 2026
 

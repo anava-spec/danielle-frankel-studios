@@ -28,7 +28,7 @@ Give the internal team a single list of every client's calligraphy card status, 
 5. Calligraphy Status filter: "Pending" (default) vs. "Sent" — also clearable.
 6. Due Date filter is an exact-date match, compared as local `YYYY-MM-DD` strings (never UTC ISO).
 7. All active filters compose with AND logic, on top of the qualification floor; sort is Wedding Date ascending (blanks last), then Client name A→Z.
-8. Clicking the Status pill in a row toggles `calligraphy_card_sent` between `Pending`/`Sent` directly via `updateRecordAsync`; failures show a red border on that row's pill rather than silently reverting.
+8. Clicking the Status pill opens a small dropdown (`StatusPillDropdown`, BRANDING.md §5 surface/border/shadow pattern) listing both `Pending`/`Sent` as colored pill options — the user picks the next value explicitly rather than the click silently flipping it to whichever value wasn't currently showing. Selecting an option writes `calligraphy_card_sent` via `updateRecordAsync` and closes the dropdown; failures show a red border on the row's pill rather than silently reverting.
 
 ## Rules
 

@@ -54,6 +54,8 @@ Repo: `DFS-Brain` (parent) / `danielle-frankel-studios` (submodule) · Files: `a
 
 **Round 3 — config, not code:** after all of the above, Axel reported the interface still showed zero results after pasting the updated code into Airtable. Ran the `airtable-interface-config-doctor` skill against a page-config JSON Axel collected from DevTools plus this file. The collector's JSON shape (`pagesById` wrapper) didn't match what `diagnose.py` expected (`page`/`pageId` at top level) — adapted the structure with a small Node script before the script would parse it correctly. Diagnosis found the real remaining cause: `Item Category` was declared in the code and correctly typed, but **not exposed to this page's block config** (Data → Fields, in the page's right sidebar) — a pure Airtable-config problem, invisible from reading the code. Axel enabled the field and published the interface (there were unpublished changes); a second config-doctor run confirmed the blocker cleared. Axel then confirmed the live count matched expectations.
 
+**Round 4 — Status pill UX fix:** clicking the Status pill was silently toggling the value to whichever state wasn't currently showing (Pending↔Sent) rather than giving the user a choice. Replaced `StatusPill` with `StatusPillDropdown` — clicking opens a small options panel (BRANDING.md §5 dropdown pattern: surface/border/shadow, click-outside-to-close) listing both `Pending` and `Sent` as colored pills, and the user picks explicitly. The write handler (`handleSetCalligraphyCard`, renamed from `handleToggleCalligraphyCard`) now takes the chosen value directly instead of computing a toggle.
+
 ## 6. CHANGELOG.md — two new weeks added
 
 - "Week of Jul 28–29, 2026": Alterations tooltip/scope fix and the % Picked correction.
