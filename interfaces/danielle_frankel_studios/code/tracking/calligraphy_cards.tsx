@@ -42,6 +42,7 @@ const FIELD_IDS = {
   CLIENT_DRESS_CREATION_YEAR:   'fldwgDZDs2CNEqPsQ', // number, precision 0 — created in sandbox appMmEE4zyHMGhkkd
   CLIENT_WEDDING_DATE:          'fldbgknumKGS5W5WU',
   CLIENT_CALLIGRAPHY_CARD_SENT: 'fldsBLLXkKPgqlN2e',
+  CLIENT_CALLIGRAPHY_CARD_COMMENTS: 'fldfrtzC0BxWggmoU', // long text, created in sandbox appMmEE4zyHMGhkkd — Margo's name-variation notes for the card
 } as const;
 
 // ─── Date helpers ──────────────────────────────────────────────────────────────
@@ -344,6 +345,36 @@ function StatusPillDropdown({ value, colorMap, options, onSelect, disabled = fal
   );
 }
 
+// ─── CommentsCell ───────────────────────────────────────────────────────────────
+// Free-text long-text field for Margo to jot name-variation notes for the
+// calligraphy card (e.g. nicknames, hyphenation, "goes by middle name"). Local
+// state so typing doesn't fight the record's live value on every keystroke;
+// only writes on blur, matching the borderless-editable-cell convention
+// (BRANDING.md §10b) rather than a boxed input that reads as a separate control.
+interface CommentsCellProps {
+  value: string;
+  disabled: boolean;
+  hasError: boolean;
+  onSave: (next: string) => void;
+}
+function CommentsCell({ value, disabled, hasError, onSave }: CommentsCellProps) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
+  return (
+    <textarea
+      value={draft}
+      disabled={disabled}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== value) onSave(draft); }}
+      placeholder={disabled ? '—' : 'Name variations for the card…'}
+      rows={1}
+      className={`w-full min-w-[180px] resize-y bg-transparent text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-md px-1.5 py-1 -mx-1.5 transition-colors ${
+        hasError ? 'ring-1 ring-red-400 dark:ring-red-500/60' : 'focus:bg-white dark:focus:bg-[#1e1d1b] focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400'} ${
+        disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    />
+  );
+}
+
 // ─── Custom Properties ──────────────────────────────────────────────────────────
 function getCustomProperties(base: ReturnType<typeof useBase>) {
   return [
@@ -387,6 +418,19 @@ function CalligraphyCardsApp(): React.ReactElement {
     } catch (err) {
       console.error('Failed to update calligraphy_card_sent', err);
       setUpdateErrors(prev => ({ ...prev, [recordId]: true }));
+    }
+  }, [clientsTable, fields]);
+
+  const [commentErrors, setCommentErrors] = useState<Record<string, boolean>>({});
+  const handleSetComments = useCallback(async (recordId: string, nextValue: string) => {
+    const field = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_COMMENTS];
+    if (!clientsTable || !field) return;
+    setCommentErrors(prev => ({ ...prev, [recordId]: false }));
+    try {
+      await clientsTable.updateRecordAsync(recordId, { [field.id]: nextValue || null });
+    } catch (err) {
+      console.error('Failed to update calligraphy_card_comments', err);
+      setCommentErrors(prev => ({ ...prev, [recordId]: true }));
     }
   }, [clientsTable, fields]);
 
@@ -533,6 +577,7 @@ function CalligraphyCardsApp(): React.ReactElement {
                 <tr className="border-b border-gray-200 dark:border-white/10">
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[90px]">Status</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Client</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[200px]">Comments</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Due Date</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[180px]">Items Sold</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Gown</th>
@@ -543,7 +588,7 @@ function CalligraphyCardsApp(): React.ReactElement {
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</td>
+                    <td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</td>
                   </tr>
                 ) : filteredRecords.map(rec => {
                   const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
@@ -553,8 +598,10 @@ function CalligraphyCardsApp(): React.ReactElement {
                   const fDressYear = fields[FIELD_IDS.CLIENT_DRESS_CREATION_YEAR];
                   const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
                   const fSent = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
+                  const fComments = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_COMMENTS];
 
                   const name = fName ? (rec.getCellValueAsString(fName) ?? '') : '';
+                  const commentsStr = fComments ? (rec.getCellValueAsString(fComments) ?? '') : '';
                   const dueStr = fDue ? (rec.getCellValue(fDue) as string | null) : null;
                   const itemsStr = fItems ? getLinkedNamesDisplay(rec.getCellValue(fItems)) : '';
                   const gownStr = fGown ? getLinkedNamesDisplay(rec.getCellValue(fGown)) : '';
@@ -576,6 +623,14 @@ function CalligraphyCardsApp(): React.ReactElement {
                         />
                       </td>
                       <td className="px-3 py-2.5 text-sm font-medium text-gray-900 dark:text-[#F5F3EF]">{name || '—'}</td>
+                      <td className="px-3 py-2.5">
+                        <CommentsCell
+                          value={commentsStr}
+                          disabled={!canWrite}
+                          hasError={!!commentErrors[rec.id]}
+                          onSave={next => handleSetComments(rec.id, next)}
+                        />
+                      </td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDate(dueStr)}</td>
                       <td className="px-3 py-2.5">{renderPills(itemsStr)}</td>
                       <td className="px-3 py-2.5">{renderPills(gownStr)}</td>
