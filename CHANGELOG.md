@@ -22,6 +22,14 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Fixed the Items Sold and Gown columns, which were showing blank for every row.
 - Added a "Dress Year" column between Gown and Wedding Date.
 - Clicking the Status pill now opens a dropdown to pick Pending or Sent explicitly, instead of silently flipping to the other value on click.
+- Added a "Comments" column so Margo can note name variations to use on the physical card.
+
+**Recap**
+- Fixed the main list's Customizations count, which showed blank for clients who actually had requests on file.
+- Removed the Measurements, Photos, Follow-Up, and Customizations columns from the main appointments table.
+- Renamed "Favorite Styles" to "Favorite Styles from Acuity" and added a new "Favorite Styles from Appointment" column; Wedding Date now pulls from the correct source field.
+- Removed the "Needs confirmation" chip next to Wedding Date.
+- Widened the client search bar.
 
 ## Week of Jul 28–29, 2026
 
