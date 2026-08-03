@@ -770,21 +770,33 @@ function StylesDropdown({ selected, available, onToggle }: StylesDropdownProps) 
     return ()=>document.removeEventListener('mousedown',h);
   },[]);
   const filtered = useMemo(()=>q.trim()?available.filter(s=>s.toLowerCase().includes(q.toLowerCase())):available,[available,q]);
+  // Dropdown width sized to the longest available style name (+ padding),
+  // not a fixed full-width box — "corto pero que quepa el nombre más largo".
+  const widthCh = useMemo(()=>Math.max(14, ...available.map(s=>s.length)) + 3, [available]);
+
   return (
-    <div ref={ref} className="relative">
-      <div onClick={()=>setOpen(true)} className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white dark:bg-[#25211A] min-h-[42px]">
-        {selected.length===0?<span className="text-gray-400 dark:text-gray-500">Select styles…</span>:(
-          <div className="flex flex-wrap gap-1.5">
-            {selected.map(s=>(
-              <span key={s} className="bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border border-[#FDE68A] dark:border-[#4A3B18] rounded-full text-xs font-medium px-2.5 py-0.5 flex items-center gap-1">
-                {s}<button onClick={e=>{e.stopPropagation();onToggle(s);}}><XIcon size={11}/></button>
-              </span>
-            ))}
-          </div>
-        )}
+    <div ref={ref} className="relative inline-block">
+      {/* No checkbox/border chip chrome here — selected styles are plain
+          highlighted text, one size tier up from the dropdown list rows.
+          The "+" (25% smaller than the standard compact attachment button)
+          always sits right after the last selected style, opening the
+          dropdown — it's not a separate "click anywhere" box anymore. */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+        {selected.map(s=>(
+          <span key={s} className="group inline-flex items-center gap-1 text-[#D97706] dark:text-[#FBBF24] bg-[#FEF3C7] dark:bg-[#3A2E12] rounded-md text-sm font-semibold px-2 py-1">
+            {s}
+            <button type="button" onClick={()=>onToggle(s)} className="text-[#D97706]/50 dark:text-[#FBBF24]/50 hover:text-[#D97706] hover:dark:text-[#FBBF24]">
+              <XIcon size={12}/>
+            </button>
+          </span>
+        ))}
+        <button type="button" onClick={()=>setOpen(o=>!o)} title="Add style"
+          className="w-[27px] h-[27px] flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors flex-shrink-0">
+          <PlusIcon size={12}/>
+        </button>
       </div>
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col">
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl max-h-[260px] overflow-hidden flex flex-col" style={{ width: `${widthCh}ch` }}>
           <div className="p-2 border-b border-gray-100 dark:border-white/5">
             <input type="text" placeholder="Search styles…" value={q} onChange={e=>setQ(e.target.value)} autoFocus
               className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-white/10 rounded-md focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24]"/>
@@ -794,10 +806,7 @@ function StylesDropdown({ selected, available, onToggle }: StylesDropdownProps) 
               const isSel = selected.includes(s);
               return (
                 <button key={s} type="button" onClick={()=>onToggle(s)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${isSel?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${isSel?'bg-[#D97706] dark:bg-[#FBBF24] border-[#D97706] dark:border-[#FBBF24]':'border-gray-300 dark:border-gray-600 bg-white dark:bg-[#25211A]'}`}>
-                    {isSel && <CheckIcon size={10} weight="bold" className="text-white"/>}
-                  </span>
+                  className={`w-full text-left px-3 py-2 text-sm transition-colors ${isSel?'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium':'text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5'}`}>
                   {s}
                 </button>
               );
@@ -846,8 +855,8 @@ function AttachmentSection({ label, type, existing, clientId, compact }: AttachS
           </div>
         )}
         <button type="button" onClick={openForm} disabled={!clientId} title={label}
-          className="w-9 h-9 flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-          <PlusIcon size={16}/>
+          className="w-[27px] h-[27px] flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          <PlusIcon size={12}/>
         </button>
       </div>
     );
@@ -2811,7 +2820,16 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
           body * { visibility: hidden !important; }
           .recap-print-area, .recap-print-area * { visibility: visible !important; }
           .recap-print-area { position: absolute; top: 0; left: 0; width: 100%; }
-          .recap-doc-page { background: #ffffff !important; color: #111111 !important; }
+          /* Chrome/most browsers strip background colors on print by
+             default — without this, the page tint and every placeholder
+             swatch/photo-grid box disappear, leaving what looks like a
+             near-empty page even when content is present. Keep the same
+             colors shown in the on-screen preview. */
+          .recap-print-area, .recap-print-area * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
         }
       `}</style>
       <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
@@ -3095,20 +3113,39 @@ function PostAppointmentModal({
   const fApptTime = apptTable.getFieldIfExists(APPT.TIME);
   const appointmentDisplay = fApptTime ? fmtUSDateTime12h(record.getCellValueAsString(fApptTime)) : '';
 
-  const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => ({
-    clientName: clientName || 'Unknown Client',
-    email: cStr(CLIENT.EMAIL),
-    phone: cStr(CLIENT.PHONE),
-    weddingDateDisplay: weddingDisplay,
-    appointmentDisplay,
-    clientSpecialist: saName,
-    // Styles = the customization requests actually logged during this visit
-    // (same rows the Customization Requests table below shows) — each row's
-    // grandTotal already folds in that style's customizations, matching the
-    // Figma template's single price-per-style line.
-    styles: customizationRows.map(row => ({ id: row.id, name: row.styleName, price: row.grandTotal, notes: '', customPricing: null })),
-    photos: existingApptPhotos ?? [],
-  }), [clientName, cStr, weddingDisplay, appointmentDisplay, saName, customizationRows, existingApptPhotos]);
+  const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => {
+    // Styles = Favorite Styles from Appointment (the selector right above),
+    // not the Customization Requests table — a consultation frequently ends
+    // with styles picked but no formal customization request logged yet, so
+    // sourcing from Customization Requests alone produced an empty-looking
+    // document. Where a favorite style DOES have a matching customization
+    // request, use that row's grandTotal (folds in customizations) as the
+    // "custom pricing" line under the plain style base price.
+    const styles: RecapDocStyleRow[] = favStyles.map(name => {
+      const styleRec = stylesRecords?.find(r => r.name === name) ?? null;
+      const basePrice = (styleRec && stylesBasePriceField)
+        ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
+        : 0;
+      const matchingRequest = customizationRows.find(row => row.styleName === name) ?? null;
+      return {
+        id: styleRec?.id ?? name,
+        name,
+        price: basePrice,
+        notes: '',
+        customPricing: (matchingRequest && matchingRequest.grandTotal !== basePrice) ? matchingRequest.grandTotal : null,
+      };
+    });
+    return {
+      clientName: clientName || 'Unknown Client',
+      email: cStr(CLIENT.EMAIL),
+      phone: cStr(CLIENT.PHONE),
+      weddingDateDisplay: weddingDisplay,
+      appointmentDisplay,
+      clientSpecialist: saName,
+      styles,
+      photos: existingApptPhotos ?? [],
+    };
+  }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, customizationRows, existingApptPhotos]);
 
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
@@ -3207,6 +3244,22 @@ function PostAppointmentModal({
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {/* Sync source color coding — first row, above Styles */}
+            <div className="flex items-center gap-5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 flex-shrink-0" />
+                Acuity
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                Shopify
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                Apparel Magic
+              </span>
+            </div>
+
             {/* Favorite Styles */}
             <div>
               <span className={labelCls}>Favorite Styles from Appointment</span>
@@ -3281,8 +3334,8 @@ function PostAppointmentModal({
                   </div>
                 ) : (
                   <button type="button" onClick={openRecapDocUploadForm} disabled={!clientId || !isConsultationAppt} title="Upload Recap Doc"
-                    className="w-9 h-9 flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    <PlusIcon size={16}/>
+                    className="w-[27px] h-[27px] flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <PlusIcon size={12}/>
                   </button>
                 )}
               </div>
@@ -3302,22 +3355,6 @@ function PostAppointmentModal({
                   placeholder="Any additional notes about the appointment…" rows={4}
                   className={`${inputCls} resize-none`}/>
               </div>
-            </div>
-
-            {/* Sync source color coding — bottom of the detail page, horizontal */}
-            <div className="flex items-center gap-5 pt-1">
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 flex-shrink-0" />
-                Acuity
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                Shopify
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                Apparel Magic
-              </span>
             </div>
 
             {/* Customization Requests — invoice-style line-item table (stays last) */}
