@@ -1061,12 +1061,9 @@ function Layer2({
 
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
-  const [selectedStateCostId, setSelectedStateCostId] = useState<string | null>(null);
   const [discount, setDiscount] = useState('');
   const [discountPercent, setDiscountPercent] = useState('');
   const [discountMode, setDiscountMode] = useState<'currency' | 'percentage'>('currency');
-  const [shippingNotes, setShippingNotes] = useState('');
-  const [taxesNotes, setTaxesNotes] = useState('');
   const [discountNotes, setDiscountNotes] = useState('');
   const [address, setAddress] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1148,7 +1145,7 @@ function Layer2({
 
   const hasUnsavedChanges = selectedStyleIds.length > 0
     || selectedCustomizationIds.length > 0
-    || !!selectedStateCostId
+    || address.trim() !== ''
     || discount.trim() !== ''
     || discountPercent.trim() !== '';
 
@@ -1196,14 +1193,30 @@ function Layer2({
   // No client-based restriction on which styles are selectable — per Julia
   // (2026-07-30), any style should always be selectable, regardless of the
   // client's customization requests or Acuity/appointment favorite styles.
+  // All non-"customized" styles, alphabetical, no cap — "- customized" styles
+  // are internal variants (e.g. "Ada - Customized" alongside the real "Ada")
+  // that should never be directly selectable here.
+  const selectableStyles = useMemo(() => {
+    return styleRecords
+      .filter(style => {
+        const name = styleNameField ? style.getCellValueAsString(styleNameField) : '';
+        return !/customized/i.test(name);
+      })
+      .sort((a, b) => {
+        const nameA = styleNameField ? a.getCellValueAsString(styleNameField) : '';
+        const nameB = styleNameField ? b.getCellValueAsString(styleNameField) : '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [styleRecords, styleNameField]);
+
   const filteredStyles = useMemo(() => {
-    if (!styleSearchQuery.trim()) return styleRecords.slice(0, 20);
+    if (!styleSearchQuery.trim()) return selectableStyles;
     const query = styleSearchQuery.toLowerCase();
-    return styleRecords.filter(style => {
+    return selectableStyles.filter(style => {
       const name = styleNameField ? style.getCellValueAsString(styleNameField).toLowerCase() : '';
       return name.includes(query);
-    }).slice(0, 20);
-  }, [styleRecords, styleSearchQuery, styleNameField]);
+    });
+  }, [selectableStyles, styleSearchQuery, styleNameField]);
 
   // All of the client's customizations, regardless of style/approval — used
   // only to detect "client has customizations, but none are usable yet" so we
@@ -1251,6 +1264,26 @@ function Layer2({
     });
   }, [clientCustomizationsUnfiltered, customizationApprovalStatusField, customizationClientApprovalStatusField, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
 
+  // Per-style breakdown of the above, for the combined pending-approval
+  // banner — "{Style}: {count} pending approval(s)" per selected style that
+  // has at least one, in the order the styles were selected.
+  const pendingCountsByStyle = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const customization of pendingCustomizationsForSelectedStyles) {
+      const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
+      for (const id of linkedStyles) {
+        if (selectedStyleIds.includes(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    }
+    return selectedStyleIds
+      .filter(id => counts.has(id))
+      .map(id => {
+        const styleRec = styleRecords.find(s => s.id === id);
+        const name = styleRec && styleNameField ? styleRec.getCellValueAsString(styleNameField) : 'Unknown style';
+        return { id, name, count: counts.get(id) ?? 0 };
+      });
+  }, [pendingCustomizationsForSelectedStyles, customizationCustomizedStyleField, selectedStyleIds, styleRecords, styleNameField, getLinkedRecordIds]);
+
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
     const query = customizationSearchQuery.toLowerCase();
@@ -1289,24 +1322,9 @@ function Layer2({
     }, 0);
   }, [selectedCustomizations, customizationEffectivePriceField]);
 
-  const selectedStateCost = useMemo(() => {
-    return selectedStateCostId ? stateCostRecords.find(r => r.id === selectedStateCostId) ?? null : null;
-  }, [stateCostRecords, selectedStateCostId]);
-
-  // Live preview of Shipping (lookup) and Taxes (formula), computed here since
-  // Airtable can't calculate either until the draft is actually saved with a
-  // linked state_costs record.
-  const previewShipping = useMemo(() => {
-    if (!selectedStateCost || !stateCostShippingFeeField) return 0;
-    return (selectedStateCost.getCellValue(stateCostShippingFeeField) as number | null) ?? 0;
-  }, [selectedStateCost, stateCostShippingFeeField]);
-
-  const previewTaxes = useMemo(() => {
-    if (!selectedStateCost || !stateCostTaxRateField) return 0;
-    const rate = (selectedStateCost.getCellValue(stateCostTaxRateField) as number | null) ?? 0;
-    return (styleSubtotal + customizationSubtotal) * rate;
-  }, [selectedStateCost, stateCostTaxRateField, styleSubtotal, customizationSubtotal]);
-
+  // Shipping and Taxes are no longer calculated in Airtable at all — removed
+  // 2026-07-30 along with the State Costs selector, per Julia: Shopify will
+  // calculate both automatically from the selected shipping address instead.
   const clientDueDate = useMemo(() => {
     if (!clientId) return null;
     const client = clientRecords.find(c => c.id === clientId);
@@ -1404,14 +1422,14 @@ function Layer2({
   };
 
   const total = useMemo(() => {
-    return rushFee + previewShipping + previewTaxes - discountAmount;
-  }, [rushFee, previewShipping, previewTaxes, discountAmount]);
+    return rushFee - discountAmount;
+  }, [rushFee, discountAmount]);
 
   const grandTotal = useMemo(() => {
     return styleSubtotal + customizationSubtotal + total;
   }, [styleSubtotal, customizationSubtotal, total]);
 
-  const canSave = canCreate && !!clientId && selectedStyleIds.length > 0 && !!selectedStateCostId;
+  const canSave = canCreate && !!clientId && selectedStyleIds.length > 0;
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -1423,12 +1441,9 @@ function Layer2({
       const clientFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CLIENT);
       const styleFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE);
       const customizationsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATIONS);
-      const stateCostsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_STATE_COSTS);
       const rushFeeFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_RUSH_FEE);
       const discountCurrencyFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_CURRENCY);
       const discountPercentageFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_PERCENTAGE);
-      const shippingNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
-      const taxesNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
       const discountNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
       const addressFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_ADDRESS);
 
@@ -1437,10 +1452,7 @@ function Layer2({
       if (clientFieldObj) fields[clientFieldObj.id] = [{ id: clientId }];
       if (styleFieldObj) fields[styleFieldObj.id] = selectedStyleIds.map(id => ({ id }));
       if (customizationsFieldObj) fields[customizationsFieldObj.id] = selectedCustomizationIds.map(id => ({ id }));
-      if (stateCostsFieldObj && selectedStateCostId) fields[stateCostsFieldObj.id] = [{ id: selectedStateCostId }];
       if (rushFeeFieldObj) fields[rushFeeFieldObj.id] = rushFee;
-      // Shipping/Taxes are no longer writable — shipping is a lookup and taxes
-      // a formula, both derived from state_costs, so they aren't in this payload.
       // Discount is entered as either a dollar amount or a percentage — only
       // write to whichever field matches the selected mode.
       if (discountMode === 'percentage') {
@@ -1448,8 +1460,6 @@ function Layer2({
       } else {
         if (discountCurrencyFieldObj) fields[discountCurrencyFieldObj.id] = parseCurrency(discount);
       }
-      if (shippingNotesFieldObj && shippingNotes.trim()) fields[shippingNotesFieldObj.id] = shippingNotes.trim();
-      if (taxesNotesFieldObj && taxesNotes.trim()) fields[taxesNotesFieldObj.id] = taxesNotes.trim();
       if (discountNotesFieldObj && discountNotes.trim()) fields[discountNotesFieldObj.id] = discountNotes.trim();
       if (addressFieldObj && address.trim()) fields[addressFieldObj.id] = address.trim();
 
@@ -1580,16 +1590,15 @@ function Layer2({
               </div>
               )}
 
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">
-                  State Costs<span style={{ color: theme.danger }}> *</span>
-                </h2>
-                <StateCostPicker
+              <div>
+                <h2 className="text-base font-semibold mb-3">Shipping Address</h2>
+                <AddressSelector
+                  value={address}
+                  onChange={setAddress}
+                  options={clientAddressOptions}
+                  disabled={!clientId}
                   theme={theme}
-                  records={stateCostRecords}
-                  nameField={stateCostNameField}
-                  selectedId={selectedStateCostId}
-                  onSelect={setSelectedStateCostId}
+                  bordered
                 />
               </div>
 
@@ -1822,16 +1831,15 @@ function Layer2({
                       </div>
                       )}
                     </div>
-                    {pendingCustomizationsForSelectedStyles.length > 0 && (
+                    {pendingCountsByStyle.length > 0 && (
                       <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
-                        {pendingCustomizationsForSelectedStyles.length === 1 ? 'A customization request' : `${pendingCustomizationsForSelectedStyles.length} customization requests`} for the selected style{selectedStyleIds.length === 1 ? '' : 's'} {pendingCustomizationsForSelectedStyles.length === 1 ? 'is' : 'are'} still waiting on internal approval — push for approval before {pendingCustomizationsForSelectedStyles.length === 1 ? 'it' : 'they'} can be added here.
+                        <p>This client has customization requests waiting for internal review. They need to be approved before they can be added here.</p>
+                        {pendingCountsByStyle.map(s => (
+                          <p key={s.id} className="mt-1">{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</p>
+                        ))}
                       </div>
                     )}
-                    {clientApprovedCustomizations.length === 0 ? (
-                      <div className="rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
-                        This client has customization request{clientCustomizationsUnfiltered.length === 1 ? '' : 's'}, but none are approved yet — internal approval is required, and the client can't have denied it, before it can be added to a draft order. Coordinate the internal approval for this customization, then come back to add it here.
-                      </div>
-                    ) : selectedCustomizations.length === 0 ? (
+                    {selectedCustomizations.length === 0 ? (
                       <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
                     ) : (
                       <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
@@ -1914,49 +1922,6 @@ function Layer2({
                         </tr>
                       )}
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-3 pl-4">Shipping Address</td>
-                        <td className="py-3 pr-2" />
-                        <td className="py-3 pl-3 pr-4">
-                          <AddressSelector
-                            value={address}
-                            onChange={setAddress}
-                            options={clientAddressOptions}
-                            disabled={!clientId}
-                            theme={theme}
-                          />
-                        </td>
-                      </tr>
-                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-3 pl-4">Shipping</td>
-                        <td className="py-3 pr-2 text-right">{formatCurrency(previewShipping)}</td>
-                        <td className="py-3 pl-3 pr-4">
-                          <input
-                            type="text"
-                            placeholder="Notes..."
-                            value={shippingNotes}
-                            onChange={e => setShippingNotes(e.target.value)}
-                            disabled={!clientId}
-                            className="w-full px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
-                          />
-                        </td>
-                      </tr>
-                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                        <td className="py-3 pl-4">Taxes</td>
-                        <td className="py-3 pr-2 text-right">{formatCurrency(previewTaxes)}</td>
-                        <td className="py-3 pl-3 pr-4">
-                          <input
-                            type="text"
-                            placeholder="Notes..."
-                            value={taxesNotes}
-                            onChange={e => setTaxesNotes(e.target.value)}
-                            disabled={!clientId}
-                            className="w-full px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
-                          />
-                        </td>
-                      </tr>
-                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">
                           <div className="flex items-center gap-2">
                             <span>Discount</span>
@@ -2024,18 +1989,6 @@ function Layer2({
                     <span>{formatCurrency(rushFee)}</span>
                   </div>
                 )}
-                {previewShipping !== 0 && (
-                  <div className="flex justify-between">
-                    <span style={{ color: theme.textSecondary }}>Shipping</span>
-                    <span>{formatCurrency(previewShipping)}</span>
-                  </div>
-                )}
-                {previewTaxes !== 0 && (
-                  <div className="flex justify-between">
-                    <span style={{ color: theme.textSecondary }}>Taxes</span>
-                    <span>{formatCurrency(previewTaxes)}</span>
-                  </div>
-                )}
                 {discountAmount !== 0 && (
                   <div className="flex justify-between">
                     <span style={{ color: theme.textSecondary }}>Discount</span>
@@ -2064,7 +2017,7 @@ function Layer2({
             {saveError && <p className="text-sm" style={{ color: theme.danger }}>{saveError}</p>}
             {!canCreate && <p className="text-sm" style={{ color: theme.danger }}>You don't have permission to create drafts.</p>}
             {canCreate && (!clientId || selectedStyleIds.length === 0) && (
-              <p className="text-sm" style={{ color: theme.textSecondary }}>Client, at least one Style, and State Costs are required.</p>
+              <p className="text-sm" style={{ color: theme.textSecondary }}>Client and at least one Style are required.</p>
             )}
           </div>
           <button
@@ -2188,8 +2141,6 @@ function Layer4({
   const taxesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES);
   const discountField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_CURRENCY);
   const discountPercentageField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_PERCENTAGE);
-  const shippingNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
-  const taxesNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
   const discountNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
   const addressField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ADDRESS);
   const styleSubtotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE_SUBTOTAL);
@@ -2261,14 +2212,30 @@ function Layer4({
 
   // No client-based restriction on which styles are selectable — see the
   // matching comment in Layer2.
+  // All non-"customized" styles, alphabetical, no cap — "- customized" styles
+  // are internal variants (e.g. "Ada - Customized" alongside the real "Ada")
+  // that should never be directly selectable here.
+  const selectableStyles = useMemo(() => {
+    return styleRecords
+      .filter(style => {
+        const name = styleNameField ? style.getCellValueAsString(styleNameField) : '';
+        return !/customized/i.test(name);
+      })
+      .sort((a, b) => {
+        const nameA = styleNameField ? a.getCellValueAsString(styleNameField) : '';
+        const nameB = styleNameField ? b.getCellValueAsString(styleNameField) : '';
+        return nameA.localeCompare(nameB);
+      });
+  }, [styleRecords, styleNameField]);
+
   const filteredStyles = useMemo(() => {
-    if (!styleSearchQuery.trim()) return styleRecords.slice(0, 20);
+    if (!styleSearchQuery.trim()) return selectableStyles;
     const query = styleSearchQuery.toLowerCase();
-    return styleRecords.filter(style => {
+    return selectableStyles.filter(style => {
       const name = styleNameField ? style.getCellValueAsString(styleNameField).toLowerCase() : '';
       return name.includes(query);
-    }).slice(0, 20);
-  }, [styleRecords, styleSearchQuery, styleNameField]);
+    });
+  }, [selectableStyles, styleSearchQuery, styleNameField]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -2428,6 +2395,24 @@ function Layer4({
     const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
     return linkedStyles.some(id => linkedStyleIds.includes(id));
   });
+  // Per-style breakdown for the combined banner — see Layer2's
+  // pendingCountsByStyle for the matching comment.
+  const pendingCountsByStyle = (() => {
+    const counts = new Map<string, number>();
+    for (const customization of pendingCustomizationsForLinkedStyles) {
+      const styles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
+      for (const id of styles) {
+        if (linkedStyleIds.includes(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    }
+    return linkedStyleIds
+      .filter(id => counts.has(id))
+      .map(id => {
+        const styleRec = styleRecords.find(s => s.id === id);
+        const name = styleRec && styleNameField ? styleRec.getCellValueAsString(styleNameField) : 'Unknown style';
+        return { id, name, count: counts.get(id) ?? 0 };
+      });
+  })();
   const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
   const stateCostId = getLinkedRecordIds(draft, stateCostsField)[0] ?? null;
   const stateCostRecord = stateCostId ? stateCostRecords.find(r => r.id === stateCostId) ?? null : null;
@@ -2437,8 +2422,6 @@ function Layer4({
   const taxes = taxesField ? (draft.getCellValue(taxesField) as number | null) ?? 0 : 0;
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
   const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
-  const shippingNotes = shippingNotesField ? draft.getCellValueAsString(shippingNotesField) : '';
-  const taxesNotes = taxesNotesField ? draft.getCellValueAsString(taxesNotesField) : '';
   const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
   const address = addressField ? draft.getCellValueAsString(addressField) : '';
   useEffect(() => { setAddressLocal(address); }, [address]);
@@ -2480,17 +2463,6 @@ function Layer4({
       });
     } catch (error) {
       console.error('Failed to toggle lock:', error);
-    }
-  };
-
-  const handleStateCostChange = async (id: string | null) => {
-    if (!isEditable || !stateCostsField) return;
-    try {
-      await draftOrdersTable.updateRecordAsync(draftId, {
-        [stateCostsField.id]: id ? [{ id }] : null,
-      });
-    } catch (error) {
-      console.error('Failed to update state costs:', error);
     }
   };
 
@@ -2897,9 +2869,12 @@ function Layer4({
                   )}
                 </div>
                 {fieldErrors.customizations && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.customizations}</p>}
-                {pendingCustomizationsForLinkedStyles.length > 0 && (
+                {pendingCountsByStyle.length > 0 && (
                   <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
-                    {pendingCustomizationsForLinkedStyles.length === 1 ? 'A customization request' : `${pendingCustomizationsForLinkedStyles.length} customization requests`} for the style{linkedStyleIds.length === 1 ? '' : 's'} on this draft {pendingCustomizationsForLinkedStyles.length === 1 ? 'is' : 'are'} still waiting on internal approval — push for approval before {pendingCustomizationsForLinkedStyles.length === 1 ? 'it' : 'they'} can be added here.
+                    <p>This client has customization requests waiting for internal review. They need to be approved before they can be added here.</p>
+                    {pendingCountsByStyle.map(s => (
+                      <p key={s.id} className="mt-1">{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</p>
+                    ))}
                   </div>
                 )}
                 {linkedCustomizations.length === 0 ? (
@@ -2956,25 +2931,24 @@ function Layer4({
           )}
 
           <div>
+            <h2 className="text-base font-semibold mb-3">Shipping Address</h2>
+            {isEditable ? (
+              <AddressSelector
+                value={addressLocal}
+                onChange={setAddressLocal}
+                onCommit={v => handleNotesBlur(addressField, v, 'address')}
+                options={clientAddressOptions}
+                theme={theme}
+                bordered
+              />
+            ) : (
+              <span className="text-sm" style={{ color: theme.textMuted }}>{address || '—'}</span>
+            )}
+          </div>
+
+          <div>
               <div className="flex items-center justify-between gap-3 mb-3">
                 <h2 className="text-base font-semibold">Additional Charges</h2>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">
-                    State Costs<span style={{ color: theme.danger }}> *</span>
-                  </span>
-                  {isEditable ? (
-                    <StateCostPicker
-                      theme={theme}
-                      records={stateCostRecords}
-                      nameField={stateCostNameField}
-                      selectedId={stateCostId}
-                      onSelect={handleStateCostChange}
-                      placeholder="Select a state..."
-                    />
-                  ) : (
-                    <span className="text-sm">{stateCostName || '—'}</span>
-                  )}
-                </div>
               </div>
               {!clientDueDate && (
                 <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
@@ -3005,47 +2979,6 @@ function Layer4({
                       </td>
                     </tr>
                   )}
-                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-3 pl-4">Shipping Address</td>
-                    <td className="py-3 pr-2" />
-                    <td className="py-3 pl-3 pr-4">
-                      {isEditable ? (
-                        <AddressSelector
-                          value={addressLocal}
-                          onChange={setAddressLocal}
-                          onCommit={v => handleNotesBlur(addressField, v, 'address')}
-                          options={clientAddressOptions}
-                          theme={theme}
-                        />
-                      ) : (
-                        <span className="text-xs" style={{ color: theme.textMuted }}>{address}</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-3 pl-4">Shipping</td>
-                    {/* Shipping is now a lookup off state_costs — always read-only, regardless of isEditable. */}
-                    <td className="py-3 pr-2 text-right">{formatCurrency(shipping)}</td>
-                    <td className="py-3 pl-3 pr-4">
-                      {isEditable ? (
-                        <NotesInput value={shippingNotes} field={shippingNotesField} fieldKey="shippingNotes" theme={theme} onBlur={handleNotesBlur} borderless />
-                      ) : (
-                        <span className="text-xs" style={{ color: theme.textMuted }}>{shippingNotes}</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td className="py-3 pl-4">Taxes</td>
-                    {/* Taxes is now a formula off state_costs — always read-only, regardless of isEditable. */}
-                    <td className="py-3 pr-2 text-right">{formatCurrency(taxes)}</td>
-                    <td className="py-3 pl-3 pr-4">
-                      {isEditable ? (
-                        <NotesInput value={taxesNotes} field={taxesNotesField} fieldKey="taxesNotes" theme={theme} onBlur={handleNotesBlur} borderless />
-                      ) : (
-                        <span className="text-xs" style={{ color: theme.textMuted }}>{taxesNotes}</span>
-                      )}
-                    </td>
-                  </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">
                       <div className="flex items-center gap-2">
@@ -3271,8 +3204,12 @@ interface AddressSelectorProps {
   // on blur — passed the just-committed value. Layer2 (create) omits this;
   // its address is saved once, along with everything else, on final Save.
   onCommit?: (v: string) => void;
+  // Standalone form field (e.g. Create Draft's top-level Shipping Address)
+  // vs. borderless-in-a-table-cell (e.g. Draft Detail's Additional Charges
+  // row) — same borderless/bordered split as NotesInput's `borderless` prop.
+  bordered?: boolean;
 }
-function AddressSelector({ value, onChange, options, disabled, theme, onCommit }: AddressSelectorProps) {
+function AddressSelector({ value, onChange, options, disabled, theme, onCommit, bordered }: AddressSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -3292,8 +3229,10 @@ function AddressSelector({ value, onChange, options, disabled, theme, onCommit }
         onFocus={() => setOpen(true)}
         onBlur={() => onCommit?.(value)}
         disabled={disabled}
-        className="w-full px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
+        className={bordered ? 'w-full px-3 py-2 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed' : 'w-full px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed'}
+        style={bordered
+          ? { backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }
+          : { backgroundColor: 'transparent', border: 'none', color: theme.text }}
       />
       {open && options.length > 0 && (
         <div
