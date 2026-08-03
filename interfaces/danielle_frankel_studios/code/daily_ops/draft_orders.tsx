@@ -45,8 +45,17 @@ const FIELD_IDS = {
   DRAFT_WEDDING_DATE: 'fldmKmFUAqaS0FYQD',
   DRAFT_DUE_DATE: 'fldEIrZxfSsTz3FmA',
   DRAFT_LEAD_TIME: 'fldJM7YjyoCN20xac',
+  // Shipping address selected for this draft order (an existing client
+  // address, or a freehand new one) — created 2026-07-30, singleLineText.
+  DRAFT_ADDRESS: 'fldZY2glO0rB19Eho',
 
   CLIENT_FULL_NAME: 'fldB3Wyam01D3wR5Q',
+  // The three existing-address sources a client can have on file — the
+  // address selector searches across all three (none is authoritative over
+  // the others; a client may have any subset populated).
+  CLIENT_SHOPIFY_ADDRESS: 'fldxFbYURZvlZ0tA1',
+  CLIENT_ACUITY_ADDRESS: 'fldkpfulLIk0jq34d',
+  CLIENT_OTHER_ADDRESS: 'fld5uRLRmAXqAH0nu',
   CLIENT_STAGE: 'fldLcxVZvI1rigBlh',
   CLIENT_DUE_DATE: 'flddDJKkZDsOoCOzE',
   CLIENT_WEDDING_DATE: 'fldbgknumKGS5W5WU',
@@ -1059,10 +1068,29 @@ function Layer2({
   const [shippingNotes, setShippingNotes] = useState('');
   const [taxesNotes, setTaxesNotes] = useState('');
   const [discountNotes, setDiscountNotes] = useState('');
+  const [address, setAddress] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [showClientSearch, setShowClientSearch] = useState(false);
+
+  // The client's existing addresses on file, searched across all three
+  // source fields — none is authoritative, a client may have any subset
+  // populated. Only non-empty ones are offered; picking one, or typing a new
+  // one directly, both just set `address` the same way.
+  const clientAddressOptions = useMemo(() => {
+    if (!clientId) return [];
+    const client = clientRecords.find(c => c.id === clientId);
+    if (!client) return [];
+    const shopifyField = getField(clientsTable, FIELD_IDS.CLIENT_SHOPIFY_ADDRESS);
+    const acuityField = getField(clientsTable, FIELD_IDS.CLIENT_ACUITY_ADDRESS);
+    const otherField = getField(clientsTable, FIELD_IDS.CLIENT_OTHER_ADDRESS);
+    return [
+      { label: 'Shopify Address', value: shopifyField ? client.getCellValueAsString(shopifyField) : '' },
+      { label: 'Acuity Address', value: acuityField ? client.getCellValueAsString(acuityField) : '' },
+      { label: 'Other Address', value: otherField ? client.getCellValueAsString(otherField) : '' },
+    ].filter(o => o.value.trim() !== '');
+  }, [clientId, clientRecords, clientsTable, getField]);
   const [clientHighlightIndex, setClientHighlightIndex] = useState(-1);
   const [styleSearchQuery, setStyleSearchQuery] = useState('');
   const [showStyleSearch, setShowStyleSearch] = useState(false);
@@ -1165,32 +1193,17 @@ function Layer2({
     }).slice(0, 20);
   }, [clientRecords, clientSearchQuery, clientNameField]);
 
-  // Based on the client's customization requests, not their Acuity/appointment
-  // favorite styles — a legacy customization request can be tied to a style
-  // the client never actually picked in Acuity, and the old Acuity-based
-  // filter hid that style entirely, making the (already-approved) customization
-  // impossible to attach to any style in this form.
-  const eligibleStyleIds = useMemo(() => {
-    if (!clientId) return [];
-    const idsFromCustomizations = customizationRecords
-      .filter(c => getLinkedRecordIds(c, customizationClientField).includes(clientId))
-      .flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField));
-    return Array.from(new Set(idsFromCustomizations));
-  }, [clientId, customizationRecords, customizationClientField, customizationCustomizedStyleField, getLinkedRecordIds]);
-
-  const eligibleStyles = useMemo(() => {
-    if (eligibleStyleIds.length === 0) return styleRecords;
-    return styleRecords.filter(s => eligibleStyleIds.includes(s.id));
-  }, [styleRecords, eligibleStyleIds]);
-
+  // No client-based restriction on which styles are selectable — per Julia
+  // (2026-07-30), any style should always be selectable, regardless of the
+  // client's customization requests or Acuity/appointment favorite styles.
   const filteredStyles = useMemo(() => {
-    if (!styleSearchQuery.trim()) return eligibleStyles.slice(0, 20);
+    if (!styleSearchQuery.trim()) return styleRecords.slice(0, 20);
     const query = styleSearchQuery.toLowerCase();
-    return eligibleStyles.filter(style => {
+    return styleRecords.filter(style => {
       const name = styleNameField ? style.getCellValueAsString(styleNameField).toLowerCase() : '';
       return name.includes(query);
     }).slice(0, 20);
-  }, [eligibleStyles, styleSearchQuery, styleNameField]);
+  }, [styleRecords, styleSearchQuery, styleNameField]);
 
   // All of the client's customizations, regardless of style/approval — used
   // only to detect "client has customizations, but none are usable yet" so we
@@ -1221,6 +1234,22 @@ function Layer2({
       return linkedStyles.some(id => selectedStyleIds.includes(id));
     });
   }, [clientApprovedCustomizations, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
+
+  // Customizations tied to one of the currently selected styles that exist
+  // but haven't cleared internal approval yet — the client-wide "no approved
+  // customizations at all" banner (below) doesn't catch this case, since the
+  // client may already have *other* approved customizations for a different
+  // style. Surfaces per-style so the SA knows exactly which style still
+  // needs Margo's approval pushed, instead of the customization silently
+  // never appearing with no explanation.
+  const pendingCustomizationsForSelectedStyles = useMemo(() => {
+    if (selectedStyleIds.length === 0) return [];
+    return clientCustomizationsUnfiltered.filter(customization => {
+      if (isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)) return false;
+      const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
+      return linkedStyles.some(id => selectedStyleIds.includes(id));
+    });
+  }, [clientCustomizationsUnfiltered, customizationApprovalStatusField, customizationClientApprovalStatusField, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -1401,6 +1430,7 @@ function Layer2({
       const shippingNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
       const taxesNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
       const discountNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
+      const addressFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_ADDRESS);
 
       const fields: Record<string, unknown> = {};
 
@@ -1421,6 +1451,7 @@ function Layer2({
       if (shippingNotesFieldObj && shippingNotes.trim()) fields[shippingNotesFieldObj.id] = shippingNotes.trim();
       if (taxesNotesFieldObj && taxesNotes.trim()) fields[taxesNotesFieldObj.id] = taxesNotes.trim();
       if (discountNotesFieldObj && discountNotes.trim()) fields[discountNotesFieldObj.id] = discountNotes.trim();
+      if (addressFieldObj && address.trim()) fields[addressFieldObj.id] = address.trim();
 
       const newDraftId = await draftOrdersTable.createRecordAsync(fields);
       onSave(newDraftId);
@@ -1588,8 +1619,7 @@ function Layer2({
                           }
                         }}
                         onKeyDown={e => {
-                          if (!showStyleSearch || eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '') return;
-                          if (filteredStyles.length === 0) return;
+                          if (!showStyleSearch || filteredStyles.length === 0) return;
                           if (e.key === 'ArrowDown') {
                             e.preventDefault();
                             setStyleHighlightIndex(i => Math.min(i + 1, filteredStyles.length - 1));
@@ -1621,9 +1651,9 @@ function Layer2({
                           className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                           style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                         >
-                          {eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '' ? (
+                          {filteredStyles.length === 0 ? (
                             <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>
-                              This client doesn't have pre-selected styles. Start typing to search styles.
+                              No styles match your search.
                             </p>
                           ) : (
                             filteredStyles.map((style, index) => {
@@ -1792,6 +1822,11 @@ function Layer2({
                       </div>
                       )}
                     </div>
+                    {pendingCustomizationsForSelectedStyles.length > 0 && (
+                      <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
+                        {pendingCustomizationsForSelectedStyles.length === 1 ? 'A customization request' : `${pendingCustomizationsForSelectedStyles.length} customization requests`} for the selected style{selectedStyleIds.length === 1 ? '' : 's'} {pendingCustomizationsForSelectedStyles.length === 1 ? 'is' : 'are'} still waiting on internal approval — push for approval before {pendingCustomizationsForSelectedStyles.length === 1 ? 'it' : 'they'} can be added here.
+                      </div>
+                    )}
                     {clientApprovedCustomizations.length === 0 ? (
                       <div className="rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
                         This client has customization request{clientCustomizationsUnfiltered.length === 1 ? '' : 's'}, but none are approved yet — internal approval is required, and the client can't have denied it, before it can be added to a draft order. Coordinate the internal approval for this customization, then come back to add it here.
@@ -1878,6 +1913,19 @@ function Layer2({
                           </td>
                         </tr>
                       )}
+                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td className="py-3 pl-4">Shipping Address</td>
+                        <td className="py-3 pr-2" />
+                        <td className="py-3 pl-3 pr-4">
+                          <AddressSelector
+                            value={address}
+                            onChange={setAddress}
+                            options={clientAddressOptions}
+                            disabled={!clientId}
+                            theme={theme}
+                          />
+                        </td>
+                      </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">Shipping</td>
                         <td className="py-3 pr-2 text-right">{formatCurrency(previewShipping)}</td>
@@ -2143,6 +2191,7 @@ function Layer4({
   const shippingNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHIPPING_NOTES);
   const taxesNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TAXES_NOTES);
   const discountNotesField = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
+  const addressField = getField(draftOrdersTable, FIELD_IDS.DRAFT_ADDRESS);
   const styleSubtotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_STYLE_SUBTOTAL);
   const customizationSubtotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CUSTOMIZATION_SUBTOTAL);
   const totalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_TOTAL);
@@ -2165,8 +2214,12 @@ function Layer4({
   const rushRuleNonCustomizedPctField = getField(rushFeeRulesTable, FIELD_IDS.RUSH_RULE_NON_CUSTOMIZED_PCT);
   const clientFavoriteStylesAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_ACUITY);
   const clientFavoriteStylesAppointmentField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_APPOINTMENT);
+  const clientShopifyAddressField = getField(clientsTable, FIELD_IDS.CLIENT_SHOPIFY_ADDRESS);
+  const clientAcuityAddressField = getField(clientsTable, FIELD_IDS.CLIENT_ACUITY_ADDRESS);
+  const clientOtherAddressField = getField(clientsTable, FIELD_IDS.CLIENT_OTHER_ADDRESS);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [addressLocal, setAddressLocal] = useState('');
   const [discountMode, setDiscountMode] = useState<'currency' | 'percentage'>('currency');
   const [styleSearchQuery, setStyleSearchQuery] = useState('');
   const [showStyleSearch, setShowStyleSearch] = useState(false);
@@ -2191,36 +2244,31 @@ function Layer4({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // All of the client's customizations, regardless of approval — used only
+  // to detect the pending-per-style case below (see the matching comment in
+  // Layer2's clientCustomizationsUnfiltered).
+  const clientCustomizationsUnfiltered = useMemo(() => {
+    return customizationRecords.filter(customization =>
+      getLinkedRecordIds(customization, customizationClientField).includes(clientId)
+    );
+  }, [customizationRecords, clientId, customizationClientField, getLinkedRecordIds]);
+
   const clientCustomizations = useMemo(() => {
-    return customizationRecords.filter(customization => {
-      const linkedClients = getLinkedRecordIds(customization, customizationClientField);
-      if (!linkedClients.includes(clientId)) return false;
-      return isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField);
-    });
-  }, [customizationRecords, clientId, customizationClientField, customizationApprovalStatusField, customizationClientApprovalStatusField, getLinkedRecordIds]);
+    return clientCustomizationsUnfiltered.filter(customization =>
+      isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)
+    );
+  }, [clientCustomizationsUnfiltered, customizationApprovalStatusField, customizationClientApprovalStatusField]);
 
-  // Based on the client's customization requests, not their Acuity/appointment
-  // favorite styles — see the matching comment in Layer2.
-  const eligibleStyleIds = useMemo(() => {
-    const idsFromCustomizations = customizationRecords
-      .filter(c => getLinkedRecordIds(c, customizationClientField).includes(clientId))
-      .flatMap(c => getLinkedRecordIds(c, customizationCustomizedStyleField));
-    return Array.from(new Set(idsFromCustomizations));
-  }, [clientId, customizationRecords, customizationClientField, customizationCustomizedStyleField, getLinkedRecordIds]);
-
-  const eligibleStyles = useMemo(() => {
-    if (eligibleStyleIds.length === 0) return styleRecords;
-    return styleRecords.filter(s => eligibleStyleIds.includes(s.id));
-  }, [styleRecords, eligibleStyleIds]);
-
+  // No client-based restriction on which styles are selectable — see the
+  // matching comment in Layer2.
   const filteredStyles = useMemo(() => {
-    if (!styleSearchQuery.trim()) return eligibleStyles.slice(0, 20);
+    if (!styleSearchQuery.trim()) return styleRecords.slice(0, 20);
     const query = styleSearchQuery.toLowerCase();
-    return eligibleStyles.filter(style => {
+    return styleRecords.filter(style => {
       const name = styleNameField ? style.getCellValueAsString(styleNameField).toLowerCase() : '';
       return name.includes(query);
     }).slice(0, 20);
-  }, [eligibleStyles, styleSearchQuery, styleNameField]);
+  }, [styleRecords, styleSearchQuery, styleNameField]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -2370,6 +2418,16 @@ function Layer4({
   const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
   const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
   const linkedStyleIds = getLinkedRecordIds(draft, styleField);
+  // Customizations tied to one of the styles already on this draft that
+  // haven't cleared internal approval yet — see the matching comment in
+  // Layer2's pendingCustomizationsForSelectedStyles. Plain derivation (not
+  // useMemo), matching this component's existing pattern of computing
+  // per-record values inline from `draft` rather than memoizing them.
+  const pendingCustomizationsForLinkedStyles = linkedStyleIds.length === 0 ? [] : clientCustomizationsUnfiltered.filter(customization => {
+    if (isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)) return false;
+    const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
+    return linkedStyles.some(id => linkedStyleIds.includes(id));
+  });
   const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
   const stateCostId = getLinkedRecordIds(draft, stateCostsField)[0] ?? null;
   const stateCostRecord = stateCostId ? stateCostRecords.find(r => r.id === stateCostId) ?? null : null;
@@ -2382,6 +2440,20 @@ function Layer4({
   const shippingNotes = shippingNotesField ? draft.getCellValueAsString(shippingNotesField) : '';
   const taxesNotes = taxesNotesField ? draft.getCellValueAsString(taxesNotesField) : '';
   const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
+  const address = addressField ? draft.getCellValueAsString(addressField) : '';
+  useEffect(() => { setAddressLocal(address); }, [address]);
+
+  // The client's existing addresses on file — see the matching comment in
+  // Layer2's clientAddressOptions.
+  const clientAddressOptions = useMemo(() => {
+    const client = clientRecords.find(c => c.id === clientId);
+    if (!client) return [];
+    return [
+      { label: 'Shopify Address', value: clientShopifyAddressField ? client.getCellValueAsString(clientShopifyAddressField) : '' },
+      { label: 'Acuity Address', value: clientAcuityAddressField ? client.getCellValueAsString(clientAcuityAddressField) : '' },
+      { label: 'Other Address', value: clientOtherAddressField ? client.getCellValueAsString(clientOtherAddressField) : '' },
+    ].filter(o => o.value.trim() !== '');
+  }, [clientId, clientRecords, clientShopifyAddressField, clientAcuityAddressField, clientOtherAddressField]);
   const styleSubtotal = styleSubtotalField ? (draft.getCellValue(styleSubtotalField) as number | null) ?? 0 : 0;
   const customizationSubtotal = customizationSubtotalField ? (draft.getCellValue(customizationSubtotalField) as number | null) ?? 0 : 0;
   const total = totalField ? (draft.getCellValue(totalField) as number | null) ?? 0 : 0;
@@ -2678,9 +2750,9 @@ function Layer4({
                       className="absolute z-20 w-full mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
                       style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
                     >
-                      {eligibleStyleIds.length === 0 && styleSearchQuery.trim() === '' ? (
+                      {filteredStyles.filter(s => !linkedStyleIds.includes(s.id)).length === 0 ? (
                         <p className="px-3 py-2 text-sm" style={{ color: theme.textSecondary }}>
-                          This client doesn't have pre-selected styles. Start typing to search styles.
+                          No styles match your search.
                         </p>
                       ) : (
                         filteredStyles
@@ -2751,7 +2823,7 @@ function Layer4({
               )}
           </div>
 
-          {clientCustomizations.length > 0 && (
+          {(clientCustomizations.length > 0 || pendingCustomizationsForLinkedStyles.length > 0) && (
             <div>
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h2 className="text-base font-semibold">Customizations</h2>
@@ -2825,6 +2897,11 @@ function Layer4({
                   )}
                 </div>
                 {fieldErrors.customizations && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.customizations}</p>}
+                {pendingCustomizationsForLinkedStyles.length > 0 && (
+                  <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
+                    {pendingCustomizationsForLinkedStyles.length === 1 ? 'A customization request' : `${pendingCustomizationsForLinkedStyles.length} customization requests`} for the style{linkedStyleIds.length === 1 ? '' : 's'} on this draft {pendingCustomizationsForLinkedStyles.length === 1 ? 'is' : 'are'} still waiting on internal approval — push for approval before {pendingCustomizationsForLinkedStyles.length === 1 ? 'it' : 'they'} can be added here.
+                  </div>
+                )}
                 {linkedCustomizations.length === 0 ? (
                   <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
                 ) : (
@@ -2928,6 +3005,23 @@ function Layer4({
                       </td>
                     </tr>
                   )}
+                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                    <td className="py-3 pl-4">Shipping Address</td>
+                    <td className="py-3 pr-2" />
+                    <td className="py-3 pl-3 pr-4">
+                      {isEditable ? (
+                        <AddressSelector
+                          value={addressLocal}
+                          onChange={setAddressLocal}
+                          onCommit={v => handleNotesBlur(addressField, v, 'address')}
+                          options={clientAddressOptions}
+                          theme={theme}
+                        />
+                      ) : (
+                        <span className="text-xs" style={{ color: theme.textMuted }}>{address}</span>
+                      )}
+                    </td>
+                  </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">Shipping</td>
                     {/* Shipping is now a lookup off state_costs — always read-only, regardless of isEditable. */}
@@ -3158,6 +3252,69 @@ function NotesInput({ value, field, fieldKey, theme, onBlur, borderless }: Notes
       className={borderless ? 'w-full px-2 py-1 text-xs' : 'w-full px-2 py-1 rounded-md text-xs'}
       style={borderless ? { backgroundColor: 'transparent', border: 'none', color: theme.text } : { backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
     />
+  );
+}
+
+// ─── AddressSelector ──────────────────────────────────────────────────────────
+// Free-text input that also offers the client's existing addresses (Shopify/
+// Acuity/Other) as quick-pick suggestions — picking one just fills the same
+// input the same way typing a brand-new address would, so there's no
+// separate "existing vs. new" mode to toggle.
+interface AddressOption { label: string; value: string; }
+interface AddressSelectorProps {
+  value: string;
+  onChange: (v: string) => void;
+  options: AddressOption[];
+  disabled?: boolean;
+  theme: typeof COLORS.LIGHT;
+  // Only used in edit mode (Layer4), where each field autosaves independently
+  // on blur — passed the just-committed value. Layer2 (create) omits this;
+  // its address is saved once, along with everything else, on final Save.
+  onCommit?: (v: string) => void;
+}
+function AddressSelector({ value, onChange, options, disabled, theme, onCommit }: AddressSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        placeholder="Select an existing address, or type a new one..."
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => onCommit?.(value)}
+        disabled={disabled}
+        className="w-full px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ backgroundColor: 'transparent', border: 'none', color: theme.text }}
+      />
+      {open && options.length > 0 && (
+        <div
+          className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-auto rounded-md shadow-lg"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}
+        >
+          {options.map(o => (
+            <button
+              key={o.label}
+              type="button"
+              onClick={() => { onChange(o.value); onCommit?.(o.value); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-xs hover:cursor-pointer"
+              style={{ color: theme.text }}
+            >
+              <div style={{ color: theme.textMuted }}>{o.label}</div>
+              <div className="truncate">{o.value}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

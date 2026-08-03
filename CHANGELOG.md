@@ -36,6 +36,11 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Removed the "Needs confirmation" chip next to Wedding Date.
 - Widened the client search bar.
 
+**Draft Orders**
+- Added a Shipping Address field — pick from the client's existing addresses on file, or type a new one.
+- Any style can now be selected when building a draft, instead of only styles tied to the client's existing customization requests.
+- If a customization request for a style on the draft hasn't been approved yet, the Sales Associate now sees a clear message to push for approval, instead of the customization silently not showing up.
+
 ## Week of Jul 28–29, 2026
 
 **Alterations**
