@@ -449,7 +449,7 @@ function StatusStepper({ choices, currentValue }: StatusStepperProps) {
               ) : (
                 <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-white/10 bg-white dark:bg-[#242220]" />
               )}
-              <span className={`text-sm mt-2 text-center max-w-[120px] ${isCurrent ? 'font-semibold text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-500 dark:text-gray-400'}`}>
+              <span className={`text-sm mt-2 text-center whitespace-nowrap ${isCurrent ? 'font-semibold text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-500 dark:text-gray-400'}`}>
                 {choice.name}
               </span>
             </div>
@@ -491,18 +491,10 @@ function AdvanceConfirmModal({ nextStatus, onContinue }: AdvanceConfirmModalProp
   );
 }
 
-// ─── Detail page building blocks (BRANDING.md-style DetailSection/FieldRow) ────
-// Header size matches pipeline.tsx's "Stage in pipeline"/"Appointment
-// details" section labels (text-sm, not the text-xs used elsewhere) — per
-// the 2026-07-30 request to use "the correct header font size."
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-      <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-3">{title}</div>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
+// ─── Detail page building blocks (BRANDING.md-style FieldRow/DetailRow) ────────
+// No section wrapper/header (2026-08-03 — the whole body is one box, only the
+// title bar is separate). Field titles (not section headers) carry the
+// larger font size per that same request.
 // Column count varies by row (4 fields in the top row, single-field rows for
 // Items Sold / Comments below) — not a fixed 3-per-row grid.
 function FieldRow({ cols = 3, children }: { cols?: number; children: React.ReactNode }) {
@@ -512,7 +504,7 @@ function FieldRow({ cols = 3, children }: { cols?: number; children: React.React
 function DetailRow({ label, value, tooltip }: { label: string; value: React.ReactNode; tooltip?: string }) {
   return (
     <div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide" title={tooltip}>
+      <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide" title={tooltip}>
         {label}
       </div>
       <div className="text-sm text-gray-800 dark:text-gray-200 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
@@ -582,31 +574,23 @@ function ClientDetailModal({
         style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Title bar — client name + Move to X + close */}
+        {/* Title bar — client name + Move to next step (no close button, per request) */}
         <div className="flex-shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-[#34312C]">
           <div className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] truncate">{name || 'Unknown Client'}</div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {canWrite && nextChoice && (
-              <button type="button" onClick={() => onAdvanceRequest(nextChoice.name)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-                  hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
-                                 : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
-                Move to "{nextChoice.name}"
-              </button>
-            )}
-            <button type="button" onClick={requestClose}
-              className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-              <XIcon size={18} />
+          {canWrite && nextChoice && (
+            <button type="button" onClick={() => onAdvanceRequest(nextChoice.name)}
+              className={`flex-shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
+                               : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
+              Move to next step
             </button>
-          </div>
+          )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-          <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+        <div className="flex-1 overflow-y-auto p-6" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+          <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 space-y-4">
             <StatusStepper choices={statusChoices} currentValue={statusValue} />
-          </div>
 
-          <DetailSection title="Details">
             <FieldRow cols={4}>
               <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
               <DetailRow label="Due Date" value={formatDate(dueStr)} tooltip="3 months before the wedding date — target date to have the card ready" />
@@ -616,16 +600,17 @@ function ClientDetailModal({
             <FieldRow cols={1}>
               <DetailRow label="Items Sold" value={itemsStr || '—'} />
             </FieldRow>
-          </DetailSection>
 
-          <DetailSection title="Comments">
-            <CommentsCell
-              value={commentsStr}
-              disabled={!canWrite}
-              hasError={hasCommentError}
-              onSave={onSaveComments}
-            />
-          </DetailSection>
+            <div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-0.5">Comments</div>
+              <CommentsCell
+                value={commentsStr}
+                disabled={!canWrite}
+                hasError={hasCommentError}
+                onSave={onSaveComments}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

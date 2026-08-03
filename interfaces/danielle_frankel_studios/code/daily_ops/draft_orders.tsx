@@ -213,13 +213,12 @@ function getRushFeeExplanation(
 
   if (!matchingRule) return '';
 
-  const ruleWeeks = rushRuleWeeksField ? (matchingRule.getCellValue(rushRuleWeeksField) as number | null) ?? 0 : 0;
   const rushPct = rushRuleNonCustomizedPctField
     ? (matchingRule.getCellValue(rushRuleNonCustomizedPctField) as number | null) ?? 0
     : 0;
   const pctLabel = `${Math.round(rushPct * 100)}%`;
 
-  return `Applies a ${pctLabel} rush fee to ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'} — only ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} remain until the due date (${formatDate(dueDate.toISOString())}), which falls in the ≤${ruleWeeks}-week rush tier.`;
+  return `${pctLabel} rush fee on ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'} — ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} left until the due date (${formatDate(dueDate.toISOString())}).`;
 }
 
 function parseCurrency(value: string): number {
@@ -1831,7 +1830,7 @@ function Layer2({
                     </div>
                     {pendingCountsByStyle.length > 0 && (
                       <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
-                        <p>This client has customization requests waiting for internal review. They need to be approved before they can be added here.</p>
+                        <p>This client has customization requests waiting for internal review, which need to be approved before they can be added.</p>
                         <ul className="list-disc pl-5 mt-1">
                           {pendingCountsByStyle.map(s => (
                             <li key={s.id}>{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</li>
@@ -2365,6 +2364,17 @@ function Layer4({
     setDiscountMode(discountPctVal > 0 && discountVal === 0 ? 'percentage' : 'currency');
   }, [draft, draftId, discountField, discountPercentageField]);
 
+  // Must run unconditionally (guarding on `draft` internally) — this used to
+  // sit after the `if (!draft)` early return below (compute `address` inline
+  // there and effect off of it), which skipped the hook on some renders and
+  // not others (e.g. right after creating a brand-new draft, before
+  // draftRecords syncs), triggering React error #310, same root cause as the
+  // two hooks directly above.
+  useEffect(() => {
+    if (!draft) return;
+    setAddressLocal(addressField ? draft.getCellValueAsString(addressField) ?? '' : '');
+  }, [draft, addressField]);
+
   if (!draft) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -2420,9 +2430,6 @@ function Layer4({
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
   const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
   const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
-  const address = addressField ? draft.getCellValueAsString(addressField) : '';
-  useEffect(() => { setAddressLocal(address); }, [address]);
-
   // The client's existing addresses on file — see the matching comment in
   // Layer2's clientAddressOptions.
   const clientAddressOptions = useMemo(() => {
@@ -2868,7 +2875,7 @@ function Layer4({
                 {fieldErrors.customizations && <p className="text-xs mb-2" style={{ color: theme.danger }}>{fieldErrors.customizations}</p>}
                 {pendingCountsByStyle.length > 0 && (
                   <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
-                    <p>This client has customization requests waiting for internal review. They need to be approved before they can be added here.</p>
+                    <p>This client has customization requests waiting for internal review, which need to be approved before they can be added.</p>
                     <ul className="list-disc pl-5 mt-1">
                       {pendingCountsByStyle.map(s => (
                         <li key={s.id}>{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</li>
@@ -2945,7 +2952,7 @@ function Layer4({
                 />
               </div>
             ) : (
-              <span className="text-sm" style={{ color: theme.textMuted }}>{address || '—'}</span>
+              <span className="text-sm" style={{ color: theme.textMuted }}>{addressLocal || '—'}</span>
             )}
           </div>
 

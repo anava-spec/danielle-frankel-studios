@@ -11,6 +11,20 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Aug 3, 2026
+
+**Calligraphy Cards**
+- Stage names in the detail popup's status stepper no longer wrap to a second line.
+- The popup's body is now a single box instead of separate boxed sections, with no section titles.
+- Removed the X close button from the popup — closes via clicking outside or pressing Escape.
+- Renamed the advance button to "Move to next step."
+- Field titles (Wedding Date, Due Date, Gown, etc., and Comments) are now a bit larger and easier to read.
+
+**Draft Orders**
+- Reworded the pending-approval banner for clarity.
+- Shortened the auto-generated Rush Fee note.
+- Fixed a bug that could throw an error when saving a brand-new draft order for the first time.
+
 ## Week of Jul 30, 2026
 
 **Did Not Convert**

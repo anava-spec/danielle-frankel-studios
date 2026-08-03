@@ -3324,7 +3324,7 @@ function PostAppointmentModal({
   // Eligibility reuses the exact same isConsultation() substring check the
   // main day-list/search filters already use to decide which appointments
   // are Recap-eligible in the first place (see filterAndSort in
-  // AppointmentsApp) — not reimplemented from the schema. Per the AC: no
+  // RecapApp) — not reimplemented from the schema. Per the AC: no
   // Recap Doc for second/follow-up appointments, and if the data needed to
   // tell first-consultation apart from follow-up is missing (empty type),
   // don't offer generation — flag for manual review instead of guessing.
@@ -3886,7 +3886,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       defaultValue: pricingTable.getFieldIfExists(PRICING.MULTIPLE) ?? pricingTable.fields.find(f => normalizedIncludes(f.name, 'multiple')),
     },
     // Self Usage (Customizations table) and its Styles-table counterpart are
-    // no longer custom properties — hardcoded directly in AppointmentsApp as
+    // no longer custom properties — hardcoded directly in RecapApp as
     // of 2026-07-27 (real field IDs are known now), after a fuzzy name match
     // silently resolved to the wrong field more than once.
     // Rush Fee with Proposed Custom Price / Rush Fee % / Leadtime (Weeks)
@@ -3919,8 +3919,8 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
   ].filter(Boolean);
 }
 
-// ─── AppointmentsApp ──────────────────────────────────────────────────────────
-function AppointmentsApp(): React.ReactElement {
+// ─── RecapApp ──────────────────────────────────────────────────────────
+function RecapApp(): React.ReactElement {
   useTheme();
   const base = useBase();
   const { errorState, customPropertyValueByKey } = useCustomProperties(getCustomProperties);
@@ -4223,4 +4223,4 @@ function AppointmentsApp(): React.ReactElement {
   );
 }
 
-initializeBlock({ interface: () => <AppointmentsApp /> });
+initializeBlock({ interface: () => <RecapApp /> });
