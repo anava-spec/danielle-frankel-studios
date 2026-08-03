@@ -37,10 +37,11 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Widened the client search bar.
 
 **Draft Orders**
-- Added a Shipping Address field, right up front in the form — pick from the client's existing addresses on file, or type a new one.
+- Added a Shipping Address field, right up front in the form — pick from the client's existing addresses on file, or type a new one. Now laid out inline like every other field on the form.
 - Any style can now be selected when building a draft (sorted alphabetically), instead of only styles tied to the client's existing customization requests. Internal "customized" style variants are hidden from this list.
 - Removed the State/Tax cost selection — Shopify will calculate shipping and taxes automatically from the selected address going forward.
-- If a customization request for a style on the draft hasn't been approved yet, the Sales Associate now sees one combined, clearer message showing exactly which style(s) have pending approvals.
+- Rush Fee now always shows, even when it's $0, instead of disappearing.
+- If a client has any customization request still waiting on internal approval, the Sales Associate now sees a clear bulleted message showing exactly which style(s) have pending approvals — this now shows as soon as the client is selected, even before a style is picked, and no longer shows a confusing "No customizations selected" message alongside it.
 
 **Calligraphy Cards**
 - Each client now has a detail popup (click a row to open it) showing the full record, a visual status stepper with progressive coloring, and a "Comments" field for Margo to note name variations for the card.

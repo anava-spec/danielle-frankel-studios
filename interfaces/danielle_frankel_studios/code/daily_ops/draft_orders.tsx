@@ -1248,41 +1248,37 @@ function Layer2({
     });
   }, [clientApprovedCustomizations, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
 
-  // Customizations tied to one of the currently selected styles that exist
-  // but haven't cleared internal approval yet — the client-wide "no approved
-  // customizations at all" banner (below) doesn't catch this case, since the
-  // client may already have *other* approved customizations for a different
-  // style. Surfaces per-style so the SA knows exactly which style still
-  // needs Margo's approval pushed, instead of the customization silently
-  // never appearing with no explanation.
-  const pendingCustomizationsForSelectedStyles = useMemo(() => {
-    if (selectedStyleIds.length === 0) return [];
-    return clientCustomizationsUnfiltered.filter(customization => {
-      if (isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)) return false;
-      const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
-      return linkedStyles.some(id => selectedStyleIds.includes(id));
-    });
-  }, [clientCustomizationsUnfiltered, customizationApprovalStatusField, customizationClientApprovalStatusField, customizationCustomizedStyleField, selectedStyleIds, getLinkedRecordIds]);
+  // Every one of the client's customizations that hasn't cleared internal
+  // approval yet — client-wide, NOT scoped to the currently selected
+  // style(s) (2026-07-30 correction: this must show as soon as a client with
+  // a pending request is selected, before any style is picked, not only
+  // once a matching style happens to be selected).
+  const pendingCustomizations = useMemo(() => {
+    return clientCustomizationsUnfiltered.filter(customization =>
+      !isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)
+    );
+  }, [clientCustomizationsUnfiltered, customizationApprovalStatusField, customizationClientApprovalStatusField]);
 
   // Per-style breakdown of the above, for the combined pending-approval
-  // banner — "{Style}: {count} pending approval(s)" per selected style that
-  // has at least one, in the order the styles were selected.
+  // banner — "{Style}: {count} pending approval(s)" for every style that has
+  // at least one pending request, regardless of whether that style is
+  // currently on this draft.
   const pendingCountsByStyle = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const customization of pendingCustomizationsForSelectedStyles) {
+    const order: string[] = [];
+    for (const customization of pendingCustomizations) {
       const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
       for (const id of linkedStyles) {
-        if (selectedStyleIds.includes(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+        if (!counts.has(id)) order.push(id);
+        counts.set(id, (counts.get(id) ?? 0) + 1);
       }
     }
-    return selectedStyleIds
-      .filter(id => counts.has(id))
-      .map(id => {
-        const styleRec = styleRecords.find(s => s.id === id);
-        const name = styleRec && styleNameField ? styleRec.getCellValueAsString(styleNameField) : 'Unknown style';
-        return { id, name, count: counts.get(id) ?? 0 };
-      });
-  }, [pendingCustomizationsForSelectedStyles, customizationCustomizedStyleField, selectedStyleIds, styleRecords, styleNameField, getLinkedRecordIds]);
+    return order.map(id => {
+      const styleRec = styleRecords.find(s => s.id === id);
+      const name = styleRec && styleNameField ? styleRec.getCellValueAsString(styleNameField) : 'Unknown style';
+      return { id, name, count: counts.get(id) ?? 0 };
+    });
+  }, [pendingCustomizations, customizationCustomizedStyleField, styleRecords, styleNameField, getLinkedRecordIds]);
 
   const filteredCustomizations = useMemo(() => {
     if (!customizationSearchQuery.trim()) return clientCustomizations.slice(0, 20);
@@ -1590,16 +1586,18 @@ function Layer2({
               </div>
               )}
 
-              <div>
-                <h2 className="text-base font-semibold mb-3">Shipping Address</h2>
-                <AddressSelector
-                  value={address}
-                  onChange={setAddress}
-                  options={clientAddressOptions}
-                  disabled={!clientId}
-                  theme={theme}
-                  bordered
-                />
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold">Shipping Address</h2>
+                <div className="w-64">
+                  <AddressSelector
+                    value={address}
+                    onChange={setAddress}
+                    options={clientAddressOptions}
+                    disabled={!clientId}
+                    theme={theme}
+                    bordered
+                  />
+                </div>
               </div>
 
               <div>
@@ -1834,13 +1832,17 @@ function Layer2({
                     {pendingCountsByStyle.length > 0 && (
                       <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
                         <p>This client has customization requests waiting for internal review. They need to be approved before they can be added here.</p>
-                        {pendingCountsByStyle.map(s => (
-                          <p key={s.id} className="mt-1">{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</p>
-                        ))}
+                        <ul className="list-disc pl-5 mt-1">
+                          {pendingCountsByStyle.map(s => (
+                            <li key={s.id}>{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     {selectedCustomizations.length === 0 ? (
-                      <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
+                      pendingCountsByStyle.length === 0 && (
+                        <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
+                      )
                     ) : (
                       <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                       <table className="w-full text-sm border-collapse">
@@ -1912,15 +1914,13 @@ function Layer2({
                       </tr>
                     </thead>
                     <tbody>
-                      {rushFee !== 0 && (
-                        <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                          <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
-                          <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
-                          <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
-                            {rushFeeExplanation}
-                          </td>
-                        </tr>
-                      )}
+                      <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                        <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
+                        <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
+                        <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
+                          {rushFeeExplanation}
+                        </td>
+                      </tr>
                       <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                         <td className="py-3 pl-4">
                           <div className="flex items-center gap-2">
@@ -1983,12 +1983,10 @@ function Layer2({
                     <span>{formatCurrency(customizationSubtotal)}</span>
                   </div>
                 )}
-                {rushFee !== 0 && (
-                  <div className="flex justify-between">
-                    <span style={{ color: theme.textSecondary }}>Rush Fee</span>
-                    <span>{formatCurrency(rushFee)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between">
+                  <span style={{ color: theme.textSecondary }}>Rush Fee</span>
+                  <span>{formatCurrency(rushFee)}</span>
+                </div>
                 {discountAmount !== 0 && (
                   <div className="flex justify-between">
                     <span style={{ color: theme.textSecondary }}>Discount</span>
@@ -2385,33 +2383,32 @@ function Layer4({
   const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
   const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
   const linkedStyleIds = getLinkedRecordIds(draft, styleField);
-  // Customizations tied to one of the styles already on this draft that
-  // haven't cleared internal approval yet — see the matching comment in
-  // Layer2's pendingCustomizationsForSelectedStyles. Plain derivation (not
-  // useMemo), matching this component's existing pattern of computing
-  // per-record values inline from `draft` rather than memoizing them.
-  const pendingCustomizationsForLinkedStyles = linkedStyleIds.length === 0 ? [] : clientCustomizationsUnfiltered.filter(customization => {
-    if (isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)) return false;
-    const linkedStyles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
-    return linkedStyles.some(id => linkedStyleIds.includes(id));
-  });
+  // Every one of the client's customizations that hasn't cleared internal
+  // approval yet — client-wide, NOT scoped to the styles linked to this
+  // draft — see the matching comment in Layer2's pendingCustomizations.
+  // Plain derivation (not useMemo), matching this component's existing
+  // pattern of computing per-record values inline from `draft` rather than
+  // memoizing them.
+  const pendingCustomizations = clientCustomizationsUnfiltered.filter(customization =>
+    !isCustomizationApproved(customization, customizationApprovalStatusField, customizationClientApprovalStatusField)
+  );
   // Per-style breakdown for the combined banner — see Layer2's
   // pendingCountsByStyle for the matching comment.
   const pendingCountsByStyle = (() => {
     const counts = new Map<string, number>();
-    for (const customization of pendingCustomizationsForLinkedStyles) {
+    const order: string[] = [];
+    for (const customization of pendingCustomizations) {
       const styles = getLinkedRecordIds(customization, customizationCustomizedStyleField);
       for (const id of styles) {
-        if (linkedStyleIds.includes(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+        if (!counts.has(id)) order.push(id);
+        counts.set(id, (counts.get(id) ?? 0) + 1);
       }
     }
-    return linkedStyleIds
-      .filter(id => counts.has(id))
-      .map(id => {
-        const styleRec = styleRecords.find(s => s.id === id);
-        const name = styleRec && styleNameField ? styleRec.getCellValueAsString(styleNameField) : 'Unknown style';
-        return { id, name, count: counts.get(id) ?? 0 };
-      });
+    return order.map(id => {
+      const styleRec = styleRecords.find(s => s.id === id);
+      const name = styleRec && styleNameField ? styleRec.getCellValueAsString(styleNameField) : 'Unknown style';
+      return { id, name, count: counts.get(id) ?? 0 };
+    });
   })();
   const linkedCustomizationIds = getLinkedRecordIds(draft, customizationsField);
   const stateCostId = getLinkedRecordIds(draft, stateCostsField)[0] ?? null;
@@ -2795,7 +2792,7 @@ function Layer4({
               )}
           </div>
 
-          {(clientCustomizations.length > 0 || pendingCustomizationsForLinkedStyles.length > 0) && (
+          {(clientCustomizations.length > 0 || pendingCustomizations.length > 0) && (
             <div>
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h2 className="text-base font-semibold">Customizations</h2>
@@ -2872,13 +2869,17 @@ function Layer4({
                 {pendingCountsByStyle.length > 0 && (
                   <div className="rounded-lg px-4 py-3 text-sm mb-3" style={{ backgroundColor: theme.neutralBg, color: theme.textSecondary }}>
                     <p>This client has customization requests waiting for internal review. They need to be approved before they can be added here.</p>
-                    {pendingCountsByStyle.map(s => (
-                      <p key={s.id} className="mt-1">{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</p>
-                    ))}
+                    <ul className="list-disc pl-5 mt-1">
+                      {pendingCountsByStyle.map(s => (
+                        <li key={s.id}>{s.name}: {s.count} pending approval{s.count === 1 ? '' : 's'}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 {linkedCustomizations.length === 0 ? (
-                  <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
+                  pendingCountsByStyle.length === 0 && (
+                    <p className="text-sm" style={{ color: theme.textSecondary }}>No customizations selected.</p>
+                  )
                 ) : (
                   <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
                   <table className="w-full text-sm border-collapse">
@@ -2930,17 +2931,19 @@ function Layer4({
             </div>
           )}
 
-          <div>
-            <h2 className="text-base font-semibold mb-3">Shipping Address</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Shipping Address</h2>
             {isEditable ? (
-              <AddressSelector
-                value={addressLocal}
-                onChange={setAddressLocal}
-                onCommit={v => handleNotesBlur(addressField, v, 'address')}
-                options={clientAddressOptions}
-                theme={theme}
-                bordered
-              />
+              <div className="w-64">
+                <AddressSelector
+                  value={addressLocal}
+                  onChange={setAddressLocal}
+                  onCommit={v => handleNotesBlur(addressField, v, 'address')}
+                  options={clientAddressOptions}
+                  theme={theme}
+                  bordered
+                />
+              </div>
             ) : (
               <span className="text-sm" style={{ color: theme.textMuted }}>{address || '—'}</span>
             )}
@@ -2970,15 +2973,13 @@ function Layer4({
                   </tr>
                 </thead>
                 <tbody>
-                  {rushFee !== 0 && (
-                    <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                      <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
-                      <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
-                      <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
-                        {rushFeeExplanation}
-                      </td>
-                    </tr>
-                  )}
+                  <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                    <td className="py-3 pl-4" style={{ backgroundColor: theme.neutralBg }}>Rush Fee</td>
+                    <td className="py-3 pr-2 text-right whitespace-nowrap" style={{ backgroundColor: theme.neutralBg }}>{formatCurrency(rushFee)}</td>
+                    <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted, backgroundColor: theme.neutralBg }}>
+                      {rushFeeExplanation}
+                    </td>
+                  </tr>
                   <tr style={{ borderTop: `1px solid ${theme.borderLight}` }}>
                     <td className="py-3 pl-4">
                       <div className="flex items-center gap-2">
@@ -3037,12 +3038,10 @@ function Layer4({
                   <span>{formatCurrency(customizationSubtotal)}</span>
                 </div>
               )}
-              {rushFee !== 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: theme.textSecondary }}>Rush Fee</span>
-                  <span>{formatCurrency(rushFee)}</span>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span style={{ color: theme.textSecondary }}>Rush Fee</span>
+                <span>{formatCurrency(rushFee)}</span>
+              </div>
               {shipping !== 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: theme.textSecondary }}>Shipping</span>
