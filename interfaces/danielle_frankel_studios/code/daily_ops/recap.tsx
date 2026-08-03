@@ -21,6 +21,7 @@ import {
   Lightning as LightningIcon,
   Printer as PrinterIcon,
   FileText as FileTextIcon,
+  Plus as PlusIcon,
 } from '@phosphor-icons/react';
 
 // ─── Dark mode ────────────────────────────────────────────────────────────────
@@ -74,6 +75,11 @@ const APPT = {
   WEDDING_DATE_LOOKUP:        'fldvXj43cLOX8tqXW', // lookup of Clients.WEDDING_IF_NOT_SET (text) — result is a per-linked-record array, needs unwrapping
   FAV_STYLES_ACUITY_LOOKUP:   'fldCPhdJ885D7ytOf', // lookup of Clients.FAV_STYLES_ACUITY, itself a link field — nested structure, needs unwrapLinkedNames
   FAV_STYLES_APPT_LOOKUP:     'fldDqAwOc2t1gkjeW', // lookup of Clients.FAV_STYLES_APPT, itself a link field — same nested-structure quirk
+  // Recap Doc — created 2026-08-03 for "Recap Doc automático al cierre de la
+  // primera cita de consulta". Both live directly on the Appointment record
+  // (not on Clients), since a Recap Doc is scoped to one specific appointment.
+  RECAP_DOC:              'fldNlAu1xqmTEtNZI', // multipleAttachments
+  RECAP_STAGE_COMPLETED:  'fldJmciXBeZjMCXY1', // checkbox — set true only by attachment_router.js once recap_doc is linked
 } as const;
 
 const CLIENT = {
@@ -243,6 +249,27 @@ function buildProposalAttachmentFormUrl(clientId: string, proposalId: string, ty
   url.searchParams.set('hide_customization_proposal', 'true');
   url.searchParams.set('prefill_type', type);
   url.searchParams.set('hide_type', 'true');
+  return url.toString();
+}
+
+// Recap Doc uses the exact same production form + hidden-field mechanism as
+// Customization Proposal/Signed Proposal above, but links to the specific
+// Appointment record instead of a Proposal (attachments.appointment, a new
+// direct link field — see attachment_router.js v1.3.0). DEVIATION (same
+// class as ProposalPreviewModal's): the Interface Extensions SDK can't push
+// a local File into an attachment field, so this is a two-step handoff too —
+// "Generate Recap Doc" only produces the printed PDF, "Upload"/"Add Recap
+// Doc" is what actually reaches this form.
+function buildRecapDocAttachmentFormUrl(clientId: string, appointmentId: string): string {
+  const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
+  url.searchParams.set('prefill_client', clientId);
+  url.searchParams.set('hide_client', 'true');
+  url.searchParams.set('prefill_customization_proposal', '');
+  url.searchParams.set('hide_customization_proposal', 'true');
+  url.searchParams.set('prefill_type', 'Recap Doc');
+  url.searchParams.set('hide_type', 'true');
+  url.searchParams.set('prefill_appointment', appointmentId);
+  url.searchParams.set('hide_appointment', 'true');
   return url.toString();
 }
 
@@ -788,15 +815,43 @@ interface AttachSectionProps {
   type: 'Measurements'|'Appointment Photo';
   existing: Array<{id:string;url:string;filename:string;thumbnails?:{small?:{url:string}}}> | null;
   clientId: string | null;
+  // Square, icon-only "+" button instead of the icon+label pill — used where
+  // this section shares a row with other equally-sized attachment fields
+  // (Measurement Photo / Appointment Photo / Recap Doc row).
+  compact?: boolean;
 }
-function AttachmentSection({ label, type, existing, clientId }: AttachSectionProps) {
+function AttachmentSection({ label, type, existing, clientId, compact }: AttachSectionProps) {
   const hasExisting = existing && existing.length > 0;
   const openForm = () => {
     const url = new URL(ATTACHMENT_FORM_URL);
     if (clientId) url.searchParams.set('prefill_client', clientId);
     url.searchParams.set('prefill_type', type);
+    // Hidden even though this form/route doesn't use it — matches the Recap
+    // Doc/Proposal upload forms' convention of hiding every field but the
+    // file picker.
+    url.searchParams.set('hide_customization_proposal', 'true');
     window.open(url.toString(), '_blank', 'noopener,noreferrer');
   };
+  if (compact) {
+    return (
+      <div>
+        {hasExisting && (
+          <div className="flex gap-2 flex-wrap mb-2">
+            {existing!.map(a=>(
+              <div key={a.id} onClick={()=>window.open(a.url,'_blank','noopener,noreferrer')}
+                className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0">
+                <img src={a.thumbnails?.small?.url??a.url} alt={a.filename} className="w-full h-full object-cover"/>
+              </div>
+            ))}
+          </div>
+        )}
+        <button type="button" onClick={openForm} disabled={!clientId} title={label}
+          className="w-9 h-9 flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          <PlusIcon size={16}/>
+        </button>
+      </div>
+    );
+  }
   return (
     <div>
       {hasExisting && (
@@ -2589,6 +2644,203 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
   );
 }
 
+// ─── RecapDocument ──────────────────────────────────────────────────────────
+// The Recap Doc PDF — follows the Figma "Appointment Recap Template" export.
+// Pagination is chunk-based, not measured: styles are split into fixed-size
+// pages via RECAP_STYLES_PER_PAGE, each page break enforced with CSS
+// `break-after: page` (there is no existing precedent in this codebase for
+// DOM-measured pagination — see attachment_router README note — so a bounded
+// chunk size is the deterministic alternative). The photo disclaimer + 3x3
+// grid render exactly once, appended to the LAST page produced (whether
+// that's the only page or the final overflow page), per the AC.
+const RECAP_STYLES_PER_PAGE = 5;
+const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
+
+interface RecapDocStyleRow {
+  id: string;
+  name: string;
+  price: number;
+  notes: string;
+  customPricing: number | null;
+}
+interface RecapDocSnapshot {
+  clientName: string;
+  email: string;
+  phone: string;
+  weddingDateDisplay: string;
+  appointmentDisplay: string;
+  clientSpecialist: string;
+  styles: RecapDocStyleRow[];
+  photos: Array<{ id: string; url: string; thumbnails?: { small?: { url: string }; large?: { url: string } } }>;
+}
+
+function chunkRecapStyles(styles: RecapDocStyleRow[], perPage: number): RecapDocStyleRow[][] {
+  if (styles.length === 0) return [[]];
+  const pages: RecapDocStyleRow[][] = [];
+  for (let i = 0; i < styles.length; i += perPage) pages.push(styles.slice(i, i + perPage));
+  return pages;
+}
+
+interface RecapDocumentProps {
+  snapshot: RecapDocSnapshot;
+}
+function RecapDocument({ snapshot }: RecapDocumentProps) {
+  const pages = useMemo(() => chunkRecapStyles(snapshot.styles, RECAP_STYLES_PER_PAGE), [snapshot.styles]);
+  const lastPageIndex = pages.length - 1;
+
+  return (
+    <div className="recap-print-area">
+      {pages.map((pageStyles, pageIdx) => {
+        const isFirstPage = pageIdx === 0;
+        const isLastPage  = pageIdx === lastPageIndex;
+        return (
+          <div key={pageIdx} className="bg-[#F8F5EE] text-[#1A1612] rounded-xl border border-gray-200 dark:border-white/10 p-8 recap-doc-page" style={{ pageBreakAfter: isLastPage ? 'auto' : 'always', breakAfter: isLastPage ? 'auto' : 'page' }}>
+            {isFirstPage ? (
+              <>
+                <div className="text-xs tracking-widest text-gray-500 mb-1">APPOINTMENT RECAP</div>
+                <div className="text-2xl font-bold mb-4 tracking-wide">{snapshot.clientName.toUpperCase()}</div>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6 text-sm">
+                  <div><span className="text-gray-500">Email: </span><span className="font-medium">{snapshot.email || '—'}</span></div>
+                  <div><span className="text-gray-500">Phone: </span><span className="font-medium">{snapshot.phone || '—'}</span></div>
+                  <div><span className="text-gray-500">Wedding Date: </span><span className="font-medium">{snapshot.weddingDateDisplay || '—'}</span></div>
+                  <div><span className="text-gray-500">Appointment: </span><span className="font-medium">{snapshot.appointmentDisplay || '—'}</span></div>
+                  <div><span className="text-gray-500">Client Specialist: </span><span className="font-medium">{snapshot.clientSpecialist || '—'}</span></div>
+                </div>
+                <div className="text-xs tracking-widest text-gray-500 mb-3">STYLES</div>
+              </>
+            ) : (
+              <>
+                <div className="text-xs tracking-widest text-gray-500 mb-1">APPOINTMENT RECAP</div>
+                <div className="text-xs italic text-gray-500 mb-4">{RECAP_PHOTO_DISCLAIMER}</div>
+              </>
+            )}
+
+            {pageStyles.map(style => (
+              <div key={style.id} className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
+                <div className="w-20 h-24 rounded bg-[#D8D0BC] flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm font-semibold tracking-wide">{style.name.toUpperCase()}</span>
+                    <span className="text-sm font-semibold">{formatCurrency(style.price)}</span>
+                  </div>
+                  {style.notes && (
+                    <div className="mt-2 text-xs">
+                      <span className="text-gray-500 tracking-wide">NOTES</span>{' '}
+                      <span className="italic text-gray-700">{style.notes}</span>
+                    </div>
+                  )}
+                  {style.customPricing != null && (
+                    <div className="mt-1 text-xs">
+                      <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>{' '}
+                      <span className="font-semibold">{formatCurrency(style.customPricing)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {pageStyles.length === 0 && isFirstPage && (
+              <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
+            )}
+
+            {isLastPage && (
+              <>
+                <div className="text-xs italic text-gray-500 mt-6 mb-4">{RECAP_PHOTO_DISCLAIMER}</div>
+                <div className="grid grid-cols-3 gap-3">
+                  {Array.from({ length: 9 }).map((_, i) => {
+                    const photo = snapshot.photos[i];
+                    return (
+                      <div key={i} className="aspect-[3/4] rounded bg-[#D8D0BC] overflow-hidden">
+                        {photo && <img src={photo.thumbnails?.large?.url ?? photo.url} alt="" className="w-full h-full object-cover" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <div className="text-center text-xs tracking-[0.2em] mt-8">
+              DANIELLE<span className="font-bold">FRANKEL</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── RecapDocPreviewModal ───────────────────────────────────────────────────
+// Opened from "Generate Recap Doc" (title bar). This step ONLY produces the
+// printed PDF — same two-step deviation as ProposalPreviewModal (the
+// Interface Extensions SDK can't push a local File into an attachment
+// field). There is no intermediate record to create here (unlike Proposals):
+// the Recap Doc attaches straight onto the existing Appointment record, so
+// the second step is the separate "Upload" button living on the Recap Doc
+// field itself (see PostAppointmentModal), not a button in this modal.
+interface RecapDocPreviewModalProps {
+  snapshot: RecapDocSnapshot;
+  onClose: () => void;
+}
+function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
+  const originalTitleRef = useRef(document.title);
+  useEffect(() => {
+    const h = () => restorePrintDocumentTitle(originalTitleRef.current);
+    window.addEventListener('afterprint', h);
+    return () => window.removeEventListener('afterprint', h);
+  }, []);
+  const handlePrint = () => {
+    setPrintDocumentTitle(`${toSnakeCase(snapshot.clientName)}_recap_doc`);
+    window.print();
+  };
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [requestClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+      style={{ backdropFilter: 'blur(4px)', opacity: isVisible ? 1 : 0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .recap-print-area, .recap-print-area * { visibility: visible !important; }
+          .recap-print-area { position: absolute; top: 0; left: 0; width: 100%; }
+          .recap-doc-page { background: #ffffff !important; color: #111111 !important; }
+        }
+      `}</style>
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">Generate Recap Doc</div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <RecapDocument snapshot={snapshot} />
+          <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
+            Print (or save as PDF), then use "Upload" on the Recap Doc field to attach it to this appointment.
+          </div>
+        </div>
+        <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end items-center gap-3">
+          <button type="button" onClick={requestClose}
+            className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
+            Close
+          </button>
+          <button type="button" onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
+            <PrinterIcon size={14} />Print
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PostAppointmentModal ─────────────────────────────────────────────────────
 interface PostApptModalProps {
   record: AirtableRecord;
@@ -2818,6 +3070,51 @@ function PostAppointmentModal({
     [saName, staffRecords]
   );
 
+  // ─── Recap Doc ──────────────────────────────────────────────────────────
+  // Eligibility reuses the exact same isConsultation() substring check the
+  // main day-list/search filters already use to decide which appointments
+  // are Recap-eligible in the first place (see filterAndSort in
+  // AppointmentsApp) — not reimplemented from the schema. Per the AC: no
+  // Recap Doc for second/follow-up appointments, and if the data needed to
+  // tell first-consultation apart from follow-up is missing (empty type),
+  // don't offer generation — flag for manual review instead of guessing.
+  const needsRecapEligibilityReview = !typeLabel.trim();
+  const isConsultationAppt          = !needsRecapEligibilityReview && isConsultation(typeLabel);
+
+  const fRecapDoc          = apptTable.getFieldIfExists(APPT.RECAP_DOC);
+  const existingRecapDoc   = fRecapDoc ? ((record.getCellValue(fRecapDoc) as ProposalFile[]|null) ?? []) : [];
+  const hasRecapDoc        = existingRecapDoc.length > 0;
+  // "Generate Recap Doc" (title bar) only ever appears while recap_doc is
+  // empty — once a doc exists, both this and the row's Upload button hide,
+  // which is also the UI-level duplicate-upload guard (attachment_router.js
+  // has its own defensive backstop for the same rule).
+  const canGenerateRecapDoc = isConsultationAppt && !hasRecapDoc;
+
+  const [showRecapDocPreview, setShowRecapDocPreview] = useState(false);
+
+  const fApptTime = apptTable.getFieldIfExists(APPT.TIME);
+  const appointmentDisplay = fApptTime ? fmtUSDateTime12h(record.getCellValueAsString(fApptTime)) : '';
+
+  const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => ({
+    clientName: clientName || 'Unknown Client',
+    email: cStr(CLIENT.EMAIL),
+    phone: cStr(CLIENT.PHONE),
+    weddingDateDisplay: weddingDisplay,
+    appointmentDisplay,
+    clientSpecialist: saName,
+    // Styles = the customization requests actually logged during this visit
+    // (same rows the Customization Requests table below shows) — each row's
+    // grandTotal already folds in that style's customizations, matching the
+    // Figma template's single price-per-style line.
+    styles: customizationRows.map(row => ({ id: row.id, name: row.styleName, price: row.grandTotal, notes: '', customPricing: null })),
+    photos: existingApptPhotos ?? [],
+  }), [clientName, cStr, weddingDisplay, appointmentDisplay, saName, customizationRows, existingApptPhotos]);
+
+  const openRecapDocUploadForm = () => {
+    if (!clientId) return;
+    window.open(buildRecapDocAttachmentFormUrl(clientId, record.id), '_blank', 'noopener,noreferrer');
+  };
+
   // Save helper
   const saveClientField = useCallback((fieldId:string, value:unknown) => {
     if (!clientId) return;
@@ -2895,20 +3192,17 @@ function PostAppointmentModal({
                   <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{shortType}</div>
                 </div>
               </div>
-              <div className="ml-auto flex flex-col justify-between h-14 items-start flex-shrink-0">
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500 flex-shrink-0" />
-                  Acuity
+              {canGenerateRecapDoc && (
+                <button type="button" onClick={()=>setShowRecapDocPreview(true)}
+                  className="ml-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors flex-shrink-0">
+                  <FileTextIcon size={14}/>Generate Recap Doc
+                </button>
+              )}
+              {needsRecapEligibilityReview && !hasRecapDoc && (
+                <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 flex-shrink-0">
+                  Needs Review — appointment type missing
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                  Shopify
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                  Apparel Magic
-                </span>
-              </div>
+              )}
             </div>
           </div>
 
@@ -2919,14 +3213,14 @@ function PostAppointmentModal({
               <StylesDropdown selected={favStyles} available={availableStyleNames} onToggle={handleStyleToggle}/>
             </div>
 
-            {/* Wedding Date */}
-            <div>
-              <FieldLabel label="Wedding Date" fieldId={CLIENT.WEDDING} />
-              <div className="flex items-center gap-3">
+            {/* Wedding Date / Date Confirmation / RTW Size / Order Size — one row, 1/4 each */}
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <FieldLabel label="Wedding Date" fieldId={CLIENT.WEDDING} />
                 {isFieldReadOnlyBySource(CLIENT.WEDDING) ? (
-                  <div className="flex-1 text-sm text-gray-700 dark:text-gray-300 py-1.5">{weddingDisplay || '—'}</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5">{weddingDisplay || '—'}</div>
                 ) : (
-                  <div className="relative flex-1">
+                  <div className="relative">
                     <input type="text" value={weddingDisplay} onChange={e=>setWeddingDisplay(e.target.value)}
                       onBlur={handleWeddingBlur} placeholder="e.g. May 26, 2027"
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 pr-9 text-sm outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]"/>
@@ -2937,15 +3231,16 @@ function PostAppointmentModal({
                     {showCalendar && <MiniCalendar selected={weddingIso?new Date(weddingIso+'T00:00:00'):new Date()} onSelect={handleWeddingCalPick} onClose={()=>setShowCalendar(false)}/>}
                   </div>
                 )}
-                <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                  <input type="checkbox" checked={weddingConfirmed} onChange={e=>handleConfirmed(e.target.checked)} className="w-4 h-4 accent-[#D97706] dark:accent-[#FBBF24]"/>
-                  Confirmed with client
-                </label>
               </div>
-            </div>
-
-            {/* RTW Size + Order Size */}
-            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className={labelCls}>Date Confirmation</span>
+                <button type="button" onClick={()=>handleConfirmed(!weddingConfirmed)}
+                  className={`w-full px-3 py-2 text-sm font-semibold rounded-lg border transition-colors ${weddingConfirmed
+                    ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] border-[#FDE68A] dark:border-[#4A3B18]'
+                    : 'bg-white dark:bg-[#1B1813] text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600'}`}>
+                  {weddingConfirmed ? 'Confirmed' : 'Pending'}
+                </button>
+              </div>
               <EditableNumber
                 label="Ready-to-Wear Size"
                 value={rtwSize}
@@ -2963,29 +3258,69 @@ function PostAppointmentModal({
               />
             </div>
 
-            {/* Measurements */}
-            <div>
-              <span className={labelCls}>Measurements</span>
-              <div className="flex gap-3">
-                <div className="w-[30%]">
-                  <AttachmentSection label="Upload Measurement Photo" type="Measurements" existing={existingMeasPhotos} clientId={clientId}/>
-                </div>
-                <div className="w-[70%]">
-                  <div className="text-xs text-gray-400 dark:text-gray-500 mb-1">Measurement Notes (posture, concerns, alterations flags…)</div>
-                  <textarea value={measNotes} onChange={e=>setMeasNotes(e.target.value)} onBlur={handleMeasNotesBlur}
-                    placeholder="Any posture notes, concerns, or alterations flags…" rows={2}
-                    className={`${inputCls} resize-none`}/>
-                </div>
+            {/* Measurement Photo / Appointment Photo / Recap Doc — one row, no section header, 1/3 each */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <span className={labelCls}>Measurement Photo</span>
+                <AttachmentSection label="Upload Measurement Photo" type="Measurements" existing={existingMeasPhotos} clientId={clientId} compact/>
+              </div>
+              <div>
+                <span className={labelCls}>Appointment Photo</span>
+                <AttachmentSection label="Upload Appointment Photo" type="Appointment Photo" existing={existingApptPhotos} clientId={clientId} compact/>
+              </div>
+              <div>
+                <span className={labelCls}>Recap Doc</span>
+                {hasRecapDoc ? (
+                  <div className="flex gap-2 flex-wrap">
+                    {existingRecapDoc.map(a=>(
+                      <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer"
+                        className="w-14 h-14 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 flex items-center justify-center hover:opacity-75 transition-opacity flex-shrink-0">
+                        <FileTextIcon size={20} className="text-gray-400 dark:text-gray-500"/>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <button type="button" onClick={openRecapDocUploadForm} disabled={!clientId || !isConsultationAppt} title="Upload Recap Doc"
+                    className="w-9 h-9 flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <PlusIcon size={16}/>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Appointment Photo */}
-            <div>
-              <span className={labelCls}>Appointment Photo</span>
-              <AttachmentSection label="Upload Appointment Photo" type="Appointment Photo" existing={existingApptPhotos} clientId={clientId}/>
+            {/* Measurements Notes / Post-Appointment Notes — one row, 50/50 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className={labelCls}>Measurements Notes</span>
+                <textarea value={measNotes} onChange={e=>setMeasNotes(e.target.value)} onBlur={handleMeasNotesBlur}
+                  placeholder="Any posture notes, concerns, or alterations flags…" rows={4}
+                  className={`${inputCls} resize-none`}/>
+              </div>
+              <div>
+                <span className={labelCls}>Post-Appointment Notes</span>
+                <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={handleNotesBlur}
+                  placeholder="Any additional notes about the appointment…" rows={4}
+                  className={`${inputCls} resize-none`}/>
+              </div>
             </div>
 
-            {/* Customization Requests — invoice-style line-item table */}
+            {/* Sync source color coding — bottom of the detail page, horizontal */}
+            <div className="flex items-center gap-5 pt-1">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 flex-shrink-0" />
+                Acuity
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                Shopify
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                Apparel Magic
+              </span>
+            </div>
+
+            {/* Customization Requests — invoice-style line-item table (stays last) */}
             <div>
               <span className={labelCls}>Customization Requests</span>
               <div className="bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden mb-3">
@@ -3034,14 +3369,6 @@ function PostAppointmentModal({
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
                 <UploadIcon size={14} className="text-gray-500 dark:text-gray-400"/>Add Customization Request
               </button>
-            </div>
-
-            {/* Post-Appointment Notes */}
-            <div>
-              <span className={labelCls}>Post-Appointment Notes</span>
-              <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={handleNotesBlur}
-                placeholder="Any additional notes about the appointment…" rows={4}
-                className={`${inputCls} resize-none`}/>
             </div>
 
             {/* Stage-specific sidebar fields */}
@@ -3186,6 +3513,10 @@ function PostAppointmentModal({
           addDraft={customizationAddDraft}
           onAddDraftChange={patch => setCustomizationAddDraft(prev => ({ ...prev, ...patch }))}
         />
+      )}
+
+      {showRecapDocPreview && (
+        <RecapDocPreviewModal snapshot={recapDocSnapshot} onClose={()=>setShowRecapDocPreview(false)}/>
       )}
     </>
   );
