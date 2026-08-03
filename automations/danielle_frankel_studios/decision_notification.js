@@ -6,7 +6,12 @@ TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record updated — customization_requests
              (watched fields: internal_approval_status, client_approval_status)
-VERSION    : 1.3.0 — Hybrid is no longer a parent + 2 structural child
+VERSION    : 1.4.0 — Sandbox test runs (isProduction === false) now route the
+                     notification to Axel's own email/Slack instead of the
+                     resolved staff member's real contact info — content is
+                     unchanged, only the delivery address.
+                     ---
+                     v1.3.0 — Hybrid is no longer a parent + 2 structural child
                      records — as of the 2026-07-26 schema rework, a Hybrid
                      request is a single record with two direct Styles links
                      (customized_style + additional_customized_style), and
@@ -118,6 +123,17 @@ const PAGE_URLS = {
 const CONFIG = {
   LOG_LEVEL       : 'B', // A=minimal | B=audit (default) | C=debug
   MARGO_FULL_NAME : 'Margo Lafontaine', // must match staff.full_name exactly
+};
+
+// While testing against Sandbox (isProduction === false), every notification
+// routes to Axel instead of the resolved staff member's real contact info —
+// prevents test runs from actually paging Margo/an SA. Only the delivery
+// address changes; recipientName/subject/message content still reflect the
+// real resolved scenario, so the test notification reads exactly like the
+// real one would.
+const TEST_CONTACT = {
+  email    : 'anava@singularagency.co',
+  slack_id : 'U0AR34NA6UV',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -452,6 +468,15 @@ try {
   );
 
   result = await service.run(recordId);
+
+  // Sandbox override — real recipient/scenario/message content is preserved
+  // above; only the delivery address changes, so a test run reads exactly
+  // like the real notification would, just sent to Axel instead.
+  if (!isProduction && result.shouldNotify) {
+    logger.audit(`Sandbox override → routing to test contact instead of ${result.recipientName}`);
+    result.recipientEmail = TEST_CONTACT.email;
+    result.slackId        = TEST_CONTACT.slack_id;
+  }
 
 } catch (err) {
   logger.error(`Automation failed → ${err.message}`);

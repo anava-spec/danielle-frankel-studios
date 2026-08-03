@@ -1124,6 +1124,22 @@ function NewRequestModal({
       ? !!clientId && !!hybridStyleIds[0] && !!hybridStyleIds[1]
       : false;
 
+  // Skips Margo's approval queue for a Regular request whose every selected
+  // customization/pricing line item is already Pre-Approval = "Approved" —
+  // nothing left for her to review. Requires at least one selected item
+  // (an empty selection isn't "all pre-approved," it's nothing to approve
+  // at all — falls through to the normal New Request path). Hybrid never
+  // uses this: it always requires approval, no exception, regardless of
+  // any linked item's Pre-Approval value — this helper is deliberately only
+  // called from the Regular branch below.
+  function allPricingItemsPreApproved(pricingIds: string[]): boolean {
+    if (!preApprovalField || pricingIds.length === 0) return false;
+    return pricingIds.every(id => {
+      const rec = pricingRecords.find(r => r.id === id);
+      return rec ? getSingleSelectName(rec.getCellValue(preApprovalField)) === 'Approved' : false;
+    });
+  }
+
   const handleSubmit = async () => {
     if (!canSubmit || saving) return;
     setSaving(true);
@@ -1131,9 +1147,10 @@ function NewRequestModal({
     try {
       if (kind === 'Regular') {
         const s = regularSection;
+        const approvalStatusName = allPricingItemsPreApproved(s.pricingIds) ? 'Pre-Approved' : 'New Request';
         const fields: Record<string, unknown> = {
           [FIELD_IDS.CLIENT]: [{ id: clientId }],
-          [FIELD_IDS.APPROVAL_STATUS]: { name: 'New Request' },
+          [FIELD_IDS.APPROVAL_STATUS]: { name: approvalStatusName },
           [FIELD_IDS.CUSTOMIZED_STYLE]: s.styleId ? [{ id: s.styleId }] : null,
           [FIELD_IDS.CUSTOMIZATION_PRICING]: s.pricingIds.map(id => ({ id })),
           [FIELD_IDS.CUSTOMIZATION_DETAIL]: s.detail || null,

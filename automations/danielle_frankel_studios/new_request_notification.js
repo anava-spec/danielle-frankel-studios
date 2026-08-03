@@ -5,11 +5,23 @@ BASE       : app6Q4xMZ1ngJxiV8 (sandbox — mirror to Production when ready)
 TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record created — customization_requests
-VERSION    : 1.7.0 — Added a pre-approval skip: a Regular request whose every
+VERSION    : 1.8.0 — Sandbox test runs (isProduction === false) now route the
+                     notification to Axel's own email/Slack instead of the
+                     resolved staff member's real contact info — content is
+                     unchanged, only the delivery address.
+                     ---
+                     v1.7.0 — Added a pre-approval skip: a Regular request whose every
                      linked customization_pricing item already has
                      Pre-Approval = "Approved" no longer notifies Margo at
                      all (shouldNotify=false, skippedReason set) — those
-                     items never needed her review in the first place.
+                     items never needed her review in the first place. The
+                     interface itself now stamps internal_approval_status =
+                     "Pre-Approved" directly at creation for this case (see
+                     ScenarioResolver's explicit "Pre-Approved" branch,
+                     which is the authoritative path since then); the
+                     PricingRepository-based check remains as a fallback for
+                     any record that still lands as a normal status with
+                     every item pre-approved regardless.
                      Hybrid is explicitly EXCLUDED from this skip and always
                      notifies, without exception, regardless of any linked
                      item's Pre-Approval value. Only applies to the
@@ -154,6 +166,17 @@ const CONFIG = {
   MARGO_FULL_NAME : 'Margo Lafontaine', // must match staff.full_name exactly
 };
 
+// While testing against Sandbox (isProduction === false), every notification
+// routes to Axel instead of the resolved staff member's real contact info —
+// prevents test runs from actually paging Margo/an SA. Only the delivery
+// address changes; recipientName/subject/message content still reflect the
+// real resolved scenario, so the test notification reads exactly like the
+// real one would.
+const TEST_CONTACT = {
+  email    : 'anava@singularagency.co',
+  slack_id : 'U0AR34NA6UV',
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGGER CLASS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -282,6 +305,15 @@ class ScenarioResolver {
   constructor(logger) { this.logger = logger; }
 
   resolve(data) {
+    // The interface itself stamps this on creation for a Regular request
+    // whose every selected customization/pricing item was already
+    // Pre-Approval = "Approved" — nothing for Margo to review, so this is a
+    // normal no-op, not an unexpected status. (Hybrid never lands here —
+    // the interface only ever writes this for Regular.)
+    if (data.internalStatus === 'Pre-Approved') {
+      this.logger.step(3, `Resolved → Pre-Approved at creation (interface-side skip), no notification needed for ${data.clientName}`);
+      return { scenario: 'preApproved', recipientQuery: null };
+    }
     // Counter-Proposed only ever happens when Margo just created her own
     // counter — that record belongs on the SA's desk.
     if (data.internalStatus === 'Counter-Proposed') {
@@ -504,12 +536,32 @@ class NewRequestNotificationService {
     // Step 3 — Resolve scenario + recipient
     const { scenario, recipientQuery } = this.resolver.resolve(data);
 
-    // Step 3b — Pre-approval skip. Hybrid ALWAYS requires approval, no
-    // exception (confirmed as current, correct behavior — never skipped
-    // here). A Regular request headed to Margo's desk skips the
-    // notification entirely when every linked customization_pricing item
-    // is already Pre-Approval = "Approved" — those items never needed her
-    // review, so there's nothing for her to approve.
+    // Step 3a — Interface-side pre-approval skip. The interface itself
+    // stamps internal_approval_status = "Pre-Approved" at creation for a
+    // Regular request whose every item was already approved — this is now
+    // the authoritative source of truth for the skip, so just respect it.
+    if (scenario === 'preApproved') {
+      const skippedReason = `Record created as Pre-Approved by the interface (Regular request, all items already Pre-Approval = "Approved") — no approval needed.`;
+      this.logger.minimal(`SKIPPED → ${data.clientName}: ${skippedReason}`);
+      return {
+        status         : 'SUCCESS',
+        shouldNotify   : false,
+        recipientName  : null,
+        recipientEmail : null,
+        slackId        : null,
+        subject        : null,
+        slackMessage   : null,
+        gmailMessage   : null,
+        error_message  : null,
+        skippedReason,
+      };
+    }
+
+    // Step 3b — Fallback pre-approval skip, for any record that somehow
+    // still lands here as a normal New Request/counter status with every
+    // linked item already pre-approved (e.g. an older record from before
+    // the interface started stamping "Pre-Approved" directly). Hybrid
+    // ALWAYS requires approval, no exception — never skipped here.
     if (!data.isHybrid && MARGO_APPROVAL_SCENARIOS.has(scenario)) {
       const allApproved = await this.pricingRepo.allPreApproved(data.customizationPricingIds);
       if (allApproved) {
@@ -600,6 +652,15 @@ try {
   );
 
   result = await service.run(recordId);
+
+  // Sandbox override — real recipient/scenario/message content is preserved
+  // above; only the delivery address changes, so a test run reads exactly
+  // like the real notification would, just sent to Axel instead.
+  if (!isProduction && result.shouldNotify) {
+    logger.audit(`Sandbox override → routing to test contact instead of ${result.recipientName}`);
+    result.recipientEmail = TEST_CONTACT.email;
+    result.slackId        = TEST_CONTACT.slack_id;
+  }
 
 } catch (err) {
   logger.error(`Automation failed → ${err.message}`);

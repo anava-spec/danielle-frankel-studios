@@ -27,7 +27,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Customization Requests**
 - Hybrid customization requests always require Margo's approval, no exceptions.
-- A Regular customization request whose items are all already pre-approved no longer sends an approval notification, since there's nothing left for Margo to review.
+- A Regular customization request whose items are all already pre-approved is now created as Pre-Approved and skips Margo's approval queue entirely, since there's nothing left for her to review.
 
 **Recap**
 - Fixed the main list's Customizations count, which showed blank for clients who actually had requests on file.
