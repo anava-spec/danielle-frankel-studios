@@ -43,9 +43,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - If a customization request for a style on the draft hasn't been approved yet, the Sales Associate now sees one combined, clearer message showing exactly which style(s) have pending approvals.
 
 **Calligraphy Cards**
-- Each client now has a detail page (click a row to open it) showing the full record, a visual status stepper, and a "Comments" field for Margo to note name variations for the card.
+- Each client now has a detail popup (click a row to open it) showing the full record, a visual status stepper with progressive coloring, and a "Comments" field for Margo to note name variations for the card.
 - The calligraphy card status now has 4 steps instead of 2: Pending, Production Approved, Sent to Calligrapher, Received from Calligrapher.
-- On the detail page, the status only ever advances one step at a time, with a quick confirmation before it saves.
+- In the popup, the status only ever moves one step forward at a time, with a quick confirmation before it saves.
 
 ## Week of Jul 28–29, 2026
 

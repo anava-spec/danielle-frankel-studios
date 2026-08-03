@@ -367,29 +367,65 @@ interface CommentsCellProps {
 }
 function CommentsCell({ value, disabled, hasError, onSave }: CommentsCellProps) {
   const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setDraft(value); }, [value]);
+  // Dynamic height — grows with content instead of scrolling inside a fixed
+  // box, since Margo's notes can run long. Re-measured on every value change
+  // (including the initial mount) and on every keystroke.
+  const resize = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useEffect(() => { resize(); }, [draft, resize]);
   return (
     <textarea
+      ref={ref}
       value={draft}
       disabled={disabled}
       onChange={e => setDraft(e.target.value)}
       onBlur={() => { if (draft !== value) onSave(draft); }}
       placeholder={disabled ? '—' : 'Name variations for the card…'}
-      rows={1}
-      className={`w-full min-w-[180px] resize-y bg-transparent text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-md px-1.5 py-1 -mx-1.5 transition-colors ${
-        hasError ? 'ring-1 ring-red-400 dark:ring-red-500/60' : 'focus:bg-white dark:focus:bg-[#1e1d1b] focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400'} ${
+      rows={2}
+      className={`w-full resize-none overflow-hidden bg-white dark:bg-[#1e1d1b] text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-lg border px-3 py-2 transition-colors ${
+        hasError ? 'border-red-400 dark:border-red-500/60' : 'border-gray-200 dark:border-[#34312C] focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400'} ${
         disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
   );
 }
 
+// ─── Airtable color → real hex (for progressive dot/line coloring) ────────────
+// AIRTABLE_COLOR_MAP above gives Tailwind classes for flat pills; the stepper
+// needs actual hex values so the connecting line between two steps can
+// gradient from one step's color into the next's. Light1/Light2/Bright tiers
+// escalate to the same color family's Dark1 (same convention BRANDING.md §9
+// and pipeline.tsx's StagePipeline already use, for contrast on a cream bg).
+const AIRTABLE_HEX: Record<string, string> = {
+  blue: '#2D7FF9', blueDark1: '#2750AE', blueLight1: '#9CC7FF', blueLight2: '#CBDEFF', blueBright: '#2D7FF9',
+  cyan: '#18BFFF', cyanDark1: '#0B76A6', cyanLight1: '#96D7FF', cyanLight2: '#BFEEFF', cyanBright: '#18BFFF',
+  teal: '#20D9D2', tealDark1: '#06A09B', tealLight1: '#A1EEE3', tealLight2: '#CBF6EF', tealBright: '#20D9D2',
+  green: '#20C933', greenDark1: '#338A17', greenLight1: '#93E88B', greenLight2: '#C7FFC4', greenBright: '#20C933',
+  yellow: '#FCAB00', yellowDark1: '#B87503', yellowLight1: '#FFE281', yellowLight2: '#FFEEA9', yellowBright: '#FCAB00',
+  orange: '#FF6F2C', orangeDark1: '#D74D26', orangeLight1: '#FEC190', orangeLight2: '#FFDAB9', orangeBright: '#FF6F2C',
+  red: '#F82B60', redDark1: '#BA1E45', redLight1: '#FF9EAB', redLight2: '#FFDCE5', redBright: '#F82B60',
+  pink: '#FF08C2', pinkDark1: '#C22890', pinkLight1: '#FCB8EE', pinkLight2: '#FEDAF6', pinkBright: '#FF08C2',
+  purple: '#8B46FF', purpleDark1: '#6B1FBB', purpleLight1: '#C2A0FA', purpleLight2: '#DEC9FD', purpleBright: '#8B46FF',
+  gray: '#9AA0A6', grayDark1: '#6C7177', grayLight1: '#D1D5D9', grayLight2: '#E9EBED', grayBright: '#9AA0A6',
+};
+function resolveStatusHex(colorName: string): string {
+  const base = colorName.replace(/Light[12]$/, '').replace(/Bright$/, '');
+  return AIRTABLE_HEX[base + 'Dark1'] ?? AIRTABLE_HEX[colorName] ?? AIRTABLE_HEX[base] ?? '#9CA3AF';
+}
+
 // ─── StatusStepper ──────────────────────────────────────────────────────────────
 // Horizontal dots-and-line progress indicator, same visual language as
 // pipeline.tsx's "Stage in pipeline" component on the Full Client Profile —
-// but colored from the field's own real Airtable choice colors (via
-// getFieldChoices) instead of a fixed emerald, since this status's colors
-// can keep changing along with its choices (per the 2026-07-30 request not
-// to hardcode either).
+// colored from the field's own real Airtable choice colors (via
+// getFieldChoices), never hardcoded. The line between two already-passed
+// steps is solid; the segment leading into the current step gradients from
+// the previous step's color into the current one's, so the whole line reads
+// as a progressive fill rather than an abrupt on/off switch.
 interface StatusStepperProps { choices: Array<{ name: string; color: string }>; currentValue: string | null; }
 function StatusStepper({ choices, currentValue }: StatusStepperProps) {
   const currentIndex = currentValue ? choices.findIndex(c => c.name === currentValue) : -1;
@@ -398,28 +434,35 @@ function StatusStepper({ choices, currentValue }: StatusStepperProps) {
       {choices.map((choice, index) => {
         const isCurrent = index === currentIndex;
         const isPast = currentIndex >= 0 && index < currentIndex;
-        const dotClasses = AIRTABLE_COLOR_MAP[choice.color] ?? DEFAULT_STATUS_PILL_CLASSES;
+        const hex = resolveStatusHex(choice.color);
         return (
           <React.Fragment key={choice.name}>
             <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
               {isPast ? (
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center border ${dotClasses}`}>
-                  <CheckIcon size={12} weight="bold" />
+                <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: hex }}>
+                  <CheckIcon size={12} weight="bold" color="white" />
                 </div>
               ) : isCurrent ? (
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${dotClasses}`}>
-                  <div className="w-2.5 h-2.5 rounded-full bg-current" />
+                <div className="w-6 h-6 rounded-full border-2 bg-white dark:bg-[#242220] flex items-center justify-center" style={{ borderColor: hex }}>
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: hex }} />
                 </div>
               ) : (
                 <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-white/10 bg-white dark:bg-[#242220]" />
               )}
-              <span className={`text-xs mt-2 text-center max-w-[110px] ${isCurrent ? 'font-semibold text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-500 dark:text-gray-400'}`}>
+              <span className={`text-sm mt-2 text-center max-w-[120px] ${isCurrent ? 'font-semibold text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-500 dark:text-gray-400'}`}>
                 {choice.name}
               </span>
             </div>
-            {index < choices.length - 1 && (
-              <div className={`flex-1 h-0.5 mt-3 mx-1 ${index < currentIndex ? 'bg-amber-500 dark:bg-amber-400' : 'bg-gray-300 dark:bg-white/10'}`} />
-            )}
+            {index < choices.length - 1 && (() => {
+              const isFullyPassed = index < currentIndex - 1;
+              const isEnteringCurrent = index === currentIndex - 1;
+              const background = isFullyPassed ? hex
+                : isEnteringCurrent ? `linear-gradient(to right, ${hex}, ${resolveStatusHex(choices[index + 1].color)})`
+                : undefined;
+              return (
+                <div className="flex-1 h-0.5 mt-3 mx-1 bg-gray-300 dark:bg-white/10" style={background ? { background } : undefined} />
+              );
+            })()}
           </React.Fragment>
         );
       })}
@@ -436,7 +479,7 @@ function StatusStepper({ choices, currentValue }: StatusStepperProps) {
 interface AdvanceConfirmModalProps { nextStatus: string; onContinue: () => void; }
 function AdvanceConfirmModal({ nextStatus, onContinue }: AdvanceConfirmModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}>
       <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[360px] shadow-2xl p-6 text-center">
         <p className="text-sm text-gray-800 dark:text-gray-200 mb-5">Mark as "{nextStatus}"?</p>
         <button type="button" onClick={onContinue}
@@ -449,29 +492,40 @@ function AdvanceConfirmModal({ nextStatus, onContinue }: AdvanceConfirmModalProp
 }
 
 // ─── Detail page building blocks (BRANDING.md-style DetailSection/FieldRow) ────
+// Header size matches pipeline.tsx's "Stage in pipeline"/"Appointment
+// details" section labels (text-sm, not the text-xs used elsewhere) — per
+// the 2026-07-30 request to use "the correct header font size."
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide mb-3">{title}</div>
+      <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-3">{title}</div>
       <div className="space-y-3">{children}</div>
     </div>
   );
 }
-// Exactly three fields per row, per the 2026-07-30 request.
-function FieldRow({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-3 gap-4">{children}</div>;
+// Column count varies by row (4 fields in the top row, single-field rows for
+// Items Sold / Comments below) — not a fixed 3-per-row grid.
+function FieldRow({ cols = 3, children }: { cols?: number; children: React.ReactNode }) {
+  const gridCols = cols === 4 ? 'grid-cols-4' : cols === 2 ? 'grid-cols-2' : cols === 1 ? 'grid-cols-1' : 'grid-cols-3';
+  return <div className={`grid ${gridCols} gap-4`}>{children}</div>;
 }
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailRow({ label, value, tooltip }: { label: string; value: React.ReactNode; tooltip?: string }) {
   return (
     <div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">{label}</div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide" title={tooltip}>
+        {label}
+      </div>
       <div className="text-sm text-gray-800 dark:text-gray-200 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
     </div>
   );
 }
 
-// ─── ClientDetailPage ───────────────────────────────────────────────────────────
-interface ClientDetailPageProps {
+// ─── ClientDetailModal ──────────────────────────────────────────────────────────
+// A popup, not a full page (2026-07-30 correction) — fade+scale in/out per
+// BRANDING.md §12, 720px-class modal width, no "Go back" (there's nowhere to
+// navigate back to; the X/backdrop/Escape close it like every other modal).
+// The client name and the "Move to X" action both live in the title bar.
+interface ClientDetailModalProps {
   record: AirtableRecord;
   fields: Record<string, Field | null>;
   statusChoices: Array<{ name: string; color: string }>;
@@ -480,12 +534,21 @@ interface ClientDetailPageProps {
   hasCommentError: boolean;
   onAdvanceRequest: (nextStatus: string) => void;
   onSaveComments: (next: string) => void;
-  onBack: () => void;
+  onClose: () => void;
 }
-function ClientDetailPage({
+function ClientDetailModal({
   record, fields, statusChoices, canWrite, hasStatusError, hasCommentError,
-  onAdvanceRequest, onSaveComments, onBack,
-}: ClientDetailPageProps) {
+  onAdvanceRequest, onSaveComments, onClose,
+}: ClientDetailModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [requestClose]);
+
   const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
   const fDue = fields[FIELD_IDS.CLIENT_DUE_DATE];
   const fItems = fields[FIELD_IDS.CLIENT_ITEMS_SOLD];
@@ -497,6 +560,7 @@ function ClientDetailPage({
 
   const name = fName ? (record.getCellValueAsString(fName) ?? '') : '';
   const dueStr = fDue ? (record.getCellValue(fDue) as string | null) : null;
+  // Items Sold is now plain comma-joined text here, not pills — per request.
   const itemsStr = fItems ? getLinkedNamesDisplay(record.getCellValue(fItems)) : '';
   const gownStr = fGown ? getLinkedNamesDisplay(record.getCellValue(fGown)) : '';
   const dressYearStr = fDressYear ? (record.getCellValueAsString(fDressYear) ?? '') : '';
@@ -508,52 +572,61 @@ function ClientDetailPage({
   const nextChoice = currentIndex >= 0 && currentIndex < statusChoices.length - 1 ? statusChoices[currentIndex + 1] : null;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50 dark:bg-[#1A1917]" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1A1917] border-b border-gray-200 dark:border-[#34312C] px-6 py-3">
-        <div className="max-w-[900px] mx-auto">
-          <button type="button" onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-[#34312C] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors">
-            <CaretLeftIcon size={16} />
-            Go back
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-[900px] mx-auto p-6 space-y-4">
-        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
-          <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF] mb-5">{name || 'Unknown Client'}</div>
-          <StatusStepper choices={statusChoices} currentValue={statusValue} />
-          {canWrite && nextChoice && (
-            <button type="button" onClick={() => onAdvanceRequest(nextChoice.name)}
-              className={`mt-5 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
-                               : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
-              Advance to "{nextChoice.name}"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible ? 1 : 0 }}
+      onClick={requestClose}
+    >
+      <div
+        className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[90vh] shadow-2xl overflow-hidden flex flex-col transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Title bar — client name + Move to X + close */}
+        <div className="flex-shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-[#34312C]">
+          <div className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] truncate">{name || 'Unknown Client'}</div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {canWrite && nextChoice && (
+              <button type="button" onClick={() => onAdvanceRequest(nextChoice.name)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                  hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
+                                 : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
+                Move to "{nextChoice.name}"
+              </button>
+            )}
+            <button type="button" onClick={requestClose}
+              className="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+              <XIcon size={18} />
             </button>
-          )}
+          </div>
         </div>
 
-        <DetailSection title="Details">
-          <FieldRow>
-            <DetailRow label="Due Date" value={formatDate(dueStr)} />
-            <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
-            <DetailRow label="Dress Year" value={dressYearStr || '—'} />
-          </FieldRow>
-          <FieldRow>
-            <DetailRow label="Items Sold" value={itemsStr ? renderPills(itemsStr) : '—'} />
-            <DetailRow label="Gown" value={gownStr ? renderPills(gownStr) : '—'} />
-            <div />
-          </FieldRow>
-        </DetailSection>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+          <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+            <StatusStepper choices={statusChoices} currentValue={statusValue} />
+          </div>
 
-        <DetailSection title="Comments">
-          <CommentsCell
-            value={commentsStr}
-            disabled={!canWrite}
-            hasError={hasCommentError}
-            onSave={onSaveComments}
-          />
-        </DetailSection>
+          <DetailSection title="Details">
+            <FieldRow cols={4}>
+              <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
+              <DetailRow label="Due Date" value={formatDate(dueStr)} tooltip="3 months before the wedding date — target date to have the card ready" />
+              <DetailRow label="Gown" value={gownStr || '—'} />
+              <DetailRow label="Dress Year" value={dressYearStr || '—'} />
+            </FieldRow>
+            <FieldRow cols={1}>
+              <DetailRow label="Items Sold" value={itemsStr || '—'} />
+            </FieldRow>
+          </DetailSection>
+
+          <DetailSection title="Comments">
+            <CommentsCell
+              value={commentsStr}
+              disabled={!canWrite}
+              hasError={hasCommentError}
+              onSave={onSaveComments}
+            />
+          </DetailSection>
+        </div>
       </div>
     </div>
   );
@@ -737,27 +810,6 @@ function CalligraphyCardsApp(): React.ReactElement {
 
   const openRecord = openRecordId ? (allRecords?.find(r => r.id === openRecordId) ?? null) : null;
 
-  if (openRecord) {
-    return (
-      <div className="font-sans antialiased flex flex-col bg-[#F6F4F0] dark:bg-[#1A1917]" style={{ height: '100vh', overflow: 'hidden' }}>
-        <ClientDetailPage
-          record={openRecord}
-          fields={fields}
-          statusChoices={statusChoices}
-          canWrite={canWrite}
-          hasStatusError={!!updateErrors[openRecord.id]}
-          hasCommentError={!!commentErrors[openRecord.id]}
-          onAdvanceRequest={nextStatus => setPendingAdvance({ recordId: openRecord.id, nextStatus })}
-          onSaveComments={next => handleSetComments(openRecord.id, next)}
-          onBack={() => setOpenRecordId(null)}
-        />
-        {pendingAdvance && (
-          <AdvanceConfirmModal nextStatus={pendingAdvance.nextStatus} onContinue={handleConfirmAdvance} />
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="h-screen flex flex-col overflow-hidden antialiased bg-[#F6F4F0] dark:bg-[#1A1917]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Header / Filter Bar */}
@@ -884,6 +936,23 @@ function CalligraphyCardsApp(): React.ReactElement {
           </div>
         </div>
       </div>
+
+      {openRecord && (
+        <ClientDetailModal
+          record={openRecord}
+          fields={fields}
+          statusChoices={statusChoices}
+          canWrite={canWrite}
+          hasStatusError={!!updateErrors[openRecord.id]}
+          hasCommentError={!!commentErrors[openRecord.id]}
+          onAdvanceRequest={nextStatus => setPendingAdvance({ recordId: openRecord.id, nextStatus })}
+          onSaveComments={next => handleSetComments(openRecord.id, next)}
+          onClose={() => setOpenRecordId(null)}
+        />
+      )}
+      {pendingAdvance && (
+        <AdvanceConfirmModal nextStatus={pendingAdvance.nextStatus} onContinue={handleConfirmAdvance} />
+      )}
     </div>
   );
 }
