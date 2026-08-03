@@ -23,6 +23,11 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Added a "Dress Year" column between Gown and Wedding Date.
 - Clicking the Status pill now opens a dropdown to pick Pending or Sent explicitly, instead of silently flipping to the other value on click.
 - Added a "Comments" column so Margo can note name variations to use on the physical card.
+- Added a toggle to show or hide clients with blank Items Sold (hidden by default) — previously they were always hidden with no way to see them.
+
+**Customization Requests**
+- Hybrid customization requests always require Margo's approval, no exceptions.
+- A Regular customization request whose items are all already pre-approved no longer sends an approval notification, since there's nothing left for Margo to review.
 
 **Recap**
 - Fixed the main list's Customizations count, which showed blank for clients who actually had requests on file.

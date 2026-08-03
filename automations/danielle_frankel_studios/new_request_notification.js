@@ -5,7 +5,20 @@ BASE       : app6Q4xMZ1ngJxiV8 (sandbox — mirror to Production when ready)
 TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record created — customization_requests
-VERSION    : 1.6.0 — Hybrid is no longer a parent + 2 structural child
+VERSION    : 1.7.0 — Added a pre-approval skip: a Regular request whose every
+                     linked customization_pricing item already has
+                     Pre-Approval = "Approved" no longer notifies Margo at
+                     all (shouldNotify=false, skippedReason set) — those
+                     items never needed her review in the first place.
+                     Hybrid is explicitly EXCLUDED from this skip and always
+                     notifies, without exception, regardless of any linked
+                     item's Pre-Approval value. Only applies to the
+                     Margo-facing branches (newRequest / clientCounter
+                     Proposed / saCounterProposed) — Counter-Proposed (Margo
+                     countering, notifying the SA) is never skipped, since
+                     that's not an approval request in the first place.
+                     ---
+                     v1.6.0 — Hybrid is no longer a parent + 2 structural child
                      records (hybrid_link self-link) — as of the 2026-07-26
                      schema rework, a Hybrid request is a single record with
                      two direct Styles links (customized_style +
@@ -82,6 +95,7 @@ OUTPUTS (output.set)
   slackMessage   : notification body, Slack mrkdwn link syntax (<url|text>)
   gmailMessage   : notification body, standard markdown link syntax ([text](url))
   error_message  : null on success
+  skippedReason  : null unless the pre-approval skip fired (see shouldNotify) — gate the Slack/Gmail action steps on shouldNotify
   log_summary    : full Logger output
 ================================================================================
 */
@@ -93,6 +107,7 @@ OUTPUTS (output.set)
 const TABLE_IDS = {
   REQUESTS : 'tbl7HUWDI7IRjWY92', // customization_requests
   STAFF    : 'tblbYk88xJ8FQrLS4', // staff
+  PRICING  : 'tblccTHYe8BCqutyD', // customization_pricing (catalog of line items + Pre-Approval)
 };
 
 // Fields — customization_requests (tbl7HUWDI7IRjWY92)
@@ -109,6 +124,7 @@ const FIELDS_REQUEST = {
   proposed_total_custom_price: 'fldtF37zwwAPb5hjS', // formula, currency-formatted — correct for both Regular and Hybrid
   parent_customization_request: 'fldh9tKr0Vmo84Yu6', // self-link — non-empty means this record is a counter-proposal
   last_decision_by           : 'fldQry5GGLTemQwZX', // Margo / SA / Client — who created THIS record (stamped by the interface at creation) or made the most recent decision on it
+  customization_pricing     : 'fldJY7GklAVZ7lsjw', // multipleRecordLinks -> customization_pricing — the selected line items, used for the pre-approval skip
 };
 
 // Fields — staff (tblbYk88xJ8FQrLS4)
@@ -117,6 +133,12 @@ const FIELDS_STAFF = {
   email     : 'fld4Nxi4WQpUXnd0J',
   slack_id  : 'fldPBy4cPpVm8n1wp',
 };
+
+// Fields — customization_pricing (tblccTHYe8BCqutyD)
+const FIELDS_PRICING = {
+  pre_approval : 'fldBoCjCrHzWWkcL1', // singleSelect — "Approved" | "Not Approved"
+};
+const PRE_APPROVED_VALUE = 'Approved';
 
 // Same Interface page in both bases (pagFJG1URt93CIOm1) — only the base ID
 // in the URL differs. isProduction comes from input.config() (see MAIN
@@ -244,6 +266,7 @@ class RequestDataMapper {
       // land at the same "New Request" status.
       isCounterProposal  : this._linkIds(record, FIELDS_REQUEST.parent_customization_request).length > 0,
       decidedBy          : this._str(record, FIELDS_REQUEST.last_decision_by),
+      customizationPricingIds: this._linkIds(record, FIELDS_REQUEST.customization_pricing),
     };
     this.logger.debug(`Extracted → ${JSON.stringify(data)}`);
     return data;
@@ -350,6 +373,36 @@ class StaffRepository {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PRICING REPOSITORY CLASS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PricingRepository {
+  constructor(logger) {
+    this.table  = base.getTable(TABLE_IDS.PRICING);
+    this.logger = logger;
+  }
+  // A Regular request's approval-notification skip only applies when EVERY
+  // linked customization_pricing item is already Pre-Approval = "Approved" —
+  // an empty selection never counts as "all pre-approved" (nothing to skip
+  // approval on), and a single non-pre-approved item forces the normal
+  // notification for the whole request.
+  async allPreApproved(pricingIds) {
+    if (!pricingIds || pricingIds.length === 0) return false;
+    this.logger.step(3, `Checking pre-approval on ${pricingIds.length} linked pricing item(s)`);
+    const result = await this.table.selectRecordsAsync({ fields: [FIELDS_PRICING.pre_approval] });
+    const byId = new Map(result.records.map(r => [r.id, r]));
+    const allApproved = pricingIds.every(id => {
+      const rec = byId.get(id);
+      const status = rec ? rec.getCellValue(FIELDS_PRICING.pre_approval) : null;
+      const name = status && typeof status === 'object' ? status.name : status;
+      return name === PRE_APPROVED_VALUE;
+    });
+    this.logger.audit(`Pre-approval check → ${allApproved ? 'all approved' : 'not all approved'}`);
+    return allApproved;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MESSAGE BUILDER CLASS
 // Composes human-readable notification text. No logic — strings only.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -415,10 +468,17 @@ class MessageBuilder {
 // SERVICE CLASS — Orchestrates all steps
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Scenarios that put a request on Margo's desk for approval — the only ones
+// eligible for the pre-approval skip. Counter-Proposed notifies the SA about
+// Margo's own counter, which was never an approval request to begin with, so
+// it's deliberately excluded here.
+const MARGO_APPROVAL_SCENARIOS = new Set(['newRequest', 'clientCounterProposed', 'saCounterProposed']);
+
 class NewRequestNotificationService {
-  constructor(requestRepo, staffRepo, mapper, resolver, logger, pageUrl) {
+  constructor(requestRepo, staffRepo, pricingRepo, mapper, resolver, logger, pageUrl) {
     this.requestRepo = requestRepo;
     this.staffRepo   = staffRepo;
+    this.pricingRepo = pricingRepo;
     this.mapper      = mapper;
     this.resolver     = resolver;
     this.logger      = logger;
@@ -444,6 +504,32 @@ class NewRequestNotificationService {
     // Step 3 — Resolve scenario + recipient
     const { scenario, recipientQuery } = this.resolver.resolve(data);
 
+    // Step 3b — Pre-approval skip. Hybrid ALWAYS requires approval, no
+    // exception (confirmed as current, correct behavior — never skipped
+    // here). A Regular request headed to Margo's desk skips the
+    // notification entirely when every linked customization_pricing item
+    // is already Pre-Approval = "Approved" — those items never needed her
+    // review, so there's nothing for her to approve.
+    if (!data.isHybrid && MARGO_APPROVAL_SCENARIOS.has(scenario)) {
+      const allApproved = await this.pricingRepo.allPreApproved(data.customizationPricingIds);
+      if (allApproved) {
+        const skippedReason = `Regular request, all ${data.customizationPricingIds.length} linked customization item(s) already Pre-Approval = "Approved" — no approval needed.`;
+        this.logger.minimal(`SKIPPED → ${data.clientName}: ${skippedReason}`);
+        return {
+          status         : 'SUCCESS',
+          shouldNotify   : false,
+          recipientName  : null,
+          recipientEmail : null,
+          slackId        : null,
+          subject        : null,
+          slackMessage   : null,
+          gmailMessage   : null,
+          error_message  : null,
+          skippedReason,
+        };
+      }
+    }
+
     // Step 4 — Look up staff contact info
     const staff = await this.staffRepo.findByFullName(recipientQuery);
     const recipientEmail = staff ? (staff.getCellValueAsString(FIELDS_STAFF.email) || '') : '';
@@ -464,6 +550,7 @@ class NewRequestNotificationService {
       slackMessage,
       gmailMessage,
       error_message  : null,
+      skippedReason  : null,
     };
   }
 }
@@ -492,6 +579,7 @@ let result = {
   slackMessage   : null,
   gmailMessage   : null,
   error_message  : null,
+  skippedReason  : null,
 };
 
 try {
@@ -504,6 +592,7 @@ try {
   const service = new NewRequestNotificationService(
     new RequestRepository(logger),
     new StaffRepository(logger),
+    new PricingRepository(logger),
     new RequestDataMapper(logger),
     new ScenarioResolver(logger),
     logger,
@@ -536,6 +625,7 @@ output.set('subject',        result.subject);
 output.set('slackMessage',   result.slackMessage);
 output.set('gmailMessage',   result.gmailMessage);
 output.set('error_message',  result.error_message);
+output.set('skippedReason',  result.skippedReason);
 output.set('log_summary',    logger.getSummary());
 
 logger.audit(`Script complete → status: ${result.status} | recipient: ${result.recipientName}`);
