@@ -158,6 +158,18 @@ const CUSTOM = {
   ADDITIONAL_CUSTOMIZED_STYLE: 'fldFGUnQBWnfiGwkE',
   ADDITIONAL_SELF_USAGE: 'fldSO6qbpDzk0wUJD', // lookup — Style B's own Self Usage, matches self_usage's edit-mode-authoritative role
   HYBRID_STYLE_NAMES:    'fldEGgSq6Tohw9Xvz', // formula — "Style A & Style B", built off customized_style + additional_customized_style directly
+  // Added 2026-08-03 for the Recap Doc — lookups through customized_style /
+  // additional_customized_style onto the Styles table's own Style Photo
+  // (fldall9IlP5wEMb2W), Price (flduZuxPxxMqXzNxD), and Notes/description
+  // (fldvF8u5jMhimDV3a). Also the CR's own internal_approval_status — the
+  // Recap Doc only shows a customization request once it reaches "Approved".
+  INTERNAL_APPROVAL_STATUS:      'fldEfOYgxOhyDiMEH',
+  CUSTOMIZED_STYLE_PHOTO:        'fldk9mGhKVqFSqEHj',
+  CUSTOMIZED_STYLE_PRICE:        'fldP96DELHa3L3Q5p',
+  CUSTOMIZED_STYLE_NOTES:        'fldHFdzy0yhofTRq1',
+  ADDITIONAL_CUSTOMIZED_STYLE_PHOTO: 'fldm8YULRQaMmj0tZ',
+  ADDITIONAL_CUSTOMIZED_STYLE_PRICE: 'flddMBFbLRzBOsvnx',
+  ADDITIONAL_CUSTOMIZED_STYLE_NOTES: 'fldJVW0TxKH0vRVvj',
 } as const;
 
 const PRICING = {
@@ -343,6 +355,27 @@ function unwrapLookupString(value: unknown): string | null {
     if ('value' in obj) return unwrapLookupString(obj.value);
   }
   return null;
+}
+// Same nested-lookup quirk as unwrapLookupString, but generic (non-string)
+// values — used for the Recap Doc's new customized_style_photo/price/notes
+// lookups (attachment arrays, currency numbers, multiline text), which
+// unwrapLookupString can't handle since it only ever returns strings.
+// Returns the first genuinely present value found, unwrapping one level of
+// { linkedRecordId, value } if present.
+function firstLookupValue<T>(raw: unknown): T | null {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) {
+    for (const v of raw) {
+      if (v && typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
+        const inner = (v as Record<string, unknown>).value;
+        if (inner != null) return inner as T;
+      } else if (v != null) {
+        return v as T;
+      }
+    }
+    return null;
+  }
+  return raw as T;
 }
 function unwrapLinkedNames(value: unknown): string[] {
   if (value == null) return [];
@@ -2707,14 +2740,43 @@ const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
   textAlign: 'right',
 };
 
-interface RecapDocStyleRow {
+// A style shown with no matching customization request — just a name/price/
+// photo chip pulled straight from Favorite Styles from Appointment.
+interface RecapDocFavoriteEntry {
+  kind: 'favorite';
   id: string;
   name: string;
   price: number;
-  notes: string;
-  customPricing: number | null;
   photoUrl: string | null;
 }
+// A single-style customization request that's reached internal approval.
+// Price to the right of the name is the style's BASE price (not the grand
+// total) — description comes from the Style's own Notes field, the CR's own
+// free-text notes render below that, and Custom Pricing (the CR's
+// grandTotal, base + customizations) is last.
+interface RecapDocRegularEntry {
+  kind: 'regular';
+  id: string;
+  name: string;
+  price: number;
+  photoUrl: string | null;
+  description: string;
+  crNotes: string;
+  customPricing: number;
+}
+// A two-style Hybrid customization request. Two style blocks (each name +
+// description + base price), the CR's own notes below both, then Custom
+// Pricing (the combined grandTotal) last.
+interface RecapDocHybridEntry {
+  kind: 'hybrid';
+  id: string;
+  style1: { name: string; price: number; photoUrl: string | null; description: string };
+  style2: { name: string; price: number; photoUrl: string | null; description: string };
+  crNotes: string;
+  customPricing: number;
+}
+type RecapDocEntry = RecapDocFavoriteEntry | RecapDocRegularEntry | RecapDocHybridEntry;
+
 interface RecapDocSnapshot {
   clientName: string;
   email: string;
@@ -2722,14 +2784,31 @@ interface RecapDocSnapshot {
   weddingDateDisplay: string;
   appointmentDisplay: string;
   clientSpecialist: string;
-  styles: RecapDocStyleRow[];
+  entries: RecapDocEntry[];
   photos: Array<{ id: string; url: string; thumbnails?: { small?: { url: string }; large?: { url: string } } }>;
 }
 
-function chunkRecapStyles(styles: RecapDocStyleRow[], perPage: number): RecapDocStyleRow[][] {
-  if (styles.length === 0) return [[]];
-  const pages: RecapDocStyleRow[][] = [];
-  for (let i = 0; i < styles.length; i += perPage) pages.push(styles.slice(i, i + perPage));
+// Hybrid entries take roughly 2x the vertical space of a favorite/regular
+// entry (two style blocks instead of one) — weighting them lets the bounded
+// chunk size approximate actual content height a little better than a flat
+// per-item count would, without measuring the DOM (see file-level note on
+// why nothing here measures real layout).
+function chunkRecapEntries(entries: RecapDocEntry[], weightPerPage: number): RecapDocEntry[][] {
+  if (entries.length === 0) return [[]];
+  const pages: RecapDocEntry[][] = [];
+  let current: RecapDocEntry[] = [];
+  let weight = 0;
+  for (const entry of entries) {
+    const entryWeight = entry.kind === 'hybrid' ? 2 : 1;
+    if (current.length > 0 && weight + entryWeight > weightPerPage) {
+      pages.push(current);
+      current = [];
+      weight = 0;
+    }
+    current.push(entry);
+    weight += entryWeight;
+  }
+  pages.push(current);
   return pages;
 }
 
@@ -2737,12 +2816,12 @@ interface RecapDocumentProps {
   snapshot: RecapDocSnapshot;
 }
 function RecapDocument({ snapshot }: RecapDocumentProps) {
-  const pages = useMemo(() => chunkRecapStyles(snapshot.styles, RECAP_STYLES_PER_PAGE), [snapshot.styles]);
+  const pages = useMemo(() => chunkRecapEntries(snapshot.entries, RECAP_STYLES_PER_PAGE), [snapshot.entries]);
   const lastPageIndex = pages.length - 1;
 
   return (
     <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
-      {pages.map((pageStyles, pageIdx) => {
+      {pages.map((pageEntries, pageIdx) => {
         const isFirstPage = pageIdx === 0;
         const isLastPage  = pageIdx === lastPageIndex;
         return (
@@ -2763,52 +2842,93 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
             ) : (
               <>
                 <div className="text-xs tracking-widest text-gray-500 mb-1">APPOINTMENT RECAP</div>
-                <div className="text-xs italic text-gray-500 mb-4">{RECAP_PHOTO_DISCLAIMER}</div>
               </>
             )}
 
-            {pageStyles.map(style => (
-              <div key={style.id} className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
-                <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
-                  {style.photoUrl && <img src={style.photoUrl} alt="" className="w-full h-full object-cover"/>}
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm font-semibold tracking-wide">{style.name.toUpperCase()}</span>
-                    <span className="text-sm font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(style.price)}</span>
-                  </div>
-                  {style.notes && (
-                    <div className="mt-2 text-xs">
-                      <span className="text-gray-500 tracking-wide">NOTES</span>{' '}
-                      <span className="italic text-gray-700">{style.notes}</span>
+            {pageEntries.map(entry => {
+              if (entry.kind === 'hybrid') {
+                return (
+                  <div key={entry.id} className="py-4 border-b border-gray-200 last:border-0">
+                    <div className="grid grid-cols-2 gap-4">
+                      {([entry.style1, entry.style2] as const).map((s, i) => (
+                        <div key={i} className="flex gap-3">
+                          <div className="w-16 h-20 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+                            {s.photoUrl && <img src={s.photoUrl} alt="" className="w-full h-full object-cover"/>}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-baseline">
+                              <span className="text-sm font-semibold tracking-wide">{s.name.toUpperCase()}</span>
+                              <span className="text-sm font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(s.price)}</span>
+                            </div>
+                            {s.description && <div className="mt-1 text-xs italic text-gray-700">{s.description}</div>}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                  {style.customPricing != null && (
+                    {entry.crNotes && (
+                      <div className="mt-2 text-xs">
+                        <span className="text-gray-500 tracking-wide">NOTES</span>{' '}
+                        <span className="italic text-gray-700">{entry.crNotes}</span>
+                      </div>
+                    )}
                     <div className="mt-1 text-xs flex items-baseline gap-1">
                       <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>
-                      <span className="font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(style.customPricing)}</span>
+                      <span className="font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
                     </div>
-                  )}
+                  </div>
+                );
+              }
+              return (
+                <div key={entry.id} className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
+                  <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+                    {entry.photoUrl && <img src={entry.photoUrl} alt="" className="w-full h-full object-cover"/>}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm font-semibold tracking-wide">{entry.name.toUpperCase()}</span>
+                      <span className="text-sm font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.price)}</span>
+                    </div>
+                    {entry.kind === 'regular' && entry.description && (
+                      <div className="mt-1 text-xs italic text-gray-700">{entry.description}</div>
+                    )}
+                    {entry.kind === 'regular' && entry.crNotes && (
+                      <div className="mt-2 text-xs">
+                        <span className="text-gray-500 tracking-wide">NOTES</span>{' '}
+                        <span className="italic text-gray-700">{entry.crNotes}</span>
+                      </div>
+                    )}
+                    {entry.kind === 'regular' && (
+                      <div className="mt-1 text-xs flex items-baseline gap-1">
+                        <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>
+                        <span className="font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {pageStyles.length === 0 && isFirstPage && (
+              );
+            })}
+            {pageEntries.length === 0 && isFirstPage && (
               <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
             )}
 
+            {/* Disclaimer + photo grid render exactly once, on whichever page
+                the style list actually ends — and only as many photo cards
+                as there actually are, no fixed-9 filler slots (those were
+                just placeholder chrome in the Figma reference, not real
+                behavior). If there are no photos at all, nothing renders
+                here beyond the disclaimer line. */}
             {isLastPage && (
               <>
                 <div className="text-xs italic text-gray-500 mt-6 mb-4">{RECAP_PHOTO_DISCLAIMER}</div>
-                <div className="grid grid-cols-3 gap-3">
-                  {Array.from({ length: 9 }).map((_, i) => {
-                    const photo = snapshot.photos[i];
-                    return (
-                      <div key={i} className="aspect-[3/4] rounded bg-[#D8D0BC] overflow-hidden">
-                        {photo && <img src={photo.thumbnails?.large?.url ?? photo.url} alt="" className="w-full h-full object-cover" />}
+                {snapshot.photos.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3">
+                    {snapshot.photos.map(photo => (
+                      <div key={photo.id} className="aspect-[3/4] rounded bg-[#D8D0BC] overflow-hidden">
+                        <img src={photo.thumbnails?.large?.url ?? photo.url} alt="" className="w-full h-full object-cover" />
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -2856,40 +2976,43 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
     return () => document.removeEventListener('keydown', h);
   }, [requestClose]);
 
+  // The previous approach hid everything via `body * { visibility: hidden }`
+  // and absolutely-positioned .recap-print-area over it — but any ancestor
+  // between <body> and .recap-print-area that caps height/overflow (this
+  // modal's max-h-[90vh] overflow-hidden/overflow-y-auto chrome) still
+  // clipped it during print, and the modal's flex centering could still
+  // offset it, which is what produced the blank space above the content and
+  // the overflow silently spilling onto a near-empty "page 2". Portaling a
+  // second, print-only copy of the document straight onto <body> sidesteps
+  // every ancestor in one move: nothing sits between it and <body>, so
+  // nothing can clip or reposition it.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out recap-print-modal-root"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
       style={{ backdropFilter: 'blur(4px)', opacity: isVisible ? 1 : 0 }}
       onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          .recap-print-area, .recap-print-area * { visibility: visible !important; }
-          .recap-print-area { position: absolute; top: 0; left: 0; width: 100%; }
-          /* Chrome/most browsers strip background colors on print by
-             default — without this, the page tint and every placeholder
-             swatch/photo-grid box disappear, leaving what looks like a
-             near-empty page even when content is present. Keep the same
-             colors shown in the on-screen preview. */
-          .recap-print-area, .recap-print-area * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            color-adjust: exact !important;
-          }
-          /* The modal chrome around .recap-print-area caps height at 90vh
-             and clips overflow (max-h-[90vh] overflow-hidden / overflow-y-
-             auto) — that clipping still applies to an absolutely-positioned
-             descendant during print, even once it's the only visible thing,
-             which is why multi-style/multi-page docs printed as only the
-             first screenful and looked "blank" below the fold. Every
-             ancestor inside this modal must stop clipping/capping height
-             while printing. */
-          .recap-print-modal-root, .recap-print-modal-root * {
-            overflow: visible !important;
-            max-height: none !important;
-            height: auto !important;
-          }
-        }
-      `}</style>
+      {createPortal(
+        <div id="recap-print-portal">
+          <style>{`
+            #recap-print-portal { display: none; }
+            @media print {
+              body > *:not(#recap-print-portal) { display: none !important; }
+              #recap-print-portal { display: block !important; position: static !important; }
+              /* Chrome/most browsers strip background colors on print by
+                 default — without this, the page tint and every placeholder
+                 swatch/photo box disappear, leaving what looks like a
+                 near-empty page even when content is present. Keep the same
+                 colors shown in the on-screen preview. */
+              #recap-print-portal, #recap-print-portal * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+              }
+            }
+          `}</style>
+          <RecapDocument snapshot={snapshot} />
+        </div>,
+        document.body
+      )}
       <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
         style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
         onClick={e => e.stopPropagation()}>
@@ -2897,6 +3020,10 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
           <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">Generate Recap Doc</div>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* On-screen preview — separate instance from the print portal
+              above, so there's exactly one DOM node that's ever visible in
+              print (no duplicate/ID collisions), and this one keeps
+              scrolling normally inside the modal like everything else. */}
           <RecapDocument snapshot={snapshot} />
           <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
             Print (or save as PDF), then use "Upload" on the Recap Doc field to attach it to this appointment.
@@ -3031,6 +3158,19 @@ function PostAppointmentModal({
     isHybrid: boolean;
     proposals: AirtableRecord[];
     grandTotal: number;
+    // Recap Doc fields — internal_approval_status gate + per-style
+    // photo/price/description (Styles.Notes), plus the CR's own free-text
+    // notes. style2* only populated for Hybrid rows.
+    internalApprovalStatus: string;
+    crNotes: string;
+    style1Name: string;
+    style1PhotoUrl: string | null;
+    style1Price: number;
+    style1Description: string;
+    style2Name: string | null;
+    style2PhotoUrl: string | null;
+    style2Price: number | null;
+    style2Description: string | null;
   }
   const customizationRows = useMemo<CustomizationRow[]>(() => {
     if (!customizationsTable) return [];
@@ -3044,6 +3184,14 @@ function PostAppointmentModal({
     const fAdditionalSelfUsage = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_SELF_USAGE);
     const fSourceP    = proposalsTable?.getFieldIfExists(PROPOSAL.SOURCE_CUSTOMIZATION) ?? null;
     const pPriceField = pricingTable?.getFieldIfExists(PRICING.PRICE) ?? null;
+    const fApprovalStatus = customizationsTable.getFieldIfExists(CUSTOM.INTERNAL_APPROVAL_STATUS);
+    const fCrNotes    = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_DETAIL);
+    const fStyle1Photo = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE_PHOTO);
+    const fStyle1PriceLookup = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE_PRICE);
+    const fStyle1Notes = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE_NOTES);
+    const fStyle2Photo = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE_PHOTO);
+    const fStyle2PriceLookup = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE_PRICE);
+    const fStyle2Notes = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE_NOTES);
 
     // A style link's own Base Price, resolved via stylesRecords — same
     // lookup Regular's own basePriceNumber below uses, just reusable for
@@ -3103,7 +3251,21 @@ function PostAppointmentModal({
             return sum + resolvePricingRowAmount(r, pPriceField, pricingPercentField, pricingMultipleField, higherBasePrice, multiplierFactor).amount;
           }, 0);
           const grandTotal = computeHybridCombinedTotal(base1, base2) + customizationTotal;
-          return { id: c.id, styleName, dateRequested, isHybrid, proposals, grandTotal };
+          const styleRec1 = fStyled ? (stylesRecords?.find(r => r.id === ((rec.getCellValue(fStyled) as Array<{id:string}>|null)?.[0]?.id)) ?? null) : null;
+          const styleRec2 = fAdditionalStyled ? (stylesRecords?.find(r => r.id === ((rec.getCellValue(fAdditionalStyled) as Array<{id:string}>|null)?.[0]?.id)) ?? null) : null;
+          return {
+            id: c.id, styleName, dateRequested, isHybrid, proposals, grandTotal,
+            internalApprovalStatus: fApprovalStatus ? (rec.getCellValueAsString(fApprovalStatus) || '') : '',
+            crNotes: fCrNotes ? (rec.getCellValueAsString(fCrNotes) || '') : '',
+            style1Name: styleRec1?.name ?? '',
+            style1PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle1Photo ? rec.getCellValue(fStyle1Photo) : null)?.url ?? null,
+            style1Price: firstLookupValue<number>(fStyle1PriceLookup ? rec.getCellValue(fStyle1PriceLookup) : null) ?? base1,
+            style1Description: firstLookupValue<string>(fStyle1Notes ? rec.getCellValue(fStyle1Notes) : null) ?? '',
+            style2Name: styleRec2?.name ?? '',
+            style2PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle2Photo ? rec.getCellValue(fStyle2Photo) : null)?.url ?? null,
+            style2Price: firstLookupValue<number>(fStyle2PriceLookup ? rec.getCellValue(fStyle2PriceLookup) : null) ?? base2,
+            style2Description: firstLookupValue<string>(fStyle2Notes ? rec.getCellValue(fStyle2Notes) : null) ?? '',
+          };
         }
 
         const basePriceNumber = (styleRec && stylesBasePriceField)
@@ -3122,7 +3284,19 @@ function PostAppointmentModal({
         }, 0);
         const grandTotal = basePriceNumber + customizationTotal;
 
-        return { id: c.id, styleName, dateRequested, isHybrid, proposals, grandTotal };
+        return {
+          id: c.id, styleName, dateRequested, isHybrid, proposals, grandTotal,
+          internalApprovalStatus: fApprovalStatus ? (rec.getCellValueAsString(fApprovalStatus) || '') : '',
+          crNotes: fCrNotes ? (rec.getCellValueAsString(fCrNotes) || '') : '',
+          style1Name: styleName,
+          style1PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle1Photo ? rec.getCellValue(fStyle1Photo) : null)?.url ?? null,
+          style1Price: firstLookupValue<number>(fStyle1PriceLookup ? rec.getCellValue(fStyle1PriceLookup) : null) ?? basePriceNumber,
+          style1Description: firstLookupValue<string>(fStyle1Notes ? rec.getCellValue(fStyle1Notes) : null) ?? '',
+          style2Name: null,
+          style2PhotoUrl: null,
+          style2Price: null,
+          style2Description: null,
+        };
       })
       .filter((r): r is CustomizationRow => r !== null)
       .sort((a, b) => {
@@ -3172,32 +3346,63 @@ function PostAppointmentModal({
   const appointmentDisplay = fApptTime ? fmtRecapAppointmentDisplay(record.getCellValueAsString(fApptTime)) : '';
 
   const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => {
-    // Styles = Favorite Styles from Appointment (the selector right above),
-    // not the Customization Requests table — a consultation frequently ends
-    // with styles picked but no formal customization request logged yet, so
-    // sourcing from Customization Requests alone produced an empty-looking
-    // document. Where a favorite style DOES have a matching customization
-    // request, use that row's grandTotal (folds in customizations) as the
-    // "custom pricing" line under the plain style base price.
+    // ASSUMPTION: "internal approval" = internal_approval_status === 'Approved'
+    // (the field's other values are New Request / Under Review /
+    // Counter-Proposed / Pre-Approved / Denied / Denied • Counter-Proposal —
+    // flag if Pre-Approved should also count).
+    const approvedRows = customizationRows.filter(row => row.internalApprovalStatus === 'Approved');
+
+    const hybridEntries: RecapDocHybridEntry[] = approvedRows
+      .filter(row => row.isHybrid)
+      .map(row => ({
+        kind: 'hybrid',
+        id: row.id,
+        style1: { name: row.style1Name, price: row.style1Price, photoUrl: row.style1PhotoUrl, description: row.style1Description },
+        style2: { name: row.style2Name ?? '', price: row.style2Price ?? 0, photoUrl: row.style2PhotoUrl, description: row.style2Description ?? '' },
+        crNotes: row.crNotes,
+        customPricing: row.grandTotal,
+      }));
+
+    const regularEntries: RecapDocRegularEntry[] = approvedRows
+      .filter(row => !row.isHybrid)
+      .map(row => ({
+        kind: 'regular',
+        id: row.id,
+        name: row.style1Name || row.styleName,
+        price: row.style1Price,
+        photoUrl: row.style1PhotoUrl,
+        description: row.style1Description,
+        crNotes: row.crNotes,
+        customPricing: row.grandTotal,
+      }));
+
+    // A favorite style already represented by an approved Regular CR (by
+    // name) or as one of an approved Hybrid CR's two styles doesn't get a
+    // second, plainer chip — the fuller CR entry replaces it.
+    const namesCoveredByApprovedCR = new Set<string>([
+      ...regularEntries.map(e => e.name),
+      ...hybridEntries.flatMap(e => [e.style1.name, e.style2.name]),
+    ]);
     const fStylePhoto = stylesTable?.getFieldIfExists(STYLES_PHOTO_FIELD_ID) ?? null;
-    const styles: RecapDocStyleRow[] = favStyles.map(name => {
-      const styleRec = stylesRecords?.find(r => r.name === name) ?? null;
-      const basePrice = (styleRec && stylesBasePriceField)
-        ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
-        : 0;
-      const matchingRequest = customizationRows.find(row => row.styleName === name) ?? null;
-      const photoAttachments = (styleRec && fStylePhoto)
-        ? (styleRec.getCellValue(fStylePhoto) as Array<{url:string; thumbnails?:{large?:{url:string}}}>|null)
-        : null;
-      return {
-        id: styleRec?.id ?? name,
-        name,
-        price: basePrice,
-        notes: '',
-        customPricing: (matchingRequest && matchingRequest.grandTotal !== basePrice) ? matchingRequest.grandTotal : null,
-        photoUrl: photoAttachments?.[0] ? (photoAttachments[0].thumbnails?.large?.url ?? photoAttachments[0].url) : null,
-      };
-    });
+    const favoriteEntries: RecapDocFavoriteEntry[] = favStyles
+      .filter(name => !namesCoveredByApprovedCR.has(name))
+      .map(name => {
+        const styleRec = stylesRecords?.find(r => r.name === name) ?? null;
+        const basePrice = (styleRec && stylesBasePriceField)
+          ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
+          : 0;
+        const photoAttachments = (styleRec && fStylePhoto)
+          ? (styleRec.getCellValue(fStylePhoto) as Array<{url:string; thumbnails?:{large?:{url:string}}}>|null)
+          : null;
+        return {
+          kind: 'favorite',
+          id: styleRec?.id ?? name,
+          name,
+          price: basePrice,
+          photoUrl: photoAttachments?.[0] ? (photoAttachments[0].thumbnails?.large?.url ?? photoAttachments[0].url) : null,
+        };
+      });
+
     return {
       clientName: clientName || 'Unknown Client',
       email: cStr(CLIENT.EMAIL),
@@ -3205,7 +3410,7 @@ function PostAppointmentModal({
       weddingDateDisplay: weddingDisplay,
       appointmentDisplay,
       clientSpecialist: saName,
-      styles,
+      entries: [...hybridEntries, ...regularEntries, ...favoriteEntries],
       photos: existingApptPhotos ?? [],
     };
   }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, stylesTable, customizationRows, existingApptPhotos]);
