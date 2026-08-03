@@ -376,6 +376,23 @@ function fmtUSDateTime12h(s: string|null|undefined): string {
   const dayPeriod = (parts.find(p=>p.type==='dayPeriod')?.value ?? '').toLowerCase();
   return `${datePart} at ${hour}:${minute}${dayPeriod}`;
 }
+// "July 4th, 2026 11:55pm" — ordinal date (same suffix logic as fmtFriendly)
+// + 12-hour time, no "at", lowercase am/pm, no space before it. Used only by
+// the Recap Doc's Appointment field per the Figma spec.
+function fmtRecapAppointmentDisplay(s: string|null|undefined): string {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return String(s);
+  const month = new Intl.DateTimeFormat('en-US', { month:'long' }).format(d);
+  const day = d.getDate();
+  const v = day%100;
+  const ord = (['th','st','nd','rd'][(v-20)%10]??['th','st','nd','rd'][v]??'th');
+  const parts = new Intl.DateTimeFormat('en-US', { hour:'numeric', minute:'2-digit', hour12:true }).formatToParts(d);
+  const hour = parts.find(p=>p.type==='hour')?.value ?? '';
+  const minute = parts.find(p=>p.type==='minute')?.value ?? '';
+  const dayPeriod = (parts.find(p=>p.type==='dayPeriod')?.value ?? '').toLowerCase();
+  return `${month} ${day}${ord}, ${d.getFullYear()} ${hour}:${minute}${dayPeriod}`;
+}
 
 // ─── Proposal filename ─────────────────────────────────────────────────────
 // client_style_date_time, all snake_case — used both as the suggested
@@ -432,6 +449,12 @@ function weeksUntil(weddingIso: string|null|undefined): number|null {
   const diff = d.getTime() - Date.now();
   return Math.floor(diff / (1000*60*60*24*7));
 }
+// Styles table (tbl0hWIRBbcB4UkVC) — Style Photo, used by the Recap Doc's
+// per-style thumbnail. Not part of the STYLES const elsewhere in this file
+// (there isn't one — Styles fields are referenced ad hoc via
+// stylesBasePriceField/stylesSelfUsageField props), so this is its own
+// hardcoded ID, verified live against the sandbox base.
+const STYLES_PHOTO_FIELD_ID = 'fldall9IlP5wEMb2W';
 function isConsultation(label: string): boolean {
   return label.toLowerCase().includes('consultation');
 }
@@ -2665,12 +2688,32 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 const RECAP_STYLES_PER_PAGE = 5;
 const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
 
+// Typography per Julia's spec (2026-08-03): Canela Text everywhere, except
+// number fields (phone, currency amounts) which use Abhaya Libre SemiBold.
+// NOTE: this only sets font-family — it does not load the font files. Canela
+// Text and Abhaya Libre must already be available to this page (installed
+// system font, @font-face elsewhere in the Airtable interface, or a Google
+// Fonts/webfont link) or the browser will silently fall back to its default
+// serif/sans-serif. A per-placeholder typography spec (weight/size/
+// line-height/letter-spacing/align for each field) is still pending — see
+// recap_doc_typography.xlsx.
+const RECAP_BODY_FONT_FAMILY = "'Canela Text', Georgia, serif";
+const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
+  fontFamily: "'Abhaya Libre', serif",
+  fontWeight: 600,
+  fontSize: '13px',
+  lineHeight: '100%',
+  letterSpacing: '0%',
+  textAlign: 'right',
+};
+
 interface RecapDocStyleRow {
   id: string;
   name: string;
   price: number;
   notes: string;
   customPricing: number | null;
+  photoUrl: string | null;
 }
 interface RecapDocSnapshot {
   clientName: string;
@@ -2698,7 +2741,7 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
   const lastPageIndex = pages.length - 1;
 
   return (
-    <div className="recap-print-area">
+    <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
       {pages.map((pageStyles, pageIdx) => {
         const isFirstPage = pageIdx === 0;
         const isLastPage  = pageIdx === lastPageIndex;
@@ -2710,7 +2753,7 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                 <div className="text-2xl font-bold mb-4 tracking-wide">{snapshot.clientName.toUpperCase()}</div>
                 <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6 text-sm">
                   <div><span className="text-gray-500">Email: </span><span className="font-medium">{snapshot.email || '—'}</span></div>
-                  <div><span className="text-gray-500">Phone: </span><span className="font-medium">{snapshot.phone || '—'}</span></div>
+                  <div><span className="text-gray-500">Phone: </span><span className="font-medium" style={RECAP_NUMBER_FONT_STYLE}>{snapshot.phone || '—'}</span></div>
                   <div><span className="text-gray-500">Wedding Date: </span><span className="font-medium">{snapshot.weddingDateDisplay || '—'}</span></div>
                   <div><span className="text-gray-500">Appointment: </span><span className="font-medium">{snapshot.appointmentDisplay || '—'}</span></div>
                   <div><span className="text-gray-500">Client Specialist: </span><span className="font-medium">{snapshot.clientSpecialist || '—'}</span></div>
@@ -2726,11 +2769,13 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
 
             {pageStyles.map(style => (
               <div key={style.id} className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
-                <div className="w-20 h-24 rounded bg-[#D8D0BC] flex-shrink-0" />
+                <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+                  {style.photoUrl && <img src={style.photoUrl} alt="" className="w-full h-full object-cover"/>}
+                </div>
                 <div className="flex-1">
                   <div className="flex justify-between items-baseline">
                     <span className="text-sm font-semibold tracking-wide">{style.name.toUpperCase()}</span>
-                    <span className="text-sm font-semibold">{formatCurrency(style.price)}</span>
+                    <span className="text-sm font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(style.price)}</span>
                   </div>
                   {style.notes && (
                     <div className="mt-2 text-xs">
@@ -2739,9 +2784,9 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                     </div>
                   )}
                   {style.customPricing != null && (
-                    <div className="mt-1 text-xs">
-                      <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>{' '}
-                      <span className="font-semibold">{formatCurrency(style.customPricing)}</span>
+                    <div className="mt-1 text-xs flex items-baseline gap-1">
+                      <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>
+                      <span className="font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(style.customPricing)}</span>
                     </div>
                   )}
                 </div>
@@ -2812,7 +2857,7 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
   }, [requestClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 transition-opacity duration-200 ease-out recap-print-modal-root"
       style={{ backdropFilter: 'blur(4px)', opacity: isVisible ? 1 : 0 }}
       onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
       <style>{`
@@ -2829,6 +2874,19 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
+          }
+          /* The modal chrome around .recap-print-area caps height at 90vh
+             and clips overflow (max-h-[90vh] overflow-hidden / overflow-y-
+             auto) — that clipping still applies to an absolutely-positioned
+             descendant during print, even once it's the only visible thing,
+             which is why multi-style/multi-page docs printed as only the
+             first screenful and looked "blank" below the fold. Every
+             ancestor inside this modal must stop clipping/capping height
+             while printing. */
+          .recap-print-modal-root, .recap-print-modal-root * {
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
           }
         }
       `}</style>
@@ -3111,7 +3169,7 @@ function PostAppointmentModal({
   const [showRecapDocPreview, setShowRecapDocPreview] = useState(false);
 
   const fApptTime = apptTable.getFieldIfExists(APPT.TIME);
-  const appointmentDisplay = fApptTime ? fmtUSDateTime12h(record.getCellValueAsString(fApptTime)) : '';
+  const appointmentDisplay = fApptTime ? fmtRecapAppointmentDisplay(record.getCellValueAsString(fApptTime)) : '';
 
   const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => {
     // Styles = Favorite Styles from Appointment (the selector right above),
@@ -3121,18 +3179,23 @@ function PostAppointmentModal({
     // document. Where a favorite style DOES have a matching customization
     // request, use that row's grandTotal (folds in customizations) as the
     // "custom pricing" line under the plain style base price.
+    const fStylePhoto = stylesTable?.getFieldIfExists(STYLES_PHOTO_FIELD_ID) ?? null;
     const styles: RecapDocStyleRow[] = favStyles.map(name => {
       const styleRec = stylesRecords?.find(r => r.name === name) ?? null;
       const basePrice = (styleRec && stylesBasePriceField)
         ? parseCurrencyString(styleRec.getCellValueAsString(stylesBasePriceField))
         : 0;
       const matchingRequest = customizationRows.find(row => row.styleName === name) ?? null;
+      const photoAttachments = (styleRec && fStylePhoto)
+        ? (styleRec.getCellValue(fStylePhoto) as Array<{url:string; thumbnails?:{large?:{url:string}}}>|null)
+        : null;
       return {
         id: styleRec?.id ?? name,
         name,
         price: basePrice,
         notes: '',
         customPricing: (matchingRequest && matchingRequest.grandTotal !== basePrice) ? matchingRequest.grandTotal : null,
+        photoUrl: photoAttachments?.[0] ? (photoAttachments[0].thumbnails?.large?.url ?? photoAttachments[0].url) : null,
       };
     });
     return {
@@ -3145,7 +3208,7 @@ function PostAppointmentModal({
       styles,
       photos: existingApptPhotos ?? [],
     };
-  }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, customizationRows, existingApptPhotos]);
+  }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, stylesTable, customizationRows, existingApptPhotos]);
 
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
