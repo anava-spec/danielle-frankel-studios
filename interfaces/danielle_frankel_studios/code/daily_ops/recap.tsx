@@ -3007,6 +3007,22 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                 print-color-adjust: exact !important;
                 color-adjust: exact !important;
               }
+              /* @page margin defaults to ~0.5in in most browsers, which left
+                 a white strip between the paper edge and this rounded/
+                 bordered on-screen card — even with color-adjust fixed, that
+                 strip (and the rounded corners cutting into the tint) still
+                 read as "a white border". Zero the page margin and make each
+                 .recap-doc-page a plain, square-cornered, borderless block
+                 that fills the full page so the background tint reaches
+                 every edge. */
+              @page { margin: 0; }
+              .recap-doc-page {
+                border-radius: 0 !important;
+                border: none !important;
+                width: 100% !important;
+                min-height: 100vh;
+                box-sizing: border-box;
+              }
             }
           `}</style>
           <RecapDocument snapshot={snapshot} />
@@ -3337,8 +3353,11 @@ function PostAppointmentModal({
   // "Generate Recap Doc" (title bar) only ever appears while recap_doc is
   // empty — once a doc exists, both this and the row's Upload button hide,
   // which is also the UI-level duplicate-upload guard (attachment_router.js
-  // has its own defensive backstop for the same rule).
-  const canGenerateRecapDoc = isConsultationAppt && !hasRecapDoc;
+  // has its own defensive backstop for the same rule). Also hidden when
+  // there's nothing to put in the document — no Favorite Styles and no
+  // Customization Requests logged for this client.
+  const hasAnyRecapDocContent = favStyles.length > 0 || customizationRows.length > 0;
+  const canGenerateRecapDoc = isConsultationAppt && !hasRecapDoc && hasAnyRecapDocContent;
 
   const [showRecapDocPreview, setShowRecapDocPreview] = useState(false);
 
@@ -3346,11 +3365,16 @@ function PostAppointmentModal({
   const appointmentDisplay = fApptTime ? fmtRecapAppointmentDisplay(record.getCellValueAsString(fApptTime)) : '';
 
   const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => {
-    // ASSUMPTION: "internal approval" = internal_approval_status === 'Approved'
-    // (the field's other values are New Request / Under Review /
-    // Counter-Proposed / Pre-Approved / Denied / Denied • Counter-Proposal —
-    // flag if Pre-Approved should also count).
-    const approvedRows = customizationRows.filter(row => row.internalApprovalStatus === 'Approved');
+    // Not filtering by internal_approval_status for now — per Julia (2026-08-03),
+    // unclear whether only-Approved is actually required, and separately the
+    // config-doctor audit found internal_approval_status (and all six new
+    // customized_style_*/additional_customized_style_* lookups) aren't
+    // exposed to this page's block yet (Data > customization_requests >
+    // Fields), so the field always reads empty here regardless — that's why
+    // no CR ever showed up before. Showing every CR unblocks this
+    // immediately; reinstate a `row.internalApprovalStatus === 'Approved'`
+    // filter here once that's confirmed AND the fields are exposed.
+    const approvedRows = customizationRows;
 
     const hybridEntries: RecapDocHybridEntry[] = approvedRows
       .filter(row => row.isHybrid)
@@ -3462,7 +3486,13 @@ function PostAppointmentModal({
       if (t) queueWrite(()=>t.updateRecordAsync(clientId, { [CLIENT.FAV_STYLES_APPT]: ids.length>0?ids:null })).catch(console.error);
     }
   };
-  const availableStyleNames = useMemo(()=>(stylesRecords??[]).map(r=>r.name).filter(Boolean).sort(),[stylesRecords]);
+  // "- customized" styles are per-request variants generated off a base
+  // style, not something a client picks as a favorite — excluded from the
+  // Favorite Styles from Appointment selector entirely.
+  const availableStyleNames = useMemo(
+    ()=>(stylesRecords??[]).map(r=>r.name).filter(Boolean).filter(n=>!n.toLowerCase().includes('- customized')).sort(),
+    [stylesRecords]
+  );
 
   useEffect(()=>{
     const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') requestClose(); };
