@@ -6,7 +6,7 @@ import {
   useCustomProperties,
   useColorScheme,
 } from '@airtable/blocks/interface/ui';
-import type { Table, Field } from '@airtable/blocks/interface/models';
+import type { Table, Field, Record as AirtableRecord } from '@airtable/blocks/interface/models';
 import {
   CaretDown as CaretDownIcon,
   CaretLeft as CaretLeftIcon,
@@ -14,6 +14,7 @@ import {
   CalendarBlank as CalendarBlankIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   X as XIcon,
+  Check as CheckIcon,
   WarningCircle as WarningCircleIcon,
 } from '@phosphor-icons/react';
 
@@ -280,17 +281,21 @@ const AIRTABLE_COLOR_MAP: Record<string, string> = {
 };
 const DEFAULT_STATUS_PILL_CLASSES = 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-[#38322A]';
 
-// Resolves the actual Airtable option color for a singleSelect field's choices
-// so pill colors stay in sync with whatever colors are set on the field in
-// Airtable, instead of hardcoding a status→color map (per BRANDING.md §9).
-function getFieldChoiceColorMap(field: Field | null | undefined): Map<string, string> {
-  const map = new Map<string, string>();
-  if (!field) return map;
+// Resolves a singleSelect field's real Airtable choices (name + color, in the
+// field's own schema order) so both the available options AND their colors
+// stay in sync with whatever is configured on the field in Airtable — never
+// hardcode a status list or a status→color map (per BRANDING.md §9). Schema
+// order matters here specifically because the Calligraphy Status flow is
+// sequential (Pending → Production Approved → Sent to Calligrapher →
+// Received from Calligrapher) and the "advance to next step" button below
+// relies on this order, not a hardcoded array.
+function getFieldChoices(field: Field | null | undefined): Array<{ name: string; color: string }> {
+  if (!field) return [];
   const opts = field.options as unknown as { choices?: Array<{ name: string; color?: string }> } | undefined;
-  for (const choice of opts?.choices ?? []) {
-    if (choice?.name) map.set(choice.name, choice.color ?? '');
-  }
-  return map;
+  return (opts?.choices ?? []).filter(c => !!c?.name).map(c => ({ name: c.name, color: c.color ?? '' }));
+}
+function getFieldChoiceColorMap(field: Field | null | undefined): Map<string, string> {
+  return new Map(getFieldChoices(field).map(c => [c.name, c.color]));
 }
 
 // ─── StatusPillDropdown ─────────────────────────────────────────────────────────
@@ -378,6 +383,182 @@ function CommentsCell({ value, disabled, hasError, onSave }: CommentsCellProps) 
   );
 }
 
+// ─── StatusStepper ──────────────────────────────────────────────────────────────
+// Horizontal dots-and-line progress indicator, same visual language as
+// pipeline.tsx's "Stage in pipeline" component on the Full Client Profile —
+// but colored from the field's own real Airtable choice colors (via
+// getFieldChoices) instead of a fixed emerald, since this status's colors
+// can keep changing along with its choices (per the 2026-07-30 request not
+// to hardcode either).
+interface StatusStepperProps { choices: Array<{ name: string; color: string }>; currentValue: string | null; }
+function StatusStepper({ choices, currentValue }: StatusStepperProps) {
+  const currentIndex = currentValue ? choices.findIndex(c => c.name === currentValue) : -1;
+  return (
+    <div className="flex items-start">
+      {choices.map((choice, index) => {
+        const isCurrent = index === currentIndex;
+        const isPast = currentIndex >= 0 && index < currentIndex;
+        const dotClasses = AIRTABLE_COLOR_MAP[choice.color] ?? DEFAULT_STATUS_PILL_CLASSES;
+        return (
+          <React.Fragment key={choice.name}>
+            <div className="flex flex-col items-center" style={{ minWidth: 0 }}>
+              {isPast ? (
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center border ${dotClasses}`}>
+                  <CheckIcon size={12} weight="bold" />
+                </div>
+              ) : isCurrent ? (
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${dotClasses}`}>
+                  <div className="w-2.5 h-2.5 rounded-full bg-current" />
+                </div>
+              ) : (
+                <div className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-white/10 bg-white dark:bg-[#242220]" />
+              )}
+              <span className={`text-xs mt-2 text-center max-w-[110px] ${isCurrent ? 'font-semibold text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-500 dark:text-gray-400'}`}>
+                {choice.name}
+              </span>
+            </div>
+            {index < choices.length - 1 && (
+              <div className={`flex-1 h-0.5 mt-3 mx-1 ${index < currentIndex ? 'bg-amber-500 dark:bg-amber-400' : 'bg-gray-300 dark:bg-white/10'}`} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── AdvanceConfirmModal ────────────────────────────────────────────────────────
+// Deliberately minimal by request (2026-07-30): a short line of text and a
+// single "Continue" action — no X, no Cancel, no backdrop-click-to-dismiss.
+// The only way out is to go through with the advance; this is an intentional
+// deviation from every other modal in this project's interfaces (which all
+// support backdrop/Escape/X dismissal) — don't "fix" it to match them.
+interface AdvanceConfirmModalProps { nextStatus: string; onContinue: () => void; }
+function AdvanceConfirmModal({ nextStatus, onContinue }: AdvanceConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[360px] shadow-2xl p-6 text-center">
+        <p className="text-sm text-gray-800 dark:text-gray-200 mb-5">Mark as "{nextStatus}"?</p>
+        <button type="button" onClick={onContinue}
+          className="w-full px-4 py-2.5 rounded-md bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] text-sm font-medium hover:bg-amber-700 dark:hover:bg-amber-300 transition-colors">
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Detail page building blocks (BRANDING.md-style DetailSection/FieldRow) ────
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide mb-3">{title}</div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+// Exactly three fields per row, per the 2026-07-30 request.
+function FieldRow({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-3 gap-4">{children}</div>;
+}
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">{label}</div>
+      <div className="text-sm text-gray-800 dark:text-gray-200 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
+    </div>
+  );
+}
+
+// ─── ClientDetailPage ───────────────────────────────────────────────────────────
+interface ClientDetailPageProps {
+  record: AirtableRecord;
+  fields: Record<string, Field | null>;
+  statusChoices: Array<{ name: string; color: string }>;
+  canWrite: boolean;
+  hasStatusError: boolean;
+  hasCommentError: boolean;
+  onAdvanceRequest: (nextStatus: string) => void;
+  onSaveComments: (next: string) => void;
+  onBack: () => void;
+}
+function ClientDetailPage({
+  record, fields, statusChoices, canWrite, hasStatusError, hasCommentError,
+  onAdvanceRequest, onSaveComments, onBack,
+}: ClientDetailPageProps) {
+  const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
+  const fDue = fields[FIELD_IDS.CLIENT_DUE_DATE];
+  const fItems = fields[FIELD_IDS.CLIENT_ITEMS_SOLD];
+  const fGown = fields[FIELD_IDS.CLIENT_GOWN_NAME];
+  const fDressYear = fields[FIELD_IDS.CLIENT_DRESS_CREATION_YEAR];
+  const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
+  const fSent = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
+  const fComments = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_COMMENTS];
+
+  const name = fName ? (record.getCellValueAsString(fName) ?? '') : '';
+  const dueStr = fDue ? (record.getCellValue(fDue) as string | null) : null;
+  const itemsStr = fItems ? getLinkedNamesDisplay(record.getCellValue(fItems)) : '';
+  const gownStr = fGown ? getLinkedNamesDisplay(record.getCellValue(fGown)) : '';
+  const dressYearStr = fDressYear ? (record.getCellValueAsString(fDressYear) ?? '') : '';
+  const weddingStr = fWedding ? (record.getCellValue(fWedding) as string | null) : null;
+  const statusValue = fSent ? (record.getCellValue(fSent) as { name: string } | null)?.name ?? null : null;
+  const commentsStr = fComments ? (record.getCellValueAsString(fComments) ?? '') : '';
+
+  const currentIndex = statusValue ? statusChoices.findIndex(c => c.name === statusValue) : -1;
+  const nextChoice = currentIndex >= 0 && currentIndex < statusChoices.length - 1 ? statusChoices[currentIndex + 1] : null;
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50 dark:bg-[#1A1917]" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1A1917] border-b border-gray-200 dark:border-[#34312C] px-6 py-3">
+        <div className="max-w-[900px] mx-auto">
+          <button type="button" onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-[#34312C] text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors">
+            <CaretLeftIcon size={16} />
+            Go back
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-[900px] mx-auto p-6 space-y-4">
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+          <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF] mb-5">{name || 'Unknown Client'}</div>
+          <StatusStepper choices={statusChoices} currentValue={statusValue} />
+          {canWrite && nextChoice && (
+            <button type="button" onClick={() => onAdvanceRequest(nextChoice.name)}
+              className={`mt-5 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
+                               : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
+              Advance to "{nextChoice.name}"
+            </button>
+          )}
+        </div>
+
+        <DetailSection title="Details">
+          <FieldRow>
+            <DetailRow label="Due Date" value={formatDate(dueStr)} />
+            <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
+            <DetailRow label="Dress Year" value={dressYearStr || '—'} />
+          </FieldRow>
+          <FieldRow>
+            <DetailRow label="Items Sold" value={itemsStr ? renderPills(itemsStr) : '—'} />
+            <DetailRow label="Gown" value={gownStr ? renderPills(gownStr) : '—'} />
+            <div />
+          </FieldRow>
+        </DetailSection>
+
+        <DetailSection title="Comments">
+          <CommentsCell
+            value={commentsStr}
+            disabled={!canWrite}
+            hasError={hasCommentError}
+            onSave={onSaveComments}
+          />
+        </DetailSection>
+      </div>
+    </div>
+  );
+}
+
 // ─── Custom Properties ──────────────────────────────────────────────────────────
 function getCustomProperties(base: ReturnType<typeof useBase>) {
   return [
@@ -406,6 +587,15 @@ function CalligraphyCardsApp(): React.ReactElement {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [updateErrors, setUpdateErrors] = useState<Record<string, boolean>>({});
+  // Detail page navigation — separate from selectedClientId (which is a
+  // search-driven table filter, not a page). Clicking a row opens the detail
+  // page; clicking the Status pill inside a row must not (it stops
+  // propagation itself in StatusPillDropdown).
+  const [openRecordId, setOpenRecordId] = useState<string | null>(null);
+  // The sequential status-advance confirmation — set when the SA clicks
+  // "Advance to X" on the detail page, cleared on Continue (there's no other
+  // dismiss path, by request — see AdvanceConfirmModal).
+  const [pendingAdvance, setPendingAdvance] = useState<{ recordId: string; nextStatus: string } | null>(null);
 
   const fields = useMemo(() => {
     if (!clientsTable) return {};
@@ -416,6 +606,14 @@ function CalligraphyCardsApp(): React.ReactElement {
 
   const allRecords = useRecords(clientsTable ?? null);
   const canWrite = clientsTable ? clientsTable.hasPermissionToUpdateRecords() : false;
+
+  // Read straight from the field's own schema — never hardcode the status
+  // list (2026-07-30 request), since it's still expected to keep changing.
+  // Schema order is what makes the sequential "advance to next" flow work.
+  const statusChoices = useMemo(
+    () => getFieldChoices(fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT]),
+    [fields]
+  );
 
   const handleSetCalligraphyCard = useCallback(async (recordId: string, nextValue: string) => {
     const field = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
@@ -441,6 +639,12 @@ function CalligraphyCardsApp(): React.ReactElement {
       setCommentErrors(prev => ({ ...prev, [recordId]: true }));
     }
   }, [clientsTable, fields]);
+
+  const handleConfirmAdvance = useCallback(() => {
+    if (!pendingAdvance) return;
+    handleSetCalligraphyCard(pendingAdvance.recordId, pendingAdvance.nextStatus);
+    setPendingAdvance(null);
+  }, [pendingAdvance, handleSetCalligraphyCard]);
 
   const searchResults = useMemo(() => {
     if (!allRecords || !searchQuery.trim()) return [];
@@ -531,6 +735,29 @@ function CalligraphyCardsApp(): React.ReactElement {
     </div>
   );
 
+  const openRecord = openRecordId ? (allRecords?.find(r => r.id === openRecordId) ?? null) : null;
+
+  if (openRecord) {
+    return (
+      <div className="font-sans antialiased flex flex-col bg-[#F6F4F0] dark:bg-[#1A1917]" style={{ height: '100vh', overflow: 'hidden' }}>
+        <ClientDetailPage
+          record={openRecord}
+          fields={fields}
+          statusChoices={statusChoices}
+          canWrite={canWrite}
+          hasStatusError={!!updateErrors[openRecord.id]}
+          hasCommentError={!!commentErrors[openRecord.id]}
+          onAdvanceRequest={nextStatus => setPendingAdvance({ recordId: openRecord.id, nextStatus })}
+          onSaveComments={next => handleSetComments(openRecord.id, next)}
+          onBack={() => setOpenRecordId(null)}
+        />
+        {pendingAdvance && (
+          <AdvanceConfirmModal nextStatus={pendingAdvance.nextStatus} onContinue={handleConfirmAdvance} />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col overflow-hidden antialiased bg-[#F6F4F0] dark:bg-[#1A1917]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Header / Filter Bar */}
@@ -575,10 +802,7 @@ function CalligraphyCardsApp(): React.ReactElement {
           label="Calligraphy Status"
           value={calligraphyFilter}
           onChange={setCalligraphyFilter}
-          options={[
-            { value: 'Pending', label: 'Pending' },
-            { value: 'Sent', label: 'Sent' },
-          ]}
+          options={statusChoices.map(c => ({ value: c.name, label: c.name }))}
           align="right"
         />
         {/* Not a clearable filter (unlike the dropdowns above) — always one of
@@ -603,7 +827,6 @@ function CalligraphyCardsApp(): React.ReactElement {
                 <tr className="border-b border-gray-200 dark:border-white/10">
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[90px]">Status</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Client</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[200px]">Comments</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[120px]">Due Date</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[180px]">Items Sold</th>
                   <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 capitalize tracking-wider w-[160px]">Gown</th>
@@ -614,7 +837,7 @@ function CalligraphyCardsApp(): React.ReactElement {
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</td>
+                    <td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No clients match the current filters.</td>
                   </tr>
                 ) : filteredRecords.map(rec => {
                   const fName = fields[FIELD_IDS.CLIENT_FULL_NAME];
@@ -624,10 +847,8 @@ function CalligraphyCardsApp(): React.ReactElement {
                   const fDressYear = fields[FIELD_IDS.CLIENT_DRESS_CREATION_YEAR];
                   const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
                   const fSent = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_SENT];
-                  const fComments = fields[FIELD_IDS.CLIENT_CALLIGRAPHY_CARD_COMMENTS];
 
                   const name = fName ? (rec.getCellValueAsString(fName) ?? '') : '';
-                  const commentsStr = fComments ? (rec.getCellValueAsString(fComments) ?? '') : '';
                   const dueStr = fDue ? (rec.getCellValue(fDue) as string | null) : null;
                   const itemsStr = fItems ? getLinkedNamesDisplay(rec.getCellValue(fItems)) : '';
                   const gownStr = fGown ? getLinkedNamesDisplay(rec.getCellValue(fGown)) : '';
@@ -637,26 +858,19 @@ function CalligraphyCardsApp(): React.ReactElement {
                   const statusColorMap = getFieldChoiceColorMap(fSent);
 
                   return (
-                    <tr key={rec.id} className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                    <tr key={rec.id} onClick={() => setOpenRecordId(rec.id)}
+                      className="border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer">
                       <td className="px-3 py-2.5">
                         <StatusPillDropdown
                           value={statusValue}
                           colorMap={statusColorMap}
-                          options={['Pending', 'Sent']}
+                          options={statusChoices.map(c => c.name)}
                           disabled={!canWrite}
                           hasError={!!updateErrors[rec.id]}
                           onSelect={next => handleSetCalligraphyCard(rec.id, next)}
                         />
                       </td>
                       <td className="px-3 py-2.5 text-sm font-medium text-gray-900 dark:text-[#F5F3EF]">{name || '—'}</td>
-                      <td className="px-3 py-2.5">
-                        <CommentsCell
-                          value={commentsStr}
-                          disabled={!canWrite}
-                          hasError={!!commentErrors[rec.id]}
-                          onSave={next => handleSetComments(rec.id, next)}
-                        />
-                      </td>
                       <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{formatDate(dueStr)}</td>
                       <td className="px-3 py-2.5">{renderPills(itemsStr)}</td>
                       <td className="px-3 py-2.5">{renderPills(gownStr)}</td>
