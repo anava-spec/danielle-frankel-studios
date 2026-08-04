@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   initializeBlock,
@@ -2721,15 +2721,13 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 // chunk size is the deterministic alternative). The photo disclaimer + 3x3
 // grid render exactly once, appended to the LAST page produced (whether
 // that's the only page or the final overflow page), per the AC.
-// Lowered back down from 8 — a page of 8 entries (with notes/custom
-// pricing lines) genuinely overflowed the 11in physical page, which combined
-// with a since-reverted overflow:hidden rule silently clipped the footer off
-// entirely. 6 is a more conservative, still-unmeasured estimate — this
-// remains chunk-based approximation, not real layout measurement, so pages
-// with unusually long notes can still overflow; that will show as a page
-// running onto an extra sheet rather than losing content, which is the
-// correct failure mode.
-const RECAP_STYLES_PER_PAGE = 6;
+// Physical page geometry — US Letter at the standard 96px/in used for
+// on-screen CSS length conversions. Padding matches Tailwind's `p-8` (2rem
+// = 32px) applied on the page div itself.
+const RECAP_PX_PER_IN = 96;
+const RECAP_PAGE_HEIGHT_PX = 11 * RECAP_PX_PER_IN;
+const RECAP_PAGE_WIDTH_PX = 8.5 * RECAP_PX_PER_IN;
+const RECAP_PAGE_PADDING_PX = 32;
 const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
 
 // Typography — filled in by Julia (2026-08-03) via recap_doc_typography.xlsx,
@@ -2840,163 +2838,231 @@ interface RecapDocSnapshot {
   photos: Array<{ id: string; url: string; thumbnails?: { small?: { url: string }; large?: { url: string } } }>;
 }
 
-// Flat per-entry count, no per-kind weighting — Hybrid's two-column layout
-// (both styles side by side) is roughly the same height as one regular
-// entry, not double, so an earlier weight-2 rule for Hybrid was cutting
-// pages short and leaving most of the page blank. Still an unmeasured
-// chunk-size approximation (see file-level note on why nothing here
-// measures real DOM layout), just a flatter one.
-function chunkRecapEntries(entries: RecapDocEntry[], weightPerPage: number): RecapDocEntry[][] {
-  if (entries.length === 0) return [[]];
-  const pages: RecapDocEntry[][] = [];
-  let current: RecapDocEntry[] = [];
-  let weight = 0;
-  for (const entry of entries) {
-    const entryWeight = 1;
-    if (current.length > 0 && weight + entryWeight > weightPerPage) {
-      pages.push(current);
-      current = [];
-      weight = 0;
-    }
-    current.push(entry);
-    weight += entryWeight;
+// ─── Shared render pieces ──────────────────────────────────────────────────
+// Used both by the real visible/print pages AND the hidden measurement pass
+// below, so whatever height gets measured is guaranteed to be the height
+// that actually prints — no risk of the two drifting apart.
+function RecapEntryRow({ entry }: { entry: RecapDocEntry }) {
+  if (entry.kind === 'hybrid') {
+    return (
+      <div className="py-4 border-b border-gray-200 last:border-0">
+        <div className="grid grid-cols-2 gap-4">
+          {([entry.style1, entry.style2] as const).map((s, i) => (
+            <div key={i} className="flex gap-3">
+              <div className="w-16 h-20 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+                {s.photoUrl && <img src={s.photoUrl} alt="" className="w-full h-full object-cover"/>}
+              </div>
+              <div className="flex-1">
+                <div className="flex justify-between items-baseline">
+                  <span style={RECAP_STYLE_NAME_STYLE}>{s.name.toUpperCase()}</span>
+                  <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(s.price)}</span>
+                </div>
+                {s.description && <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{s.description}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+        {entry.crNotes && (
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
+            <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
+          </div>
+        )}
+        <div className="mt-1 flex items-baseline gap-1">
+          <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
+          <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+        </div>
+      </div>
+    );
   }
-  pages.push(current);
-  return pages;
+  return (
+    <div className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
+      <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+        {entry.photoUrl && <img src={entry.photoUrl} alt="" className="w-full h-full object-cover"/>}
+      </div>
+      <div className="flex-1">
+        <div className="flex justify-between items-baseline">
+          <span style={RECAP_STYLE_NAME_STYLE}>{entry.name.toUpperCase()}</span>
+          <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.price)}</span>
+        </div>
+        {entry.kind === 'regular' && entry.description && (
+          <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.description}</div>
+        )}
+        {entry.kind === 'regular' && entry.crNotes && (
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
+            <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
+          </div>
+        )}
+        {entry.kind === 'regular' && (
+          <div className="mt-1 flex items-baseline gap-1">
+            <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
+            <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+function RecapFirstPageHeader({ snapshot }: { snapshot: RecapDocSnapshot }) {
+  return (
+    <>
+      <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
+      <div className="mb-4" style={RECAP_CLIENT_NAME_STYLE}>{snapshot.clientName.toUpperCase()}</div>
+      <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6">
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Email: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.email || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Phone: </span><span style={RECAP_NUMBER_FONT_STYLE}>{snapshot.phone || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Wedding Date: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.weddingDateDisplay || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Appointment: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.appointmentDisplay || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Client Specialist: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.clientSpecialist || '—'}</span></div>
+      </div>
+      <div className="text-gray-500 mb-3" style={RECAP_SECTION_LABEL_STYLE}>STYLES</div>
+    </>
+  );
+}
+// Continuation pages (n+1): header is APPOINTMENT RECAP + the photo
+// disclaimer, on every one of them — not just the last — per Julia
+// (2026-08-03).
+function RecapContinuationHeader() {
+  return (
+    <>
+      <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
+      <div className="text-gray-500 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
+    </>
+  );
+}
+// Used only in the single-page case (first page is also the last) — its
+// header is the client-info block, not the disclaimer, so the disclaimer
+// still needs to appear once, right before the photo grid.
+function RecapSingleDisclaimerLine() {
+  return <div className="text-gray-500 mt-6 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>;
+}
+function RecapPhotoGrid({ photos, topMargin }: { photos: RecapDocSnapshot['photos']; topMargin: boolean }) {
+  if (photos.length === 0) return null;
+  return (
+    <div className={`grid grid-cols-3 gap-3 ${topMargin ? 'mt-6' : ''}`}>
+      {photos.map(photo => (
+        <div key={photo.id} className="aspect-[3/4] rounded bg-[#D8D0BC] overflow-hidden">
+          <img src={photo.thumbnails?.large?.url ?? photo.url} alt="" className="w-full h-full object-cover" />
+        </div>
+      ))}
+    </div>
+  );
+}
+function RecapFooter() {
+  return (
+    <div className="flex justify-center mt-8">
+      <img src={RECAP_FOOTER_LOGO_DATA_URI} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
+    </div>
+  );
+}
+
+// ─── DOM-measured pagination ────────────────────────────────────────────────
+// Replaces the earlier fixed-entries-per-page guess (which repeatedly either
+// wasted a page's worth of blank space or overflowed/clipped, depending on
+// how wrong the guess was for that mix of entries/notes). Instead, every
+// header/footer/entry/grid variant renders once, off-screen but still fully
+// laid out (position:fixed far off the visible canvas, visibility:hidden —
+// NOT display:none, which would report zero height), real pixel heights are
+// read via getBoundingClientRect, and entries are packed into pages against
+// the real US-Letter page height. This runs once per RecapDocument instance
+// (the on-screen preview and the print portal copy each measure
+// independently) via useLayoutEffect, so it's committed before the browser
+// paints — no visible flash of an unpaginated document.
+interface RecapPageGroup {
+  entries: RecapDocEntry[];
+  isFirstPage: boolean;
+  showGrid: boolean;
+}
+function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGroup[] | null; measurement: React.ReactNode } {
+  const [groups, setGroups] = useState<RecapPageGroup[] | null>(null);
+  const firstHeaderRef = useRef<HTMLDivElement>(null);
+  const contHeaderRef = useRef<HTMLDivElement>(null);
+  const singleDisclaimerRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const entryRefs = useRef<Array<HTMLDivElement | null>>([]);
+
+  useLayoutEffect(() => {
+    const usable = RECAP_PAGE_HEIGHT_PX - RECAP_PAGE_PADDING_PX * 2;
+    const firstHeaderH = firstHeaderRef.current?.getBoundingClientRect().height ?? 0;
+    const contHeaderH  = contHeaderRef.current?.getBoundingClientRect().height ?? 0;
+    const singleDisclaimerH = singleDisclaimerRef.current?.getBoundingClientRect().height ?? 0;
+    const gridH = snapshot.photos.length > 0 ? (gridRef.current?.getBoundingClientRect().height ?? 0) : 0;
+    const entryHeights = snapshot.entries.map((_, i) => entryRefs.current[i]?.getBoundingClientRect().height ?? 0);
+
+    const out: RecapPageGroup[] = [];
+    let current: RecapDocEntry[] = [];
+    let isFirst = true;
+    let remaining = usable - firstHeaderH;
+    for (let i = 0; i < snapshot.entries.length; i++) {
+      const h = entryHeights[i];
+      if (current.length > 0 && remaining < h) {
+        out.push({ entries: current, isFirstPage: isFirst, showGrid: false });
+        current = [];
+        isFirst = false;
+        remaining = usable - contHeaderH;
+      }
+      current.push(snapshot.entries[i]);
+      remaining -= h;
+    }
+    const extraForGrid = (isFirst ? singleDisclaimerH : 0) + gridH;
+    if (remaining >= extraForGrid) {
+      out.push({ entries: current, isFirstPage: isFirst, showGrid: true });
+    } else {
+      out.push({ entries: current, isFirstPage: isFirst, showGrid: false });
+      out.push({ entries: [], isFirstPage: false, showGrid: true });
+    }
+    setGroups(out);
+  }, [snapshot]);
+
+  const measurement = (
+    <div aria-hidden style={{
+      position: 'fixed', left: '-99999px', top: 0,
+      width: `${RECAP_PAGE_WIDTH_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`,
+      boxSizing: 'border-box', fontFamily: RECAP_BODY_FONT_FAMILY, visibility: 'hidden',
+    }}>
+      <div ref={firstHeaderRef}><RecapFirstPageHeader snapshot={snapshot}/></div>
+      <div ref={contHeaderRef}><RecapContinuationHeader/></div>
+      <div ref={singleDisclaimerRef}><RecapSingleDisclaimerLine/></div>
+      {snapshot.photos.length > 0 && <div ref={gridRef}><RecapPhotoGrid photos={snapshot.photos} topMargin={false}/></div>}
+      {snapshot.entries.map((entry, i) => (
+        <div key={entry.id} ref={el => { entryRefs.current[i] = el; }}>
+          <RecapEntryRow entry={entry}/>
+        </div>
+      ))}
+    </div>
+  );
+
+  return { groups, measurement };
 }
 
 interface RecapDocumentProps {
   snapshot: RecapDocSnapshot;
 }
 function RecapDocument({ snapshot }: RecapDocumentProps) {
-  const pages = useMemo(() => chunkRecapEntries(snapshot.entries, RECAP_STYLES_PER_PAGE), [snapshot.entries]);
-  const lastPageIndex = pages.length - 1;
+  const { groups, measurement } = useRecapPageGroups(snapshot);
 
   return (
     <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
-      {pages.map((pageEntries, pageIdx) => {
-        const isFirstPage = pageIdx === 0;
-        const isLastPage  = pageIdx === lastPageIndex;
+      {measurement}
+      {groups === null ? (
+        <div className="text-sm text-gray-400 text-center py-10">Preparing document…</div>
+      ) : groups.map((group, pageIdx) => {
+        const isLastPage = pageIdx === groups.length - 1;
         return (
           <div key={pageIdx} className="bg-[#F8F5EE] text-[#1A1612] rounded-xl border border-gray-200 dark:border-white/10 p-8 recap-doc-page" style={{ pageBreakAfter: isLastPage ? 'auto' : 'always', breakAfter: isLastPage ? 'auto' : 'page' }}>
-            {isFirstPage ? (
-              <>
-                <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
-                <div className="mb-4" style={RECAP_CLIENT_NAME_STYLE}>{snapshot.clientName.toUpperCase()}</div>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6">
-                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Email: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.email || '—'}</span></div>
-                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Phone: </span><span style={RECAP_NUMBER_FONT_STYLE}>{snapshot.phone || '—'}</span></div>
-                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Wedding Date: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.weddingDateDisplay || '—'}</span></div>
-                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Appointment: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.appointmentDisplay || '—'}</span></div>
-                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Client Specialist: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.clientSpecialist || '—'}</span></div>
-                </div>
-                <div className="text-gray-500 mb-3" style={RECAP_SECTION_LABEL_STYLE}>STYLES</div>
-              </>
-            ) : (
-              // Continuation pages (n+1): header is APPOINTMENT RECAP +
-              // the photo disclaimer, on every one of them — not just the
-              // last — per Julia (2026-08-03).
-              <>
-                <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
-                <div className="text-gray-500 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
-              </>
-            )}
-
-            {pageEntries.map(entry => {
-              if (entry.kind === 'hybrid') {
-                return (
-                  <div key={entry.id} className="py-4 border-b border-gray-200 last:border-0">
-                    <div className="grid grid-cols-2 gap-4">
-                      {([entry.style1, entry.style2] as const).map((s, i) => (
-                        <div key={i} className="flex gap-3">
-                          <div className="w-16 h-20 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
-                            {s.photoUrl && <img src={s.photoUrl} alt="" className="w-full h-full object-cover"/>}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-baseline">
-                              <span style={RECAP_STYLE_NAME_STYLE}>{s.name.toUpperCase()}</span>
-                              <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(s.price)}</span>
-                            </div>
-                            {s.description && <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{s.description}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {entry.crNotes && (
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
-                        <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
-                      </div>
-                    )}
-                    <div className="mt-1 flex items-baseline gap-1">
-                      <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
-                      <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <div key={entry.id} className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
-                  <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
-                    {entry.photoUrl && <img src={entry.photoUrl} alt="" className="w-full h-full object-cover"/>}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex justify-between items-baseline">
-                      <span style={RECAP_STYLE_NAME_STYLE}>{entry.name.toUpperCase()}</span>
-                      <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.price)}</span>
-                    </div>
-                    {entry.kind === 'regular' && entry.description && (
-                      <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.description}</div>
-                    )}
-                    {entry.kind === 'regular' && entry.crNotes && (
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
-                        <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
-                      </div>
-                    )}
-                    {entry.kind === 'regular' && (
-                      <div className="mt-1 flex items-baseline gap-1">
-                        <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
-                        <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            {pageEntries.length === 0 && isFirstPage && (
+            {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
+            {group.entries.map(entry => <RecapEntryRow key={entry.id} entry={entry}/>)}
+            {group.entries.length === 0 && group.isFirstPage && (
               <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
             )}
-
-            {/* Photo grid renders exactly once, on whichever page the style
-                list actually ends — and only as many photo cards as there
-                actually are, no fixed-9 filler slots (those were just
-                placeholder chrome in the Figma reference, not real
-                behavior). The disclaimer line itself already appeared in
-                this page's header above for every continuation page; only
-                the single-page case (first page that's also the last)
-                still needs it added here before the grid, since its header
-                is the client-info block, not the disclaimer. */}
-            {isLastPage && (
+            {group.showGrid && (
               <>
-                {isFirstPage && (
-                  <div className="text-gray-500 mt-6 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
-                )}
-                {snapshot.photos.length > 0 && (
-                  <div className={`grid grid-cols-3 gap-3 ${isFirstPage ? '' : 'mt-6'}`}>
-                    {snapshot.photos.map(photo => (
-                      <div key={photo.id} className="aspect-[3/4] rounded bg-[#D8D0BC] overflow-hidden">
-                        <img src={photo.thumbnails?.large?.url ?? photo.url} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {group.isFirstPage && <RecapSingleDisclaimerLine/>}
+                <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
               </>
             )}
-
-            <div className="flex justify-center mt-8">
-              <img src={RECAP_FOOTER_LOGO_DATA_URI} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
-            </div>
+            <RecapFooter/>
           </div>
         );
       })}
