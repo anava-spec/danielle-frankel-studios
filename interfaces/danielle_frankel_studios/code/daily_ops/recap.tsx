@@ -2730,23 +2730,57 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 const RECAP_STYLES_PER_PAGE = 8;
 const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
 
-// Typography per Julia's spec (2026-08-03): Canela Text everywhere, except
-// number fields (phone, currency amounts) which use Abhaya Libre SemiBold.
-// NOTE: this only sets font-family — it does not load the font files. Canela
-// Text and Abhaya Libre must already be available to this page (installed
-// system font, @font-face elsewhere in the Airtable interface, or a Google
-// Fonts/webfont link) or the browser will silently fall back to its default
-// serif/sans-serif. A per-placeholder typography spec (weight/size/
-// line-height/letter-spacing/align for each field) is still pending — see
-// recap_doc_typography.xlsx.
+// Typography — filled in by Julia (2026-08-03) via recap_doc_typography.xlsx,
+// one row per placeholder. NOTE: this only sets font-family — it does not
+// load the font files. Canela Text and Abhaya Libre must already be
+// available to this page (installed system font, @font-face elsewhere in
+// the Airtable interface, or a Google Fonts/webfont link) or the browser
+// will silently fall back to its default serif/sans-serif. Footer wordmark
+// is still pending — Julia's sending a PNG for it, currently plain text.
 const RECAP_BODY_FONT_FAMILY = "'Canela Text', Georgia, serif";
+const RECAP_NUMBER_FONT_FAMILY = "'Abhaya Libre', serif";
+
+// "Phone" / "Style Price" / "Custom Pricing (value)" rows — identical spec.
 const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
-  fontFamily: "'Abhaya Libre', serif",
+  fontFamily: RECAP_NUMBER_FONT_FAMILY,
   fontWeight: 600,
   fontSize: '13px',
   lineHeight: '100%',
   letterSpacing: '0%',
   textAlign: 'right',
+};
+// "APPOINTMENT RECAP" / "STYLES" section labels
+const RECAP_SECTION_LABEL_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '9px', lineHeight: 1, letterSpacing: '2px', textAlign: 'left',
+};
+// "Email:" / "Phone:" / "Wedding Date:" / "Appointment:" / "Client Specialist:" labels
+const RECAP_FIELD_LABEL_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '7.5px', lineHeight: '11px', letterSpacing: '1.2px', textAlign: 'left',
+};
+// Email / Wedding Date / Appointment / Client Specialist values (Phone uses
+// RECAP_NUMBER_FONT_STYLE instead, per the sheet)
+const RECAP_FIELD_VALUE_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '10.5px', lineHeight: '13px', letterSpacing: '0%', textAlign: 'left',
+};
+// Client Name (e.g. "JULIA SHAO COLLINS")
+const RECAP_CLIENT_NAME_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '26px', lineHeight: 1, letterSpacing: '5px', textAlign: 'left',
+};
+// Style name (e.g. "EFFIE")
+const RECAP_STYLE_NAME_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '13px', lineHeight: 1, letterSpacing: '3px', textAlign: 'left',
+};
+// Free-text note under a style (description / CR notes body text)
+const RECAP_STYLE_NOTES_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '10.5px', lineHeight: '15px', letterSpacing: '0%', textAlign: 'left',
+};
+// "NOTES" / "CUSTOM PRICING" small caps labels
+const RECAP_SMALL_LABEL_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '7.5px', lineHeight: 1, letterSpacing: '1.2px', textAlign: 'left',
+};
+// Photo disclaimer italic line
+const RECAP_DISCLAIMER_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontStyle: 'italic', fontSize: '10.5px', lineHeight: '15px', letterSpacing: '0%', textAlign: 'left',
 };
 
 // A style shown with no matching customization request — just a name/price/
@@ -2838,20 +2872,20 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
           <div key={pageIdx} className="bg-[#F8F5EE] text-[#1A1612] rounded-xl border border-gray-200 dark:border-white/10 p-8 recap-doc-page" style={{ pageBreakAfter: isLastPage ? 'auto' : 'always', breakAfter: isLastPage ? 'auto' : 'page' }}>
             {isFirstPage ? (
               <>
-                <div className="text-xs tracking-widest text-gray-500 mb-1">APPOINTMENT RECAP</div>
-                <div className="text-2xl font-bold mb-4 tracking-wide">{snapshot.clientName.toUpperCase()}</div>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6 text-sm">
-                  <div><span className="text-gray-500">Email: </span><span className="font-medium">{snapshot.email || '—'}</span></div>
-                  <div><span className="text-gray-500">Phone: </span><span className="font-medium" style={RECAP_NUMBER_FONT_STYLE}>{snapshot.phone || '—'}</span></div>
-                  <div><span className="text-gray-500">Wedding Date: </span><span className="font-medium">{snapshot.weddingDateDisplay || '—'}</span></div>
-                  <div><span className="text-gray-500">Appointment: </span><span className="font-medium">{snapshot.appointmentDisplay || '—'}</span></div>
-                  <div><span className="text-gray-500">Client Specialist: </span><span className="font-medium">{snapshot.clientSpecialist || '—'}</span></div>
+                <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
+                <div className="mb-4" style={RECAP_CLIENT_NAME_STYLE}>{snapshot.clientName.toUpperCase()}</div>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6">
+                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Email: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.email || '—'}</span></div>
+                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Phone: </span><span style={RECAP_NUMBER_FONT_STYLE}>{snapshot.phone || '—'}</span></div>
+                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Wedding Date: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.weddingDateDisplay || '—'}</span></div>
+                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Appointment: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.appointmentDisplay || '—'}</span></div>
+                  <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Client Specialist: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.clientSpecialist || '—'}</span></div>
                 </div>
-                <div className="text-xs tracking-widest text-gray-500 mb-3">STYLES</div>
+                <div className="text-gray-500 mb-3" style={RECAP_SECTION_LABEL_STYLE}>STYLES</div>
               </>
             ) : (
               <>
-                <div className="text-xs tracking-widest text-gray-500 mb-1">APPOINTMENT RECAP</div>
+                <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
               </>
             )}
 
@@ -2867,23 +2901,23 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                           </div>
                           <div className="flex-1">
                             <div className="flex justify-between items-baseline">
-                              <span className="text-sm font-semibold tracking-wide">{s.name.toUpperCase()}</span>
-                              <span className="text-sm font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(s.price)}</span>
+                              <span style={RECAP_STYLE_NAME_STYLE}>{s.name.toUpperCase()}</span>
+                              <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(s.price)}</span>
                             </div>
-                            {s.description && <div className="mt-1 text-xs italic text-gray-700">{s.description}</div>}
+                            {s.description && <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{s.description}</div>}
                           </div>
                         </div>
                       ))}
                     </div>
                     {entry.crNotes && (
-                      <div className="mt-2 text-xs">
-                        <span className="text-gray-500 tracking-wide">NOTES</span>{' '}
-                        <span className="italic text-gray-700">{entry.crNotes}</span>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
+                        <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
                       </div>
                     )}
-                    <div className="mt-1 text-xs flex items-baseline gap-1">
-                      <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>
-                      <span className="font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+                    <div className="mt-1 flex items-baseline gap-1">
+                      <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
+                      <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
                     </div>
                   </div>
                 );
@@ -2895,22 +2929,22 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-baseline">
-                      <span className="text-sm font-semibold tracking-wide">{entry.name.toUpperCase()}</span>
-                      <span className="text-sm font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.price)}</span>
+                      <span style={RECAP_STYLE_NAME_STYLE}>{entry.name.toUpperCase()}</span>
+                      <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.price)}</span>
                     </div>
                     {entry.kind === 'regular' && entry.description && (
-                      <div className="mt-1 text-xs italic text-gray-700">{entry.description}</div>
+                      <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.description}</div>
                     )}
                     {entry.kind === 'regular' && entry.crNotes && (
-                      <div className="mt-2 text-xs">
-                        <span className="text-gray-500 tracking-wide">NOTES</span>{' '}
-                        <span className="italic text-gray-700">{entry.crNotes}</span>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
+                        <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
                       </div>
                     )}
                     {entry.kind === 'regular' && (
-                      <div className="mt-1 text-xs flex items-baseline gap-1">
-                        <span className="text-gray-500 tracking-wide">CUSTOM PRICING</span>
-                        <span className="font-semibold" style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+                      <div className="mt-1 flex items-baseline gap-1">
+                        <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
+                        <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
                       </div>
                     )}
                   </div>
@@ -2929,7 +2963,7 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                 here beyond the disclaimer line. */}
             {isLastPage && (
               <>
-                <div className="text-xs italic text-gray-500 mt-6 mb-4">{RECAP_PHOTO_DISCLAIMER}</div>
+                <div className="text-gray-500 mt-6 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
                 {snapshot.photos.length > 0 && (
                   <div className="grid grid-cols-3 gap-3">
                     {snapshot.photos.map(photo => (
