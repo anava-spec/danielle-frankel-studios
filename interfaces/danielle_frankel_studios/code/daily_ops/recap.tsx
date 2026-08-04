@@ -3112,14 +3112,29 @@ interface RecapDocumentProps {
 function RecapDocument({ snapshot }: RecapDocumentProps) {
   const { groups, measuringContent } = useRecapPageGroups(snapshot);
 
+  // DELIBERATE EXPERIMENT (2026-08-04, per Julia): whatever renders Airtable's
+  // "Print"/PDF export apparently doesn't honor page-break-after/break-after
+  // at all — the on-screen preview correctly showed page 1 ending at Devon
+  // with its footer, page 2 starting with the header + Emmet, but the
+  // actual PDF just ran Devon straight into Emmet with no header/footer in
+  // between, as if the forced break were silently ignored and everything
+  // just kept flowing as one page. Rather than depend on that CSS feature at
+  // all, each page section below is a plain, un-broken block exactly 11in
+  // tall (no forced break declared) — stacked back-to-back with zero gap, so
+  // the total document height is an exact multiple of one physical page.
+  // Basic print pagination (cut every physical-page-worth of height) is a
+  // far more fundamental capability than CSS Fragmentation properties like
+  // page-break-after — it should split at these exact 11in boundaries on its
+  // own, by construction, without needing to be told to. The background
+  // color filling each full 11in section (even past the last entry) is what
+  // keeps real blank space from showing on a short trailing page.
   return (
     <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
       {groups === null ? (
         measuringContent
       ) : groups.map((group, pageIdx) => {
-        const isLastPage = pageIdx === groups.length - 1;
         return (
-          <div key={pageIdx} className="bg-[#F8F5EE] text-[#1A1612] rounded-xl border border-gray-200 dark:border-white/10 p-8 recap-doc-page" style={{ pageBreakAfter: isLastPage ? 'auto' : 'always', breakAfter: isLastPage ? 'auto' : 'page' }}>
+          <div key={pageIdx} className="bg-[#F8F5EE] text-[#1A1612] rounded-xl border border-gray-200 dark:border-white/10 p-8 recap-doc-page">
             {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
             {group.entries.map(entry => <RecapEntryRow key={entry.id} entry={entry}/>)}
             {group.entries.length === 0 && group.isFirstPage && (
@@ -3213,21 +3228,23 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  that fills the full page so the background tint reaches
                  every edge. */
               @page { margin: 0; size: letter; }
-              /* Back to an explicit fixed height + overflow:hidden — safe
-                 now that the DOM-measured pagination above actually reserves
-                 room for the footer (and a safety margin) on every page, so
-                 a page's real content should never exceed 11in in the first
-                 place. min-height alone let a too-tall page's content spill
-                 via the browser's own native reflow instead of respecting
-                 our forced page-break-after boundaries, which is what
-                 displaced the header/disclaimer/footer between pages
-                 (title missing, disclaimer showing up where the footer
-                 should be). A fixed height makes our own div boundaries the
-                 only source of truth for where one page ends and the next
-                 begins. */
+              /* No page-break-after/break-inside declared anywhere anymore
+                 (see the note above RecapDocument's return) — whatever
+                 renders this document's Print/PDF export doesn't appear to
+                 honor those CSS Fragmentation properties, so nothing here
+                 depends on them. Instead every .recap-doc-page is an
+                 un-broken, zero-margin block fixed at EXACTLY 11in tall,
+                 stacked back-to-back with nothing between them — the total
+                 document height is always an exact multiple of one physical
+                 page. Basic pagination (cut every physical-page-worth of
+                 height) is a far more fundamental capability than forced
+                 breaks, and should split at these exact boundaries by
+                 construction, with no explicit instruction needed. */
               .recap-doc-page {
                 border-radius: 0 !important;
                 border: none !important;
+                margin: 0 !important;
+                display: block !important;
                 width: 8.5in !important;
                 height: 11in !important;
                 overflow: hidden !important;
