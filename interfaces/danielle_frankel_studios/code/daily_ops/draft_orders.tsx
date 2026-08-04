@@ -218,7 +218,14 @@ function getRushFeeExplanation(
     : 0;
   const pctLabel = `${Math.round(rushPct * 100)}%`;
 
-  return `${pctLabel} rush fee on ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'}. ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} left until the due date on ${formatDate(dueDate.toISOString())}.`;
+  // weeksRemaining can be zero or negative (the due date is already this
+  // week or has passed) — spell that out in words instead of a signed
+  // number like "-4 weeks left", which reads like a typo, not a countdown.
+  const weeksLabel = weeksRemaining <= 0
+    ? `Less than ${Math.abs(weeksRemaining) || 1} week${Math.abs(weeksRemaining) === 1 ? '' : 's'} left`
+    : `${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} left`;
+
+  return `${pctLabel} rush fee on ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'}. ${weeksLabel} until the due date on ${formatDate(dueDate.toISOString())}.`;
 }
 
 function parseCurrency(value: string): number {

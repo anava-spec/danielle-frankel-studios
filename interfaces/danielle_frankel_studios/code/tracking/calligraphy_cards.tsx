@@ -369,16 +369,30 @@ function CommentsCell({ value, disabled, hasError, onSave }: CommentsCellProps) 
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setDraft(value); }, [value]);
-  // Dynamic height — grows with content instead of scrolling inside a fixed
-  // box, since Margo's notes can run long. Re-measured on every value change
-  // (including the initial mount) and on every keystroke.
+  // Fills whatever vertical space is left in its flex parent by default (via
+  // flex-1 below — this is what "compensates" the blank space left over when
+  // the popup is resized, 2026-08-04), and only grows taller than that when
+  // its own content actually needs more room than the flex-allocated space —
+  // clearing the inline height first lets the flex box re-claim its normal
+  // fill-the-remaining-space size, then scrollHeight vs. clientHeight tells
+  // us whether the content overflows that size and needs to push taller.
   const resize = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    el.style.height = '';
+    const flexHeight = el.clientHeight;
+    if (el.scrollHeight > flexHeight) {
+      el.style.height = `${el.scrollHeight}px`;
+    }
   }, []);
   useEffect(() => { resize(); }, [draft, resize]);
+  // Re-measure on window resize too — the popup's own height is a percentage
+  // of the window height, so resizing the window changes how much space is
+  // actually left for Comments to fill.
+  useEffect(() => {
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, [resize]);
   return (
     <textarea
       ref={ref}
@@ -388,7 +402,7 @@ function CommentsCell({ value, disabled, hasError, onSave }: CommentsCellProps) 
       onBlur={() => { if (draft !== value) onSave(draft); }}
       placeholder={disabled ? '—' : 'Name variations for the card…'}
       rows={2}
-      className={`w-full resize-none overflow-hidden bg-white dark:bg-[#1e1d1b] text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-lg border px-3 py-2 transition-colors ${
+      className={`w-full flex-1 min-h-0 resize-none overflow-hidden bg-white dark:bg-[#1e1d1b] text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-lg border px-3 py-2 transition-colors ${
         hasError ? 'border-red-400 dark:border-red-500/60' : 'border-gray-200 dark:border-[#34312C] focus:border-amber-500 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-500 dark:focus:ring-amber-400'} ${
         disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     />
@@ -572,7 +586,7 @@ function ClientDetailModal({
       onClick={requestClose}
     >
       <div
-        className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[90vh] shadow-2xl overflow-hidden flex flex-col transition-[opacity,transform] duration-200 ease-out"
+        className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] h-[60vh] max-h-[90vh] shadow-2xl overflow-hidden flex flex-col transition-[opacity,transform] duration-200 ease-out"
         style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -597,21 +611,25 @@ function ClientDetailModal({
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-          <StatusStepper choices={statusChoices} currentValue={statusValue} />
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 flex flex-col" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+          <div className="flex-shrink-0 space-y-4">
+            <StatusStepper choices={statusChoices} currentValue={statusValue} />
 
-          <FieldRow cols={4}>
-            <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
-            <DetailRow label="Due Date" value={formatDate(dueStr)} tooltip="3 months before the wedding date — target date to have the card ready" />
-            <DetailRow label="Gown" value={gownStr || '—'} />
-            <DetailRow label="Dress Year" value={dressYearStr || '—'} />
-          </FieldRow>
-          <FieldRow cols={1}>
-            <DetailRow label="Items Sold" value={itemsStr || '—'} />
-          </FieldRow>
+            <FieldRow cols={4}>
+              <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
+              <DetailRow label="Due Date" value={formatDate(dueStr)} tooltip="3 months before the wedding date — target date to have the card ready" />
+              <DetailRow label="Gown" value={gownStr || '—'} />
+              <DetailRow label="Dress Year" value={dressYearStr || '—'} />
+            </FieldRow>
+            <FieldRow cols={1}>
+              <DetailRow label="Items Sold" value={itemsStr || '—'} />
+            </FieldRow>
+          </div>
 
-          <div>
-            <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-0.5">Comments</div>
+          {/* Fills whatever vertical space is left below the fields, instead
+              of leaving it blank — see CommentsCell's own comment. */}
+          <div className="flex-1 min-h-0 flex flex-col mt-4">
+            <div className="flex-shrink-0 text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-0.5">Comments</div>
             <CommentsCell
               value={commentsStr}
               disabled={!canWrite}
