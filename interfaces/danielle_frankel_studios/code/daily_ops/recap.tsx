@@ -2891,8 +2891,12 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                 <div className="text-gray-500 mb-3" style={RECAP_SECTION_LABEL_STYLE}>STYLES</div>
               </>
             ) : (
+              // Continuation pages (n+1): header is APPOINTMENT RECAP +
+              // the photo disclaimer, on every one of them — not just the
+              // last — per Julia (2026-08-03).
               <>
                 <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
+                <div className="text-gray-500 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
               </>
             )}
 
@@ -2962,17 +2966,22 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
               <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
             )}
 
-            {/* Disclaimer + photo grid render exactly once, on whichever page
-                the style list actually ends — and only as many photo cards
-                as there actually are, no fixed-9 filler slots (those were
-                just placeholder chrome in the Figma reference, not real
-                behavior). If there are no photos at all, nothing renders
-                here beyond the disclaimer line. */}
+            {/* Photo grid renders exactly once, on whichever page the style
+                list actually ends — and only as many photo cards as there
+                actually are, no fixed-9 filler slots (those were just
+                placeholder chrome in the Figma reference, not real
+                behavior). The disclaimer line itself already appeared in
+                this page's header above for every continuation page; only
+                the single-page case (first page that's also the last)
+                still needs it added here before the grid, since its header
+                is the client-info block, not the disclaimer. */}
             {isLastPage && (
               <>
-                <div className="text-gray-500 mt-6 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
+                {isFirstPage && (
+                  <div className="text-gray-500 mt-6 mb-4" style={RECAP_DISCLAIMER_STYLE}>{RECAP_PHOTO_DISCLAIMER}</div>
+                )}
                 {snapshot.photos.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className={`grid grid-cols-3 gap-3 ${isFirstPage ? '' : 'mt-6'}`}>
                     {snapshot.photos.map(photo => (
                       <div key={photo.id} className="aspect-[3/4] rounded bg-[#D8D0BC] overflow-hidden">
                         <img src={photo.thumbnails?.large?.url ?? photo.url} alt="" className="w-full h-full object-cover" />
@@ -3067,21 +3076,26 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  that fills the full page so the background tint reaches
                  every edge. */
               @page { margin: 0; size: letter; }
+              /* min-height: 11in wasn't reliably filling short continuation
+                 pages either — min-height is a lower bound the box is free
+                 to exceed or (per some engines' print-layout quirks) not
+                 fully honor, so a page with only a couple of entries still
+                 sometimes rendered shorter than the true 11in sheet, leaving
+                 blank white below the tint. Forcing an EXPLICIT height (not
+                 min-height) matching the @page size — the standard technique
+                 for guaranteeing one div == one full physical printed page —
+                 removes that ambiguity: the box is always exactly one letter
+                 page, never shorter, never taller. overflow:hidden guards
+                 against any single page's content actually exceeding that
+                 (shouldn't happen given the chunking above, but silently
+                 truncating is safer than silently spilling onto a stray
+                 extra blank page). */
               .recap-doc-page {
                 border-radius: 0 !important;
                 border: none !important;
-                width: 100% !important;
-                /* 100vh resolves against the browser window's on-screen
-                   size in Chrome's print engine, not the physical page —
-                   so a page with less content than a full window's worth
-                   (e.g. a continuation page with only 2 entries) stopped
-                   short of the actual printed sheet's bottom edge, leaving
-                   real blank white space below the tint rather than the
-                   tint reaching the page's true bottom. A physical length
-                   matching the @page size (US Letter, 11in tall) is what
-                   actually guarantees every page — including short ones —
-                   fills the full printed sheet. */
-                min-height: 11in !important;
+                width: 8.5in !important;
+                height: 11in !important;
+                overflow: hidden !important;
                 box-sizing: border-box !important;
               }
             }
@@ -3550,7 +3564,16 @@ function PostAppointmentModal({
     if (stylesRecords && clientId) {
       const ids = updated.map(name=>stylesRecords.find(r=>r.name===name)?.id).filter((id):id is string=>!!id).map(id=>({id}));
       const t = base.getTableByIdIfExists(TABLE_IDS.CLIENTS);
-      if (t) queueWrite(()=>t.updateRecordAsync(clientId, { [CLIENT.FAV_STYLES_APPT]: ids.length>0?ids:null })).catch(console.error);
+      // Write to the SAME field the read path resolved (favoriteStylesApptField
+      // custom property), not the hardcoded CLIENT.FAV_STYLES_APPT constant —
+      // if that field isn't exposed to this page's block config, the custom
+      // property's fuzzy-name fallback can resolve to a DIFFERENT field
+      // (e.g. favorite_styles_from_acuity also matches "favoritestyle").
+      // Writing to the hardcoded field while reading from the fallback field
+      // is exactly why selections looked like they weren't saving — the
+      // write landed on a field nothing else ever reads back from.
+      const fFav = favoriteStylesApptField ?? t?.getFieldIfExists(CLIENT.FAV_STYLES_APPT) ?? null;
+      if (t && fFav) queueWrite(()=>t.updateRecordAsync(clientId, { [fFav.id]: ids.length>0?ids:null })).catch(console.error);
     }
   };
   // "- customized" styles are per-request variants generated off a base
