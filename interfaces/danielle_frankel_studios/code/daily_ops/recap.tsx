@@ -2993,7 +2993,25 @@ interface RecapPageGroup {
 // sometimes the header) out of place.
 const RECAP_PAGE_SAFETY_MARGIN_PX = 24;
 
-function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGroup[] | null; measurement: React.ReactNode } {
+// DELIBERATE EXPERIMENT (2026-08-04, per Julia): the previous version kept a
+// second, permanently-present "scratch" copy of the whole document
+// off-screen (position:fixed + visibility:hidden) purely to measure it,
+// alongside the real visible/print copy. `position: fixed` is specified by
+// CSS to repeat on every physical printed page — if visibility:hidden
+// didn't fully suppress that in Chrome's print engine (a known
+// cross-browser inconsistency), that scratch copy would print on every
+// page and explain the scrambled pagination. Rather than patch around that
+// with another display:none escape hatch, this version removes the
+// parallel copy AND every position:fixed entirely: there is only ever ONE
+// copy of the content in the DOM. On first mount (groups === null) it
+// renders unpaginated, in normal document flow, purely so its real height
+// can be measured. useLayoutEffect measures it and calls setGroups
+// synchronously, BEFORE the browser paints anything — React re-renders with
+// the real paginated pages before that first paint ever reaches the
+// screen, so the unpaginated version is never actually visible to the user
+// or to the print engine. No fixed positioning, no hidden clone, no
+// display:none workaround — nothing that could repeat across pages.
+function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGroup[] | null; measuringContent: React.ReactNode } {
   const [groups, setGroups] = useState<RecapPageGroup[] | null>(null);
   const firstHeaderRef = useRef<HTMLDivElement>(null);
   const contHeaderRef = useRef<HTMLDivElement>(null);
@@ -3002,25 +3020,29 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
   const footerRef = useRef<HTMLDivElement>(null);
   const entryRefs = useRef<Array<HTMLDivElement | null>>([]);
 
-  // Depend on a content fingerprint, not `snapshot`'s object identity.
+  // Depend on a content fingerprint, not `snapshot`'s object identity —
   // recapDocSnapshot upstream is memoized, but if any of its own deps
   // (e.g. existingApptPhotos, computed inline via getVal() on every
   // PostAppointmentModal render) aren't themselves stable, useMemo still
   // recreates a new snapshot object every render even when the actual
-  // content hasn't changed — which, keyed by reference, reran this effect
-  // and called setGroups on every single render, an infinite update loop
-  // (React error #185). Snapshot is plain JSON-serializable data with no
-  // functions/circular refs, so stringifying it is a safe, if slightly
-  // wasteful, way to detect "did anything actually change".
+  // content hasn't changed, which would otherwise re-trigger measurement
+  // every render (an infinite update loop — React error #185).
   const snapshotKey = JSON.stringify(snapshot);
 
+  // When the actual content changes, drop back to the unpaginated
+  // measuring render so the layout effect below has fresh refs to measure
+  // against (the paginated render doesn't include these ref'd elements).
+  useEffect(() => {
+    setGroups(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotKey]);
+
   useLayoutEffect(() => {
+    if (groups !== null) return; // already paginated for this content
     // The footer (logo + page number) renders on every page — its height
-    // must be reserved on every page's budget, same as the header. This was
-    // the actual bug behind the footer/disclaimer displacement: previously
-    // nothing reserved room for it at all, so pages packed with entries
-    // right up to the page edge, leaving the footer (and whatever content
-    // trailed it) to spill past the physical sheet.
+    // must be reserved on every page's budget, same as the header, or
+    // entries pack right up to the page edge and push the footer past the
+    // physical sheet.
     const footerH = footerRef.current?.getBoundingClientRect().height ?? 0;
     const usable = RECAP_PAGE_HEIGHT_PX - RECAP_PAGE_PADDING_PX * 2 - footerH - RECAP_PAGE_SAFETY_MARGIN_PX;
     const firstHeaderH = firstHeaderRef.current?.getBoundingClientRect().height ?? 0;
@@ -3052,23 +3074,16 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
       out.push({ entries: [], isFirstPage: false, showGrid: true });
     }
     setGroups(out);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshotKey]);
+  }, [groups, snapshot]);
 
-  // `position: fixed` elements are, per CSS spec, REPEATED on every printed
-  // page (that's the defined print behavior for "fixed to the viewport",
-  // not a bug) — if visibility:hidden didn't fully suppress this in
-  // Chrome's print engine (a known cross-browser inconsistency), this
-  // measurement subtree would render on every single page and scramble
-  // pagination exactly like what showed up. The `recap-measurement-pass`
-  // class gets an unconditional `display:none` in the print stylesheet
-  // below as a hard guarantee — regardless of any positioning quirk, it can
-  // never appear in print output.
-  const measurement = (
-    <div aria-hidden className="recap-measurement-pass" style={{
-      position: 'fixed', left: '-99999px', top: 0,
+  // Rendered ONLY while groups === null — i.e. never at the same time as
+  // the paginated pages, and never printed, since by the time anything
+  // paints (on-screen or via window.print()) groups is already set. Plain
+  // normal-flow div, no position:fixed anywhere.
+  const measuringContent = groups === null ? (
+    <div aria-hidden style={{
       width: `${RECAP_PAGE_WIDTH_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`,
-      boxSizing: 'border-box', fontFamily: RECAP_BODY_FONT_FAMILY, visibility: 'hidden',
+      boxSizing: 'border-box', fontFamily: RECAP_BODY_FONT_FAMILY,
     }}>
       <div ref={firstHeaderRef}><RecapFirstPageHeader snapshot={snapshot}/></div>
       <div ref={contHeaderRef}><RecapContinuationHeader/></div>
@@ -3077,7 +3092,7 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
           set) so footerH always reserves room for it — the real doc might
           end up single-page (no number shown) or multi-page (number
           shown), but reserving the larger height defensively is safer than
-          under-reserving and clipping. */}
+          under-reserving. */}
       <div ref={footerRef}><RecapFooter pageNumber={1} totalPages={2}/></div>
       {snapshot.photos.length > 0 && <div ref={gridRef}><RecapPhotoGrid photos={snapshot.photos} topMargin={false}/></div>}
       {snapshot.entries.map((entry, i) => (
@@ -3086,22 +3101,21 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
         </div>
       ))}
     </div>
-  );
+  ) : null;
 
-  return { groups, measurement };
+  return { groups, measuringContent };
 }
 
 interface RecapDocumentProps {
   snapshot: RecapDocSnapshot;
 }
 function RecapDocument({ snapshot }: RecapDocumentProps) {
-  const { groups, measurement } = useRecapPageGroups(snapshot);
+  const { groups, measuringContent } = useRecapPageGroups(snapshot);
 
   return (
     <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
-      {measurement}
       {groups === null ? (
-        <div className="text-sm text-gray-400 text-center py-10">Preparing document…</div>
+        measuringContent
       ) : groups.map((group, pageIdx) => {
         const isLastPage = pageIdx === groups.length - 1;
         return (
@@ -3199,10 +3213,6 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  that fills the full page so the background tint reaches
                  every edge. */
               @page { margin: 0; size: letter; }
-              /* Hard guarantee the off-screen measurement pass can never
-                 appear in print output, regardless of any position:fixed
-                 print-repeat quirk or visibility:hidden inconsistency. */
-              .recap-measurement-pass { display: none !important; }
               /* Back to an explicit fixed height + overflow:hidden — safe
                  now that the DOM-measured pagination above actually reserves
                  room for the footer (and a safety margin) on every page, so
