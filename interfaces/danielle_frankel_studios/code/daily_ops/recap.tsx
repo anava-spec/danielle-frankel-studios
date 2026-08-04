@@ -3055,8 +3055,17 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshotKey]);
 
+  // `position: fixed` elements are, per CSS spec, REPEATED on every printed
+  // page (that's the defined print behavior for "fixed to the viewport",
+  // not a bug) — if visibility:hidden didn't fully suppress this in
+  // Chrome's print engine (a known cross-browser inconsistency), this
+  // measurement subtree would render on every single page and scramble
+  // pagination exactly like what showed up. The `recap-measurement-pass`
+  // class gets an unconditional `display:none` in the print stylesheet
+  // below as a hard guarantee — regardless of any positioning quirk, it can
+  // never appear in print output.
   const measurement = (
-    <div aria-hidden style={{
+    <div aria-hidden className="recap-measurement-pass" style={{
       position: 'fixed', left: '-99999px', top: 0,
       width: `${RECAP_PAGE_WIDTH_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`,
       boxSizing: 'border-box', fontFamily: RECAP_BODY_FONT_FAMILY, visibility: 'hidden',
@@ -3190,6 +3199,10 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  that fills the full page so the background tint reaches
                  every edge. */
               @page { margin: 0; size: letter; }
+              /* Hard guarantee the off-screen measurement pass can never
+                 appear in print output, regardless of any position:fixed
+                 print-repeat quirk or visibility:hidden inconsistency. */
+              .recap-measurement-pass { display: none !important; }
               /* Back to an explicit fixed height + overflow:hidden — safe
                  now that the DOM-measured pagination above actually reserves
                  room for the footer (and a safety margin) on every page, so
