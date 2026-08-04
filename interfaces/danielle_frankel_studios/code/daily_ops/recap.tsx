@@ -3276,7 +3276,7 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                this portal's own internal measuring pass — always returns
                all-zero dimensions while display:none is in effect. Every
                entry's measured height came back as 0, so the packing loop
-               (`remaining < h` never true for h=0) piled every single entry
+               ("remaining < h" never true for h=0) piled every single entry
                onto page 1 and produced exactly one page — regardless of
                what the OTHER, correctly-measured instance visibly showed in
                the on-screen preview the whole time. Fixed by keeping this
