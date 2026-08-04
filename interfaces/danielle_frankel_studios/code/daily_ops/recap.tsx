@@ -3025,13 +3025,23 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  .recap-doc-page a plain, square-cornered, borderless block
                  that fills the full page so the background tint reaches
                  every edge. */
-              @page { margin: 0; }
+              @page { margin: 0; size: letter; }
               .recap-doc-page {
                 border-radius: 0 !important;
                 border: none !important;
                 width: 100% !important;
-                min-height: 100vh;
-                box-sizing: border-box;
+                /* 100vh resolves against the browser window's on-screen
+                   size in Chrome's print engine, not the physical page —
+                   so a page with less content than a full window's worth
+                   (e.g. a continuation page with only 2 entries) stopped
+                   short of the actual printed sheet's bottom edge, leaving
+                   real blank white space below the tint rather than the
+                   tint reaching the page's true bottom. A physical length
+                   matching the @page size (US Letter, 11in tall) is what
+                   actually guarantees every page — including short ones —
+                   fills the full printed sheet. */
+                min-height: 11in !important;
+                box-sizing: border-box !important;
               }
             }
           `}</style>
