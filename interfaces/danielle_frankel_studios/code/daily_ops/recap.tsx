@@ -3207,6 +3207,19 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
       {createPortal(
         <div id="recap-print-portal">
           <style>{`
+            /* @page MUST be a top-level rule, not nested inside @media print
+               — confirmed live (2026-08-04) via the block's own devtools
+               console: nesting it inside @media print produced ZERO
+               registered CSSPageRule instances in the document's
+               stylesheets, meaning Chrome never applied it at all. That's
+               exactly why pagination silently fell back to "one page as
+               tall as the content" regardless of how correctly the pages
+               were split in the DOM (both .recap-doc-page divs measured
+               exactly 1056px/11in, as expected — the DOM/JS side was never
+               the problem). @page rules only ever take effect during
+               print/pagination anyway, so there was never a reason to gate
+               it behind @media print to begin with. */
+            @page { margin: 0; size: letter; }
             #recap-print-portal { display: none; }
             @media print {
               body > *:not(#recap-print-portal) { display: none !important; }
@@ -3221,15 +3234,6 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                 print-color-adjust: exact !important;
                 color-adjust: exact !important;
               }
-              /* @page margin defaults to ~0.5in in most browsers, which left
-                 a white strip between the paper edge and this rounded/
-                 bordered on-screen card — even with color-adjust fixed, that
-                 strip (and the rounded corners cutting into the tint) still
-                 read as "a white border". Zero the page margin and make each
-                 .recap-doc-page a plain, square-cornered, borderless block
-                 that fills the full page so the background tint reaches
-                 every edge. */
-              @page { margin: 0; size: letter; }
               /* No page-break-after/break-inside declared anywhere anymore
                  (see the note above RecapDocument's return) — whatever
                  renders this document's Print/PDF export doesn't appear to
