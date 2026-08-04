@@ -2949,10 +2949,19 @@ function RecapPhotoGrid({ photos, topMargin }: { photos: RecapDocSnapshot['photo
     </div>
   );
 }
-function RecapFooter() {
+// pageNumber/totalPages are optional so the measurement pass (which has
+// neither — it measures the footer once, in isolation) reports the same
+// height a real single-page document's footer would use; the page-number
+// line only ever appears when there's more than one page anyway, per
+// Julia (2026-08-03), so its height is 0 on the only case (single page)
+// where measuring it without those props could matter.
+function RecapFooter({ pageNumber, totalPages }: { pageNumber?: number; totalPages?: number }) {
   return (
-    <div className="flex justify-center mt-8">
+    <div className="flex flex-col items-center gap-1 mt-8">
       <img src={RECAP_FOOTER_LOGO_DATA_URI} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
+      {totalPages != null && totalPages > 1 && (
+        <div className="text-gray-400" style={{ fontFamily: RECAP_BODY_FONT_FAMILY, fontSize: '8px' }}>{pageNumber} / {totalPages}</div>
+      )}
     </div>
   );
 }
@@ -2974,12 +2983,23 @@ interface RecapPageGroup {
   isFirstPage: boolean;
   showGrid: boolean;
 }
+// Fixed pixels held back from every page's usable budget as headroom for
+// measurement/render discrepancies (subpixel rounding, fallback-font metric
+// differences between the hidden measurement pass and the real print
+// render, etc.) — without this, a page whose entries measured just barely
+// under budget could still overflow once actually printed, and since the
+// print CSS below now clips overflow (height + overflow:hidden, not
+// min-height), that clipping is exactly what was pushing the footer (and
+// sometimes the header) out of place.
+const RECAP_PAGE_SAFETY_MARGIN_PX = 24;
+
 function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGroup[] | null; measurement: React.ReactNode } {
   const [groups, setGroups] = useState<RecapPageGroup[] | null>(null);
   const firstHeaderRef = useRef<HTMLDivElement>(null);
   const contHeaderRef = useRef<HTMLDivElement>(null);
   const singleDisclaimerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
   const entryRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   // Depend on a content fingerprint, not `snapshot`'s object identity.
@@ -2995,7 +3015,14 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
   const snapshotKey = JSON.stringify(snapshot);
 
   useLayoutEffect(() => {
-    const usable = RECAP_PAGE_HEIGHT_PX - RECAP_PAGE_PADDING_PX * 2;
+    // The footer (logo + page number) renders on every page — its height
+    // must be reserved on every page's budget, same as the header. This was
+    // the actual bug behind the footer/disclaimer displacement: previously
+    // nothing reserved room for it at all, so pages packed with entries
+    // right up to the page edge, leaving the footer (and whatever content
+    // trailed it) to spill past the physical sheet.
+    const footerH = footerRef.current?.getBoundingClientRect().height ?? 0;
+    const usable = RECAP_PAGE_HEIGHT_PX - RECAP_PAGE_PADDING_PX * 2 - footerH - RECAP_PAGE_SAFETY_MARGIN_PX;
     const firstHeaderH = firstHeaderRef.current?.getBoundingClientRect().height ?? 0;
     const contHeaderH  = contHeaderRef.current?.getBoundingClientRect().height ?? 0;
     const singleDisclaimerH = singleDisclaimerRef.current?.getBoundingClientRect().height ?? 0;
@@ -3037,6 +3064,12 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
       <div ref={firstHeaderRef}><RecapFirstPageHeader snapshot={snapshot}/></div>
       <div ref={contHeaderRef}><RecapContinuationHeader/></div>
       <div ref={singleDisclaimerRef}><RecapSingleDisclaimerLine/></div>
+      {/* Measured WITH the page-number line present (pageNumber/totalPages
+          set) so footerH always reserves room for it — the real doc might
+          end up single-page (no number shown) or multi-page (number
+          shown), but reserving the larger height defensively is safer than
+          under-reserving and clipping. */}
+      <div ref={footerRef}><RecapFooter pageNumber={1} totalPages={2}/></div>
       {snapshot.photos.length > 0 && <div ref={gridRef}><RecapPhotoGrid photos={snapshot.photos} topMargin={false}/></div>}
       {snapshot.entries.map((entry, i) => (
         <div key={entry.id} ref={el => { entryRefs.current[i] = el; }}>
@@ -3075,7 +3108,7 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                 <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
               </>
             )}
-            <RecapFooter/>
+            <RecapFooter pageNumber={pageIdx + 1} totalPages={groups.length}/>
           </div>
         );
       })}
@@ -3157,25 +3190,24 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  that fills the full page so the background tint reaches
                  every edge. */
               @page { margin: 0; size: letter; }
-              /* REVERTED height:11in + overflow:hidden — that combination
-                 caused a worse regression: whenever a page's actual content
-                 (header + up to RECAP_STYLES_PER_PAGE entries) was taller
-                 than 11in, the overflow was silently clipped, which is why
-                 the footer vanished and print showed only 1 page instead of
-                 several. min-height doesn't clip — a page taller than 11in
-                 just prints its true height instead (still one physical
-                 sheet's worth of content, just possibly overflowing onto a
-                 second sheet for that one chunk if the per-page entry count
-                 is too optimistic for the actual row height). Combined with
-                 lowering RECAP_STYLES_PER_PAGE below, this trades "some
-                 short pages may leave blank space at the bottom" for "no
-                 content is ever silently lost" — the latter is the correct
-                 trade-off. See the note below RECAP_STYLES_PER_PAGE. */
+              /* Back to an explicit fixed height + overflow:hidden — safe
+                 now that the DOM-measured pagination above actually reserves
+                 room for the footer (and a safety margin) on every page, so
+                 a page's real content should never exceed 11in in the first
+                 place. min-height alone let a too-tall page's content spill
+                 via the browser's own native reflow instead of respecting
+                 our forced page-break-after boundaries, which is what
+                 displaced the header/disclaimer/footer between pages
+                 (title missing, disclaimer showing up where the footer
+                 should be). A fixed height makes our own div boundaries the
+                 only source of truth for where one page ends and the next
+                 begins. */
               .recap-doc-page {
                 border-radius: 0 !important;
                 border: none !important;
                 width: 8.5in !important;
-                min-height: 11in !important;
+                height: 11in !important;
+                overflow: hidden !important;
                 box-sizing: border-box !important;
               }
             }
