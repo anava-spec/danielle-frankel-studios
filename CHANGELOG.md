@@ -62,6 +62,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Calligraphy Cards**
 - Each client now has a detail popup (click a row to open it) showing the full record, a visual status stepper with progressive coloring, and a "Comments" field for Margo to note name variations for the card.
+- The "Comments" field was moved off the main table and into this new detail popup, to keep the main list scannable.
 - The calligraphy card status now has 4 steps instead of 2: Pending, Production Approved, Sent to Calligrapher, Received from Calligrapher.
 - In the popup, the status only ever moves one step forward at a time, with a quick confirmation before it saves.
 
