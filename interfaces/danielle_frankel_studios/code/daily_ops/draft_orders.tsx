@@ -2382,6 +2382,21 @@ function Layer4({
     setAddressLocal(addressField ? draft.getCellValueAsString(addressField) ?? '' : '');
   }, [draft, addressField]);
 
+  // Must run unconditionally too — this used to sit after the `if (!draft)`
+  // early return below, same root cause (and same fix) as the two hooks
+  // directly above: skipped on some renders (e.g. right after creating a
+  // brand-new draft, before draftRecords syncs) and not others, triggering
+  // React error #310.
+  const clientAddressOptions = useMemo(() => {
+    const client = clientRecords.find(c => c.id === clientId);
+    if (!client) return [];
+    return [
+      { label: 'Shopify Address', value: clientShopifyAddressField ? client.getCellValueAsString(clientShopifyAddressField) : '' },
+      { label: 'Acuity Address', value: clientAcuityAddressField ? client.getCellValueAsString(clientAcuityAddressField) : '' },
+      { label: 'Other Address', value: clientOtherAddressField ? client.getCellValueAsString(clientOtherAddressField) : '' },
+    ].filter(o => o.value.trim() !== '');
+  }, [clientId, clientRecords, clientShopifyAddressField, clientAcuityAddressField, clientOtherAddressField]);
+
   if (!draft) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -2437,17 +2452,6 @@ function Layer4({
   const discount = discountField ? (draft.getCellValue(discountField) as number | null) ?? 0 : 0;
   const discountPercentage = discountPercentageField ? (draft.getCellValue(discountPercentageField) as number | null) ?? 0 : 0;
   const discountNotes = discountNotesField ? draft.getCellValueAsString(discountNotesField) : '';
-  // The client's existing addresses on file — see the matching comment in
-  // Layer2's clientAddressOptions.
-  const clientAddressOptions = useMemo(() => {
-    const client = clientRecords.find(c => c.id === clientId);
-    if (!client) return [];
-    return [
-      { label: 'Shopify Address', value: clientShopifyAddressField ? client.getCellValueAsString(clientShopifyAddressField) : '' },
-      { label: 'Acuity Address', value: clientAcuityAddressField ? client.getCellValueAsString(clientAcuityAddressField) : '' },
-      { label: 'Other Address', value: clientOtherAddressField ? client.getCellValueAsString(clientOtherAddressField) : '' },
-    ].filter(o => o.value.trim() !== '');
-  }, [clientId, clientRecords, clientShopifyAddressField, clientAcuityAddressField, clientOtherAddressField]);
   const styleSubtotal = styleSubtotalField ? (draft.getCellValue(styleSubtotalField) as number | null) ?? 0 : 0;
   const customizationSubtotal = customizationSubtotalField ? (draft.getCellValue(customizationSubtotalField) as number | null) ?? 0 : 0;
   const total = totalField ? (draft.getCellValue(totalField) as number | null) ?? 0 : 0;

@@ -26,7 +26,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Reworded the pending-approval banner for clarity.
 - Shortened and reworded the auto-generated Rush Fee note, and removed a stray negative number from it in favor of plain words (e.g. "Less than 4 weeks left" instead of "-4 weeks left").
 - Renamed "Shipping Address" to "Address."
-- Fixed a bug that could throw an error when saving a brand-new draft order for the first time.
+- Fixed another instance of the bug that could throw an error when opening or saving a brand-new draft order for the first time.
 
 ## Week of Jul 30, 2026
 
