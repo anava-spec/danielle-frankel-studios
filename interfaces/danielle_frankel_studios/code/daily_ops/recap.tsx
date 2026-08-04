@@ -2949,18 +2949,20 @@ function RecapPhotoGrid({ photos, topMargin }: { photos: RecapDocSnapshot['photo
     </div>
   );
 }
+// Single row: logo centered, page number (just the number, per Julia's
+// Figma reference — not "N / total") right-aligned on the same baseline.
 // pageNumber/totalPages are optional so the measurement pass (which has
 // neither — it measures the footer once, in isolation) reports the same
 // height a real single-page document's footer would use; the page-number
-// line only ever appears when there's more than one page anyway, per
-// Julia (2026-08-03), so its height is 0 on the only case (single page)
-// where measuring it without those props could matter.
+// only ever appears when there's more than one page anyway, per Julia
+// (2026-08-03), so leaving it out of that one measurement doesn't matter —
+// it occupies the same single line as the logo, not an extra line.
 function RecapFooter({ pageNumber, totalPages }: { pageNumber?: number; totalPages?: number }) {
   return (
-    <div className="flex flex-col items-center gap-1 mt-8">
+    <div className="relative flex items-center justify-center mt-8">
       <img src={RECAP_FOOTER_LOGO_DATA_URI} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
       {totalPages != null && totalPages > 1 && (
-        <div className="text-gray-400" style={{ fontFamily: RECAP_BODY_FONT_FAMILY, fontSize: '8px' }}>{pageNumber} / {totalPages}</div>
+        <div className="absolute right-0 text-gray-400" style={{ fontFamily: RECAP_BODY_FONT_FAMILY, fontSize: '11px' }}>{pageNumber}</div>
       )}
     </div>
   );
