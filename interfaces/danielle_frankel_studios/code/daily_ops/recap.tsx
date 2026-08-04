@@ -488,6 +488,9 @@ function weeksUntil(weddingIso: string|null|undefined): number|null {
 // stylesBasePriceField/stylesSelfUsageField props), so this is its own
 // hardcoded ID, verified live against the sandbox base.
 const STYLES_PHOTO_FIELD_ID = 'fldall9IlP5wEMb2W';
+// Styles.Category — used to exclude Alterations-category "styles" (they
+// aren't real gown/dress favorites) from the Favorite Styles selector.
+const STYLES_CATEGORY_FIELD_ID = 'fld0eUrQtGo5zFrbe';
 function isConsultation(label: string): boolean {
   return label.toLowerCase().includes('consultation');
 }
@@ -2718,7 +2721,13 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 // chunk size is the deterministic alternative). The photo disclaimer + 3x3
 // grid render exactly once, appended to the LAST page produced (whether
 // that's the only page or the final overflow page), per the AC.
-const RECAP_STYLES_PER_PAGE = 5;
+// Bumped from 5 — real print output showed pages ending with a lot of blank
+// space still left below the last entry (an earlier hybrid-weight-2 rule
+// was cutting pages short: hybrid's two-column layout is roughly the same
+// height as a single regular entry, not double, so weighting it 2x was
+// wasting most of a page whenever one showed up early). Still an unmeasured
+// chunk-size approximation, not real layout measurement.
+const RECAP_STYLES_PER_PAGE = 8;
 const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
 
 // Typography per Julia's spec (2026-08-03): Canela Text everywhere, except
@@ -2788,18 +2797,19 @@ interface RecapDocSnapshot {
   photos: Array<{ id: string; url: string; thumbnails?: { small?: { url: string }; large?: { url: string } } }>;
 }
 
-// Hybrid entries take roughly 2x the vertical space of a favorite/regular
-// entry (two style blocks instead of one) — weighting them lets the bounded
-// chunk size approximate actual content height a little better than a flat
-// per-item count would, without measuring the DOM (see file-level note on
-// why nothing here measures real layout).
+// Flat per-entry count, no per-kind weighting — Hybrid's two-column layout
+// (both styles side by side) is roughly the same height as one regular
+// entry, not double, so an earlier weight-2 rule for Hybrid was cutting
+// pages short and leaving most of the page blank. Still an unmeasured
+// chunk-size approximation (see file-level note on why nothing here
+// measures real DOM layout), just a flatter one.
 function chunkRecapEntries(entries: RecapDocEntry[], weightPerPage: number): RecapDocEntry[][] {
   if (entries.length === 0) return [[]];
   const pages: RecapDocEntry[][] = [];
   let current: RecapDocEntry[] = [];
   let weight = 0;
   for (const entry of entries) {
-    const entryWeight = entry.kind === 'hybrid' ? 2 : 1;
+    const entryWeight = 1;
     if (current.length > 0 && weight + entryWeight > weightPerPage) {
       pages.push(current);
       current = [];
@@ -3362,7 +3372,13 @@ function PostAppointmentModal({
   const [showRecapDocPreview, setShowRecapDocPreview] = useState(false);
 
   const fApptTime = apptTable.getFieldIfExists(APPT.TIME);
-  const appointmentDisplay = fApptTime ? fmtRecapAppointmentDisplay(record.getCellValueAsString(fApptTime)) : '';
+  // Raw getCellValue (ISO) instead of getCellValueAsString — the latter
+  // renders using the field's own configured display format (e.g.
+  // "3/4/2026 11:55pm"), which `new Date(...)` can't reliably re-parse, so
+  // fmtRecapAppointmentDisplay was silently falling back to that raw string
+  // instead of producing "July 4th, 2026 11:55pm". Same fix already applied
+  // to Date of Request elsewhere in this file for the same reason.
+  const appointmentDisplay = fApptTime ? fmtRecapAppointmentDisplay(record.getCellValue(fApptTime) as string | null) : '';
 
   const recapDocSnapshot = useMemo<RecapDocSnapshot>(() => {
     // Not filtering by internal_approval_status for now — per Julia (2026-08-03),
@@ -3487,12 +3503,17 @@ function PostAppointmentModal({
     }
   };
   // "- customized" styles are per-request variants generated off a base
-  // style, not something a client picks as a favorite — excluded from the
-  // Favorite Styles from Appointment selector entirely.
-  const availableStyleNames = useMemo(
-    ()=>(stylesRecords??[]).map(r=>r.name).filter(Boolean).filter(n=>!n.toLowerCase().includes('- customized')).sort(),
-    [stylesRecords]
-  );
+  // style, and Alterations-category rows aren't gown/dress favorites either
+  // — both excluded from the Favorite Styles from Appointment selector.
+  const availableStyleNames = useMemo(() => {
+    const fCategory = stylesTable?.getFieldIfExists(STYLES_CATEGORY_FIELD_ID) ?? null;
+    return (stylesRecords??[])
+      .filter(r => !fCategory || r.getCellValueAsString(fCategory) !== 'ALTERATIONS')
+      .map(r=>r.name)
+      .filter(Boolean)
+      .filter(n=>!n.toLowerCase().includes('- customized'))
+      .sort();
+  }, [stylesRecords, stylesTable]);
 
   useEffect(()=>{
     const h=(e:KeyboardEvent)=>{ if(e.key==='Escape') requestClose(); };
