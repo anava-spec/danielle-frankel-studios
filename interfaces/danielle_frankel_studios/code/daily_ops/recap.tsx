@@ -3136,8 +3136,13 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
           set) so footerH always reserves room for it — the real doc might
           end up single-page (no number shown) or multi-page (number
           shown), but reserving the larger height defensively is safer than
-          under-reserving. */}
-      <div ref={footerRef}><RecapFooter logoUrl={snapshot.logoUrl} pageNumber={1} totalPages={2}/></div>
+          under-reserving. Uses the embedded base64 logo, NOT
+          snapshot.logoUrl (a live network attachment URL) — the img has an
+          explicit height so its layout footprint doesn't actually depend on
+          whether the image data has loaded, but avoiding an async network
+          fetch in this synchronous measurement pass removes any chance of
+          a load-timing race affecting the measured height. */}
+      <div ref={footerRef}><RecapFooter logoUrl={RECAP_FOOTER_LOGO_DATA_URI} pageNumber={1} totalPages={2}/></div>
       {snapshot.photos.length > 0 && <div ref={gridRef}><RecapPhotoGrid photos={snapshot.photos} topMargin={false}/></div>}
       {snapshot.entries.map((entry, i) => (
         <div key={entry.id} ref={el => { entryRefs.current[i] = el; }}>
@@ -3156,53 +3161,39 @@ interface RecapDocumentProps {
 function RecapDocument({ snapshot }: RecapDocumentProps) {
   const { groups, measuringContent } = useRecapPageGroups(snapshot);
 
-  // DELIBERATE EXPERIMENT #2 (2026-08-04, per Julia): experiment #1 (this
-  // comment used to describe N separate sibling divs, each fixed at 11in,
-  // stacked back-to-back with zero gap) still didn't paginate correctly —
-  // and separately, we confirmed live via devtools that @page nested inside
-  // @media print was never being applied at all (fixed in a prior commit).
-  // Julia's theory now: don't hand the print engine several discrete
-  // elements and hope it cuts between them the way we intend — instead
-  // build ONE single sheet whose height is an explicit, fixed multiple of
-  // one physical page (11in × page count), the same way a real print job
-  // would receive one continuous roll and mechanically cut it every 11in
-  // regardless of what's drawn on it. Each logical page's header/entries/
-  // footer are positioned with `position: absolute; top: <page index>×11in`
-  // inside that one sheet, rather than being separate block-level siblings
-  // relying on their own box height to establish page boundaries. The sheet
-  // itself has no overflow/clipping of its own — its height is the single
-  // source of truth for how many physical pages exist.
-  const totalPages = groups?.length ?? 1;
+  // REVERTED experiment #2 (2026-08-04, per Julia): the "one sheet, N
+  // position:absolute page sections stacked inside it" approach ("sobres")
+  // regressed pagination back to rendering as a single page — exactly the
+  // bug we'd already fixed once by moving @page out of @media print. The
+  // version that DID produce two real, mostly-correct physical pages (right
+  // after that @page fix, before "sobres" existed) was simpler: N normal
+  // block-level SIBLINGS, no position:absolute anywhere, each fixed at
+  // exactly 11in tall via plain CSS height and stacked back-to-back with
+  // zero margin — @page{size:letter} cuts the resulting tall flow every
+  // 11in on its own, with nothing telling it to and nothing overriding its
+  // positioning model. Reverting to that, keeping every other fix made
+  // since (live logo lookup, flattened footer, explicit last-entry border,
+  // larger safety margin).
   return (
     <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
       {groups === null ? (
         measuringContent
-      ) : (
-        <div className="recap-doc-sheet" style={{ position: 'relative', width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${totalPages * RECAP_PAGE_HEIGHT_PX}px` }}>
-          {groups.map((group, pageIdx) => (
-            // bg/text color declared on EVERY section, not just the outer
-            // sheet — page 2's background was rendering white instead of
-            // the tan tint, which looks exactly like this print pipeline
-            // not correctly repeating an ancestor's background across a
-            // page fragment boundary. Each physical page now carries its
-            // own explicit background instead of depending on that.
-            <div key={pageIdx} className="recap-doc-page-section bg-[#F8F5EE] text-[#1A1612]" style={{ position: 'absolute', top: `${pageIdx * RECAP_PAGE_HEIGHT_PX}px`, left: 0, width: '100%', height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box' }}>
-              {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
-              {group.entries.map((entry, i) => <RecapEntryRow key={entry.id} entry={entry} isLast={i === group.entries.length - 1}/>)}
-              {group.entries.length === 0 && group.isFirstPage && (
-                <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
-              )}
-              {group.showGrid && (
-                <>
-                  {group.isFirstPage && <RecapSingleDisclaimerLine/>}
-                  <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
-                </>
-              )}
-              <RecapFooter logoUrl={snapshot.logoUrl} pageNumber={pageIdx + 1} totalPages={groups.length}/>
-            </div>
-          ))}
+      ) : groups.map((group, pageIdx) => (
+        <div key={pageIdx} className="recap-doc-page-section bg-[#F8F5EE] text-[#1A1612]" style={{ width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box', margin: 0 }}>
+          {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
+          {group.entries.map((entry, i) => <RecapEntryRow key={entry.id} entry={entry} isLast={i === group.entries.length - 1}/>)}
+          {group.entries.length === 0 && group.isFirstPage && (
+            <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
+          )}
+          {group.showGrid && (
+            <>
+              {group.isFirstPage && <RecapSingleDisclaimerLine/>}
+              <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
+            </>
+          )}
+          <RecapFooter logoUrl={snapshot.logoUrl} pageNumber={pageIdx + 1} totalPages={groups.length}/>
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -3286,19 +3277,20 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                 color-adjust: exact !important;
               }
               /* No page-break-after/break-inside/@page-cutting instruction
-                 relied on anywhere anymore — this is the "one continuous
-                 sheet, fixed height = page count × 11in" approach (see the
-                 note above RecapDocument's return). .recap-doc-sheet is the
-                 single element whose explicit height is the only thing that
-                 determines how many physical pages exist; each
-                 .recap-doc-page-section is absolutely positioned inside it
-                 at its own page offset, not a separate block-level sibling
-                 establishing its own page boundary. Nothing here clips
-                 (no overflow:hidden) — the sheet's own declared height is
-                 the sole source of truth. */
-              .recap-doc-sheet {
+                 relied on anywhere — each .recap-doc-page-section is a
+                 plain, normal-flow block-level sibling (no
+                 position:absolute), fixed at exactly 11in tall, stacked
+                 back-to-back with zero margin. @page{size:letter} above
+                 cuts the resulting tall flow every 11in on its own — this
+                 is the version that actually produced two real, correctly
+                 split physical pages; a later "one sheet, absolutely
+                 positioned sections inside it" experiment regressed
+                 pagination back to rendering as a single page and was
+                 reverted (see the note above RecapDocument's return). */
+              .recap-doc-page-section {
                 margin: 0 !important;
                 width: 8.5in !important;
+                height: 11in !important;
                 box-sizing: border-box !important;
               }
             }
