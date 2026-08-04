@@ -2721,13 +2721,15 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 // chunk size is the deterministic alternative). The photo disclaimer + 3x3
 // grid render exactly once, appended to the LAST page produced (whether
 // that's the only page or the final overflow page), per the AC.
-// Bumped from 5 — real print output showed pages ending with a lot of blank
-// space still left below the last entry (an earlier hybrid-weight-2 rule
-// was cutting pages short: hybrid's two-column layout is roughly the same
-// height as a single regular entry, not double, so weighting it 2x was
-// wasting most of a page whenever one showed up early). Still an unmeasured
-// chunk-size approximation, not real layout measurement.
-const RECAP_STYLES_PER_PAGE = 8;
+// Lowered back down from 8 — a page of 8 entries (with notes/custom
+// pricing lines) genuinely overflowed the 11in physical page, which combined
+// with a since-reverted overflow:hidden rule silently clipped the footer off
+// entirely. 6 is a more conservative, still-unmeasured estimate — this
+// remains chunk-based approximation, not real layout measurement, so pages
+// with unusually long notes can still overflow; that will show as a page
+// running onto an extra sheet rather than losing content, which is the
+// correct failure mode.
+const RECAP_STYLES_PER_PAGE = 6;
 const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
 
 // Typography — filled in by Julia (2026-08-03) via recap_doc_typography.xlsx,
@@ -3076,26 +3078,25 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                  that fills the full page so the background tint reaches
                  every edge. */
               @page { margin: 0; size: letter; }
-              /* min-height: 11in wasn't reliably filling short continuation
-                 pages either — min-height is a lower bound the box is free
-                 to exceed or (per some engines' print-layout quirks) not
-                 fully honor, so a page with only a couple of entries still
-                 sometimes rendered shorter than the true 11in sheet, leaving
-                 blank white below the tint. Forcing an EXPLICIT height (not
-                 min-height) matching the @page size — the standard technique
-                 for guaranteeing one div == one full physical printed page —
-                 removes that ambiguity: the box is always exactly one letter
-                 page, never shorter, never taller. overflow:hidden guards
-                 against any single page's content actually exceeding that
-                 (shouldn't happen given the chunking above, but silently
-                 truncating is safer than silently spilling onto a stray
-                 extra blank page). */
+              /* REVERTED height:11in + overflow:hidden — that combination
+                 caused a worse regression: whenever a page's actual content
+                 (header + up to RECAP_STYLES_PER_PAGE entries) was taller
+                 than 11in, the overflow was silently clipped, which is why
+                 the footer vanished and print showed only 1 page instead of
+                 several. min-height doesn't clip — a page taller than 11in
+                 just prints its true height instead (still one physical
+                 sheet's worth of content, just possibly overflowing onto a
+                 second sheet for that one chunk if the per-page entry count
+                 is too optimistic for the actual row height). Combined with
+                 lowering RECAP_STYLES_PER_PAGE below, this trades "some
+                 short pages may leave blank space at the bottom" for "no
+                 content is ever silently lost" — the latter is the correct
+                 trade-off. See the note below RECAP_STYLES_PER_PAGE. */
               .recap-doc-page {
                 border-radius: 0 !important;
                 border: none !important;
                 width: 8.5in !important;
-                height: 11in !important;
-                overflow: hidden !important;
+                min-height: 11in !important;
                 box-sizing: border-box !important;
               }
             }
