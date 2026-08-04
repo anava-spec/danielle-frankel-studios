@@ -2783,6 +2783,13 @@ const RECAP_DISCLAIMER_STYLE: React.CSSProperties = {
   fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontStyle: 'italic', fontSize: '10.5px', lineHeight: '15px', letterSpacing: '0%', textAlign: 'left',
 };
 
+// Footer wordmark PNG — provided directly (2026-08-03), since the Figma
+// design file itself needs authentication no available connector in this
+// session can provide. Original asset is 4096x245px (~16.71:1 aspect,
+// matching the source SVG's 184x11 box) — sized via CSS height with
+// width:auto to preserve that ratio at whatever footer size is used.
+const RECAP_FOOTER_LOGO_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAEAAAAAD1CAYAAADQIjBzAAAQAElEQVR4AeydBZxtVfm/hz/dXWKACoqoKHb8VBTsxu4WC1uxUFFUbDHB7i5ExUYxsBMUEQRBurv9P1+4c5l738ycfXacs+Ph831Z55y94n2fuXNmx1rv+n8z/icBCUhAAhKQgAQkIAEJSEACEpBA3wkYnwQkIAEJSEACEpCABCQgAQlIQAL9J2CEEpCABCQgAQlIQAISkIAEJCABCfSfgBFKQAISkIAEJCABCUhAAhKQgAQk0H8CMyYAGMAP2RAlIAEJSEACEpCABCQgAQlIYOgEjF8CEpCABCQgAQlIQAISkIAEJCCB/hMwQglIQAISkIAEJCABCUhAAhKQgAT6T8AIJSABCUhAAhKQgAQkIAEJSEACEug/gRkTAAzhh2yMEpCABCQgAQlIQAISkIAEJDBwAoYvAQlIQAISkIAEJCABCUhAAhKQQP8JGKEEJCABCUhAAhKQgAQkIAEJSEAC/SdghBKQgAQkIAEJSEACEpCABCQgAQn0n0AiNAFAKGgSkIAEJCABCUhAAhKQgAQkIIH+EjAyCUhAAhKQgAQkIAEJSEACEpCABPpPwAglIAEJSEACEpCABCQgAQlIQAIS6D8BI5SABCQgAQlIQAISkIAEJCABCUig/wSujrBqAoC16WYTbNMldhPKHbAdsbstsV0pH4w9fIntTvls7HnY6+bYW3n9/nnsi3y2mH2A47Pt3svrt2Dp96WUz8GehD0C2xm7K3YjbCNsNUxJQAISkIAEJCABCUhAAhKQgAT6TcDoJCABCUhAAhKQgAQkIAEJSEAC/SdghBKQgAQkIAEJSEACEpCABCQgAQn0n4ARSkACEpCABCQgAQlIQAISkIAEJNB/AkYoAQlIQAISkIAEJCABCUhAAhLoP4ElES6fACCL9Q/lWFH7IXW/M8e+wOvPY5/FDlhiWaD/bl6/fYllcf5refxq7AVzLEkBnsr75S2L9xezp8zr8zRe/9dr9x8+/mfsHdg7sf1w/pQVJRQlIAEJSEACEpCABCQgAQlIQAJ9J2AEEpCABCQgAQlIQAISkIAEJCABCVQlYD4JSEACEpCABCQgAQlIQAISkIAEJCABCQxHwLklIAEJSEACEpCABCQgAQlIQAISkIAEJCCBIQi4AMAQsMwqAQlIQAISkIAEJCABCUhAAhKQgAQkIAEJSEACEpCABCQgAQlIQAISkIAEJDCEwP8HAAD//8oIVZAAAAAGSURBVAMAy0M1BQtY6TQAAAAASUVORK5CYII=";
+
 // A style shown with no matching customization request — just a name/price/
 // photo chip pulled straight from Favorite Styles from Appointment.
 interface RecapDocFavoriteEntry {
@@ -2976,8 +2983,8 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
               </>
             )}
 
-            <div className="text-center text-xs tracking-[0.2em] mt-8">
-              DANIELLE<span className="font-bold">FRANKEL</span>
+            <div className="flex justify-center mt-8">
+              <img src={RECAP_FOOTER_LOGO_DATA_URI} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
             </div>
           </div>
         );
