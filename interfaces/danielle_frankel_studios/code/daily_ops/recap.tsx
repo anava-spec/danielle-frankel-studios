@@ -3114,44 +3114,47 @@ interface RecapDocumentProps {
 function RecapDocument({ snapshot }: RecapDocumentProps) {
   const { groups, measuringContent } = useRecapPageGroups(snapshot);
 
-  // DELIBERATE EXPERIMENT (2026-08-04, per Julia): whatever renders Airtable's
-  // "Print"/PDF export apparently doesn't honor page-break-after/break-after
-  // at all — the on-screen preview correctly showed page 1 ending at Devon
-  // with its footer, page 2 starting with the header + Emmet, but the
-  // actual PDF just ran Devon straight into Emmet with no header/footer in
-  // between, as if the forced break were silently ignored and everything
-  // just kept flowing as one page. Rather than depend on that CSS feature at
-  // all, each page section below is a plain, un-broken block exactly 11in
-  // tall (no forced break declared) — stacked back-to-back with zero gap, so
-  // the total document height is an exact multiple of one physical page.
-  // Basic print pagination (cut every physical-page-worth of height) is a
-  // far more fundamental capability than CSS Fragmentation properties like
-  // page-break-after — it should split at these exact 11in boundaries on its
-  // own, by construction, without needing to be told to. The background
-  // color filling each full 11in section (even past the last entry) is what
-  // keeps real blank space from showing on a short trailing page.
+  // DELIBERATE EXPERIMENT #2 (2026-08-04, per Julia): experiment #1 (this
+  // comment used to describe N separate sibling divs, each fixed at 11in,
+  // stacked back-to-back with zero gap) still didn't paginate correctly —
+  // and separately, we confirmed live via devtools that @page nested inside
+  // @media print was never being applied at all (fixed in a prior commit).
+  // Julia's theory now: don't hand the print engine several discrete
+  // elements and hope it cuts between them the way we intend — instead
+  // build ONE single sheet whose height is an explicit, fixed multiple of
+  // one physical page (11in × page count), the same way a real print job
+  // would receive one continuous roll and mechanically cut it every 11in
+  // regardless of what's drawn on it. Each logical page's header/entries/
+  // footer are positioned with `position: absolute; top: <page index>×11in`
+  // inside that one sheet, rather than being separate block-level siblings
+  // relying on their own box height to establish page boundaries. The sheet
+  // itself has no overflow/clipping of its own — its height is the single
+  // source of truth for how many physical pages exist.
+  const totalPages = groups?.length ?? 1;
   return (
     <div className="recap-print-area" style={{ fontFamily: RECAP_BODY_FONT_FAMILY }}>
       {groups === null ? (
         measuringContent
-      ) : groups.map((group, pageIdx) => {
-        return (
-          <div key={pageIdx} className="bg-[#F8F5EE] text-[#1A1612] rounded-xl border border-gray-200 dark:border-white/10 p-8 recap-doc-page">
-            {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
-            {group.entries.map(entry => <RecapEntryRow key={entry.id} entry={entry}/>)}
-            {group.entries.length === 0 && group.isFirstPage && (
-              <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
-            )}
-            {group.showGrid && (
-              <>
-                {group.isFirstPage && <RecapSingleDisclaimerLine/>}
-                <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
-              </>
-            )}
-            <RecapFooter pageNumber={pageIdx + 1} totalPages={groups.length}/>
-          </div>
-        );
-      })}
+      ) : (
+        <div className="recap-doc-sheet bg-[#F8F5EE] text-[#1A1612]" style={{ position: 'relative', width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${totalPages * RECAP_PAGE_HEIGHT_PX}px` }}>
+          {groups.map((group, pageIdx) => (
+            <div key={pageIdx} className="recap-doc-page-section" style={{ position: 'absolute', top: `${pageIdx * RECAP_PAGE_HEIGHT_PX}px`, left: 0, width: '100%', height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box' }}>
+              {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
+              {group.entries.map(entry => <RecapEntryRow key={entry.id} entry={entry}/>)}
+              {group.entries.length === 0 && group.isFirstPage && (
+                <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
+              )}
+              {group.showGrid && (
+                <>
+                  {group.isFirstPage && <RecapSingleDisclaimerLine/>}
+                  <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
+                </>
+              )}
+              <RecapFooter pageNumber={pageIdx + 1} totalPages={groups.length}/>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3234,26 +3237,20 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                 print-color-adjust: exact !important;
                 color-adjust: exact !important;
               }
-              /* No page-break-after/break-inside declared anywhere anymore
-                 (see the note above RecapDocument's return) — whatever
-                 renders this document's Print/PDF export doesn't appear to
-                 honor those CSS Fragmentation properties, so nothing here
-                 depends on them. Instead every .recap-doc-page is an
-                 un-broken, zero-margin block fixed at EXACTLY 11in tall,
-                 stacked back-to-back with nothing between them — the total
-                 document height is always an exact multiple of one physical
-                 page. Basic pagination (cut every physical-page-worth of
-                 height) is a far more fundamental capability than forced
-                 breaks, and should split at these exact boundaries by
-                 construction, with no explicit instruction needed. */
-              .recap-doc-page {
-                border-radius: 0 !important;
-                border: none !important;
+              /* No page-break-after/break-inside/@page-cutting instruction
+                 relied on anywhere anymore — this is the "one continuous
+                 sheet, fixed height = page count × 11in" approach (see the
+                 note above RecapDocument's return). .recap-doc-sheet is the
+                 single element whose explicit height is the only thing that
+                 determines how many physical pages exist; each
+                 .recap-doc-page-section is absolutely positioned inside it
+                 at its own page offset, not a separate block-level sibling
+                 establishing its own page boundary. Nothing here clips
+                 (no overflow:hidden) — the sheet's own declared height is
+                 the sole source of truth. */
+              .recap-doc-sheet {
                 margin: 0 !important;
-                display: block !important;
                 width: 8.5in !important;
-                height: 11in !important;
-                overflow: hidden !important;
                 box-sizing: border-box !important;
               }
             }
@@ -3268,11 +3265,15 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
         <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
           <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">Generate Recap Doc</div>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto overflow-x-auto p-5 space-y-4">
           {/* On-screen preview — separate instance from the print portal
               above, so there's exactly one DOM node that's ever visible in
               print (no duplicate/ID collisions), and this one keeps
-              scrolling normally inside the modal like everything else. */}
+              scrolling normally inside the modal like everything else.
+              The sheet itself is a fixed 8.5in (816px) wide — wider than
+              this modal — so this wrapper scrolls horizontally rather than
+              squeezing/reflowing the document at a different width than
+              what actually prints. */}
           <RecapDocument snapshot={snapshot} />
           <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
             Print (or save as PDF), then use "Upload" on the Recap Doc field to attach it to this appointment.
