@@ -3262,10 +3262,32 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
                print/pagination anyway, so there was never a reason to gate
                it behind @media print to begin with. */
             @page { margin: 0; size: letter; }
-            #recap-print-portal { display: none; }
+            /* THE REAL BUG (found 2026-08-04, per Julia's question — "is
+               what prints actually what the preview shows, or something
+               else?"): it was something else. This portal renders its OWN
+               separate <RecapDocument> instance — a second, independent
+               copy from the one visible in the modal body, with its own
+               useRecapPageGroups measurement pass. That measurement runs on
+               mount, as soon as the modal opens, NOT when Print is clicked.
+               But this portal was display:none by default (only flipped to
+               display:block inside @media print) — and display:none
+               removes an element from layout ENTIRELY, so
+               getBoundingClientRect() on anything inside it — including
+               this portal's own internal measuring pass — always returns
+               all-zero dimensions while display:none is in effect. Every
+               entry's measured height came back as 0, so the packing loop
+               (`remaining < h` never true for h=0) piled every single entry
+               onto page 1 and produced exactly one page — regardless of
+               what the OTHER, correctly-measured instance visibly showed in
+               the on-screen preview the whole time. Fixed by keeping this
+               portal genuinely laid out (position:fixed, off-screen) at all
+               times instead of display:none, the same lesson already
+               applied to the smaller measuring-only scratch div inside
+               useRecapPageGroups — just missed here, on the portal itself. */
+            #recap-print-portal { position: fixed; top: 0; left: -99999px; }
             @media print {
               body > *:not(#recap-print-portal) { display: none !important; }
-              #recap-print-portal { display: block !important; position: static !important; }
+              #recap-print-portal { position: static !important; left: auto !important; }
               /* Chrome/most browsers strip background colors on print by
                  default — without this, the page tint and every placeholder
                  swatch/photo box disappear, leaving what looks like a
