@@ -2982,6 +2982,18 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
   const gridRef = useRef<HTMLDivElement>(null);
   const entryRefs = useRef<Array<HTMLDivElement | null>>([]);
 
+  // Depend on a content fingerprint, not `snapshot`'s object identity.
+  // recapDocSnapshot upstream is memoized, but if any of its own deps
+  // (e.g. existingApptPhotos, computed inline via getVal() on every
+  // PostAppointmentModal render) aren't themselves stable, useMemo still
+  // recreates a new snapshot object every render even when the actual
+  // content hasn't changed — which, keyed by reference, reran this effect
+  // and called setGroups on every single render, an infinite update loop
+  // (React error #185). Snapshot is plain JSON-serializable data with no
+  // functions/circular refs, so stringifying it is a safe, if slightly
+  // wasteful, way to detect "did anything actually change".
+  const snapshotKey = JSON.stringify(snapshot);
+
   useLayoutEffect(() => {
     const usable = RECAP_PAGE_HEIGHT_PX - RECAP_PAGE_PADDING_PX * 2;
     const firstHeaderH = firstHeaderRef.current?.getBoundingClientRect().height ?? 0;
@@ -3013,7 +3025,8 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
       out.push({ entries: [], isFirstPage: false, showGrid: true });
     }
     setGroups(out);
-  }, [snapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotKey]);
 
   const measurement = (
     <div aria-hidden style={{
