@@ -2842,10 +2842,17 @@ interface RecapDocSnapshot {
 // Used both by the real visible/print pages AND the hidden measurement pass
 // below, so whatever height gets measured is guaranteed to be the height
 // that actually prints — no risk of the two drifting apart.
-function RecapEntryRow({ entry }: { entry: RecapDocEntry }) {
+// isLast controls the bottom border explicitly — this used to rely on the
+// Tailwind `last:` pseudo-class, but that only matches when the element is
+// the actual last DOM child of its parent, and these rows share their
+// parent with the header/footer/grid (rendered as siblings, not wrapped in
+// their own list container), so `last:border-0` never matched and every
+// row — including the true last one — kept its bottom border.
+function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boolean }) {
+  const borderCls = isLast ? '' : 'border-b border-gray-200';
   if (entry.kind === 'hybrid') {
     return (
-      <div className="py-4 border-b border-gray-200 last:border-0">
+      <div className={`py-4 ${borderCls}`}>
         <div className="grid grid-cols-2 gap-4">
           {([entry.style1, entry.style2] as const).map((s, i) => (
             <div key={i} className="flex gap-3">
@@ -2876,7 +2883,7 @@ function RecapEntryRow({ entry }: { entry: RecapDocEntry }) {
     );
   }
   return (
-    <div className="flex gap-4 py-4 border-b border-gray-200 last:border-0">
+    <div className={`flex gap-4 py-4 ${borderCls}`}>
       <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
         {entry.photoUrl && <img src={entry.photoUrl} alt="" className="w-full h-full object-cover"/>}
       </div>
@@ -2989,11 +2996,14 @@ interface RecapPageGroup {
 // measurement/render discrepancies (subpixel rounding, fallback-font metric
 // differences between the hidden measurement pass and the real print
 // render, etc.) — without this, a page whose entries measured just barely
-// under budget could still overflow once actually printed, and since the
-// print CSS below now clips overflow (height + overflow:hidden, not
-// min-height), that clipping is exactly what was pushing the footer (and
-// sometimes the header) out of place.
-const RECAP_PAGE_SAFETY_MARGIN_PX = 24;
+// under budget could still overflow past its absolutely-positioned
+// section's 11in boundary once actually printed, bleeding into the next
+// physical page's territory (where it can end up hidden behind that page's
+// own background, or otherwise visually displaced) instead of being caught
+// before it happens. Bumped from 24 → 64 (2026-08-04) after exactly that
+// kind of displacement showed up in real output despite passing this
+// margin previously.
+const RECAP_PAGE_SAFETY_MARGIN_PX = 64;
 
 // DELIBERATE EXPERIMENT (2026-08-04, per Julia): the previous version kept a
 // second, permanently-present "scratch" copy of the whole document
@@ -3136,11 +3146,17 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
       {groups === null ? (
         measuringContent
       ) : (
-        <div className="recap-doc-sheet bg-[#F8F5EE] text-[#1A1612]" style={{ position: 'relative', width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${totalPages * RECAP_PAGE_HEIGHT_PX}px` }}>
+        <div className="recap-doc-sheet" style={{ position: 'relative', width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${totalPages * RECAP_PAGE_HEIGHT_PX}px` }}>
           {groups.map((group, pageIdx) => (
-            <div key={pageIdx} className="recap-doc-page-section" style={{ position: 'absolute', top: `${pageIdx * RECAP_PAGE_HEIGHT_PX}px`, left: 0, width: '100%', height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box' }}>
+            // bg/text color declared on EVERY section, not just the outer
+            // sheet — page 2's background was rendering white instead of
+            // the tan tint, which looks exactly like this print pipeline
+            // not correctly repeating an ancestor's background across a
+            // page fragment boundary. Each physical page now carries its
+            // own explicit background instead of depending on that.
+            <div key={pageIdx} className="recap-doc-page-section bg-[#F8F5EE] text-[#1A1612]" style={{ position: 'absolute', top: `${pageIdx * RECAP_PAGE_HEIGHT_PX}px`, left: 0, width: '100%', height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box' }}>
               {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
-              {group.entries.map(entry => <RecapEntryRow key={entry.id} entry={entry}/>)}
+              {group.entries.map((entry, i) => <RecapEntryRow key={entry.id} entry={entry} isLast={i === group.entries.length - 1}/>)}
               {group.entries.length === 0 && group.isFirstPage && (
                 <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
               )}
