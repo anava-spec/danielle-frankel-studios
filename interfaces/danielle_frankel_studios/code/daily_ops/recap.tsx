@@ -53,7 +53,23 @@ const TABLE_IDS = {
   ATTACHMENTS:          'tbli57E9YzWb5Qmku',
   STAFF:                'tblbYk88xJ8FQrLS4',
   PROPOSALS:            'tblP7tVuCuXMzI4ir',
+  RESOURCES:            'tblFa56lQwVacMXto',
 } as const;
+
+// resources table (tblFa56lQwVacMXto) — small shared-asset table (2026-08-04),
+// currently just the Recap Doc footer wordmark. Read live via the Blocks SDK
+// rather than baked into source, because Airtable attachment URLs
+// (v5.airtableusercontent.com/...) are signed and expire — hardcoding one
+// would silently break later.
+const RESOURCES = {
+  ATTACHMENT: 'fldQdW61aiBsn9Gnt',
+} as const;
+// Same base's resources table has a different record per environment — this
+// interface's code is shared between sandbox and production, so it tries
+// the sandbox record ID first and falls back to the production one if that
+// record isn't found (i.e. this copy is actually running in production).
+const RECAP_LOGO_RESOURCE_RECORD_ID_SANDBOX    = 'recwjGACdvPt0Chmh';
+const RECAP_LOGO_RESOURCE_RECORD_ID_PRODUCTION = 'recnPL7vUoa7FQ8a4';
 
 const APPT = {
   TIME:           'fldL7kYvgkmyhGniX',
@@ -2836,6 +2852,7 @@ interface RecapDocSnapshot {
   clientSpecialist: string;
   entries: RecapDocEntry[];
   photos: Array<{ id: string; url: string; thumbnails?: { small?: { url: string }; large?: { url: string } } }>;
+  logoUrl: string;
 }
 
 // ─── Shared render pieces ──────────────────────────────────────────────────
@@ -2964,13 +2981,28 @@ function RecapPhotoGrid({ photos, topMargin }: { photos: RecapDocSnapshot['photo
 // only ever appears when there's more than one page anyway, per Julia
 // (2026-08-03), so leaving it out of that one measurement doesn't matter —
 // it occupies the same single line as the logo, not an extra line.
-function RecapFooter({ pageNumber, totalPages }: { pageNumber?: number; totalPages?: number }) {
+// Flattened (2026-08-04): this used to be position:relative with an
+// absolutely-positioned page-number child — nested inside an already
+// absolutely-positioned .recap-doc-page-section, i.e. absolute-inside-
+// relative-inside-absolute. That's a real possible reason the page number
+// (and this whole footer, logo included) wasn't showing up in print at
+// all — three levels of positioning context is a lot to assume any given
+// print pipeline fully supports, and this one has already shown gaps
+// (forced page-break, @page nested in @media, possibly cross-page
+// background inheritance). A plain flex row with two equal spacer
+// columns achieves the same "logo centered, page number flush right"
+// layout with zero position:absolute anywhere in this component.
+function RecapFooter({ logoUrl, pageNumber, totalPages }: { logoUrl: string; pageNumber?: number; totalPages?: number }) {
+  const showPageNumber = totalPages != null && totalPages > 1;
   return (
-    <div className="relative flex items-center justify-center mt-8">
-      <img src={RECAP_FOOTER_LOGO_DATA_URI} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
-      {totalPages != null && totalPages > 1 && (
-        <div className="absolute right-0 text-gray-400" style={{ fontFamily: RECAP_BODY_FONT_FAMILY, fontSize: '11px' }}>{pageNumber}</div>
-      )}
+    <div className="flex items-center mt-8">
+      <div style={{ flex: '1 1 0' }} />
+      <img src={logoUrl} alt="Danielle Frankel" style={{ height: '11px', width: 'auto' }}/>
+      <div style={{ flex: '1 1 0', textAlign: 'right' }}>
+        {showPageNumber && (
+          <span className="text-gray-400" style={{ fontFamily: RECAP_BODY_FONT_FAMILY, fontSize: '11px' }}>{pageNumber}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -3105,7 +3137,7 @@ function useRecapPageGroups(snapshot: RecapDocSnapshot): { groups: RecapPageGrou
           end up single-page (no number shown) or multi-page (number
           shown), but reserving the larger height defensively is safer than
           under-reserving. */}
-      <div ref={footerRef}><RecapFooter pageNumber={1} totalPages={2}/></div>
+      <div ref={footerRef}><RecapFooter logoUrl={snapshot.logoUrl} pageNumber={1} totalPages={2}/></div>
       {snapshot.photos.length > 0 && <div ref={gridRef}><RecapPhotoGrid photos={snapshot.photos} topMargin={false}/></div>}
       {snapshot.entries.map((entry, i) => (
         <div key={entry.id} ref={el => { entryRefs.current[i] = el; }}>
@@ -3166,7 +3198,7 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
                   <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
                 </>
               )}
-              <RecapFooter pageNumber={pageIdx + 1} totalPages={groups.length}/>
+              <RecapFooter logoUrl={snapshot.logoUrl} pageNumber={pageIdx + 1} totalPages={groups.length}/>
             </div>
           ))}
         </div>
@@ -3335,6 +3367,7 @@ interface PostApptModalProps {
   staffRecords: AirtableRecord[] | null;
   proposalsTable: Table | null;
   proposalRecords: AirtableRecord[] | null;
+  recapLogoUrl: string;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
 }
@@ -3345,7 +3378,7 @@ function PostAppointmentModal({
   pricingTable, pricingRecords,
   stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, stylesSelfUsageField,
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField, favoriteStylesApptField,
-  staffTable, staffRecords, proposalsTable, proposalRecords,
+  staffTable, staffRecords, proposalsTable, proposalRecords, recapLogoUrl,
   base, onClose
 }: PostApptModalProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -3692,8 +3725,9 @@ function PostAppointmentModal({
       clientSpecialist: saName,
       entries: [...hybridEntries, ...regularEntries, ...favoriteEntries],
       photos: existingApptPhotos ?? [],
+      logoUrl: recapLogoUrl,
     };
-  }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, stylesTable, customizationRows, existingApptPhotos]);
+  }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, stylesTable, customizationRows, existingApptPhotos, recapLogoUrl]);
 
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
@@ -4247,6 +4281,7 @@ function RecapApp(): React.ReactElement {
   const selfUsageField       = customizationsTable?.getFieldIfExists('fldAhZaX0VHwZz3fW') ?? null;
   const stylesSelfUsageField = stylesTable?.getFieldIfExists('fld5Id6iAWLhueqQ8') ?? null;
   const proposalsTable      = base.getTableByIdIfExists(TABLE_IDS.PROPOSALS);
+  const resourcesTable      = base.getTableByIdIfExists(TABLE_IDS.RESOURCES);
 
   // useRecords — fall back to appointmentsTable to keep hook count stable
   const appointmentRecords = useRecords(appointmentsTable ?? null);
@@ -4261,6 +4296,24 @@ function RecapApp(): React.ReactElement {
   const staffRecords       = staffTable ? _staffRaw : null;
   const _proposalsRaw      = useRecords(proposalsTable ?? appointmentsTable ?? null);
   const proposalRecords    = proposalsTable ? _proposalsRaw : null;
+  const _resourcesRaw      = useRecords(resourcesTable ?? appointmentsTable ?? null);
+  const resourcesRecords   = resourcesTable ? _resourcesRaw : null;
+
+  // Recap Doc footer logo — sandbox record ID first, falls back to the
+  // production record ID (same code, different base). Attachment URLs are
+  // signed/expiring, so this is read live every render, never cached in
+  // source.
+  const recapLogoRecord = resourcesRecords?.find(r => r.id === RECAP_LOGO_RESOURCE_RECORD_ID_SANDBOX)
+    ?? resourcesRecords?.find(r => r.id === RECAP_LOGO_RESOURCE_RECORD_ID_PRODUCTION)
+    ?? null;
+  const fResourcesAttachment = resourcesTable?.getFieldIfExists(RESOURCES.ATTACHMENT) ?? null;
+  const recapLogoAttachment = (recapLogoRecord && fResourcesAttachment)
+    ? ((recapLogoRecord.getCellValue(fResourcesAttachment) as ProposalFile[] | null)?.[0] ?? null)
+    : null;
+  // Falls back to the embedded base64 PNG (see RECAP_FOOTER_LOGO_DATA_URI)
+  // if the resources record can't be found in either base — e.g. local/
+  // draft preview before that record exists there yet.
+  const recapLogoUrl = recapLogoAttachment?.thumbnails?.large?.url ?? recapLogoAttachment?.url ?? RECAP_FOOTER_LOGO_DATA_URI;
 
   const [selectedDate, setSelectedDate]        = useState(new Date());
   const [showCalendar, setShowCalendar]         = useState(false);
@@ -4392,6 +4445,7 @@ function RecapApp(): React.ReactElement {
           staffRecords={staffRecords}
           proposalsTable={proposalsTable}
           proposalRecords={proposalRecords}
+          recapLogoUrl={recapLogoUrl}
           base={base}
           onClose={()=>setSelectedRecordId(null)}
         />
