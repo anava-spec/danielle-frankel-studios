@@ -470,23 +470,22 @@ function StatusStepper({ choices, currentValue }: StatusStepperProps) {
   );
 }
 
-// ─── AdvanceConfirmModal ────────────────────────────────────────────────────────
-// Deliberately minimal by request (2026-07-30): a short line of text and a
-// single "Continue" action — no X, no Cancel, no backdrop-click-to-dismiss.
-// The only way out is to go through with the advance; this is an intentional
-// deviation from every other modal in this project's interfaces (which all
-// support backdrop/Escape/X dismissal) — don't "fix" it to match them.
-interface AdvanceConfirmModalProps { nextStatus: string; onContinue: () => void; }
-function AdvanceConfirmModal({ nextStatus, onContinue }: AdvanceConfirmModalProps) {
+// ─── AdvanceConfirmPopover ──────────────────────────────────────────────────────
+// A small popover anchored under the "Move to next step" button (2026-08-03
+// correction — previously a full-screen dim+blur modal). No backdrop at all,
+// deliberately by request: a short line of text and a single "Continue"
+// action, still the only way to dismiss it (no X, no Cancel, no
+// outside-click) — same intentional deviation from every other modal in this
+// project as before, just relocated from center-screen to inline.
+interface AdvanceConfirmPopoverProps { nextStatus: string; onContinue: () => void; }
+function AdvanceConfirmPopover({ nextStatus, onContinue }: AdvanceConfirmPopoverProps) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[360px] shadow-2xl p-6 text-center">
-        <p className="text-sm text-gray-800 dark:text-gray-200 mb-5">Mark as "{nextStatus}"?</p>
-        <button type="button" onClick={onContinue}
-          className="w-full px-4 py-2.5 rounded-md bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] text-sm font-medium hover:bg-amber-700 dark:hover:bg-amber-300 transition-colors">
-          Continue
-        </button>
-      </div>
+    <div className="absolute right-0 top-full mt-2 z-20 w-64 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl shadow-xl p-4">
+      <p className="text-sm text-gray-800 dark:text-gray-200 mb-3">Mark as "{nextStatus}"?</p>
+      <button type="button" onClick={onContinue}
+        className="w-full px-3 py-2 rounded-md bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] text-sm font-medium hover:bg-amber-700 dark:hover:bg-amber-300 transition-colors">
+        Continue
+      </button>
     </div>
   );
 }
@@ -515,8 +514,10 @@ function DetailRow({ label, value, tooltip }: { label: string; value: React.Reac
 // ─── ClientDetailModal ──────────────────────────────────────────────────────────
 // A popup, not a full page (2026-07-30 correction) — fade+scale in/out per
 // BRANDING.md §12, 720px-class modal width, no "Go back" (there's nowhere to
-// navigate back to; the X/backdrop/Escape close it like every other modal).
-// The client name and the "Move to X" action both live in the title bar.
+// navigate back to). Closes via backdrop click or Escape only — no X (removed
+// 2026-08-03). The client name and the "Move to next step" action both live
+// in the title bar; its own advance-confirmation is a small popover anchored
+// under the button (see AdvanceConfirmPopover), not a separate full modal.
 interface ClientDetailModalProps {
   record: AirtableRecord;
   fields: Record<string, Field | null>;
@@ -533,6 +534,7 @@ function ClientDetailModal({
   onAdvanceRequest, onSaveComments, onClose,
 }: ClientDetailModalProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const [confirmingAdvance, setConfirmingAdvance] = useState(false);
   useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
   const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
   useEffect(() => {
@@ -578,38 +580,44 @@ function ClientDetailModal({
         <div className="flex-shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-[#34312C]">
           <div className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] truncate">{name || 'Unknown Client'}</div>
           {canWrite && nextChoice && (
-            <button type="button" onClick={() => onAdvanceRequest(nextChoice.name)}
-              className={`flex-shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-                hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
-                               : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
-              Move to next step
-            </button>
+            <div className="relative flex-shrink-0">
+              <button type="button" onClick={() => setConfirmingAdvance(true)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                  hasStatusError ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-500/40'
+                                 : 'bg-amber-600 dark:bg-amber-400 text-white dark:text-[#25211A] hover:bg-amber-700 dark:hover:bg-amber-300'}`}>
+                Move to next step
+              </button>
+              {confirmingAdvance && (
+                <AdvanceConfirmPopover
+                  nextStatus={nextChoice.name}
+                  onContinue={() => { onAdvanceRequest(nextChoice.name); setConfirmingAdvance(false); }}
+                />
+              )}
+            </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
-          <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 space-y-4">
-            <StatusStepper choices={statusChoices} currentValue={statusValue} />
+        <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}>
+          <StatusStepper choices={statusChoices} currentValue={statusValue} />
 
-            <FieldRow cols={4}>
-              <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
-              <DetailRow label="Due Date" value={formatDate(dueStr)} tooltip="3 months before the wedding date — target date to have the card ready" />
-              <DetailRow label="Gown" value={gownStr || '—'} />
-              <DetailRow label="Dress Year" value={dressYearStr || '—'} />
-            </FieldRow>
-            <FieldRow cols={1}>
-              <DetailRow label="Items Sold" value={itemsStr || '—'} />
-            </FieldRow>
+          <FieldRow cols={4}>
+            <DetailRow label="Wedding Date" value={formatDate(weddingStr)} />
+            <DetailRow label="Due Date" value={formatDate(dueStr)} tooltip="3 months before the wedding date — target date to have the card ready" />
+            <DetailRow label="Gown" value={gownStr || '—'} />
+            <DetailRow label="Dress Year" value={dressYearStr || '—'} />
+          </FieldRow>
+          <FieldRow cols={1}>
+            <DetailRow label="Items Sold" value={itemsStr || '—'} />
+          </FieldRow>
 
-            <div>
-              <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-0.5">Comments</div>
-              <CommentsCell
-                value={commentsStr}
-                disabled={!canWrite}
-                hasError={hasCommentError}
-                onSave={onSaveComments}
-              />
-            </div>
+          <div>
+            <div className="text-sm text-gray-400 dark:text-gray-500 tracking-wide mb-0.5">Comments</div>
+            <CommentsCell
+              value={commentsStr}
+              disabled={!canWrite}
+              hasError={hasCommentError}
+              onSave={onSaveComments}
+            />
           </div>
         </div>
       </div>
@@ -650,10 +658,6 @@ function CalligraphyCardsApp(): React.ReactElement {
   // page; clicking the Status pill inside a row must not (it stops
   // propagation itself in StatusPillDropdown).
   const [openRecordId, setOpenRecordId] = useState<string | null>(null);
-  // The sequential status-advance confirmation — set when the SA clicks
-  // "Advance to X" on the detail page, cleared on Continue (there's no other
-  // dismiss path, by request — see AdvanceConfirmModal).
-  const [pendingAdvance, setPendingAdvance] = useState<{ recordId: string; nextStatus: string } | null>(null);
 
   const fields = useMemo(() => {
     if (!clientsTable) return {};
@@ -697,12 +701,6 @@ function CalligraphyCardsApp(): React.ReactElement {
       setCommentErrors(prev => ({ ...prev, [recordId]: true }));
     }
   }, [clientsTable, fields]);
-
-  const handleConfirmAdvance = useCallback(() => {
-    if (!pendingAdvance) return;
-    handleSetCalligraphyCard(pendingAdvance.recordId, pendingAdvance.nextStatus);
-    setPendingAdvance(null);
-  }, [pendingAdvance, handleSetCalligraphyCard]);
 
   const searchResults = useMemo(() => {
     if (!allRecords || !searchQuery.trim()) return [];
@@ -924,19 +922,17 @@ function CalligraphyCardsApp(): React.ReactElement {
 
       {openRecord && (
         <ClientDetailModal
+          key={openRecord.id}
           record={openRecord}
           fields={fields}
           statusChoices={statusChoices}
           canWrite={canWrite}
           hasStatusError={!!updateErrors[openRecord.id]}
           hasCommentError={!!commentErrors[openRecord.id]}
-          onAdvanceRequest={nextStatus => setPendingAdvance({ recordId: openRecord.id, nextStatus })}
+          onAdvanceRequest={nextStatus => handleSetCalligraphyCard(openRecord.id, nextStatus)}
           onSaveComments={next => handleSetComments(openRecord.id, next)}
           onClose={() => setOpenRecordId(null)}
         />
-      )}
-      {pendingAdvance && (
-        <AdvanceConfirmModal nextStatus={pendingAdvance.nextStatus} onContinue={handleConfirmAdvance} />
       )}
     </div>
   );

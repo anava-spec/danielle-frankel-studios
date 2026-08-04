@@ -218,7 +218,7 @@ function getRushFeeExplanation(
     : 0;
   const pctLabel = `${Math.round(rushPct * 100)}%`;
 
-  return `${pctLabel} rush fee on ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'} — ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} left until the due date (${formatDate(dueDate.toISOString())}).`;
+  return `${pctLabel} rush fee on ${standaloneStyleCount} non-customized style${standaloneStyleCount === 1 ? '' : 's'}. ${weeksRemaining} week${weeksRemaining === 1 ? '' : 's'} left until the due date on ${formatDate(dueDate.toISOString())}.`;
 }
 
 function parseCurrency(value: string): number {
@@ -1586,7 +1586,7 @@ function Layer2({
               )}
 
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">Shipping Address</h2>
+                <h2 className="text-base font-semibold">Address</h2>
                 <div className="w-64">
                   <AddressSelector
                     value={address}
@@ -2939,7 +2939,7 @@ function Layer4({
           )}
 
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">Shipping Address</h2>
+            <h2 className="text-base font-semibold">Address</h2>
             {isEditable ? (
               <div className="w-64">
                 <AddressSelector
@@ -3210,7 +3210,7 @@ interface AddressSelectorProps {
   // on blur — passed the just-committed value. Layer2 (create) omits this;
   // its address is saved once, along with everything else, on final Save.
   onCommit?: (v: string) => void;
-  // Standalone form field (e.g. Create Draft's top-level Shipping Address)
+  // Standalone form field (e.g. Create Draft's top-level Address section)
   // vs. borderless-in-a-table-cell (e.g. Draft Detail's Additional Charges
   // row) — same borderless/bordered split as NotesInput's `borderless` prop.
   bordered?: boolean;
