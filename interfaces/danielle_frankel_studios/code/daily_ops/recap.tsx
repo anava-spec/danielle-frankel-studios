@@ -34,6 +34,26 @@ function useTheme(): 'light' | 'dark' {
   return colorScheme;
 }
 
+// ─── Click-triggered (not hover-triggered) tooltip ─────────────────────────────
+// Native `title` attributes only ever show on hover — for a disabled-looking
+// button where the explanation should only appear once the user actually
+// clicks it (2026-08-05, per Julia, for the Recap Doc Generate/Upload
+// buttons), that has to be hand-rolled: no `disabled` attribute (a real
+// disabled button doesn't fire onClick at all in most browsers, so there'd
+// be nothing to react to), just disabled-looking styling plus an onClick
+// that shows a transient message instead of running the real action.
+function useClickTooltip(durationMs = 2500) {
+  const [visible, setVisible] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); }, []);
+  const trigger = useCallback(() => {
+    setVisible(true);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setVisible(false), durationMs);
+  }, [durationMs]);
+  return { visible, trigger };
+}
+
 // ─── Write queue ──────────────────────────────────────────────────────────────
 let _writeQueue = Promise.resolve();
 function queueWrite<T>(fn: () => Promise<T>): Promise<T> {
@@ -3829,6 +3849,12 @@ function PostAppointmentModal({
     : null;
 
   const [showRecapDocPreview, setShowRecapDocPreview] = useState(false);
+  // Click-triggered blocked-reason tooltips for the Generate button and the
+  // Recap Doc field's own "+" upload button — see useClickTooltip's
+  // comment. Independent instances since both buttons can be visible and
+  // independently clicked at the same time.
+  const generateBlockedTip = useClickTooltip();
+  const uploadBlockedTip   = useClickTooltip();
 
   const fApptTime = apptTable.getFieldIfExists(APPT.TIME);
   // Raw getCellValue (ISO) instead of getCellValueAsString — the latter
@@ -4027,27 +4053,32 @@ function PostAppointmentModal({
                 </div>
               </div>
               {/* Rendered whenever no Recap Doc exists yet (2026-08-05, per
-                  Julia) — grayed out with a native hover tooltip (title
-                  attribute, same convention the Recap Doc field's own "+"
-                  button already uses) explaining the specific blocker for
+                  Julia) — grayed out, explaining the specific blocker for
                   every OTHER reason (type missing, not a consultation, no
-                  content yet), instead of disappearing with no explanation.
-                  Once a Recap Doc has actually been generated and uploaded,
-                  this button disappears entirely — the inline thumbnail(s)
-                  next to the Recap Doc field below are the only affordance
-                  at that point, there's nothing left to generate. */}
+                  content yet) via a tooltip that only appears on CLICK, not
+                  hover (useClickTooltip) — no `disabled` attribute, since a
+                  truly disabled button doesn't fire onClick at all. Once a
+                  Recap Doc has actually been generated and uploaded, this
+                  button disappears entirely — the inline thumbnail(s) next
+                  to the Recap Doc field below are the only affordance at
+                  that point, there's nothing left to generate. */}
               {!hasRecapDoc && (
-                <button type="button"
-                  onClick={()=>{ if (!recapDocDisabledReason) setShowRecapDocPreview(true); }}
-                  disabled={!!recapDocDisabledReason}
-                  title={recapDocDisabledReason ?? undefined}
-                  className={`ml-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex-shrink-0 ${
-                    recapDocDisabledReason
-                      ? 'bg-gray-200 dark:bg-white/10 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                      : 'text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F]'
-                  }`}>
-                  <FileTextIcon size={14}/>Generate Recap Doc
-                </button>
+                <div className="relative ml-auto flex-shrink-0">
+                  <button type="button"
+                    onClick={()=>{ if (recapDocDisabledReason) generateBlockedTip.trigger(); else setShowRecapDocPreview(true); }}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                      recapDocDisabledReason
+                        ? 'bg-gray-200 dark:bg-white/10 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F]'
+                    }`}>
+                    <FileTextIcon size={14}/>Generate Recap Doc
+                  </button>
+                  {generateBlockedTip.visible && recapDocDisabledReason && (
+                    <div className="absolute right-0 top-full mt-2 z-10 w-64 px-3 py-2 rounded-lg bg-gray-900 dark:bg-black text-white text-xs shadow-lg">
+                      {recapDocDisabledReason}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -4152,16 +4183,30 @@ function PostAppointmentModal({
                     ))}
                   </div>
                 ) : (
-                  // Same gray-out + hover-tooltip behavior as the title-bar
-                  // Generate button (2026-08-05, per Julia) — reuses the
-                  // exact same recapDocDisabledReason, since this button
-                  // only ever renders while !hasRecapDoc anyway (the
-                  // "already generated" reason never applies here).
-                  <button type="button" onClick={openRecapDocUploadForm} disabled={!clientId || !!recapDocDisabledReason}
-                    title={recapDocDisabledReason ?? 'Upload Recap Doc'}
-                    className="w-[27px] h-[27px] flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    <PlusIcon size={12}/>
-                  </button>
+                  // Same gray-out behavior as the title-bar Generate button
+                  // (2026-08-05, per Julia) — reuses the exact same
+                  // recapDocDisabledReason (this button only ever renders
+                  // while !hasRecapDoc anyway, so the "already generated"
+                  // reason never applies here), shown via a click-triggered
+                  // tooltip (useClickTooltip), not on hover. No `disabled`
+                  // attribute for the same reason as Generate's — a real
+                  // disabled button never fires onClick.
+                  <div className="relative inline-block">
+                    <button type="button"
+                      onClick={()=>{ if (!clientId) return; if (recapDocDisabledReason) uploadBlockedTip.trigger(); else openRecapDocUploadForm(); }}
+                      className={`w-[27px] h-[27px] flex items-center justify-center rounded-lg border transition-colors ${
+                        recapDocDisabledReason
+                          ? 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-white/10 cursor-not-allowed'
+                          : 'text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 hover:dark:bg-white/5'
+                      }`}>
+                      <PlusIcon size={12}/>
+                    </button>
+                    {uploadBlockedTip.visible && recapDocDisabledReason && (
+                      <div className="absolute left-0 top-full mt-2 z-10 w-56 px-3 py-2 rounded-lg bg-gray-900 dark:bg-black text-white text-xs shadow-lg">
+                        {recapDocDisabledReason}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
