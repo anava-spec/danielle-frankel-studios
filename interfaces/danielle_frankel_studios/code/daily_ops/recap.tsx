@@ -2772,13 +2772,14 @@ const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, pleas
 const RECAP_BODY_FONT_FAMILY = "'Canela Text', Georgia, serif";
 const RECAP_NUMBER_FONT_FAMILY = "'Abhaya Libre', serif";
 
-// "Phone" / "Style Price" / "Custom Pricing (value)" — Julia's typography
-// sheet called these "identical spec", but measuring the actual Figma
-// export (2026-08-04) shows three DIFFERENT sizes: phone value 10.5px,
-// style price 13px, custom pricing value 11px. The Figma file is the more
-// exact source (it's the literal design, not a hand-filled sheet), so
-// this is now three styles instead of one shared one. Style Price keeps
-// the original name since it's the one actually named after the sheet.
+// "Phone" / "Style Price" — Julia's typography sheet called every number
+// row "identical spec", but measuring the actual Figma export (2026-08-04)
+// showed phone value at 10.5px vs. style price at 13px. The Figma file is
+// the more exact source (it's the literal design, not a hand-filled
+// sheet), so this is two styles instead of one shared one. (A third,
+// Custom Pricing at 11px, existed briefly for the CR "Custom Pricing" row
+// — removed 2026-08-05 per Julia, along with that row entirely; see
+// RecapDocHybridEntry's comment.)
 const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
   fontFamily: RECAP_NUMBER_FONT_FAMILY,
   fontWeight: 600,
@@ -2790,10 +2791,6 @@ const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
 const RECAP_PHONE_VALUE_STYLE: React.CSSProperties = {
   ...RECAP_NUMBER_FONT_STYLE,
   fontSize: '10.5px',
-};
-const RECAP_CUSTOM_PRICING_VALUE_STYLE: React.CSSProperties = {
-  ...RECAP_NUMBER_FONT_STYLE,
-  fontSize: '11px',
 };
 // "APPOINTMENT RECAP" / "STYLES" section labels
 const RECAP_SECTION_LABEL_STYLE: React.CSSProperties = {
@@ -2820,7 +2817,7 @@ const RECAP_STYLE_NAME_STYLE: React.CSSProperties = {
 const RECAP_STYLE_NOTES_STYLE: React.CSSProperties = {
   fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '10.5px', lineHeight: '15px', letterSpacing: '0%', textAlign: 'left',
 };
-// "NOTES" / "CUSTOM PRICING" small caps labels
+// "NOTES" small caps label
 const RECAP_SMALL_LABEL_STYLE: React.CSSProperties = {
   fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '7.5px', lineHeight: 1, letterSpacing: '1.2px', textAlign: 'left',
 };
@@ -2858,18 +2855,20 @@ interface RecapDocRegularEntry {
   photoUrl: string | null;
   description: string;
   crNotes: string;
-  customPricing: number;
 }
 // A two-style Hybrid customization request. Two style blocks (each name +
-// description + base price), the CR's own notes below both, then Custom
-// Pricing (the combined grandTotal) last.
+// description + base price), the CR's own notes below both. No Custom
+// Pricing here — removed 2026-08-05 per Julia: the recap only ever shows
+// each style's own base price (never the ×1.85-etc. computed total); the
+// actual custom price lives exclusively in the separate Customization
+// Proposal document, where the multiplier math stays hidden from the
+// client.
 interface RecapDocHybridEntry {
   kind: 'hybrid';
   id: string;
   style1: { name: string; price: number; photoUrl: string | null; description: string };
   style2: { name: string; price: number; photoUrl: string | null; description: string };
   crNotes: string;
-  customPricing: number;
 }
 type RecapDocEntry = RecapDocFavoriteEntry | RecapDocRegularEntry | RecapDocHybridEntry;
 
@@ -2922,10 +2921,6 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
             <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
           </div>
         )}
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
-          <span style={RECAP_CUSTOM_PRICING_VALUE_STYLE}>{formatCurrency(entry.customPricing)}</span>
-        </div>
       </div>
     );
   }
@@ -2946,12 +2941,6 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
             <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
-          </div>
-        )}
-        {entry.kind === 'regular' && (
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
-            <span style={RECAP_CUSTOM_PRICING_VALUE_STYLE}>{formatCurrency(entry.customPricing)}</span>
           </div>
         )}
       </div>
@@ -3729,7 +3718,9 @@ function PostAppointmentModal({
         style1: { name: row.style1Name, price: row.style1Price, photoUrl: row.style1PhotoUrl, description: row.style1Description },
         style2: { name: row.style2Name ?? '', price: row.style2Price ?? 0, photoUrl: row.style2PhotoUrl, description: row.style2Description ?? '' },
         crNotes: row.crNotes,
-        customPricing: row.grandTotal,
+        // No customPricing here — removed 2026-08-05 per Julia. row.grandTotal
+        // (base price ± multiplier) is still computed above for the separate
+        // Customization Proposal document; the Recap Doc just never reads it.
       }));
 
     const regularEntries: RecapDocRegularEntry[] = approvedRows
@@ -3742,7 +3733,7 @@ function PostAppointmentModal({
         photoUrl: row.style1PhotoUrl,
         description: row.style1Description,
         crNotes: row.crNotes,
-        customPricing: row.grandTotal,
+        // No customPricing here — see the note in hybridEntries above.
       }));
 
     // A favorite style already represented by an approved Regular CR (by
