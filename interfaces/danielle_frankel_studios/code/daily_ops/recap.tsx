@@ -2769,7 +2769,15 @@ const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, pleas
 // the Airtable interface, or a Google Fonts/webfont link) or the browser
 // will silently fall back to its default serif/sans-serif. Footer wordmark
 // is still pending — Julia's sending a PNG for it, currently plain text.
-const RECAP_BODY_FONT_FAMILY = "'Canela Text', Georgia, serif";
+// 'Canela Text' is kept FIRST in the stack in case it's ever actually
+// licensed/loaded some other way (installed system font, a real Typekit
+// embed, etc.) — it would then take priority automatically with no code
+// change here. Until then, 'Fraunces' (loaded below) is the effective
+// stand-in: Canela Text is a commercial font (Colophon Foundry) not
+// available on Google Fonts, and per Axel/Julia (2026-08-05) a visually
+// similar free serif is preferable to the generic Georgia fallback while
+// the real license situation gets sorted.
+const RECAP_BODY_FONT_FAMILY = "'Canela Text', 'Fraunces', Georgia, serif";
 const RECAP_NUMBER_FONT_FAMILY = "'Abhaya Libre', serif";
 
 // Neither font was actually being loaded anywhere (2026-08-05 — confirmed
@@ -2782,19 +2790,15 @@ const RECAP_NUMBER_FONT_FAMILY = "'Abhaya Libre', serif";
 // Airtable's own CDN), so a <link> injected into <head> works the same way
 // a real page's <head> would.
 //
-// Abhaya Libre is a free, open-license Google Font — safe to self-load
-// from Google's CDN, done once below via ensureRecapWebFontsLoaded().
-//
-// Canela Text is a COMMERCIAL font (Colophon Foundry) — it is NOT on
-// Google Fonts and can't be sourced from a public CDN without a license.
-// This file can't silently "find" it from somewhere; it needs either (a)
-// the actual licensed webfont files (.woff2) to self-host and declare via
-// @font-face, or (b) an Adobe Fonts/Typekit project ID if Danielle
-// Frankel's own site already serves it that way (check the production
-// site's <head> for a `use.typekit.net/xxxxxxx.js` script tag — that ID
-// would work here too). Until one of those is provided, RECAP_BODY_FONT_
-// FAMILY keeps falling back to Georgia — a deliberate, visible gap, not a
-// bug to "fix" by guessing at a source.
+// Abhaya Libre and Fraunces are both free, open-license Google Fonts —
+// safe to self-load from Google's CDN, done once below via
+// ensureRecapWebFontsLoaded(). Fraunces is a temporary stand-in for Canela
+// Text (see the comment above RECAP_BODY_FONT_FAMILY) — swap it out once
+// Canela Text has a real licensed source: either the actual .woff2 files
+// to self-host via @font-face, or an Adobe Fonts/Typekit project ID if
+// Danielle Frankel's own site already serves it that way (check the
+// production site's <head> for a `use.typekit.net/xxxxxxx.js` script tag
+// — that ID would work here too).
 let recapWebFontsInjected = false;
 function ensureRecapWebFontsLoaded() {
   if (recapWebFontsInjected || typeof document === 'undefined') return;
@@ -2803,7 +2807,7 @@ function ensureRecapWebFontsLoaded() {
   const link = document.createElement('link');
   link.id = 'recap-doc-webfonts';
   link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Abhaya+Libre:wght@400;600;700&display=swap';
+  link.href = 'https://fonts.googleapis.com/css2?family=Abhaya+Libre:wght@400;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&display=swap';
   document.head.appendChild(link);
 }
 
