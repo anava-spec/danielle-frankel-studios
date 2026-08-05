@@ -13,6 +13,17 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ## Week of Aug 3, 2026
 
+**Recap Doc**
+- Generate Recap Doc now reliably prints as multiple pages when the content doesn't fit on one page — previously it always came out as a single page no matter how much was on it.
+- Adjusted spacing, photo sizing, and font sizes throughout the document to match the approved design.
+- Removed the "Custom Pricing" line from the Recap Doc — it now only shows each style's base price; the full customized price still appears on the separate Customization Proposal document.
+- Fixed the document's fonts, which weren't actually loading and were silently falling back to a generic font; the main body font is temporarily using a close substitute until the licensed font is set up.
+- Client info labels (Email, Phone, Wedding Date, Appointment, Client Specialist) are now uppercase.
+- The preview window: removed the Close button (clicking outside or pressing Escape still closes it), renamed "Print" to "Generate," and it no longer needs horizontal scrolling to see the full document.
+- "Generate Recap Doc" now always shows in the title bar — it's grayed out with an explanation (shown on click) when it can't be used yet, and disappears entirely once a Recap Doc has already been generated for that appointment.
+- Fixed the upload link so a Recap Doc reliably attaches to the client's actual first-consultation appointment.
+- Clicking Generate now closes the preview automatically, leaving just the print dialog on screen.
+
 **Calligraphy Cards**
 - Stage names in the detail popup's status stepper no longer wrap to a second line.
 - The popup's content now sits directly under the title bar, with no extra box, border, or padding around it.
