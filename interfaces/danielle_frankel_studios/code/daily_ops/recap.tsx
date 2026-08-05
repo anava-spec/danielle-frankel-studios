@@ -507,6 +507,17 @@ const STYLES_PHOTO_FIELD_ID = 'fldall9IlP5wEMb2W';
 // Styles.Category — used to exclude Alterations-category "styles" (they
 // aren't real gown/dress favorites) from the Favorite Styles selector.
 const STYLES_CATEGORY_FIELD_ID = 'fld0eUrQtGo5zFrbe';
+// TEMPORARY (2026-08-05, per Axel/Julia) — Styles.description formula
+// field, hardcoded to the same lorem-ipsum placeholder for every style
+// while the web team ("Cobalt") builds the real sync from the site's own
+// style descriptions into Airtable. The Recap Doc's per-style description
+// reads this field directly instead of the CUSTOMIZED_STYLE_NOTES/
+// ADDITIONAL_CUSTOMIZED_STYLE_NOTES lookups (which point at Styles.Notes,
+// fldvF8u5jMhimDV3a — the pre-Cobalt field) purely so we can see real
+// pagination/layout with placeholder text before that sync exists. Swap
+// this back to the lookups (or to whatever field Cobalt's sync lands in)
+// once real descriptions are available.
+const STYLES_DESCRIPTION_PLACEHOLDER_FIELD_ID = 'fldjBgzkomQ26lSzV';
 function isConsultation(label: string): boolean {
   return label.toLowerCase().includes('consultation');
 }
@@ -3198,18 +3209,27 @@ function RecapDocument({ snapshot }: RecapDocumentProps) {
       {groups === null ? (
         measuringContent
       ) : groups.map((group, pageIdx) => (
-        <div key={pageIdx} className="recap-doc-page-section bg-[#F8F5EE] text-[#1A1612]" style={{ width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box', margin: 0 }}>
-          {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
-          {group.entries.map((entry, i) => <RecapEntryRow key={entry.id} entry={entry} isLast={i === group.entries.length - 1}/>)}
-          {group.entries.length === 0 && group.isFirstPage && (
-            <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
-          )}
-          {group.showGrid && (
-            <>
-              {group.isFirstPage && <RecapSingleDisclaimerLine/>}
-              <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
-            </>
-          )}
+        // display:flex/flexDirection:column + the flex:1 wrapper below pins
+        // the footer (logo + page count) to the true bottom of the fixed
+        // 11in page, regardless of how much content is above it. Previously
+        // the footer was just the next block-level sibling after the last
+        // style row, so its vertical position drifted with content height
+        // instead of sitting flush at the bottom — fixed 2026-08-05 per
+        // Julia.
+        <div key={pageIdx} className="recap-doc-page-section bg-[#F8F5EE] text-[#1A1612]" style={{ width: `${RECAP_PAGE_WIDTH_PX}px`, height: `${RECAP_PAGE_HEIGHT_PX}px`, padding: `${RECAP_PAGE_PADDING_PX}px`, boxSizing: 'border-box', margin: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: '1 1 auto', minHeight: 0 }}>
+            {group.isFirstPage ? <RecapFirstPageHeader snapshot={snapshot}/> : <RecapContinuationHeader/>}
+            {group.entries.map((entry, i) => <RecapEntryRow key={entry.id} entry={entry} isLast={i === group.entries.length - 1}/>)}
+            {group.entries.length === 0 && group.isFirstPage && (
+              <div className="text-sm text-gray-400 py-6 text-center">No styles selected for this appointment.</div>
+            )}
+            {group.showGrid && (
+              <>
+                {group.isFirstPage && <RecapSingleDisclaimerLine/>}
+                <RecapPhotoGrid photos={snapshot.photos} topMargin={!group.isFirstPage}/>
+              </>
+            )}
+          </div>
           <RecapFooter logoUrl={snapshot.logoUrl} pageNumber={pageIdx + 1} totalPages={groups.length}/>
         </div>
       ))}
@@ -3340,34 +3360,33 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
         </div>,
         document.body
       )}
-      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
+      <div className="bg-white dark:bg-[#25211A] rounded-2xl w-fit max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-gray-200 dark:border-white/10 transition-[opacity,transform] duration-200 ease-out"
         style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)' }}
         onClick={e => e.stopPropagation()}>
-        <div className="p-5 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
-          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6] flex-1">Generate Recap Doc</div>
-        </div>
-        <div className="flex-1 overflow-y-auto overflow-x-auto p-5 space-y-4">
-          {/* On-screen preview — separate instance from the print portal
-              above, so there's exactly one DOM node that's ever visible in
-              print (no duplicate/ID collisions), and this one keeps
-              scrolling normally inside the modal like everything else.
-              The sheet itself is a fixed 8.5in (816px) wide — wider than
-              this modal — so this wrapper scrolls horizontally rather than
-              squeezing/reflowing the document at a different width than
-              what actually prints. */}
-          <RecapDocument snapshot={snapshot} />
-          <div className="text-xs text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
-            Print (or save as PDF), then use "Upload" on the Recap Doc field to attach it to this appointment.
+        <div className="p-5 border-b border-gray-100 dark:border-white/5">
+          <div className="font-bold text-xl text-gray-900 dark:text-[#F3EFE6]">Generate Recap Doc</div>
+          {/* One tier up from the old text-xs footnote (now text-sm), and
+              moved up here under the title per Julia (2026-08-05) — reads
+              as an instruction before the preview instead of a footnote
+              after it. Reworded to match what's actually on-screen: the
+              Recap Doc field's attach control is an icon-only "+" button,
+              not a labeled "Upload" button. */}
+          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Generate the Recap Doc below, then attach it using the + button on the Recap Doc field.
           </div>
         </div>
+        {/* No horizontal scroll: the modal sizes to the document's fixed
+            8.5in (816px) width (w-fit on the container above) instead of
+            being capped narrower and forcing overflow-x-auto here. */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <RecapDocument snapshot={snapshot} />
+        </div>
+        {/* Close removed (2026-08-05, per Julia) — Generate is now the only
+            action; clicking outside the modal or Escape still dismiss it. */}
         <div className="p-5 border-t border-gray-100 dark:border-white/5 flex justify-end items-center gap-3">
-          <button type="button" onClick={requestClose}
-            className="px-5 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 hover:dark:bg-white/5 transition-colors">
-            Close
-          </button>
           <button type="button" onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
-            <PrinterIcon size={14} />Print
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-700 hover:dark:bg-gray-200 transition-colors">
+            Generate
           </button>
         </div>
       </div>
@@ -3520,10 +3539,14 @@ function PostAppointmentModal({
     const fCrNotes    = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZATION_DETAIL);
     const fStyle1Photo = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE_PHOTO);
     const fStyle1PriceLookup = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE_PRICE);
-    const fStyle1Notes = customizationsTable.getFieldIfExists(CUSTOM.CUSTOMIZED_STYLE_NOTES);
     const fStyle2Photo = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE_PHOTO);
     const fStyle2PriceLookup = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE_PRICE);
-    const fStyle2Notes = customizationsTable.getFieldIfExists(CUSTOM.ADDITIONAL_CUSTOMIZED_STYLE_NOTES);
+    // TEMPORARY placeholder source for style description — see the comment
+    // above STYLES_DESCRIPTION_PLACEHOLDER_FIELD_ID. Reads straight off the
+    // already-resolved Styles record (styleRec/styleRec1/styleRec2 below)
+    // instead of the CUSTOMIZED_STYLE_NOTES/ADDITIONAL_CUSTOMIZED_STYLE_NOTES
+    // lookup fields, which still point at the pre-Cobalt Styles.Notes field.
+    const fStylesDescription = stylesTable?.getFieldIfExists(STYLES_DESCRIPTION_PLACEHOLDER_FIELD_ID) ?? null;
 
     // A style link's own Base Price, resolved via stylesRecords — same
     // lookup Regular's own basePriceNumber below uses, just reusable for
@@ -3592,11 +3615,11 @@ function PostAppointmentModal({
             style1Name: styleRec1?.name ?? '',
             style1PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle1Photo ? rec.getCellValue(fStyle1Photo) : null)?.url ?? null,
             style1Price: firstLookupValue<number>(fStyle1PriceLookup ? rec.getCellValue(fStyle1PriceLookup) : null) ?? base1,
-            style1Description: firstLookupValue<string>(fStyle1Notes ? rec.getCellValue(fStyle1Notes) : null) ?? '',
+            style1Description: (styleRec1 && fStylesDescription) ? (styleRec1.getCellValueAsString(fStylesDescription) || '') : '',
             style2Name: styleRec2?.name ?? '',
             style2PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle2Photo ? rec.getCellValue(fStyle2Photo) : null)?.url ?? null,
             style2Price: firstLookupValue<number>(fStyle2PriceLookup ? rec.getCellValue(fStyle2PriceLookup) : null) ?? base2,
-            style2Description: firstLookupValue<string>(fStyle2Notes ? rec.getCellValue(fStyle2Notes) : null) ?? '',
+            style2Description: (styleRec2 && fStylesDescription) ? (styleRec2.getCellValueAsString(fStylesDescription) || '') : '',
           };
         }
 
@@ -3623,7 +3646,7 @@ function PostAppointmentModal({
           style1Name: styleName,
           style1PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle1Photo ? rec.getCellValue(fStyle1Photo) : null)?.url ?? null,
           style1Price: firstLookupValue<number>(fStyle1PriceLookup ? rec.getCellValue(fStyle1PriceLookup) : null) ?? basePriceNumber,
-          style1Description: firstLookupValue<string>(fStyle1Notes ? rec.getCellValue(fStyle1Notes) : null) ?? '',
+          style1Description: (styleRec && fStylesDescription) ? (styleRec.getCellValueAsString(fStylesDescription) || '') : '',
           style2Name: null,
           style2PhotoUrl: null,
           style2Price: null,
