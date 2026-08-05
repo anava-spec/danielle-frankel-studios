@@ -2772,6 +2772,41 @@ const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, pleas
 const RECAP_BODY_FONT_FAMILY = "'Canela Text', Georgia, serif";
 const RECAP_NUMBER_FONT_FAMILY = "'Abhaya Libre', serif";
 
+// Neither font was actually being loaded anywhere (2026-08-05 — confirmed
+// this is why both were silently falling back to Georgia/serif): nothing
+// in this Interface Extension, nor anywhere else in the Airtable base,
+// injects a @font-face or webfont <link> for them, so the fallback in the
+// family list above was ALWAYS what rendered, on every machine, sandbox or
+// production. Interface Extension code blocks can load external CSS/font
+// requests fine (this base already fetches attachment/thumbnail URLs from
+// Airtable's own CDN), so a <link> injected into <head> works the same way
+// a real page's <head> would.
+//
+// Abhaya Libre is a free, open-license Google Font — safe to self-load
+// from Google's CDN, done once below via ensureRecapWebFontsLoaded().
+//
+// Canela Text is a COMMERCIAL font (Colophon Foundry) — it is NOT on
+// Google Fonts and can't be sourced from a public CDN without a license.
+// This file can't silently "find" it from somewhere; it needs either (a)
+// the actual licensed webfont files (.woff2) to self-host and declare via
+// @font-face, or (b) an Adobe Fonts/Typekit project ID if Danielle
+// Frankel's own site already serves it that way (check the production
+// site's <head> for a `use.typekit.net/xxxxxxx.js` script tag — that ID
+// would work here too). Until one of those is provided, RECAP_BODY_FONT_
+// FAMILY keeps falling back to Georgia — a deliberate, visible gap, not a
+// bug to "fix" by guessing at a source.
+let recapWebFontsInjected = false;
+function ensureRecapWebFontsLoaded() {
+  if (recapWebFontsInjected || typeof document === 'undefined') return;
+  recapWebFontsInjected = true;
+  if (document.getElementById('recap-doc-webfonts')) return;
+  const link = document.createElement('link');
+  link.id = 'recap-doc-webfonts';
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Abhaya+Libre:wght@400;600;700&display=swap';
+  document.head.appendChild(link);
+}
+
 // "Phone" / "Style Price" — Julia's typography sheet called every number
 // row "identical spec", but measuring the actual Figma export (2026-08-04)
 // showed phone value at 10.5px vs. style price at 13px. The Figma file is
@@ -2953,11 +2988,14 @@ function RecapFirstPageHeader({ snapshot }: { snapshot: RecapDocSnapshot }) {
       <div className="text-gray-500 mb-1" style={RECAP_SECTION_LABEL_STYLE}>APPOINTMENT RECAP</div>
       <div className="mb-4" style={RECAP_CLIENT_NAME_STYLE}>{snapshot.clientName.toUpperCase()}</div>
       <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6">
-        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Email: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.email || '—'}</span></div>
-        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Phone: </span><span style={RECAP_PHONE_VALUE_STYLE}>{snapshot.phone || '—'}</span></div>
-        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Wedding Date: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.weddingDateDisplay || '—'}</span></div>
-        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Appointment: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.appointmentDisplay || '—'}</span></div>
-        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Client Specialist: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.clientSpecialist || '—'}</span></div>
+        {/* Uppercase per Julia (2026-08-05) — also matches the Figma export,
+            which has no literal colon either (just label/value side by
+            side); kept the colon since only casing was called out. */}
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>EMAIL: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.email || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>PHONE: </span><span style={RECAP_PHONE_VALUE_STYLE}>{snapshot.phone || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>WEDDING DATE: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.weddingDateDisplay || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>APPOINTMENT: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.appointmentDisplay || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>CLIENT SPECIALIST: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.clientSpecialist || '—'}</span></div>
       </div>
       <div className="text-gray-500 mb-3" style={RECAP_SECTION_LABEL_STYLE}>STYLES</div>
     </>
@@ -4303,6 +4341,11 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
 // ─── RecapApp ──────────────────────────────────────────────────────────
 function RecapApp(): React.ReactElement {
   useTheme();
+  // Loads the free Abhaya Libre webfont once, so it's already available by
+  // the time any Recap Doc preview opens (see the comment above
+  // ensureRecapWebFontsLoaded). Canela Text still needs a licensed source —
+  // see the same comment.
+  useEffect(() => { ensureRecapWebFontsLoaded(); }, []);
   const base = useBase();
   const { errorState, customPropertyValueByKey } = useCustomProperties(getCustomProperties);
   const stylesBasePriceField = (customPropertyValueByKey?.stylesBasePriceField as ReturnType<Table['getFieldIfExists']>) ?? null;
