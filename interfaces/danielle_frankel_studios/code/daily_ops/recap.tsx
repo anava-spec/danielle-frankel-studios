@@ -72,11 +72,11 @@ const RESOURCES = {
   // IDs above, but via a value instead of two different record IDs.
   URL: 'fldMDIAqAjpwUvtWF',
 } as const;
-// The resources record this attachments-form URL lives on is named
-// "attachments_form" (verified live, 2026-08-05) — NOT "attachment_url".
-// Matching on the real name here; flag to Julia if "attachment_url" was
-// the intended name and the record should be renamed instead.
-const ATTACHMENT_FORM_RESOURCE_NAME = 'attachments_form';
+// The resources record this attachments-form URL lives on. Originally
+// found live as "attachments_form" (2026-08-05); Julia renamed it to
+// "attachments_form_url" the same day to read more clearly next to
+// "attachment_url" (SDK). Matching the current, renamed value.
+const ATTACHMENT_FORM_RESOURCE_NAME = 'attachments_form_url';
 // Same base's resources table has a different record per environment — this
 // interface's code is shared between sandbox and production, so it tries
 // the sandbox record ID first and falls back to the production one if that
