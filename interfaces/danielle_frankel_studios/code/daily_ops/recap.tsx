@@ -4026,22 +4026,29 @@ function PostAppointmentModal({
                   <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{shortType}</div>
                 </div>
               </div>
-              {/* Always rendered (2026-08-05, per Julia) — grayed out with a
-                  native hover tooltip (title attribute, same convention the
-                  Recap Doc field's own "+" button already uses) explaining
-                  the specific blocker, instead of disappearing with no
-                  explanation. */}
-              <button type="button"
-                onClick={()=>{ if (!recapDocDisabledReason) setShowRecapDocPreview(true); }}
-                disabled={!!recapDocDisabledReason}
-                title={recapDocDisabledReason ?? undefined}
-                className={`ml-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex-shrink-0 ${
-                  recapDocDisabledReason
-                    ? 'bg-gray-200 dark:bg-white/10 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    : 'text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F]'
-                }`}>
-                <FileTextIcon size={14}/>Generate Recap Doc
-              </button>
+              {/* Rendered whenever no Recap Doc exists yet (2026-08-05, per
+                  Julia) — grayed out with a native hover tooltip (title
+                  attribute, same convention the Recap Doc field's own "+"
+                  button already uses) explaining the specific blocker for
+                  every OTHER reason (type missing, not a consultation, no
+                  content yet), instead of disappearing with no explanation.
+                  Once a Recap Doc has actually been generated and uploaded,
+                  this button disappears entirely — the inline thumbnail(s)
+                  next to the Recap Doc field below are the only affordance
+                  at that point, there's nothing left to generate. */}
+              {!hasRecapDoc && (
+                <button type="button"
+                  onClick={()=>{ if (!recapDocDisabledReason) setShowRecapDocPreview(true); }}
+                  disabled={!!recapDocDisabledReason}
+                  title={recapDocDisabledReason ?? undefined}
+                  className={`ml-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex-shrink-0 ${
+                    recapDocDisabledReason
+                      ? 'bg-gray-200 dark:bg-white/10 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                      : 'text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F]'
+                  }`}>
+                  <FileTextIcon size={14}/>Generate Recap Doc
+                </button>
+              )}
             </div>
           </div>
 
@@ -4145,7 +4152,13 @@ function PostAppointmentModal({
                     ))}
                   </div>
                 ) : (
-                  <button type="button" onClick={openRecapDocUploadForm} disabled={!clientId || !isConsultationAppt} title="Upload Recap Doc"
+                  // Same gray-out + hover-tooltip behavior as the title-bar
+                  // Generate button (2026-08-05, per Julia) — reuses the
+                  // exact same recapDocDisabledReason, since this button
+                  // only ever renders while !hasRecapDoc anyway (the
+                  // "already generated" reason never applies here).
+                  <button type="button" onClick={openRecapDocUploadForm} disabled={!clientId || !!recapDocDisabledReason}
+                    title={recapDocDisabledReason ?? 'Upload Recap Doc'}
                     className="w-[27px] h-[27px] flex items-center justify-center text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 hover:dark:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     <PlusIcon size={12}/>
                   </button>
