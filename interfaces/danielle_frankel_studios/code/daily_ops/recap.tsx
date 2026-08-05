@@ -169,13 +169,10 @@ const CLIENT = {
   // diverges. Both are LOOKUPS (through that same link field) — always
   // arrays even when conceptually single-valued, so read them with
   // firstLookupValue(), never getCellValueAsString() directly.
-  // consultation_record_id (fldu5oTylKfKe2no6) intentionally has no
-  // constant/reference here — record-ID prefill doesn't work for Airtable
-  // form "link to record" fields (see the comment above
-  // consultationApptTimeDisplay), so this field currently isn't read
-  // anywhere. Left in the base in case a future use for the raw record ID
-  // comes up; safe to remove if not needed.
-  CONSULTATION_APPT_TIME: 'fldLQRhGqANVci6BM', // multipleLookupValues → dateTime
+  CONSULTATION_APPT_TIME:      'fldLQRhGqANVci6BM', // multipleLookupValues → dateTime
+  // Recreated 2026-08-05 (Julia had deleted it, then re-added it) — new
+  // field ID, same underlying link field + record_id formula target.
+  CONSULTATION_APPT_RECORD_ID: 'fldDStVqmJpDDNWMP', // multipleLookupValues → record_id formula (text)
 } as const;
 
 const CUSTOM = {
@@ -324,15 +321,15 @@ function buildProposalAttachmentFormUrl(baseUrl: string, clientId: string, propo
 // "Generate Recap Doc" only produces the printed PDF, "Upload"/"Add Recap
 // Doc" is what actually reaches this form.
 //
-// appointmentDisplay MUST be the target Appointment's PRIMARY FIELD display
-// text ("Appointment Time", e.g. "August 5, 2026 1:22pm") — NOT its record
-// ID. Confirmed live (2026-08-05): prefilling a "link to another record"
-// field on an Airtable form matches against the linked table's primary
-// field text; passing a raw record ID silently does nothing; the
-// Attachments record's `appointment` link came back completely empty every
-// time, which the attachment_router.js automation's guard clause then
-// correctly rejected ("appointment field is empty").
-function buildRecapDocAttachmentFormUrl(baseUrl: string, clientId: string, appointmentDisplay: string): string {
+// appointmentId is the target Appointment's record ID. NOTE (2026-08-05):
+// an earlier version of this comment claimed link-field prefill has to
+// match the linked table's primary-field display text instead of a record
+// ID — that theory was wrong. The Attachments record's `appointment` field
+// was coming back empty because the "appointment" field had simply never
+// been added to the upload form itself; once it was added, prefilling by
+// record ID worked as expected. Left this note so the same wrong theory
+// doesn't get "rediscovered" later.
+function buildRecapDocAttachmentFormUrl(baseUrl: string, clientId: string, appointmentId: string): string {
   const url = new URL(baseUrl);
   url.searchParams.set('prefill_client', clientId);
   url.searchParams.set('hide_client', 'true');
@@ -340,7 +337,7 @@ function buildRecapDocAttachmentFormUrl(baseUrl: string, clientId: string, appoi
   url.searchParams.set('hide_customization_proposal', 'true');
   url.searchParams.set('prefill_type', 'Recap Doc');
   url.searchParams.set('hide_type', 'true');
-  url.searchParams.set('prefill_appointment', appointmentDisplay);
+  url.searchParams.set('prefill_appointment', appointmentId);
   url.searchParams.set('hide_appointment', 'true');
   return url.toString();
 }
@@ -3563,19 +3560,19 @@ function PostAppointmentModal({
   const consultationApptTimeRaw = clientRec
     ? firstLookupValue<string>(getVal<unknown>(clientRec, CLIENT.CONSULTATION_APPT_TIME))
     : null;
-  // Prefilling a "link to another record" field on an Airtable form has to
-  // match the linked table's PRIMARY FIELD display text — passing the raw
-  // record ID (recXXXXXXXXXXXXXX) does NOT link anything; the Attachments
-  // record's `appointment` field came back empty every time despite the
-  // form accepting the prefill silently (2026-08-05, confirmed live via the
-  // automation's guard-clause failure). DF Appointments - Acuity's own
-  // primary field IS "Appointment Time" (fldL7kYvgkmyhGniX) — so this reads
-  // the lookup with getStr() (→ getCellValueAsString(), the exact formatted
-  // text Airtable itself displays for that field, same dateFormat/
-  // timeFormat the lookup inherits from the source), not
-  // firstLookupValue()/getVal() (raw value) like consultationApptTimeRaw
-  // above, which is only for display, never for this prefill match.
-  const consultationApptTimeDisplay = clientRec ? getStr(clientRec, CLIENT.CONSULTATION_APPT_TIME) : '';
+  // Prefill target for the Recap Doc upload form's appointment link — see
+  // openRecapDocUploadForm below. Back to using the record ID (2026-08-05):
+  // an earlier round blamed record-ID prefill itself for the Attachments
+  // record's `appointment` field coming back empty and switched to
+  // matching by primary-field display text instead — but the actual cause
+  // was simpler: the "appointment" field had never been added to the form
+  // at all, so nothing could have prefilled it regardless of which value
+  // was sent. With the field added AND this lookup recreated (Julia had
+  // deleted the original), record-ID prefill is the more precise match —
+  // no ambiguity if two appointments ever share the same displayed time.
+  const consultationApptRecordId = clientRec
+    ? firstLookupValue<string>(getVal<unknown>(clientRec, CLIENT.CONSULTATION_APPT_RECORD_ID))
+    : null;
 
   // Wedding date
   const existingWeddingIso = clientRec ? (getVal<string>(clientRec, CLIENT.WEDDING)??'') : '';
@@ -3923,15 +3920,13 @@ function PostAppointmentModal({
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
     // Prefer the client's designated first-consultation appointment
-    // (consultationApptTimeDisplay) over this modal's own `record` — see
-    // the comment above consultationApptTimeDisplay's definition. Falls
-    // back to this appointment's own formatted time only if that lookup
-    // isn't populated yet (e.g. "Appointment Records" hasn't been linked
-    // for this client), so upload isn't blocked entirely while that's
-    // being set up. Either way this MUST be the primary field's display
-    // text, never a record ID — see that same comment.
-    const targetAppointmentDisplay = consultationApptTimeDisplay || (fApptTime ? record.getCellValueAsString(fApptTime) : '');
-    window.open(buildRecapDocAttachmentFormUrl(attachmentFormUrl, clientId, targetAppointmentDisplay), '_blank', 'noopener,noreferrer');
+    // (consultationApptRecordId) over this modal's own `record` — see the
+    // comment above consultationApptRecordId's definition. Falls back to
+    // `record.id` only if that lookup isn't populated yet (e.g.
+    // "Appointment Records" hasn't been linked for this client), so upload
+    // isn't blocked entirely while that's being set up.
+    const targetAppointmentId = consultationApptRecordId || record.id;
+    window.open(buildRecapDocAttachmentFormUrl(attachmentFormUrl, clientId, targetAppointmentId), '_blank', 'noopener,noreferrer');
   };
 
   // Save helper
