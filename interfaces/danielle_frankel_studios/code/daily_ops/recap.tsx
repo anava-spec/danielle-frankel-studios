@@ -161,6 +161,16 @@ const CLIENT = {
   CUSTOMIZATION_LINK: 'fldlbAPEaoTwfFPTv',
   SIZE:               'fld2i9hJrfxTUuh1N',
   ATTACHMENTS:        'fldu3dTdfLaN5immv',
+  // Added 2026-08-05, per Julia — resolves the Recap Doc's target
+  // appointment (the client's first non-cancelled consultation) via a
+  // manually-linked "Appointment Records" field (fldYb8G67izm3qelZ) rather
+  // than the appointment record currently open in this modal, so the
+  // upload form's prefill_appointment is correct even if that ever
+  // diverges. Both are LOOKUPS (through that same link field) — always
+  // arrays even when conceptually single-valued, so read them with
+  // firstLookupValue(), never getCellValueAsString() directly.
+  CONSULTATION_APPT_TIME:      'fldLQRhGqANVci6BM', // multipleLookupValues → dateTime
+  CONSULTATION_APPT_RECORD_ID: 'fldu5oTylKfKe2no6', // multipleLookupValues → record_id formula (text)
 } as const;
 
 const CUSTOM = {
@@ -3525,6 +3535,24 @@ function PostAppointmentModal({
   const cNum  = useCallback((fid:string)=>clientRec ? getVal<number>(clientRec,fid) : null,[clientRec]);
   const cBool = useCallback((fid:string)=>clientRec ? !!(getVal<boolean>(clientRec,fid)??false) : false,[clientRec]);
 
+  // The client's designated first-consultation appointment (2026-08-05, per
+  // Julia) — resolved via two LOOKUP fields, not the plain-field helpers
+  // above. getVal() on a lookup returns the raw array Airtable always uses
+  // for multipleLookupValues (even when conceptually single-valued), so
+  // this unwraps with firstLookupValue() instead of reading it directly —
+  // reading it with cStr/getVal would silently return an array-shaped
+  // value or stringify it wrong. Used to prefill the Recap Doc upload
+  // form's appointment link (see openRecapDocUploadForm below) instead of
+  // this modal's own `record`, since the eligibility rule ("first
+  // non-cancelled consultation") is enforced by how this link field gets
+  // populated, not by whichever appointment happens to be open here.
+  const consultationApptTimeRaw = clientRec
+    ? firstLookupValue<string>(getVal<unknown>(clientRec, CLIENT.CONSULTATION_APPT_TIME))
+    : null;
+  const consultationApptRecordId = clientRec
+    ? firstLookupValue<string>(getVal<unknown>(clientRec, CLIENT.CONSULTATION_APPT_RECORD_ID))
+    : null;
+
   // Wedding date
   const existingWeddingIso = clientRec ? (getVal<string>(clientRec, CLIENT.WEDDING)??'') : '';
   const [weddingDisplay, setWeddingDisplay] = useState(existingWeddingIso ? fmtFriendly(existingWeddingIso) : '');
@@ -3870,7 +3898,14 @@ function PostAppointmentModal({
 
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
-    window.open(buildRecapDocAttachmentFormUrl(attachmentFormUrl, clientId, record.id), '_blank', 'noopener,noreferrer');
+    // Prefer the client's designated first-consultation appointment
+    // (consultationApptRecordId) over this modal's own `record` — see the
+    // comment above consultationApptRecordId's definition. Falls back to
+    // `record.id` only if that lookup isn't populated yet (e.g. "Appointment
+    // Records" hasn't been linked for this client), so upload isn't blocked
+    // entirely while that's being set up.
+    const targetAppointmentId = consultationApptRecordId || record.id;
+    window.open(buildRecapDocAttachmentFormUrl(attachmentFormUrl, clientId, targetAppointmentId), '_blank', 'noopener,noreferrer');
   };
 
   // Save helper
@@ -4055,6 +4090,16 @@ function PostAppointmentModal({
                 onBlur={handleSizeBlur}
                 placeholder="e.g. 6"
               />
+            </div>
+
+            {/* Consultation Appointment — read-only, from the two lookups
+                Julia added (2026-08-05) through Clients' "Appointment
+                Records" link. Shown here so it's easy to confirm which
+                appointment the Recap Doc upload below will actually attach
+                to before clicking it. */}
+            <div>
+              <span className={labelCls}>Consultation Appointment</span>
+              <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5">{fmtRecapAppointmentDisplay(consultationApptTimeRaw)}</div>
             </div>
 
             {/* Measurement Photo / Appointment Photo / Recap Doc — one row, no section header, 1/3 each */}
