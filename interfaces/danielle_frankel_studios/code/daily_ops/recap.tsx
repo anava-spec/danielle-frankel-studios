@@ -2738,12 +2738,17 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 // grid render exactly once, appended to the LAST page produced (whether
 // that's the only page or the final overflow page), per the AC.
 // Physical page geometry — US Letter at the standard 96px/in used for
-// on-screen CSS length conversions. Padding matches Tailwind's `p-8` (2rem
-// = 32px) applied on the page div itself.
+// on-screen CSS length conversions. Padding measured directly off the
+// Figma export (2026-08-04, "Recap — Page 4.pdf"/.svg, 816x2112px = two
+// 816x1056 pages at this same 96px/in scale): every text run's left edge
+// sits at x=72 and every price's right edge sits at x=744 (816-72) on
+// both pages, so the page's inner padding is 72px on all sides — NOT
+// Tailwind's `p-8` (32px) as previously assumed before the Figma file was
+// available to measure against.
 const RECAP_PX_PER_IN = 96;
 const RECAP_PAGE_HEIGHT_PX = 11 * RECAP_PX_PER_IN;
 const RECAP_PAGE_WIDTH_PX = 8.5 * RECAP_PX_PER_IN;
-const RECAP_PAGE_PADDING_PX = 32;
+const RECAP_PAGE_PADDING_PX = 72;
 const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, please do not post any imagery from your visit on social media.';
 
 // Typography — filled in by Julia (2026-08-03) via recap_doc_typography.xlsx,
@@ -2756,7 +2761,13 @@ const RECAP_PHOTO_DISCLAIMER = 'As outlined in your appointment agreement, pleas
 const RECAP_BODY_FONT_FAMILY = "'Canela Text', Georgia, serif";
 const RECAP_NUMBER_FONT_FAMILY = "'Abhaya Libre', serif";
 
-// "Phone" / "Style Price" / "Custom Pricing (value)" rows — identical spec.
+// "Phone" / "Style Price" / "Custom Pricing (value)" — Julia's typography
+// sheet called these "identical spec", but measuring the actual Figma
+// export (2026-08-04) shows three DIFFERENT sizes: phone value 10.5px,
+// style price 13px, custom pricing value 11px. The Figma file is the more
+// exact source (it's the literal design, not a hand-filled sheet), so
+// this is now three styles instead of one shared one. Style Price keeps
+// the original name since it's the one actually named after the sheet.
 const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
   fontFamily: RECAP_NUMBER_FONT_FAMILY,
   fontWeight: 600,
@@ -2764,6 +2775,14 @@ const RECAP_NUMBER_FONT_STYLE: React.CSSProperties = {
   lineHeight: '100%',
   letterSpacing: '0%',
   textAlign: 'right',
+};
+const RECAP_PHONE_VALUE_STYLE: React.CSSProperties = {
+  ...RECAP_NUMBER_FONT_STYLE,
+  fontSize: '10.5px',
+};
+const RECAP_CUSTOM_PRICING_VALUE_STYLE: React.CSSProperties = {
+  ...RECAP_NUMBER_FONT_STYLE,
+  fontSize: '11px',
 };
 // "APPOINTMENT RECAP" / "STYLES" section labels
 const RECAP_SECTION_LABEL_STYLE: React.CSSProperties = {
@@ -2872,8 +2891,8 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
       <div className={`py-4 ${borderCls}`}>
         <div className="grid grid-cols-2 gap-4">
           {([entry.style1, entry.style2] as const).map((s, i) => (
-            <div key={i} className="flex gap-3">
-              <div className="w-16 h-20 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+            <div key={i} className="flex gap-6">
+              <div className="w-[84px] h-[118px] rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
                 {s.photoUrl && <img src={s.photoUrl} alt="" className="w-full h-full object-cover"/>}
               </div>
               <div className="flex-1">
@@ -2894,14 +2913,14 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
         )}
         <div className="mt-1 flex items-baseline gap-1">
           <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
-          <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+          <span style={RECAP_CUSTOM_PRICING_VALUE_STYLE}>{formatCurrency(entry.customPricing)}</span>
         </div>
       </div>
     );
   }
   return (
-    <div className={`flex gap-4 py-4 ${borderCls}`}>
-      <div className="w-20 h-24 rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
+    <div className={`flex gap-6 py-4 ${borderCls}`}>
+      <div className="w-[84px] h-[118px] rounded bg-[#D8D0BC] overflow-hidden flex-shrink-0">
         {entry.photoUrl && <img src={entry.photoUrl} alt="" className="w-full h-full object-cover"/>}
       </div>
       <div className="flex-1">
@@ -2921,7 +2940,7 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
         {entry.kind === 'regular' && (
           <div className="mt-1 flex items-baseline gap-1">
             <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>CUSTOM PRICING</span>
-            <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(entry.customPricing)}</span>
+            <span style={RECAP_CUSTOM_PRICING_VALUE_STYLE}>{formatCurrency(entry.customPricing)}</span>
           </div>
         )}
       </div>
@@ -2935,7 +2954,7 @@ function RecapFirstPageHeader({ snapshot }: { snapshot: RecapDocSnapshot }) {
       <div className="mb-4" style={RECAP_CLIENT_NAME_STYLE}>{snapshot.clientName.toUpperCase()}</div>
       <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6">
         <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Email: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.email || '—'}</span></div>
-        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Phone: </span><span style={RECAP_NUMBER_FONT_STYLE}>{snapshot.phone || '—'}</span></div>
+        <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Phone: </span><span style={RECAP_PHONE_VALUE_STYLE}>{snapshot.phone || '—'}</span></div>
         <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Wedding Date: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.weddingDateDisplay || '—'}</span></div>
         <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Appointment: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.appointmentDisplay || '—'}</span></div>
         <div><span className="text-gray-500" style={RECAP_FIELD_LABEL_STYLE}>Client Specialist: </span><span style={RECAP_FIELD_VALUE_STYLE}>{snapshot.clientSpecialist || '—'}</span></div>
