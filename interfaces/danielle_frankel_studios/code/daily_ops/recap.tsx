@@ -63,7 +63,20 @@ const TABLE_IDS = {
 // would silently break later.
 const RESOURCES = {
   ATTACHMENT: 'fldQdW61aiBsn9Gnt',
+  // Plain URL field (2026-08-05) — holds the attachments form link, which
+  // differs between sandbox and production (same page ID, different base
+  // ID). Regular Airtable records aren't synced between sandbox/production
+  // copies of a base, so this can hold the sandbox URL in sandbox and the
+  // production URL in production, and the code just reads whichever this
+  // environment's copy has — same idea as the two hardcoded logo record
+  // IDs above, but via a value instead of two different record IDs.
+  URL: 'fldMDIAqAjpwUvtWF',
 } as const;
+// The resources record this attachments-form URL lives on is named
+// "attachments_form" (verified live, 2026-08-05) — NOT "attachment_url".
+// Matching on the real name here; flag to Julia if "attachment_url" was
+// the intended name and the record should be renamed instead.
+const ATTACHMENT_FORM_RESOURCE_NAME = 'attachments_form';
 // Same base's resources table has a different record per environment — this
 // interface's code is shared between sandbox and production, so it tries
 // the sandbox record ID first and falls back to the production one if that
@@ -247,17 +260,21 @@ function isFieldReadOnlyBySource(fieldId?: string): boolean {
   return !!fieldId && fieldId in FIELD_SOURCE;
 }
 
-// ─── Attachment form URL (production) ─────────────────────────────────────────
-const ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMcjQwqo/form';
-
-// Production form. NOTE: this interface itself still runs against the
-// SANDBOX base (app6Q4xMZ1ngJxiV8) — the Proposal record this form's
-// submission needs to reach only exists there. Pointing this at production
-// only works once the attachment_router automation (and the
-// customization_proposals table it targets) also exist in production —
-// otherwise the routing will fail exactly like the sandbox-side mismatch
-// this project hit earlier, just mirrored.
-const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMcjQwqo/form';
+// ─── Attachment form URL ───────────────────────────────────────────────────
+// FALLBACK ONLY (2026-08-05) — the real, environment-correct URL now comes
+// from the resources table's "attachments_form" record (RESOURCES.URL,
+// resolved live in RecapApp as attachmentFormUrl and threaded down as a
+// prop), since sandbox and production need genuinely different URLs
+// (different base ID, same page ID) and a hardcoded string can only ever
+// be right for one of them. This constant only matters if that resources
+// record can't be found yet (e.g. it doesn't exist in some environment) —
+// same defensive role RECAP_FOOTER_LOGO_DATA_URI plays for the logo.
+// Confirmed live (2026-08-05): this hardcoded value's base ID
+// (appUC2NFAlURayLx9) does NOT match the sandbox resources record's own
+// URL (appMmEE4zyHMGhkkd — the actual sandbox base this interface runs
+// against). Left as-is rather than silently "corrected" — flag to Julia
+// if this was ever actually a different, intentional shared base.
+const ATTACHMENT_FORM_URL_FALLBACK = 'https://airtable.com/appUC2NFAlURayLx9/pagRXpKT2IMcjQwqo/form';
 
 // Used for both the unsigned copy (right after "Generate Proposal") and the
 // signed copy (from the Proposals list) — same form, different `type` value.
@@ -269,8 +286,11 @@ const PROPOSAL_ATTACHMENT_FORM_URL = 'https://airtable.com/appUC2NFAlURayLx9/pag
 type ProposalAttachmentType = 'Customization Proposal' | 'Signed Proposal';
 // attachments.customization_proposal links directly to the Proposals table
 // (not to Customizations) — proposalId here is a Proposals record ID.
-function buildProposalAttachmentFormUrl(clientId: string, proposalId: string, type: ProposalAttachmentType): string {
-  const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
+// baseUrl is the resolved (or fallback) form URL — see
+// ATTACHMENT_FORM_URL_FALLBACK's comment above for why this isn't just a
+// module constant anymore.
+function buildProposalAttachmentFormUrl(baseUrl: string, clientId: string, proposalId: string, type: ProposalAttachmentType): string {
+  const url = new URL(baseUrl);
   url.searchParams.set('prefill_client', clientId);
   url.searchParams.set('hide_client', 'true');
   url.searchParams.set('prefill_customization_proposal', proposalId);
@@ -280,7 +300,7 @@ function buildProposalAttachmentFormUrl(clientId: string, proposalId: string, ty
   return url.toString();
 }
 
-// Recap Doc uses the exact same production form + hidden-field mechanism as
+// Recap Doc uses the exact same form + hidden-field mechanism as
 // Customization Proposal/Signed Proposal above, but links to the specific
 // Appointment record instead of a Proposal (attachments.appointment, a new
 // direct link field — see attachment_router.js v1.3.0). DEVIATION (same
@@ -288,8 +308,8 @@ function buildProposalAttachmentFormUrl(clientId: string, proposalId: string, ty
 // a local File into an attachment field, so this is a two-step handoff too —
 // "Generate Recap Doc" only produces the printed PDF, "Upload"/"Add Recap
 // Doc" is what actually reaches this form.
-function buildRecapDocAttachmentFormUrl(clientId: string, appointmentId: string): string {
-  const url = new URL(PROPOSAL_ATTACHMENT_FORM_URL);
+function buildRecapDocAttachmentFormUrl(baseUrl: string, clientId: string, appointmentId: string): string {
+  const url = new URL(baseUrl);
   url.searchParams.set('prefill_client', clientId);
   url.searchParams.set('hide_client', 'true');
   url.searchParams.set('prefill_customization_proposal', '');
@@ -910,15 +930,19 @@ interface AttachSectionProps {
   type: 'Measurements'|'Appointment Photo';
   existing: Array<{id:string;url:string;filename:string;thumbnails?:{small?:{url:string}}}> | null;
   clientId: string | null;
+  // Resolved (or fallback) attachments form URL — see
+  // ATTACHMENT_FORM_URL_FALLBACK's comment for why this is a prop instead
+  // of a module constant.
+  formBaseUrl: string;
   // Square, icon-only "+" button instead of the icon+label pill — used where
   // this section shares a row with other equally-sized attachment fields
   // (Measurement Photo / Appointment Photo / Recap Doc row).
   compact?: boolean;
 }
-function AttachmentSection({ label, type, existing, clientId, compact }: AttachSectionProps) {
+function AttachmentSection({ label, type, existing, clientId, formBaseUrl, compact }: AttachSectionProps) {
   const hasExisting = existing && existing.length > 0;
   const openForm = () => {
-    const url = new URL(ATTACHMENT_FORM_URL);
+    const url = new URL(formBaseUrl);
     if (clientId) url.searchParams.set('prefill_client', clientId);
     url.searchParams.set('prefill_type', type);
     // Hidden even though this form/route doesn't use it — matches the Recap
@@ -1421,6 +1445,11 @@ interface CustomizationModalProps {
   // All Customizations records (base-wide) — needed only to resolve a Hybrid
   // parent's two linked child records by id (see hybrid_customization).
   allCustomizationRecords: AirtableRecord[] | null;
+  // Resolved (or fallback) attachments form URL — threaded down to
+  // ProposalPreviewModal/ProposalDetailModal, both rendered from here. See
+  // ATTACHMENT_FORM_URL_FALLBACK's comment for why this is a prop instead
+  // of a module constant.
+  attachmentFormUrl: string;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
   // Only meaningful in "add" mode — see CustomizationAddDraft.
@@ -1434,7 +1463,7 @@ function CustomizationModal({
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField,
   linkedClientId, clientWeddingIso,
   clientName, saName, saRecordId, proposalsTable, proposalRecords, allCustomizationRecords,
-  base, onClose, addDraft, onAddDraftChange
+  attachmentFormUrl, base, onClose, addDraft, onAddDraftChange
 }: CustomizationModalProps) {
   // ── Open/close transition — fade + scale, matches the brand modal spec ────
   const [isVisible, setIsVisible] = useState(false);
@@ -2182,6 +2211,7 @@ function CustomizationModal({
           saRecordId={saRecordId}
           customizationId={existingRecord.id}
           proposalsTable={proposalsTable}
+          attachmentFormUrl={attachmentFormUrl}
           onClose={()=>setShowProposalPreview(false)}
         />
       )}
@@ -2196,6 +2226,7 @@ function CustomizationModal({
             clientName={clientName}
             saName={saName}
             snapshot={effectiveLiveDisplaySnapshot}
+            attachmentFormUrl={attachmentFormUrl}
             onClose={()=>setViewProposalId(null)}
           />
         );
@@ -2396,10 +2427,11 @@ interface ProposalPreviewModalProps {
   saRecordId: string | null;
   customizationId: string;
   proposalsTable: Table | null;
+  attachmentFormUrl: string;
   onClose: () => void;
 }
 function ProposalPreviewModal({
-  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, onClose,
+  snapshot, clientName, clientId, saName, saRecordId, customizationId, proposalsTable, attachmentFormUrl, onClose,
 }: ProposalPreviewModalProps) {
   const [isVisible, setIsVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
@@ -2489,7 +2521,7 @@ function ProposalPreviewModal({
   // copies the uploaded file onto this Proposal's unsigned_document.
   const openAttachmentForm = () => {
     if (!createdRecordId) return;
-    window.open(buildProposalAttachmentFormUrl(clientId, createdRecordId, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
+    window.open(buildProposalAttachmentFormUrl(attachmentFormUrl, clientId, createdRecordId, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -2636,9 +2668,10 @@ interface ProposalDetailModalProps {
   // this uses the exact same ProposalDocument component/markup as
   // ProposalPreviewModal, headers and all, instead of a simplified text view.
   snapshot: ProposalSnapshot;
+  attachmentFormUrl: string;
   onClose: () => void;
 }
-function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saName, snapshot, onClose }: ProposalDetailModalProps) {
+function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saName, snapshot, attachmentFormUrl, onClose }: ProposalDetailModalProps) {
   const [isVisible, setIsVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
   const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
@@ -2677,11 +2710,11 @@ function ProposalDetailModal({ proposalRecord, proposalsTable, clientName, saNam
 
   const openUnsignedUploadForm = () => {
     if (!clientId) return;
-    window.open(buildProposalAttachmentFormUrl(clientId, proposalRecord.id, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
+    window.open(buildProposalAttachmentFormUrl(attachmentFormUrl, clientId, proposalRecord.id, 'Customization Proposal'), '_blank', 'noopener,noreferrer');
   };
   const openSignedUploadForm = () => {
     if (!clientId || !hasUnsigned) return;
-    window.open(buildProposalAttachmentFormUrl(clientId, proposalRecord.id, 'Signed Proposal'), '_blank', 'noopener,noreferrer');
+    window.open(buildProposalAttachmentFormUrl(attachmentFormUrl, clientId, proposalRecord.id, 'Signed Proposal'), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -3451,6 +3484,10 @@ interface PostApptModalProps {
   proposalsTable: Table | null;
   proposalRecords: AirtableRecord[] | null;
   recapLogoUrl: string;
+  // Resolved (or fallback) attachments form URL — see
+  // ATTACHMENT_FORM_URL_FALLBACK's comment for why this is threaded as a
+  // prop (resolved once in RecapApp) instead of a module constant.
+  attachmentFormUrl: string;
   base: ReturnType<typeof useBase>;
   onClose: () => void;
 }
@@ -3461,7 +3498,7 @@ function PostAppointmentModal({
   pricingTable, pricingRecords,
   stylesBasePriceField, pricingPercentField, pricingMultipleField, selfUsageField, stylesSelfUsageField,
   rushFeeProposedField, rushFeePercentField, leadtimeWeeksField, favoriteStylesApptField,
-  staffTable, staffRecords, proposalsTable, proposalRecords, recapLogoUrl,
+  staffTable, staffRecords, proposalsTable, proposalRecords, recapLogoUrl, attachmentFormUrl,
   base, onClose
 }: PostApptModalProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -3720,14 +3757,27 @@ function PostAppointmentModal({
   const fRecapDoc          = apptTable.getFieldIfExists(APPT.RECAP_DOC);
   const existingRecapDoc   = fRecapDoc ? ((record.getCellValue(fRecapDoc) as ProposalFile[]|null) ?? []) : [];
   const hasRecapDoc        = existingRecapDoc.length > 0;
-  // "Generate Recap Doc" (title bar) only ever appears while recap_doc is
-  // empty — once a doc exists, both this and the row's Upload button hide,
-  // which is also the UI-level duplicate-upload guard (attachment_router.js
-  // has its own defensive backstop for the same rule). Also hidden when
-  // there's nothing to put in the document — no Favorite Styles and no
-  // Customization Requests logged for this client.
+  // "Generate Recap Doc" (title bar) is now ALWAYS visible (2026-08-05, per
+  // Julia) — previously it just disappeared entirely whenever any
+  // condition below failed, giving no clue why. Now it always renders;
+  // recapDocDisabledReason (null when eligible) drives whether it's the
+  // normal amber button or a grayed-out one with a hover tooltip
+  // explaining the specific blocker, in priority order: already has a doc
+  // (also the UI-level duplicate-upload guard — attachment_router.js has
+  // its own defensive backstop for the same rule) > appointment type
+  // missing (can't tell first-consultation from follow-up) > not a
+  // first-consultation appointment > nothing to put in the document (no
+  // Favorite Styles, no Customization Requests logged for this client).
   const hasAnyRecapDocContent = favStyles.length > 0 || customizationRows.length > 0;
-  const canGenerateRecapDoc = isConsultationAppt && !hasRecapDoc && hasAnyRecapDocContent;
+  const recapDocDisabledReason: string | null = hasRecapDoc
+    ? 'A Recap Doc has already been generated for this appointment.'
+    : needsRecapEligibilityReview
+    ? 'Appointment type is missing — can\'t confirm this is a first consultation.'
+    : !isConsultationAppt
+    ? 'Only available for first-consultation appointments.'
+    : !hasAnyRecapDocContent
+    ? 'No Favorite Styles or Customization Requests to include yet.'
+    : null;
 
   const [showRecapDocPreview, setShowRecapDocPreview] = useState(false);
 
@@ -3820,7 +3870,7 @@ function PostAppointmentModal({
 
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
-    window.open(buildRecapDocAttachmentFormUrl(clientId, record.id), '_blank', 'noopener,noreferrer');
+    window.open(buildRecapDocAttachmentFormUrl(attachmentFormUrl, clientId, record.id), '_blank', 'noopener,noreferrer');
   };
 
   // Save helper
@@ -3920,17 +3970,22 @@ function PostAppointmentModal({
                   <div className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{shortType}</div>
                 </div>
               </div>
-              {canGenerateRecapDoc && (
-                <button type="button" onClick={()=>setShowRecapDocPreview(true)}
-                  className="ml-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] rounded-lg hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F] transition-colors flex-shrink-0">
-                  <FileTextIcon size={14}/>Generate Recap Doc
-                </button>
-              )}
-              {needsRecapEligibilityReview && !hasRecapDoc && (
-                <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 flex-shrink-0">
-                  Needs Review — appointment type missing
-                </span>
-              )}
+              {/* Always rendered (2026-08-05, per Julia) — grayed out with a
+                  native hover tooltip (title attribute, same convention the
+                  Recap Doc field's own "+" button already uses) explaining
+                  the specific blocker, instead of disappearing with no
+                  explanation. */}
+              <button type="button"
+                onClick={()=>{ if (!recapDocDisabledReason) setShowRecapDocPreview(true); }}
+                disabled={!!recapDocDisabledReason}
+                title={recapDocDisabledReason ?? undefined}
+                className={`ml-auto flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex-shrink-0 ${
+                  recapDocDisabledReason
+                    ? 'bg-gray-200 dark:bg-white/10 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    : 'text-white dark:text-[#1B1813] bg-[#D97706] dark:bg-[#FBBF24] hover:bg-[#C2670A] dark:hover:bg-[#E2AC1F]'
+                }`}>
+                <FileTextIcon size={14}/>Generate Recap Doc
+              </button>
             </div>
           </div>
 
@@ -4006,11 +4061,11 @@ function PostAppointmentModal({
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <span className={labelCls}>Measurement Photo</span>
-                <AttachmentSection label="Upload Measurement Photo" type="Measurements" existing={existingMeasPhotos} clientId={clientId} compact/>
+                <AttachmentSection label="Upload Measurement Photo" type="Measurements" existing={existingMeasPhotos} clientId={clientId} formBaseUrl={attachmentFormUrl} compact/>
               </div>
               <div>
                 <span className={labelCls}>Appointment Photo</span>
-                <AttachmentSection label="Upload Appointment Photo" type="Appointment Photo" existing={existingApptPhotos} clientId={clientId} compact/>
+                <AttachmentSection label="Upload Appointment Photo" type="Appointment Photo" existing={existingApptPhotos} clientId={clientId} formBaseUrl={attachmentFormUrl} compact/>
               </div>
               <div>
                 <span className={labelCls}>Recap Doc</span>
@@ -4205,6 +4260,7 @@ function PostAppointmentModal({
           proposalsTable={proposalsTable}
           proposalRecords={proposalRecords}
           allCustomizationRecords={customizationRecords}
+          attachmentFormUrl={attachmentFormUrl}
           base={base}
           onClose={()=>setOpenCustomizationAdd(false)}
           addDraft={customizationAddDraft}
@@ -4236,6 +4292,7 @@ function PostAppointmentModal({
           proposalsTable={proposalsTable}
           proposalRecords={proposalRecords}
           allCustomizationRecords={customizationRecords}
+          attachmentFormUrl={attachmentFormUrl}
           base={base}
           onClose={()=>setEditCustomizationId(null)}
           addDraft={customizationAddDraft}
@@ -4409,6 +4466,19 @@ function RecapApp(): React.ReactElement {
   // draft preview before that record exists there yet.
   const recapLogoUrl = recapLogoAttachment?.thumbnails?.large?.url ?? recapLogoAttachment?.url ?? RECAP_FOOTER_LOGO_DATA_URI;
 
+  // Attachments form URL (2026-08-05, per Julia) — resolved by NAME, not by
+  // a hardcoded per-environment record ID like the logo above, since Julia
+  // set this up as one shared "attachments_form" record whose URL field she
+  // edits directly per environment (sandbox records aren't synced to
+  // production, so the same record name can hold a different URL value in
+  // each copy of the base). Falls back to ATTACHMENT_FORM_URL_FALLBACK if
+  // that record can't be found yet.
+  const attachmentFormResource = resourcesRecords?.find(r => r.name === ATTACHMENT_FORM_RESOURCE_NAME) ?? null;
+  const fResourcesUrl = resourcesTable?.getFieldIfExists(RESOURCES.URL) ?? null;
+  const attachmentFormUrl = (attachmentFormResource && fResourcesUrl)
+    ? (attachmentFormResource.getCellValueAsString(fResourcesUrl) || ATTACHMENT_FORM_URL_FALLBACK)
+    : ATTACHMENT_FORM_URL_FALLBACK;
+
   const [selectedDate, setSelectedDate]        = useState(new Date());
   const [showCalendar, setShowCalendar]         = useState(false);
   const [selectedSA, setSelectedSA]             = useState<string[]>([]);
@@ -4540,6 +4610,7 @@ function RecapApp(): React.ReactElement {
           proposalsTable={proposalsTable}
           proposalRecords={proposalRecords}
           recapLogoUrl={recapLogoUrl}
+          attachmentFormUrl={attachmentFormUrl}
           base={base}
           onClose={()=>setSelectedRecordId(null)}
         />
