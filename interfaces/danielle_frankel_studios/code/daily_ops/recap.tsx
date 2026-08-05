@@ -3365,9 +3365,17 @@ function RecapDocPreviewModal({ snapshot, onClose }: RecapDocPreviewModalProps) 
     window.addEventListener('afterprint', h);
     return () => window.removeEventListener('afterprint', h);
   }, []);
+  // Closes this preview automatically once Generate is clicked (2026-08-05,
+  // per Julia) — leaves just the print dialog and the client detail page
+  // (PostAppointmentModal) underneath, instead of stacking the print dialog
+  // on top of this modal on top of that page. Safe to close right away:
+  // the actual print content is a SEPARATE portal mounted straight onto
+  // document.body (see the comment on #recap-print-portal below), so it
+  // isn't affected by this modal unmounting.
   const handlePrint = () => {
     setPrintDocumentTitle(`${toSnakeCase(snapshot.clientName)}_recap_doc`);
     window.print();
+    requestClose();
   };
 
   useEffect(() => {
