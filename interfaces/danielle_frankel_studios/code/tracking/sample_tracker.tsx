@@ -11,6 +11,8 @@ import {
   Check as CheckIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   X as XIcon,
+  ChatCircleText as ChatCircleTextIcon,
+  Paperclip as PaperclipIcon,
 } from '@phosphor-icons/react';
 
 // ─── WRITE QUEUE (safe sequential writes) ────────────────────────────────────
@@ -120,6 +122,299 @@ const SIZE_OPTIONS = [
 ];
 const TYPE_OPTIONS = ['Garment', 'Shoes', 'Accessories'];
 const ALERT_TYPE_OPTIONS = ['Style not in studio', 'Client size missing', 'No styles on file'];
+
+// ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
+const FEEDBACK_TABLE_ID = 'tbluy7JS31NwCoeIi';
+const FEEDBACK_FIELD_IDS = {
+  FEEDBACK_TYPE:  'fldMQDSnEDDzqom2A',
+  SCOPE:          'fldUpqoPn3ZM8mLck',
+  INTERFACE_NAME: 'fldJZKIEJIRPOLIcW',
+  PAGE_REPORTED:  'fldJJ7V9ANM7vQZhm',
+  DESCRIPTION:    'fld6i3lCiI7ewp4BV',
+  ATTACHMENTS:    'fldy05nKrbYFuglld',
+  // title/general_name/specific_interface_name are formulas/AI fields, submitted_by/submitted_at
+  // are native Created by/Created time — none of these are ever written from here.
+} as const;
+const FEEDBACK_TYPE_OPTIONS = ['Suggestion', 'Bug Report', 'Question', 'Praise'];
+const FEEDBACK_SCOPE_OPTIONS = ['General', 'Specific Interface'];
+// Interface/Page are linked records to interface_inventory (self-referential: a "Page" record
+// links back to its parent "Interface" record via the interface_inventory `interface` field).
+const INTERFACE_INVENTORY_TABLE_ID = 'tblG92AI3ddzlolhz';
+const INTERFACE_INVENTORY_FIELD_IDS = {
+  NAME:           'flddp1ncA7BD0tacw',
+  LEVEL:          'fldYFoQFVFLC1z7EW', // singleSelect: "Interface" | "Page" — compared case-insensitively
+  INTERFACE_LINK: 'fldNDPWTrcNzSD5zS', // on a "Page" record, links to its parent "Interface" record
+} as const;
+
+let _feedbackWriteQueue = Promise.resolve();
+function queueFeedbackWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const next = _feedbackWriteQueue.then(fn);
+  _feedbackWriteQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+function FeedbackButton({ onClick, tok }: { onClick: () => void; tok: Tok }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        position: 'fixed', bottom: '16px', right: '80px', zIndex: 9600,
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+        borderRadius: '10px', border: 'none', cursor: 'pointer',
+        background: tok.accent, color: tok === DARK ? '#1B1813' : '#FFFFFF',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+        transition: 'opacity 0.15s',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.85'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+    >
+      <ChatCircleTextIcon size={16} /> Feedback
+    </button>
+  );
+}
+
+function FeedbackModal({ base, onClose, tok }: { base: ReturnType<typeof useBase>; onClose: () => void; tok: Tok }) {
+  const [feedbackType, setFeedbackType] = useState('');
+  const [scope, setScope] = useState('');
+  const [interfaceId, setInterfaceId] = useState<string | null>(null);
+  const [pageId, setPageId] = useState<string | null>(null);
+  const [description, setDescription] = useState('');
+  const [files, setFiles] = useState<Array<{ url: string; filename: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const interfaceInventoryTable = base.getTableByIdIfExists(INTERFACE_INVENTORY_TABLE_ID);
+  const interfaceInventoryRecords = useRecords(interfaceInventoryTable ?? null);
+  const inventoryNameField  = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.NAME) ?? null;
+  const inventoryLevelField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.LEVEL) ?? null;
+  const inventoryInterfaceLinkField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.INTERFACE_LINK) ?? null;
+
+  const interfaceOptions = useMemo(() => {
+    if (!inventoryNameField || !inventoryLevelField) return [];
+    return (interfaceInventoryRecords ?? [])
+      .filter(r => ((r.getCellValue(inventoryLevelField) as { name: string } | null)?.name ?? '').toLowerCase() === 'interface')
+      .map(r => ({ id: r.id, name: (r.getCellValue(inventoryNameField) as string | null) ?? '(untitled)' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [interfaceInventoryRecords, inventoryNameField, inventoryLevelField]);
+
+  const pageOptions = useMemo(() => {
+    if (!inventoryNameField || !inventoryLevelField || !inventoryInterfaceLinkField || !interfaceId) return [];
+    return (interfaceInventoryRecords ?? [])
+      .filter(r => {
+        const isPage = ((r.getCellValue(inventoryLevelField) as { name: string } | null)?.name ?? '').toLowerCase() === 'page';
+        if (!isPage) return false;
+        const links = r.getCellValue(inventoryInterfaceLinkField) as Array<{ id: string }> | null;
+        return !!links?.some(l => l.id === interfaceId);
+      })
+      .map(r => ({ id: r.id, name: (r.getCellValue(inventoryNameField) as string | null) ?? '(untitled)' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [interfaceInventoryRecords, inventoryNameField, inventoryLevelField, inventoryInterfaceLinkField, interfaceId]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const missingRequired = !feedbackType || !scope || !description.trim() ||
+    (scope === 'Specific Interface' && (!interfaceId || !pageId));
+
+  const handleFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+    Array.from(fileList).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') setFiles(prev => [...prev, { url: reader.result as string, filename: file.name }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (missingRequired) return;
+    const feedbackTable = base.getTableByIdIfExists(FEEDBACK_TABLE_ID);
+    if (!feedbackTable) { setError('Feedback table not found'); return; }
+    setError(null); setSubmitting(true);
+    try {
+      const fields: Record<string, unknown> = {
+        [FEEDBACK_FIELD_IDS.FEEDBACK_TYPE]: { name: feedbackType },
+        [FEEDBACK_FIELD_IDS.SCOPE]: { name: scope },
+        [FEEDBACK_FIELD_IDS.DESCRIPTION]: description.trim(),
+      };
+      if (scope === 'Specific Interface') {
+        fields[FEEDBACK_FIELD_IDS.INTERFACE_NAME] = interfaceId ? [{ id: interfaceId }] : [];
+        fields[FEEDBACK_FIELD_IDS.PAGE_REPORTED] = pageId ? [{ id: pageId }] : [];
+      }
+      if (files.length) fields[FEEDBACK_FIELD_IDS.ATTACHMENTS] = files;
+      await queueFeedbackWrite(() => feedbackTable.createRecordAsync(fields));
+      onClose();
+    } catch (e: unknown) {
+      console.error('Failed to submit feedback', e);
+      setError(e instanceof Error ? e.message : 'Failed to submit feedback');
+    } finally { setSubmitting(false); }
+  };
+
+  const fieldLabelStyle: React.CSSProperties = {
+    fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.07em', marginBottom: '5px',
+  };
+  const inputBoxStyle: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: '8px',
+    border: `1px solid ${tok.input_border}`, background: tok.surface, color: tok.text_primary,
+    fontSize: '13px', outline: 'none', fontFamily: 'inherit',
+  };
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9700,
+        background: tok.overlay, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: tok.surface, border: `1px solid ${tok.border}`, borderRadius: '14px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)', width: '460px', maxWidth: 'calc(100vw - 32px)',
+          maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${tok.border}`, flexShrink: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: tok.text_primary }}>Feedback</div>
+          <div style={{ fontSize: '12px', color: tok.text_secondary, marginTop: '2px' }}>Flag an issue or share an idea.</div>
+        </div>
+
+        <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <div style={fieldLabelStyle}>Feedback Type *</div>
+              <select value={feedbackType} onChange={e => setFeedbackType(e.target.value)} style={inputBoxStyle}>
+                <option value="">Select…</option>
+                {FEEDBACK_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={fieldLabelStyle}>Scope *</div>
+              <select
+                value={scope}
+                onChange={e => { setScope(e.target.value); setInterfaceId(null); setPageId(null); }}
+                style={inputBoxStyle}
+              >
+                <option value="">Select…</option>
+                {FEEDBACK_SCOPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {scope === 'Specific Interface' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <div style={fieldLabelStyle}>Interface *</div>
+                <select
+                  value={interfaceId ?? ''}
+                  onChange={e => { setInterfaceId(e.target.value || null); setPageId(null); }}
+                  style={inputBoxStyle}
+                >
+                  <option value="">Select…</option>
+                  {interfaceOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={fieldLabelStyle}>Page *</div>
+                <select value={pageId ?? ''} onChange={e => setPageId(e.target.value || null)} style={inputBoxStyle}>
+                  <option value="">Select…</option>
+                  {pageOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div style={fieldLabelStyle}>Description *</div>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value.slice(0, 2000))}
+              rows={6}
+              placeholder="Please provide detailed feedback…"
+              style={{ ...inputBoxStyle, resize: 'vertical', lineHeight: 1.5 }}
+            />
+            <div style={{ fontSize: '11px', color: tok.text_muted, marginTop: '3px', textAlign: 'right' }}>{description.length}/2000</div>
+          </div>
+
+          <div>
+            <div style={fieldLabelStyle}>Attachments</div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                padding: '12px', borderRadius: '8px', border: `1px dashed ${tok.input_border}`,
+                background: 'transparent', color: tok.text_muted, fontSize: '13px', cursor: 'pointer',
+              }}
+            >
+              <PaperclipIcon size={14} /> Choose images or videos
+            </button>
+            <input
+              ref={fileInputRef} type="file" multiple accept="image/*,video/*"
+              style={{ display: 'none' }}
+              onChange={e => { handleFiles(e.target.files); e.target.value = ''; }}
+            />
+            {files.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                {files.map((f, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 8px',
+                      borderRadius: '999px', background: tok.surface_alt, fontSize: '12px', color: tok.text_secondary,
+                    }}
+                  >
+                    {f.filename}
+                    <XIcon
+                      size={12}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    />
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {error && <div style={{ fontSize: '12px', color: '#EF4444' }}>{error}</div>}
+        </div>
+
+        <div style={{ padding: '14px 18px', borderTop: `1px solid ${tok.border}`, display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '8px 14px', fontSize: '13px', borderRadius: '8px', border: 'none',
+              background: 'transparent', color: tok.text_secondary, cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting || missingRequired}
+            style={{
+              padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', border: 'none',
+              background: tok.accent, color: tok === DARK ? '#1B1813' : '#FFFFFF',
+              cursor: (submitting || missingRequired) ? 'not-allowed' : 'pointer',
+              opacity: (submitting || missingRequired) ? 0.5 : 1,
+            }}
+          >
+            {submitting ? 'Sending…' : 'Send feedback'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type LocationStatus = 'in-studio' | 'at trunk show' | 'away';
 type TimePeriod = 'today' | '7' | '14' | '30' | 'all';
@@ -908,6 +1203,7 @@ function SampleTracker() {
   const [saFilter,       setSaFilter]       = useState<string[]>([]);
   const [alertTypeFilter, setAlertTypeFilter] = useState<string[]>([]);
   const [selectedSample, setSelectedSample] = useState<Record | null>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   // ── Inventory filter options — "Location" filters the derived
   // In Studio / Trunk Show / Away bucket (same field the badge reads) ──
@@ -1347,6 +1643,9 @@ function SampleTracker() {
           tok={tok}
         />
       )}
+
+      <FeedbackButton onClick={() => setShowFeedbackModal(true)} tok={tok} />
+      {showFeedbackModal && <FeedbackModal base={base} onClose={() => setShowFeedbackModal(false)} tok={tok} />}
     </div>
   );
 }

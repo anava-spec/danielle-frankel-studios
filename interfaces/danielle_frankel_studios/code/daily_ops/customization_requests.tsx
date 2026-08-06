@@ -17,6 +17,8 @@ import {
   Trash as TrashIcon,
   Warning as WarningIcon,
   Plus as PlusIcon,
+  ChatCircleText as ChatCircleTextIcon,
+  Paperclip as PaperclipIcon,
 } from '@phosphor-icons/react';
 import type { Table, Record as AirtableRecord, Field } from '@airtable/blocks/interface/models';
 import { FieldType } from '@airtable/blocks/interface/models';
@@ -141,6 +143,221 @@ const PRICING_TABLE_ID = 'tblccTHYe8BCqutyD';
 const CUSTOMIZATIONS_TABLE_ID = 'tbl7HUWDI7IRjWY92';
 // Same base as the Appointments interface — reuses its DF Clients table ID.
 const CLIENTS_TABLE_ID = 'tblLLUlDgJ4ktzF7c';
+
+// ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
+const FEEDBACK_TABLE_ID = 'tbluy7JS31NwCoeIi';
+const FEEDBACK_FIELD_IDS = {
+  FEEDBACK_TYPE:  'fldMQDSnEDDzqom2A',
+  SCOPE:          'fldUpqoPn3ZM8mLck',
+  INTERFACE_NAME: 'fldJZKIEJIRPOLIcW',
+  PAGE_REPORTED:  'fldJJ7V9ANM7vQZhm',
+  DESCRIPTION:    'fld6i3lCiI7ewp4BV',
+  ATTACHMENTS:    'fldy05nKrbYFuglld',
+  // title/general_name/specific_interface_name are formulas/AI fields, submitted_by/submitted_at
+  // are native Created by/Created time — none of these are ever written from here.
+} as const;
+const FEEDBACK_TYPE_OPTIONS = ['Suggestion', 'Bug Report', 'Question', 'Praise'];
+const FEEDBACK_SCOPE_OPTIONS = ['General', 'Specific Interface'];
+// Interface/Page are linked records to interface_inventory (self-referential: a "Page" record
+// links back to its parent "Interface" record via the interface_inventory `interface` field).
+const INTERFACE_INVENTORY_TABLE_ID = 'tblG92AI3ddzlolhz';
+const INTERFACE_INVENTORY_FIELD_IDS = {
+  NAME:           'flddp1ncA7BD0tacw',
+  LEVEL:          'fldYFoQFVFLC1z7EW', // singleSelect: "Interface" | "Page" — compared case-insensitively
+  INTERFACE_LINK: 'fldNDPWTrcNzSD5zS', // on a "Page" record, links to its parent "Interface" record
+} as const;
+
+let _feedbackWriteQueue = Promise.resolve();
+function queueFeedbackWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const next = _feedbackWriteQueue.then(fn);
+  _feedbackWriteQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+function FeedbackButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="fixed bottom-4 right-20 inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg bg-[#D97706] hover:bg-[#B45309] dark:bg-[#FBBF24] dark:hover:bg-[#F59E0B] text-white dark:text-[#1B1813] shadow-2xl transition-colors"
+      style={{ zIndex: 9600 }}>
+      <ChatCircleTextIcon size={16} /> Feedback
+    </button>
+  );
+}
+
+function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; onClose: () => void }) {
+  const [feedbackType, setFeedbackType] = useState('');
+  const [scope, setScope] = useState('');
+  const [interfaceId, setInterfaceId] = useState<string | null>(null);
+  const [pageId, setPageId] = useState<string | null>(null);
+  const [description, setDescription] = useState('');
+  const [files, setFiles] = useState<Array<{ url: string; filename: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const interfaceInventoryTable = base.getTableByIdIfExists(INTERFACE_INVENTORY_TABLE_ID);
+  const interfaceInventoryRecords = useRecords(interfaceInventoryTable ?? undefined);
+  const inventoryNameField  = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.NAME) ?? null;
+  const inventoryLevelField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.LEVEL) ?? null;
+  const inventoryInterfaceLinkField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.INTERFACE_LINK) ?? null;
+
+  const interfaceOptions = useMemo(() => {
+    if (!inventoryNameField || !inventoryLevelField) return [];
+    return (interfaceInventoryRecords ?? [])
+      .filter(r => ((r.getCellValue(inventoryLevelField) as { name: string } | null)?.name ?? '').toLowerCase() === 'interface')
+      .map(r => ({ id: r.id, name: (r.getCellValue(inventoryNameField) as string | null) ?? '(untitled)' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [interfaceInventoryRecords, inventoryNameField, inventoryLevelField]);
+
+  const pageOptions = useMemo(() => {
+    if (!inventoryNameField || !inventoryLevelField || !inventoryInterfaceLinkField || !interfaceId) return [];
+    return (interfaceInventoryRecords ?? [])
+      .filter(r => {
+        const isPage = ((r.getCellValue(inventoryLevelField) as { name: string } | null)?.name ?? '').toLowerCase() === 'page';
+        if (!isPage) return false;
+        const links = r.getCellValue(inventoryInterfaceLinkField) as Array<{ id: string }> | null;
+        return !!links?.some(l => l.id === interfaceId);
+      })
+      .map(r => ({ id: r.id, name: (r.getCellValue(inventoryNameField) as string | null) ?? '(untitled)' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [interfaceInventoryRecords, inventoryNameField, inventoryLevelField, inventoryInterfaceLinkField, interfaceId]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const missingRequired = !feedbackType || !scope || !description.trim() ||
+    (scope === 'Specific Interface' && (!interfaceId || !pageId));
+
+  const handleFiles = (fileList: FileList | null) => {
+    if (!fileList) return;
+    Array.from(fileList).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') setFiles(prev => [...prev, { url: reader.result as string, filename: file.name }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (missingRequired) return;
+    const feedbackTable = base.getTableByIdIfExists(FEEDBACK_TABLE_ID);
+    if (!feedbackTable) { setError('Feedback table not found'); return; }
+    setError(null); setSubmitting(true);
+    try {
+      const fields: Record<string, unknown> = {
+        [FEEDBACK_FIELD_IDS.FEEDBACK_TYPE]: { name: feedbackType },
+        [FEEDBACK_FIELD_IDS.SCOPE]: { name: scope },
+        [FEEDBACK_FIELD_IDS.DESCRIPTION]: description.trim(),
+      };
+      if (scope === 'Specific Interface') {
+        fields[FEEDBACK_FIELD_IDS.INTERFACE_NAME] = interfaceId ? [{ id: interfaceId }] : [];
+        fields[FEEDBACK_FIELD_IDS.PAGE_REPORTED] = pageId ? [{ id: pageId }] : [];
+      }
+      if (files.length) fields[FEEDBACK_FIELD_IDS.ATTACHMENTS] = files;
+      await queueFeedbackWrite(() => feedbackTable.createRecordAsync(fields));
+      onClose();
+    } catch (e: unknown) {
+      console.error('Failed to submit feedback', e);
+      setError(e instanceof Error ? e.message : 'Failed to submit feedback');
+    } finally { setSubmitting(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.38)', zIndex: 9700 }} onClick={onClose}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
+        style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-[#34312C] flex-shrink-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">Feedback</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Flag an issue or share an idea.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Feedback Type <span className="text-red-400">*</span></label>
+              <select value={feedbackType} onChange={e => setFeedbackType(e.target.value)}
+                className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+                <option value="">Select…</option>
+                {FEEDBACK_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Scope <span className="text-red-400">*</span></label>
+              <select value={scope} onChange={e => { setScope(e.target.value); setInterfaceId(null); setPageId(null); }}
+                className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+                <option value="">Select…</option>
+                {FEEDBACK_SCOPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+          {scope === 'Specific Interface' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Interface <span className="text-red-400">*</span></label>
+                <select value={interfaceId ?? ''} onChange={e => { setInterfaceId(e.target.value || null); setPageId(null); }}
+                  className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+                  <option value="">Select…</option>
+                  {interfaceOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Page <span className="text-red-400">*</span></label>
+                <select value={pageId ?? ''} onChange={e => setPageId(e.target.value || null)}
+                  className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+                  <option value="">Select…</option>
+                  {pageOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Description <span className="text-red-400">*</span></label>
+            <textarea value={description} onChange={e => setDescription(e.target.value.slice(0, 2000))} rows={6}
+              className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none resize-none transition-colors"
+              placeholder="Please provide detailed feedback…" />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-right">{description.length}/2000</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Attachments</label>
+            <button type="button" onClick={() => fileInputRef.current?.click()}
+              className="w-full border border-dashed border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-4 text-sm text-gray-500 dark:text-gray-400 hover:border-[#D97706] hover:text-[#D97706] dark:hover:border-[#FBBF24] dark:hover:text-[#FBBF24] transition-colors flex items-center justify-center gap-1.5">
+              <PaperclipIcon size={14} /> Choose images or videos
+            </button>
+            <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden"
+              onChange={e => { handleFiles(e.target.files); e.target.value = ''; }} />
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {files.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-white/5 text-sm text-gray-600 dark:text-gray-300">
+                    {f.filename}
+                    <button type="button" onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-gray-400 hover:text-red-500 transition-colors"><XIcon size={12} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end gap-3 flex-shrink-0">
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={submitting || missingRequired}
+            className={[
+              'px-4 py-2 text-sm rounded-lg bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] font-medium transition-colors disabled:cursor-not-allowed',
+              (submitting || missingRequired) ? 'opacity-50' : 'hover:bg-[#B45309] dark:hover:bg-[#F59E0B]',
+            ].join(' ')}>
+            {submitting ? 'Sending…' : 'Send feedback'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const SA_ROLES = ['Client Specialist', 'General Manager', 'Account Manager', 'Client Relationships Director'];
 
@@ -2809,6 +3026,7 @@ function CustomizationApp(): React.ReactElement {
   const [newRequestDraft, setNewRequestDraft] = useState<NewRequestDraft>(emptyNewRequestDraft());
   const [draggedRecordId,      setDraggedRecordId]      = useState<string | null>(null);
   const [toastMessage,         setToastMessage]         = useState<string | null>(null);
+  const [showFeedbackModal,    setShowFeedbackModal]    = useState(false);
   useEffect(() => {
     if (!toastMessage) return;
     const t = setTimeout(() => setToastMessage(null), 3500);
@@ -3303,6 +3521,8 @@ function CustomizationApp(): React.ReactElement {
       />
     )}
     {toastMessage && <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />}
+    <FeedbackButton onClick={() => setShowFeedbackModal(true)} />
+    {showFeedbackModal && <FeedbackModal base={base} onClose={() => setShowFeedbackModal(false)} />}
     </>
   );
 }
