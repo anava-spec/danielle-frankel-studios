@@ -140,6 +140,48 @@ function FeedbackButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+function FeedbackSelect({ value, onChange, options, placeholder }: {
+  value: string; onChange: (v: string) => void;
+  options: Array<{ id: string; name: string }>; placeholder?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen]);
+  const selected = options.find(o => o.id === value);
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setIsOpen(v => !v)}
+        className="w-full inline-flex items-center justify-between gap-1.5 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-white/10 rounded-lg bg-white dark:bg-[#1e1d1b] hover:border-gray-400 dark:hover:border-white/20 transition-colors">
+        <span className={selected ? "text-gray-700 dark:text-gray-200 truncate" : "text-gray-400 dark:text-gray-500 truncate"}>
+          {selected ? selected.name : (placeholder ?? "Select…")}
+        </span>
+        <CaretDownIcon size={13} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg shadow-lg z-50">
+          <div className="max-h-60 overflow-y-auto py-1" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
+            {options.map(o => (
+              <button key={o.id} type="button" onClick={() => { onChange(o.id); setIsOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-sm transition-colors truncate ${
+                  o.id === value ? "bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300" : "hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-200"
+                }`}>
+                {o.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; onClose: () => void }) {
   const [feedbackType, setFeedbackType] = useState('');
   const [scope, setScope] = useState('');
@@ -233,38 +275,26 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Feedback Type <span className="text-red-400">*</span></label>
-              <select value={feedbackType} onChange={e => setFeedbackType(e.target.value)}
-                className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-                <option value="">Select…</option>
-                {FEEDBACK_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
+              <FeedbackSelect value={feedbackType} onChange={setFeedbackType}
+                options={FEEDBACK_TYPE_OPTIONS.map(o => ({ id: o, name: o }))} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Scope <span className="text-red-400">*</span></label>
-              <select value={scope} onChange={e => { setScope(e.target.value); setInterfaceId(null); setPageId(null); }}
-                className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-                <option value="">Select…</option>
-                {FEEDBACK_SCOPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
+              <FeedbackSelect value={scope} onChange={v => { setScope(v); setInterfaceId(null); setPageId(null); }}
+                options={FEEDBACK_SCOPE_OPTIONS.map(o => ({ id: o, name: o }))} />
             </div>
           </div>
           {scope === 'Specific Interface' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Interface <span className="text-red-400">*</span></label>
-                <select value={interfaceId ?? ''} onChange={e => { setInterfaceId(e.target.value || null); setPageId(null); }}
-                  className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-                  <option value="">Select…</option>
-                  {interfaceOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <FeedbackSelect value={interfaceId ?? ''} onChange={v => { setInterfaceId(v || null); setPageId(null); }}
+                  options={interfaceOptions} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Page <span className="text-red-400">*</span></label>
-                <select value={pageId ?? ''} onChange={e => setPageId(e.target.value || null)}
-                  className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-                  <option value="">Select…</option>
-                  {pageOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <FeedbackSelect value={pageId ?? ''} onChange={v => setPageId(v || null)}
+                  options={pageOptions} />
               </div>
             </div>
           )}

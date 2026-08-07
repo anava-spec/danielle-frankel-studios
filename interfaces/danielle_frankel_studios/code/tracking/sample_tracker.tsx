@@ -290,21 +290,17 @@ function FeedbackModal({ base, onClose, tok }: { base: ReturnType<typeof useBase
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <div style={fieldLabelStyle}>Feedback Type *</div>
-              <select value={feedbackType} onChange={e => setFeedbackType(e.target.value)} style={inputBoxStyle}>
-                <option value="">Select…</option>
-                {FEEDBACK_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
+              <InlineSelect value={feedbackType || null} options={FEEDBACK_TYPE_OPTIONS} onChange={setFeedbackType} tok={tok} escapeModal />
             </div>
             <div>
               <div style={fieldLabelStyle}>Scope *</div>
-              <select
-                value={scope}
-                onChange={e => { setScope(e.target.value); setInterfaceId(null); setPageId(null); }}
-                style={inputBoxStyle}
-              >
-                <option value="">Select…</option>
-                {FEEDBACK_SCOPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
+              <InlineSelect
+                value={scope || null}
+                options={FEEDBACK_SCOPE_OPTIONS}
+                onChange={v => { setScope(v); setInterfaceId(null); setPageId(null); }}
+                tok={tok}
+                escapeModal
+              />
             </div>
           </div>
 
@@ -312,21 +308,23 @@ function FeedbackModal({ base, onClose, tok }: { base: ReturnType<typeof useBase
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <div style={fieldLabelStyle}>Interface *</div>
-                <select
-                  value={interfaceId ?? ''}
-                  onChange={e => { setInterfaceId(e.target.value || null); setPageId(null); }}
-                  style={inputBoxStyle}
-                >
-                  <option value="">Select…</option>
-                  {interfaceOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <InlineSelect
+                  value={interfaceOptions.find(o => o.id === interfaceId)?.name ?? null}
+                  options={interfaceOptions.map(o => o.name)}
+                  onChange={name => { setInterfaceId(interfaceOptions.find(o => o.name === name)?.id ?? null); setPageId(null); }}
+                  tok={tok}
+                  escapeModal
+                />
               </div>
               <div>
                 <div style={fieldLabelStyle}>Page *</div>
-                <select value={pageId ?? ''} onChange={e => setPageId(e.target.value || null)} style={inputBoxStyle}>
-                  <option value="">Select…</option>
-                  {pageOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <InlineSelect
+                  value={pageOptions.find(o => o.id === pageId)?.name ?? null}
+                  options={pageOptions.map(o => o.name)}
+                  onChange={name => setPageId(pageOptions.find(o => o.name === name)?.id ?? null)}
+                  tok={tok}
+                  escapeModal
+                />
               </div>
             </div>
           )}
