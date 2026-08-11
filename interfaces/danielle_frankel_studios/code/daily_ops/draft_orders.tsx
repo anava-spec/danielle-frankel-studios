@@ -6,6 +6,7 @@ import {
   useCustomProperties,
   CellRenderer,
   useColorScheme,
+  useSession,
 } from '@airtable/blocks/interface/ui';
 import type { Table, Field, Record as AirtableRecord } from '@airtable/blocks/interface/models';
 import {
@@ -51,6 +52,15 @@ const FIELD_IDS = {
   // address, or a freehand new one) — created 2026-07-30, singleLineText.
   DRAFT_ADDRESS: 'fldZY2glO0rB19Eho',
 
+  // Shopify Draft Order Creation story (2026-08-11) — singleSelect:
+  // Not Started / Endpoint Call Ongoing / Completed / Failed.
+  DRAFT_SHOPIFY_STATUS: 'fldsQlDqjhvTodXgR',
+  DRAFT_SYNC_ERROR_MESSAGE: 'fldvexiG5evwmjnaw',
+  DRAFT_INITIATED_BY_EMAIL: 'fldCapGqxZZo1b9o4',
+  DRAFT_SHOPIFY_ORDER_ID: 'fldV3F3ZNE1e4Dvv9',
+  DRAFT_SHOPIFY_ORDER_NAME: 'fldVMaJhy6aMND88N',
+  DRAFT_SHOPIFY_INVOICE_URL: 'fldTUOmkWL6x6wFsH',
+
   CLIENT_FULL_NAME: 'fldB3Wyam01D3wR5Q',
   // The three existing-address sources a client can have on file — the
   // address selector searches across all three (none is authoritative over
@@ -65,6 +75,10 @@ const FIELD_IDS = {
   CLIENT_FAVORITE_STYLES_ACUITY: 'fldZzNR0g5VEJ5RmX',
   CLIENT_FAVORITE_STYLES_APPOINTMENT: 'fldVw8wCgPKvxN1jD',
   CLIENT_SALES_ASSOCIATE: 'fldBTKBaw8YvNAlwK',
+  CLIENT_SALES_ASSOCIATE_NAME: 'fldH8lJJHPUjPnyHZ', // lookup
+  CLIENT_EMAIL: 'fld5f3IVZoX0QZZ8R',
+  CLIENT_PHONE: 'fldZrxF4bR6QBUwVK',
+  CLIENT_READY_TO_WEAR_SIZE: 'fldEEH4CK3Qqp0g0C',
 
   STAFF_FULL_NAME: 'fldc8INBZmwC3xeH7',
   STAFF_IS_ACTIVE: 'fldB6rPTjxATp7uMf',
@@ -85,6 +99,9 @@ const FIELD_IDS = {
   CUSTOMIZATION_APPROVED_PRICING: 'fldFRRjwVlCgHhPdA',
   CUSTOMIZATION_PROPOSED_TOTAL: 'fldtF37zwwAPb5hjS',
   CUSTOMIZATION_EFFECTIVE_PRICE: 'fldFjHCKBNcWz6z0V',
+  // customization_type: singleSelect — "Hybrid" | "Regular".
+  CUSTOMIZATION_TYPE: 'fld1stC4sHuPT4pT4',
+  CUSTOMIZATION_HYBRID_STYLES: 'fldPOXPAaTSW52iJX', // "For Hybrid Gown Select Styles"
 
   // state_costs: single linked record on Draft Orders that Shipping (lookup)
   // and Taxes (formula) are calculated from.
@@ -549,6 +566,107 @@ function DiscountModeToggle({
   );
 }
 
+// Shopify Draft Order Creation story (2026-08-11) — shared write queue for
+// the client mini panel's ready_to_wear_size edit, guarding against
+// concurrent-write races the same way the rest of this file's per-field
+// blur handlers avoid clobbering each other.
+let _shopifyWriteQueue = Promise.resolve();
+function queueWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const next = _shopifyWriteQueue.then(fn);
+  _shopifyWriteQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+function ShopifyStatusPill({ status }: { status: string }) {
+  const theme = useTheme();
+  let bgColor = theme.neutralBg;
+  let textColor = theme.neutral;
+  let dot: string | null = null;
+  if (status === 'Completed') {
+    bgColor = theme.successBg; textColor = theme.success;
+  } else if (status === 'Failed') {
+    bgColor = theme.dangerBg; textColor = theme.danger;
+  } else if (status === 'Endpoint Call Ongoing') {
+    bgColor = theme.accentSoft; textColor = theme.accent; dot = 'animate-pulse';
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+      style={{ backgroundColor: bgColor, color: textColor }}
+    >
+      {dot && <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot}`} style={{ backgroundColor: textColor }} />}
+      {status}
+    </span>
+  );
+}
+
+// Shared eligibility check for the "Create Shopify Draft Order" action —
+// used both to decide whether the button is enabled and, on click, to block
+// with a specific message before writing anything. Kept pure (no Airtable
+// writes) so it's safe to call on every render.
+function checkShopifyDraftOrderEligibility(params: {
+  clientId: string | null;
+  linkedStyleIds: string[];
+  linkedCustomizations: AirtableRecord[];
+  readyToWearSize: number | null;
+  customizationTypeField: Field | null;
+  customizedStyleField: Field | null;
+  styleCategoryField: Field | null;
+  getLinkedRecordIds: (record: AirtableRecord, field: Field | null) => string[];
+  styleRecords: AirtableRecord[];
+}): { eligible: boolean; reason: string } {
+  const {
+    clientId, linkedStyleIds, linkedCustomizations, readyToWearSize,
+    customizationTypeField, customizedStyleField, styleCategoryField, getLinkedRecordIds, styleRecords,
+  } = params;
+
+  if (!clientId) {
+    return { eligible: false, reason: 'No client linked to this draft order.' };
+  }
+  if (linkedStyleIds.length === 0 && linkedCustomizations.length === 0) {
+    return { eligible: false, reason: 'At least one Style or Customization is required.' };
+  }
+  if (readyToWearSize === null || readyToWearSize === undefined) {
+    return { eligible: false, reason: "Client's Ready to Wear size is missing. Update it from the client detail panel." };
+  }
+
+  const hybridCustomizations = linkedCustomizations.filter(
+    c => (customizationTypeField ? c.getCellValueAsString(customizationTypeField) : '') === 'Hybrid'
+  );
+  if (hybridCustomizations.length > 1) {
+    return { eligible: false, reason: 'Only one Hybrid customization can be active at a time.' };
+  }
+  if (hybridCustomizations.length === 1) {
+    const hasCustomGownStyle = styleRecords.some(s => {
+      if (!linkedStyleIds.includes(s.id)) return false;
+      const category = styleCategoryField ? s.getCellValueAsString(styleCategoryField) : '';
+      return category === 'CUSTOM';
+    });
+    if (!hasCustomGownStyle) {
+      return { eligible: false, reason: 'A Custom Gown style is required when a Hybrid customization is selected.' };
+    }
+  }
+
+  const regularCustomizations = linkedCustomizations.filter(
+    c => (customizationTypeField ? c.getCellValueAsString(customizationTypeField) : '') === 'Regular'
+  );
+  const seenCustomizedStyleIds = new Set<string>();
+  for (const c of regularCustomizations) {
+    const customizedStyleIds = getLinkedRecordIds(c, customizedStyleField);
+    if (customizedStyleIds.length === 0) {
+      return { eligible: false, reason: `Customization ${c.id} requires its matching style to be selected.` };
+    }
+    for (const styleId of customizedStyleIds) {
+      if (seenCustomizedStyleIds.has(styleId)) {
+        return { eligible: false, reason: 'Only one customization per style is allowed.' };
+      }
+      seenCustomizedStyleIds.add(styleId);
+    }
+  }
+
+  return { eligible: true, reason: '' };
+}
+
 function StatusPill({ label, variant }: { label: string; variant: 'locked' | 'unlocked' | 'tentative' }) {
   const theme = useTheme();
   let bgColor = theme.neutralBg;
@@ -638,6 +756,108 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Client mini detail panel — opens from the draft order header's "View
+// Client" action. Read-only fields per the locked AC (stage, wedding date,
+// email, phone, sales associate name); ready_to_wear_size is the one
+// editable field, written directly to DF Clients via queueWrite() to avoid
+// a concurrent-write race if the user edits it from two tabs.
+function ClientMiniPanel({
+  theme,
+  clientRecord,
+  clientsTable,
+  getField,
+  onClose,
+}: {
+  theme: typeof COLORS.LIGHT;
+  clientRecord: AirtableRecord;
+  clientsTable: Table;
+  getField: (table: Table, fieldId: string) => Field | null;
+  onClose: () => void;
+}) {
+  const stageField = getField(clientsTable, FIELD_IDS.CLIENT_STAGE);
+  const weddingDateField = getField(clientsTable, FIELD_IDS.CLIENT_WEDDING_DATE);
+  const emailField = getField(clientsTable, FIELD_IDS.CLIENT_EMAIL);
+  const phoneField = getField(clientsTable, FIELD_IDS.CLIENT_PHONE);
+  const salesAssociateNameField = getField(clientsTable, FIELD_IDS.CLIENT_SALES_ASSOCIATE_NAME);
+  const readyToWearSizeField = getField(clientsTable, FIELD_IDS.CLIENT_READY_TO_WEAR_SIZE);
+
+  const currentSize = readyToWearSizeField ? (clientRecord.getCellValue(readyToWearSizeField) as number | null) : null;
+  const [sizeInput, setSizeInput] = useState(currentSize !== null && currentSize !== undefined ? String(currentSize) : '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const canUpdate = clientsTable.hasPermissionToUpdateRecords();
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const handleSizeBlur = () => {
+    if (!canUpdate || !readyToWearSizeField) return;
+    const trimmed = sizeInput.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+    if (trimmed !== '' && (isNaN(parsed as number))) {
+      setSaveError('Ready to Wear size must be a number.');
+      return;
+    }
+    if (parsed === currentSize) return;
+    setSaving(true);
+    setSaveError(null);
+    queueWrite(() => clientsTable.updateRecordAsync(clientRecord.id, { [readyToWearSizeField.id]: parsed }))
+      .catch(error => {
+        console.error('Failed to update ready_to_wear_size:', error);
+        setSaveError('Failed to save.');
+      })
+      .finally(() => setSaving(false));
+  };
+
+  const row = (label: string, value: string) => (
+    <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: theme.borderLight }}>
+      <span className="text-sm" style={{ color: theme.textSecondary }}>{label}</span>
+      <span className="text-sm font-medium">{value || '—'}</span>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.38)' }} onClick={onClose}>
+      <div
+        className="w-full max-w-sm rounded-xl overflow-hidden"
+        style={{ backgroundColor: theme.bgCard, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: theme.border }}>
+          <h2 className="text-base font-semibold">Client Details</h2>
+          <button onClick={onClose} className="hover:cursor-pointer" style={{ color: theme.textMuted }}><XIcon size={18} /></button>
+        </div>
+        <div className="px-6 py-4">
+          {row('Stage', stageField ? clientRecord.getCellValueAsString(stageField) : '')}
+          {row('Wedding Date', weddingDateField ? formatDate(clientRecord.getCellValueAsString(weddingDateField)) : '')}
+          {row('Email', emailField ? clientRecord.getCellValueAsString(emailField) : '')}
+          {row('Phone', phoneField ? clientRecord.getCellValueAsString(phoneField) : '')}
+          {row('Sales Associate', salesAssociateNameField ? clientRecord.getCellValueAsString(salesAssociateNameField) : '')}
+          <div className="flex items-center justify-between py-2">
+            <span className="text-sm" style={{ color: theme.textSecondary }}>Ready to Wear Size</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={sizeInput}
+              onChange={e => setSizeInput(e.target.value)}
+              onBlur={handleSizeBlur}
+              disabled={!canUpdate}
+              placeholder="—"
+              className="w-20 text-sm text-right px-2 py-1 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+            />
+          </div>
+          {saving && <p className="text-xs mt-1" style={{ color: theme.textMuted }}>Saving…</p>}
+          {saveError && <p className="text-xs mt-1" style={{ color: theme.danger }}>{saveError}</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1048,6 +1268,7 @@ function Layer3({
   const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const grandTotalField = getField(draftOrdersTable, FIELD_IDS.DRAFT_GRAND_TOTAL);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
+  const shopifyStatusField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHOPIFY_STATUS);
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -1118,6 +1339,7 @@ function Layer3({
                 const createdAt = createdAtField ? (draft.getCellValue(createdAtField) as string | null) : null;
                 const grandTotal = grandTotalField ? (draft.getCellValue(grandTotalField) as number | null) : null;
                 const isLocked = lockedField ? !!draft.getCellValue(lockedField) : false;
+                const shopifyStatus = shopifyStatusField ? draft.getCellValueAsString(shopifyStatusField) : '';
 
                 return (
                   <div
@@ -1132,6 +1354,7 @@ function Layer3({
                     <div className="flex items-center gap-3">
                       <span className="font-medium">{formatCurrency(grandTotal)}</span>
                       <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
+                      {shopifyStatus && <ShopifyStatusPill status={shopifyStatus} />}
                     </div>
                   </div>
                 );
@@ -2422,6 +2645,18 @@ function Layer4({
   const clientShopifyAddressField = getField(clientsTable, FIELD_IDS.CLIENT_SHOPIFY_ADDRESS);
   const clientAcuityAddressField = getField(clientsTable, FIELD_IDS.CLIENT_ACUITY_ADDRESS);
   const clientOtherAddressField = getField(clientsTable, FIELD_IDS.CLIENT_OTHER_ADDRESS);
+  const clientReadyToWearSizeField = getField(clientsTable, FIELD_IDS.CLIENT_READY_TO_WEAR_SIZE);
+
+  // Shopify Draft Order Creation story (2026-08-11)
+  const shopifyStatusField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SHOPIFY_STATUS);
+  const syncErrorMessageField = getField(draftOrdersTable, FIELD_IDS.DRAFT_SYNC_ERROR_MESSAGE);
+  const initiatedByEmailField = getField(draftOrdersTable, FIELD_IDS.DRAFT_INITIATED_BY_EMAIL);
+  const customizationTypeField = getField(customizationsTable, FIELD_IDS.CUSTOMIZATION_TYPE);
+  const styleCategoryField = getField(stylesTable, FIELD_IDS.STYLE_CATEGORY);
+  const session = useSession();
+  const [showClientPanel, setShowClientPanel] = useState(false);
+  const [creatingShopifyDraftOrder, setCreatingShopifyDraftOrder] = useState(false);
+  const [shopifyActionError, setShopifyActionError] = useState<string | null>(null);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [addressLocal, setAddressLocal] = useState('');
@@ -2720,6 +2955,57 @@ function Layer4({
   const linkedStyles = styleRecords.filter(s => linkedStyleIds.includes(s.id));
   const linkedCustomizations = customizationRecords.filter(c => linkedCustomizationIds.includes(c.id));
 
+  const clientRecord = clientRecords.find(c => c.id === clientId) ?? null;
+  const clientReadyToWearSize = clientRecord && clientReadyToWearSizeField
+    ? (clientRecord.getCellValue(clientReadyToWearSizeField) as number | null)
+    : null;
+  const shopifyStatus = shopifyStatusField ? draft.getCellValueAsString(shopifyStatusField) : '';
+  const syncErrorMessage = syncErrorMessageField ? draft.getCellValueAsString(syncErrorMessageField) : '';
+
+  // Button is disabled/hidden when locked, or when a Shopify sync is already
+  // ongoing or already succeeded — re-running would either double-submit or
+  // is simply unnecessary. "Not Started"/"Failed"/blank all allow a (re)try.
+  const shopifyButtonHidden = isLocked || shopifyStatus === 'Endpoint Call Ongoing' || shopifyStatus === 'Completed';
+  const shopifyEligibility = checkShopifyDraftOrderEligibility({
+    clientId,
+    linkedStyleIds,
+    linkedCustomizations,
+    readyToWearSize: clientReadyToWearSize,
+    customizationTypeField,
+    customizedStyleField: customizationCustomizedStyleField,
+    styleCategoryField,
+    getLinkedRecordIds,
+    styleRecords,
+  });
+
+  const handleCreateShopifyDraftOrder = async () => {
+    if (!canUpdate || !lockedField || !shopifyStatusField) return;
+    // Re-run the eligibility check right at click time — the button's
+    // disabled state already gates most of this, but data can change
+    // between renders (e.g. another tab), so this is the source of truth.
+    if (!shopifyEligibility.eligible) {
+      setShopifyActionError(shopifyEligibility.reason);
+      return;
+    }
+    setShopifyActionError(null);
+    setCreatingShopifyDraftOrder(true);
+    try {
+      const userEmail = session.currentUser?.email ?? '';
+      await draftOrdersTable.updateRecordAsync(draftId, {
+        ...(initiatedByEmailField ? { [initiatedByEmailField.id]: userEmail } : {}),
+        [lockedField.id]: true,
+        [shopifyStatusField.id]: { name: 'Endpoint Call Ongoing' },
+      });
+      // Optimistic UI: the record write above already disables the button
+      // via shopifyButtonHidden once draft re-renders from the new record
+      // data, but creatingShopifyDraftOrder covers the gap before that sync.
+    } catch (error) {
+      console.error('Failed to start Shopify draft order creation:', error);
+      setShopifyActionError('Failed to start the Shopify draft order creation. Please try again.');
+      setCreatingShopifyDraftOrder(false);
+    }
+  };
+
   const handleToggleLock = async () => {
     if (!canUpdate || !lockedField) return;
     try {
@@ -2910,9 +3196,28 @@ function Layer4({
           Back
         </button>
         <h1 className="text-lg font-bold">{getClientName(clientId)}</h1>
+        <button
+          onClick={() => setShowClientPanel(true)}
+          className="text-sm underline hover:cursor-pointer"
+          style={{ color: theme.textSecondary }}
+        >
+          View Client
+        </button>
         <span className="text-sm" style={{ color: theme.textSecondary }}>{formatDate(createdAt)}</span>
         <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
+        {shopifyStatus && <ShopifyStatusPill status={shopifyStatus} />}
         <div className="flex-1" />
+        {canUpdate && !shopifyButtonHidden && (
+          <button
+            onClick={handleCreateShopifyDraftOrder}
+            disabled={creatingShopifyDraftOrder}
+            title={!shopifyEligibility.eligible ? shopifyEligibility.reason : undefined}
+            className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
+          >
+            {creatingShopifyDraftOrder ? 'Starting…' : 'Create Shopify Draft Order'}
+          </button>
+        )}
         {canUpdate && (
           <button
             onClick={handleToggleLock}
@@ -2924,6 +3229,28 @@ function Layer4({
           </button>
         )}
       </div>
+
+      {shopifyActionError && (
+        <div className="px-[15%] py-3" style={{ backgroundColor: theme.dangerBg }}>
+          <p className="text-sm" style={{ color: theme.danger }}>{shopifyActionError}</p>
+        </div>
+      )}
+
+      {shopifyStatus === 'Failed' && syncErrorMessage && (
+        <div className="px-[15%] py-3" style={{ backgroundColor: theme.dangerBg }}>
+          <p className="text-sm" style={{ color: theme.danger }}>Shopify draft order creation failed — {syncErrorMessage}</p>
+        </div>
+      )}
+
+      {showClientPanel && clientRecord && (
+        <ClientMiniPanel
+          theme={theme}
+          clientRecord={clientRecord}
+          clientsTable={clientsTable}
+          getField={getField}
+          onClose={() => setShowClientPanel(false)}
+        />
+      )}
 
       {!isEditable && (
         <div className="px-[15%] py-3" style={{ backgroundColor: theme.neutralBg }}>
