@@ -354,6 +354,183 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST FORM MODAL — create a new Waitlist record.
+// Required: Bride Name + Earliest Date Requested (the only fields the two
+// Waitlist automations actually depend on). Everything else is optional
+// context for Julia's alert email. resolution_status/resolved_at/
+// resolved_by_df_clients_record/last_alert_sent are never shown — they're
+// automation-owned outputs, not staff input.
+// ─────────────────────────────────────────────────────────────────────────────
+function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable: Table | null; onClose: () => void; onSaved: (newId: string) => void }) {
+  const [brideName, setBrideName] = useState('');
+  const [earliestDateRequested, setEarliestDateRequested] = useState('');
+  const [datesRequested, setDatesRequested] = useState('');
+  const [timeRequested, setTimeRequested] = useState('');
+  const [weddingDate, setWeddingDate] = useState('');
+  const [studio, setStudio] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const canSave = !!waitlistTable && brideName.trim() !== '' && earliestDateRequested !== '' && !saving;
+
+  const handleSave = async () => {
+    if (!canSave || !waitlistTable) return;
+    setSaving(true); setError(null);
+    try {
+      const fields: Record<string, unknown> = {
+        [WAITLIST_FIELD_IDS.BRIDE_NAME]: brideName.trim(),
+        [WAITLIST_FIELD_IDS.EARLIEST_DATE_REQUESTED]: earliestDateRequested,
+        [WAITLIST_FIELD_IDS.RESOLUTION_STATUS]: 'Active',
+      };
+      if (datesRequested.trim()) fields[WAITLIST_FIELD_IDS.DATES_REQUESTED] = datesRequested.trim();
+      if (timeRequested.trim()) fields[WAITLIST_FIELD_IDS.TIME_REQUESTED] = timeRequested.trim();
+      if (weddingDate) fields[WAITLIST_FIELD_IDS.WEDDING_DATE] = weddingDate;
+      if (studio) fields[WAITLIST_FIELD_IDS.STUDIO] = studio;
+      if (contactEmail.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_EMAIL] = contactEmail.trim();
+      if (contactPhone.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_PHONE] = contactPhone.trim();
+      if (notes.trim()) fields[WAITLIST_FIELD_IDS.NOTES] = notes.trim();
+      const newId = await waitlistTable.createRecordAsync(fields);
+      onSaved(newId);
+    } catch (e: unknown) {
+      console.error('Failed to create Waitlist record', e);
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally { setSaving(false); }
+  };
+
+  const inputClass = "w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors";
+  const labelClass = "block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1";
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.38)', zIndex: 9700 }} onClick={onClose}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
+        style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-[#34312C] flex-shrink-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">Add to Waitlist</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Bride Name and Earliest Date Requested are required — they're what the Waitlist automations depend on.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div>
+            <label className={labelClass}>Bride Name <span className="text-red-400">*</span></label>
+            <input type="text" value={brideName} onChange={e => setBrideName(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Earliest Date Requested <span className="text-red-400">*</span></label>
+            <input type="date" value={earliestDateRequested} onChange={e => setEarliestDateRequested(e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Dates Requested (free text — context for the alert email)</label>
+            <input type="text" value={datesRequested} onChange={e => setDatesRequested(e.target.value)} placeholder='e.g. "August 5th to August 18th"' className={inputClass} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Time Requested</label>
+              <input type="text" value={timeRequested} onChange={e => setTimeRequested(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Wedding Date</label>
+              <input type="date" value={weddingDate} onChange={e => setWeddingDate(e.target.value)} className={inputClass} />
+            </div>
+          </div>
+          <div>
+            <label className={labelClass}>Studio</label>
+            <select value={studio} onChange={e => setStudio(e.target.value)} className={inputClass}>
+              <option value="">—</option>
+              {WAITLIST_STUDIO_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Contact Email</label>
+              <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Contact Phone</label>
+              <input type="tel" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className={inputClass} />
+            </div>
+          </div>
+          <div>
+            <label className={labelClass}>Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={inputClass + ' resize-none'} />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end gap-3 flex-shrink-0">
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSave} disabled={!canSave}
+            className={[
+              'px-4 py-2 text-sm rounded-lg bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] font-medium transition-colors disabled:cursor-not-allowed',
+              !canSave ? 'opacity-50' : 'hover:bg-[#B45309] dark:hover:bg-[#F59E0B]',
+            ].join(' ')}>
+            {saving ? 'Saving…' : 'Add to Waitlist'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST DETAIL MODAL — view/edit an existing Active Waitlist record.
+// Independent of FullProfileModal by design (see pipeline.README.md) — no
+// stage-stepper, no All-Stages toggle, no past/future read-only logic. Just
+// the fields the creation form collects, editable via the same
+// EditableText/EditableDate/EditableSelect components used elsewhere in this
+// file, pointed at the Waitlist table.
+// ─────────────────────────────────────────────────────────────────────────────
+function WaitlistDetailModal({ entry, base, waitlistTable, onClose }: { entry: WaitlistEntry; base: Base; waitlistTable: Table | null; onClose: () => void }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  if (!waitlistTable) return null;
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.38)', zIndex: 9700 }} onClick={onClose}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
+        style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-[#34312C] flex-shrink-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">{entry.brideName || 'Waitlist entry'}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">On the Waitlist — not yet matched to a DF Client.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <EditableText label="Bride Name" value={entry.brideName} fieldId={WAITLIST_FIELD_IDS.BRIDE_NAME} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          <EditableDate label="Earliest Date Requested" value={entry.earliestDateRequested} fieldId={WAITLIST_FIELD_IDS.EARLIEST_DATE_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          <EditableText label="Dates Requested" value={entry.datesRequested} fieldId={WAITLIST_FIELD_IDS.DATES_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          <div className="grid grid-cols-2 gap-3">
+            <EditableText label="Time Requested" value={entry.timeRequested} fieldId={WAITLIST_FIELD_IDS.TIME_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableDate label="Wedding Date" value={entry.weddingDate} fieldId={WAITLIST_FIELD_IDS.WEDDING_DATE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          </div>
+          <EditableSelect label="Studio" value={entry.studio} options={WAITLIST_STUDIO_OPTIONS} fieldId={WAITLIST_FIELD_IDS.STUDIO} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          <div className="grid grid-cols-2 gap-3">
+            <EditableText label="Contact Email" value={entry.contactEmail} fieldId={WAITLIST_FIELD_IDS.CONTACT_EMAIL} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableText label="Contact Phone" value={entry.contactPhone} fieldId={WAITLIST_FIELD_IDS.CONTACT_PHONE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          </div>
+          <EditableText label="Notes" value={entry.notes} fieldId={WAITLIST_FIELD_IDS.NOTES} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} multiline />
+        </div>
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end gap-3 flex-shrink-0">
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VENDORS TABLE CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const VENDORS_TABLE_ID       = 'tblZzMdXOlBDJC0BS';
@@ -364,6 +541,36 @@ const VENDORS_FIELD_CLIENTS    = 'fldYiu4zItke9Qzun';
 const STAFF_TABLE_ID          = 'tblbYk88xJ8FQrLS4';
 const STAFF_FIELD_FULL_NAME   = 'fldc8INBZmwC3xeH7';
 const STAFF_FIELD_IS_ACTIVE   = 'fldB6rPTjxATp7uMf';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST TABLE CONSTANTS
+// Separate table (not a DF Clients stage). Rendered as a leftmost pseudo-column
+// in Kanban and as extra rows in List View. See waitlist_matching.js /
+// waitlist_alert_readiness.js (automations repo) for the field IDs shared here —
+// keep in sync if those scripts' FIELDS_WAITLIST map ever changes.
+// ─────────────────────────────────────────────────────────────────────────────
+const WAITLIST_TABLE_ID = 'tblbm3hKDShEPNpoq';
+const WAITLIST_FIELD_IDS = {
+  BRIDE_NAME:                 'fldI90ApFwjte8HBv',
+  CONTACT_EMAIL:              'fld2cI0r58UEiinvC',
+  CONTACT_PHONE:              'fldrMkTOA2Y6DT8mC',
+  DATES_REQUESTED:            'fldDjo0WRAKvHdgR4',
+  TIME_REQUESTED:             'fldLuKMVvuzadx630',
+  EARLIEST_DATE_REQUESTED:    'fld5s87GbT2G3C60e',
+  WEDDING_DATE:                'fldUS6OAwOhngc71o',
+  NOTES:                        'fldsn4PKhpwnOx5gu',
+  RESOLUTION_STATUS:            'fldiEQbjks80y5xTi',
+  RESOLVED_AT:                   'fldi1u7Otn5dX5web',
+  RESOLVED_BY_DF_CLIENTS_RECORD:  'fldXI88jaK0MepaLn',
+  LAST_ALERT_SENT:                 'flddV0or0cD3UHHbR',
+  STUDIO:                           'fldr0iuC9I9FLgAk6',
+};
+const WAITLIST_STUDIO_OPTIONS = ['NY', 'LA', 'Virtual'];
+const WAITLIST_STAGE_LABEL = 'Waitlist';
+// Not a real Airtable single-select choice color — Waitlist isn't a Stage-field
+// value, so it never appears in stageColorsByStage. Bespoke neutral tone to
+// visually read as "not yet a client."
+const WAITLIST_COLUMN_COLORS = { bg: '#EEECE7', fg: '#6B675F' };
 
 const THREE_PL_OPTIONS = ['UPS', 'FedEx', 'DHL', 'INTERJUMBO'];
 
@@ -677,6 +884,25 @@ function isFutureStage(currentStage: string, sectionStage: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST ENTRY INTERFACE
+// A Waitlist record, not a DF Client — separate table, separate schema.
+// ─────────────────────────────────────────────────────────────────────────────
+interface WaitlistEntry {
+  id: string;
+  brideName: string;
+  contactEmail: string;
+  contactPhone: string;
+  datesRequested: string;
+  timeRequested: string;
+  earliestDateRequested: string;
+  weddingDate: string;
+  notes: string;
+  resolutionStatus: string;
+  resolvedByClientId: string | null;
+  studio: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CLIENT DATA INTERFACE
 // ─────────────────────────────────────────────────────────────────────────────
 interface ClientData {
@@ -960,6 +1186,30 @@ const ClientCard = React.memo(function ClientCard({ client, stageColors, onCardC
       )}
       {client.nextAppointmentAltLead && (
         <div className="text-xs text-gray-600 dark:text-gray-400">AL: {client.nextAppointmentAltLead}</div>
+      )}
+    </div>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST CARD (kanban) — visually distinct from ClientCard: it's a lead, not
+// yet a client. Opens WaitlistDetailModal, not FullProfileModal.
+// ─────────────────────────────────────────────────────────────────────────────
+const WaitlistCard = React.memo(function WaitlistCard({ entry, onClick }: { entry: WaitlistEntry; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
+      className="relative bg-white dark:bg-[#242220] border border-dashed border-gray-300 dark:border-[#34312C] rounded-lg p-3 cursor-pointer transition-colors space-y-1"
+      style={{ borderLeftColor: WAITLIST_COLUMN_COLORS.bg, borderLeftWidth: '3px', borderLeftStyle: 'solid', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+    >
+      <div className="text-sm font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{entry.brideName || '—'}</div>
+      {entry.earliestDateRequested && (
+        <div className="text-xs text-gray-400 dark:text-gray-500">Earliest date: {formatFullDate(entry.earliestDateRequested)}</div>
+      )}
+      {entry.studio && (
+        <div className="text-xs text-gray-600 dark:text-gray-400">Studio: {entry.studio}</div>
       )}
     </div>
   );
@@ -1696,7 +1946,7 @@ function getSortValue(col: SortCol, c: ClientData): string | number {
   }
 }
 
-function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void; suppressEmptyMessage?: boolean }) {
+function PipelineListView({ clients, onSelectClient, suppressEmptyMessage, waitlistRows, onSelectWaitlist }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void; suppressEmptyMessage?: boolean; waitlistRows?: WaitlistEntry[]; onSelectWaitlist?: (w: WaitlistEntry) => void }) {
   const [sortEntries, setSortEntries] = useState<SortEntry[]>([{ col: 'weddingDate', dir: 'asc' }]);
   const [page, setPage] = useState(0);
 
@@ -1803,6 +2053,29 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
             <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No clients match the current filters.</td></tr>
           )}
         </tbody>
+        {waitlistRows && waitlistRows.length > 0 && (
+          <tbody>
+            {waitlistRows.map(entry => (
+              <tr key={entry.id} onClick={() => onSelectWaitlist?.(entry)}
+                className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer bg-[#FBFAF8] dark:bg-white/[0.02]">
+                <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-[#F5F3EF]">{entry.brideName || '—'}</td>
+                <td className="px-3 py-2.5">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                    style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
+                    {WAITLIST_STAGE_LABEL}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.weddingDate ? formatFullDate(entry.weddingDate) : '—'}</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.studio || '—'}</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+              </tr>
+            ))}
+          </tbody>
+        )}
       </table>
     </div>
     {sorted.length > LIST_PAGE_SIZE && (
@@ -1998,6 +2271,7 @@ interface FullProfileModalProps {
   vendorRecords: AirtableRecord[] | null;
   vendorNameField: Field | null;
   vendorTypeField: Field | null;
+  matchedWaitlistEntry?: WaitlistEntry | null;
   onClose: () => void;
 }
 
@@ -2006,7 +2280,7 @@ const STAGE_STEPS: string[] = [
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({
-  client, stageColors, stageChoices, base, vendorRecords, vendorNameField, vendorTypeField, onClose,
+  client, stageColors, stageChoices, base, vendorRecords, vendorNameField, vendorTypeField, matchedWaitlistEntry, onClose,
 }: FullProfileModalProps) {
   const currentStageIndex = STAGE_STEPS.indexOf(client.stage);
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
@@ -2478,6 +2752,27 @@ const FullProfileModal = React.memo(function FullProfileModal({
         {/* Stage-specific section(s) */}
         {showAllFields ? (
           <div className="space-y-6">
+            {matchedWaitlistEntry && (
+              <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 opacity-60">
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-wider">{WAITLIST_STAGE_LABEL}</h3>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 italic">read only</span>
+                </div>
+                <div className="pointer-events-none space-y-3">
+                  <FieldRow>
+                    <DetailRow label="Dates Requested" value={matchedWaitlistEntry.datesRequested || '—'} />
+                    <DetailRow label="Time Requested" value={matchedWaitlistEntry.timeRequested || '—'} />
+                    <DetailRow label="Wedding Date" value={matchedWaitlistEntry.weddingDate || '—'} />
+                  </FieldRow>
+                  <FieldRow>
+                    <DetailRow label="Contact Email" value={matchedWaitlistEntry.contactEmail || '—'} />
+                    <DetailRow label="Contact Phone" value={matchedWaitlistEntry.contactPhone || '—'} />
+                    <DetailRow label="Studio" value={matchedWaitlistEntry.studio || '—'} />
+                  </FieldRow>
+                  <DetailRow label="Notes" value={matchedWaitlistEntry.notes || '—'} />
+                </div>
+              </div>
+            )}
             {STAGE_STEPS.map(sectionStage => {
               // Step 6: if client.stage is not a known stage, force all sections read-only
               const forceReadOnly = !stageIsKnown;
@@ -2528,12 +2823,20 @@ const FullProfileModal = React.memo(function FullProfileModal({
 // CUSTOM PROPERTIES
 // ─────────────────────────────────────────────────────────────────────────────
 function getCustomProperties(base: ReturnType<typeof useBase>) {
-  return [{
-    key: 'clientsTable',
-    label: 'Clients',
-    type: 'table' as const,
-    defaultValue: base.tables.find(t => t.id === 'tblLLUlDgJ4ktzF7c'),
-  }];
+  return [
+    {
+      key: 'clientsTable',
+      label: 'Clients',
+      type: 'table' as const,
+      defaultValue: base.tables.find(t => t.id === 'tblLLUlDgJ4ktzF7c'),
+    },
+    {
+      key: 'waitlistTable',
+      label: 'Waitlist',
+      type: 'table' as const,
+      defaultValue: base.tables.find(t => t.id === WAITLIST_TABLE_ID),
+    },
+  ];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2727,6 +3030,7 @@ function Pipeline(): React.ReactElement {
   const base = useBase();
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = customPropertyValueByKey?.clientsTable as Table | undefined;
+  const waitlistTable = customPropertyValueByKey?.waitlistTable as Table | undefined;
 
   // Only subscribe to fields that drive kanban cards, filters, and search.
   // Detail-panel-only fields (orders, measurements, notes, etc.) are still read
@@ -2761,6 +3065,83 @@ function Pipeline(): React.ReactElement {
   );
 
   const clientRecords = useRecords(clientsTable ?? null, { fields: usedFields });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WAITLIST — second table, independent of clientsTable. See WAITLIST_TABLE_ID
+  // constants block above for field IDs (kept in sync with the automation
+  // scripts that also read/write this table).
+  // ─────────────────────────────────────────────────────────────────────────
+  const waitlistUsedFields = useMemo(
+    () => waitlistTable
+      ? Object.values(WAITLIST_FIELD_IDS).map(id => waitlistTable.getFieldIfExists(id)).filter((f): f is NonNullable<typeof f> => f !== null)
+      : [],
+    [waitlistTable],
+  );
+  const waitlistRecords = useRecords(waitlistTable ?? null, { fields: waitlistUsedFields });
+
+  const waitlistFieldObjs = useMemo(() => {
+    const wf = (id: string) => waitlistTable?.getFieldIfExists(id) ?? null;
+    return {
+      brideName:            wf(WAITLIST_FIELD_IDS.BRIDE_NAME),
+      contactEmail:         wf(WAITLIST_FIELD_IDS.CONTACT_EMAIL),
+      contactPhone:         wf(WAITLIST_FIELD_IDS.CONTACT_PHONE),
+      datesRequested:       wf(WAITLIST_FIELD_IDS.DATES_REQUESTED),
+      timeRequested:        wf(WAITLIST_FIELD_IDS.TIME_REQUESTED),
+      earliestDateRequested: wf(WAITLIST_FIELD_IDS.EARLIEST_DATE_REQUESTED),
+      weddingDate:          wf(WAITLIST_FIELD_IDS.WEDDING_DATE),
+      notes:                wf(WAITLIST_FIELD_IDS.NOTES),
+      resolutionStatus:     wf(WAITLIST_FIELD_IDS.RESOLUTION_STATUS),
+      resolvedByClient:     wf(WAITLIST_FIELD_IDS.RESOLVED_BY_DF_CLIENTS_RECORD),
+      studio:               wf(WAITLIST_FIELD_IDS.STUDIO),
+    };
+  }, [waitlistTable]);
+
+  const waitlistData = useMemo((): WaitlistEntry[] => {
+    if (!waitlistRecords) return [];
+    return waitlistRecords.map(record => ({
+      id: record.id,
+      brideName: getCellValueAsStringSafe(record, waitlistFieldObjs.brideName),
+      contactEmail: getCellValueAsStringSafe(record, waitlistFieldObjs.contactEmail),
+      contactPhone: getCellValueAsStringSafe(record, waitlistFieldObjs.contactPhone),
+      datesRequested: getCellValueAsStringSafe(record, waitlistFieldObjs.datesRequested),
+      timeRequested: getCellValueAsStringSafe(record, waitlistFieldObjs.timeRequested),
+      earliestDateRequested: getCellValueAsStringSafe(record, waitlistFieldObjs.earliestDateRequested),
+      weddingDate: getCellValueAsStringSafe(record, waitlistFieldObjs.weddingDate),
+      notes: getCellValueAsStringSafe(record, waitlistFieldObjs.notes),
+      resolutionStatus: getCellValueAsStringSafe(record, waitlistFieldObjs.resolutionStatus),
+      resolvedByClientId: (() => {
+        if (!waitlistFieldObjs.resolvedByClient) return null;
+        const linked = getCellValueSafe<Array<{ id: string }>>(record, waitlistFieldObjs.resolvedByClient);
+        return Array.isArray(linked) && linked.length > 0 ? linked[0].id : null;
+      })(),
+      studio: getCellValueAsStringSafe(record, waitlistFieldObjs.studio),
+    }));
+  }, [waitlistRecords, waitlistFieldObjs]);
+
+  // Active + unmatched — same eligibility shape as the alert automation, kept
+  // intentionally consistent. These are the cards/rows staff see as "on the
+  // Waitlist right now."
+  const activeWaitlistEntries = useMemo(
+    () => waitlistData
+      .filter(w => w.resolutionStatus === 'Active' && !w.resolvedByClientId)
+      .sort((a, b) => {
+        const dateCompare = (a.earliestDateRequested || '9999-99-99').localeCompare(b.earliestDateRequested || '9999-99-99');
+        return dateCompare !== 0 ? dateCompare : a.brideName.localeCompare(b.brideName);
+      }),
+    [waitlistData],
+  );
+
+  // Resolved + matched — keyed by the DF Client they resolved into, so
+  // FullProfileModal can look up "was this client once on the Waitlist?"
+  const resolvedWaitlistByClientId = useMemo(() => {
+    const map = new Map<string, typeof waitlistData[number]>();
+    waitlistData.forEach(w => {
+      if (w.resolutionStatus === 'Resolved' && w.resolvedByClientId) {
+        map.set(w.resolvedByClientId, w);
+      }
+    });
+    return map;
+  }, [waitlistData]);
 
   const vendorsTable = base.getTableByIdIfExists(VENDORS_TABLE_ID);
   const vendorNameField = useMemo(
@@ -2815,6 +3196,9 @@ function Pipeline(): React.ReactElement {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [stagePage, setStagePage] = useState<Record<string, number>>({});
+  const [waitlistPage, setWaitlistPage] = useState(0);
+  const [selectedWaitlistId, setSelectedWaitlistId] = useState<string | null>(null);
+  const [showWaitlistFormModal, setShowWaitlistFormModal] = useState(false);
 
   const stageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE);
   const stageChoices = useMemo(() => {
@@ -3096,7 +3480,7 @@ function Pipeline(): React.ReactElement {
     });
   }, [clientRecords, fields]);
 
-  const stageOptions = useMemo(() => STAGE_ORDER.map(s => STAGE_DISPLAY_LABELS[s] ?? s), []);
+  const stageOptions = useMemo(() => [WAITLIST_STAGE_LABEL, ...STAGE_ORDER.map(s => STAGE_DISPLAY_LABELS[s] ?? s)], []);
 
   const studioOptions = useMemo(() => {
     const s = new Set<string>();
@@ -3134,6 +3518,13 @@ function Pipeline(): React.ReactElement {
     return filteredClients.filter(c => stageSet.has(STAGE_DISPLAY_LABELS[c.stage] ?? c.stage));
   }, [filteredClients, stageFilter]);
 
+  // Waitlist rows respect the same Stage filter — only shown when unfiltered
+  // or when "Waitlist" is explicitly selected.
+  const listFilteredWaitlistEntries = useMemo(() => {
+    if (stageFilter.length > 0 && !stageFilter.includes(WAITLIST_STAGE_LABEL)) return [];
+    return activeWaitlistEntries;
+  }, [activeWaitlistEntries, stageFilter]);
+
   const clientsByStage = useMemo(() => {
     const map: Record<string, ClientData[]> = {};
     STAGE_ORDER.forEach(s => { map[s] = []; });
@@ -3150,6 +3541,7 @@ function Pipeline(): React.ReactElement {
 
   const selectedClient = useMemo(() => clientsData.find(c => c.id === selectedClientId) ?? null, [clientsData, selectedClientId]);
   const selectedClientStageColors = useMemo(() => selectedClient ? (stageColorsByStage.get(selectedClient.stage) ?? DEFAULT_STAGE_COLORS) : DEFAULT_STAGE_COLORS, [selectedClient, stageColorsByStage]);
+  const selectedWaitlistEntry = useMemo(() => activeWaitlistEntries.find(w => w.id === selectedWaitlistId) ?? null, [activeWaitlistEntries, selectedWaitlistId]);
 
   useEffect(() => {
     if (selectedClientId && !selectedClient) { setSelectedClientId(null); setFullProfileOpen(false); }
@@ -3205,8 +3597,15 @@ function Pipeline(): React.ReactElement {
         )}
 
         {/* View mode toggle */}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <ViewDropdown value={viewMode} onChange={setViewMode} />
+          <button
+            type="button"
+            onClick={() => setShowWaitlistFormModal(true)}
+            className="bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+          >
+            + Waitlist
+          </button>
         </div>
       </div>
 
@@ -3223,6 +3622,41 @@ function Pipeline(): React.ReactElement {
       {/* Main content — Kanban or List */}
       {viewMode === 'kanban' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
+          {/* Waitlist — leftmost pseudo-column, sourced from the Waitlist table, not clientsByStage */}
+          {(() => {
+            const wPage        = waitlistPage;
+            const wTotalPages  = Math.max(1, Math.ceil(activeWaitlistEntries.length / KANBAN_PAGE_SIZE));
+            const wPagedEntries = activeWaitlistEntries.slice(wPage * KANBAN_PAGE_SIZE, (wPage + 1) * KANBAN_PAGE_SIZE);
+            const wCanPrev     = wPage > 0;
+            const wCanNext     = wPage < wTotalPages - 1;
+            return (
+              <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
+                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{WAITLIST_STAGE_LABEL}</span>
+                  <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
+                    style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
+                    {formatStageCount(activeWaitlistEntries.length)}
+                  </span>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {activeWaitlistEntries.length === 0
+                    ? <div className="py-12 text-center text-xs text-gray-400 dark:text-gray-500">No one on the Waitlist</div>
+                    : wPagedEntries.map(entry => (
+                        <WaitlistCard key={entry.id} entry={entry} onClick={() => setSelectedWaitlistId(entry.id)} />
+                      ))}
+                </div>
+                {activeWaitlistEntries.length > KANBAN_PAGE_SIZE && (
+                  <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-gray-100 dark:border-white/10 bg-gray-50 dark:bg-[#1A1917]">
+                    <button type="button" onClick={() => setWaitlistPage(p => p - 1)} disabled={!wCanPrev}
+                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors">← Prev</button>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{wPage + 1} / {wTotalPages}</span>
+                    <button type="button" onClick={() => setWaitlistPage(p => p + 1)} disabled={!wCanNext}
+                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors">Next →</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {STAGE_ORDER.map(stage => {
             const clients     = clientsByStage[stage] ?? [];
             const stageColors = stageColorsByStage.get(stage) ?? DEFAULT_STAGE_COLORS;
@@ -3278,6 +3712,8 @@ function Pipeline(): React.ReactElement {
               setSelectedClientId(c.id);
               setFullProfileOpen(true);
             }}
+            waitlistRows={listFilteredWaitlistEntries}
+            onSelectWaitlist={(w) => setSelectedWaitlistId(w.id)}
           />
         </div>
       )}
@@ -3292,7 +3728,27 @@ function Pipeline(): React.ReactElement {
           vendorRecords={vendorRecords}
           vendorNameField={vendorNameField}
           vendorTypeField={vendorTypeField}
+          matchedWaitlistEntry={resolvedWaitlistByClientId.get(selectedClient.id) ?? null}
           onClose={handleCloseFullProfile}
+        />
+      )}
+
+      {/* Waitlist detail modal (view/edit an existing active Waitlist card) */}
+      {selectedWaitlistEntry && (
+        <WaitlistDetailModal
+          entry={selectedWaitlistEntry}
+          base={base}
+          waitlistTable={waitlistTable ?? null}
+          onClose={() => setSelectedWaitlistId(null)}
+        />
+      )}
+
+      {/* Waitlist create modal */}
+      {showWaitlistFormModal && (
+        <WaitlistFormModal
+          waitlistTable={waitlistTable ?? null}
+          onClose={() => setShowWaitlistFormModal(false)}
+          onSaved={() => setShowWaitlistFormModal(false)}
         />
       )}
 
