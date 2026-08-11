@@ -3026,6 +3026,12 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       type: 'table' as const,
       defaultValue: base.tables.find(t => t.id === WAITLIST_TABLE_ID),
     },
+    {
+      key: 'studioTable',
+      label: 'Studio',
+      type: 'table' as const,
+      defaultValue: base.tables.find(t => t.id === STUDIO_TABLE_ID),
+    },
   ];
 }
 
@@ -3221,6 +3227,7 @@ function Pipeline(): React.ReactElement {
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = customPropertyValueByKey?.clientsTable as Table | undefined;
   const waitlistTable = customPropertyValueByKey?.waitlistTable as Table | undefined;
+  const studioCustomPropTable = customPropertyValueByKey?.studioTable as Table | undefined;
 
   // Only subscribe to fields that drive kanban cards, filters, and search.
   // Detail-panel-only fields (orders, measurements, notes, etc.) are still read
@@ -3319,7 +3326,7 @@ function Pipeline(): React.ReactElement {
 
   // Master Studio/Location table — active options for the Studio picker on
   // the Waitlist create form and detail page.
-  const studioTable = base.getTableByIdIfExists(STUDIO_TABLE_ID);
+  const studioTable = studioCustomPropTable ?? null;
   const studioNameField     = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_NAME) ?? null, [studioTable]);
   const studioIsActiveField = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_IS_ACTIVE) ?? null, [studioTable]);
   const studioQueryFields = useMemo(() => {
