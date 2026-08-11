@@ -361,15 +361,83 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
 // resolved_by_df_clients_record/last_alert_sent are never shown — they're
 // automation-owned outputs, not staff input.
 // ─────────────────────────────────────────────────────────────────────────────
+// Standalone (non-record-bound) date field — same CalendarPopup trigger UI as
+// EditableDate, but holds local state instead of writing to Airtable. Used by
+// WaitlistFormModal, which has no record to persist against until Save.
+function FormDateField({ label, value, onChange }: { label: string; value: string; onChange: (iso: string) => void }) {
+  const toDate = (v: string): Date | null => {
+    if (!v) return null;
+    const d = parseDateFlexible(v);
+    return d && !isNaN(d.getTime()) ? d : null;
+  };
+  const toIso = (d: Date | null): string =>
+    d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+  const toDisplay = (d: Date | null): string =>
+    d ? d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+
+  const [selectedDate, setSelectedDate] = useState<Date | null>(toDate(value));
+  const [inputText, setInputText] = useState(toDisplay(toDate(value)));
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handleCalendarSelect = (d: Date | null) => {
+    setSelectedDate(d);
+    setInputText(toDisplay(d));
+    onChange(toIso(d));
+  };
+
+  const handleInputBlur = () => {
+    if (!inputText.trim()) { handleCalendarSelect(null); return; }
+    const parsed = parseDateFlexible(inputText);
+    if (parsed && !isNaN(parsed.getTime())) {
+      setSelectedDate(parsed);
+      setInputText(toDisplay(parsed));
+      onChange(toIso(parsed));
+    } else {
+      setInputText(toDisplay(selectedDate));
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+      <div className="flex items-center gap-1">
+        <input type="text" value={inputText} placeholder="Select date…"
+          onChange={e => setInputText(e.target.value)}
+          onBlur={handleInputBlur}
+          onFocus={() => setOpen(true)}
+          className="flex-1 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-400 dark:hover:border-white/20 transition-colors">
+          <CalendarIcon size={14} />
+        </button>
+      </div>
+      {open && (
+        <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)} width={270} noStyle>
+          <CalendarPopup selectedDate={selectedDate} onSelect={handleCalendarSelect} onClose={() => setOpen(false)} />
+        </FixedPopup>
+      )}
+    </div>
+  );
+}
+
 function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable: Table | null; onClose: () => void; onSaved: (newId: string) => void }) {
   const [brideName, setBrideName] = useState('');
-  const [earliestDateRequested, setEarliestDateRequested] = useState('');
+  const [studio, setStudio] = useState<string | null>(null);
   const [datesRequested, setDatesRequested] = useState('');
   const [timeRequested, setTimeRequested] = useState('');
-  const [weddingDate, setWeddingDate] = useState('');
-  const [studio, setStudio] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [weddingDate, setWeddingDate] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -379,7 +447,10 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, [onClose]);
 
-  const canSave = !!waitlistTable && brideName.trim() !== '' && earliestDateRequested !== '' && !saving;
+  // earliest_date_requested is deliberately absent here — it's a formula
+  // field, populated from Dates Requested by the date_requested_parser AI
+  // field, never staff-entered.
+  const canSave = !!waitlistTable && brideName.trim() !== '' && !!studio && datesRequested.trim() !== '' && timeRequested.trim() !== '' && !saving;
 
   const handleSave = async () => {
     if (!canSave || !waitlistTable) return;
@@ -387,15 +458,14 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
     try {
       const fields: Record<string, unknown> = {
         [WAITLIST_FIELD_IDS.BRIDE_NAME]: brideName.trim(),
-        [WAITLIST_FIELD_IDS.EARLIEST_DATE_REQUESTED]: earliestDateRequested,
+        [WAITLIST_FIELD_IDS.STUDIO]: studio,
+        [WAITLIST_FIELD_IDS.DATES_REQUESTED]: datesRequested.trim(),
+        [WAITLIST_FIELD_IDS.TIME_REQUESTED]: timeRequested.trim(),
         [WAITLIST_FIELD_IDS.RESOLUTION_STATUS]: 'Active',
       };
-      if (datesRequested.trim()) fields[WAITLIST_FIELD_IDS.DATES_REQUESTED] = datesRequested.trim();
-      if (timeRequested.trim()) fields[WAITLIST_FIELD_IDS.TIME_REQUESTED] = timeRequested.trim();
-      if (weddingDate) fields[WAITLIST_FIELD_IDS.WEDDING_DATE] = weddingDate;
-      if (studio) fields[WAITLIST_FIELD_IDS.STUDIO] = studio;
       if (contactEmail.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_EMAIL] = contactEmail.trim();
       if (contactPhone.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_PHONE] = contactPhone.trim();
+      if (weddingDate) fields[WAITLIST_FIELD_IDS.WEDDING_DATE] = weddingDate;
       if (notes.trim()) fields[WAITLIST_FIELD_IDS.NOTES] = notes.trim();
       const newId = await waitlistTable.createRecordAsync(fields);
       onSaved(newId);
@@ -409,64 +479,52 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
   const labelClass = "block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1";
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.38)', zIndex: 9700 }} onClick={onClose}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
+    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} onClick={onClose}>
+      <div className="bg-white dark:bg-[#242220] rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
         style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
         <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-[#34312C] flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">Add to Waitlist</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Bride Name and Earliest Date Requested are required — they're what the Waitlist automations depend on.</p>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">Add Client to Waitlist</h2>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div>
-            <label className={labelClass}>Bride Name <span className="text-red-400">*</span></label>
-            <input type="text" value={brideName} onChange={e => setBrideName(e.target.value)} className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Earliest Date Requested <span className="text-red-400">*</span></label>
-            <input type="date" value={earliestDateRequested} onChange={e => setEarliestDateRequested(e.target.value)} className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Dates Requested (free text — context for the alert email)</label>
-            <input type="text" value={datesRequested} onChange={e => setDatesRequested(e.target.value)} placeholder='e.g. "August 5th to August 18th"' className={inputClass} />
-          </div>
+          {/* Row 1: Bride Name, Studio */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Time Requested</label>
+              <label className={labelClass}>Bride Name <span className="text-red-400">*</span></label>
+              <input type="text" value={brideName} onChange={e => setBrideName(e.target.value)} className={inputClass} />
+            </div>
+            <SingleSelectDropdown label="Studio *" options={WAITLIST_STUDIO_OPTIONS} selected={studio} onChange={setStudio} />
+          </div>
+          {/* Row 2: Dates Requested, Time Requested */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Dates Requested <span className="text-red-400">*</span></label>
+              <input type="text" value={datesRequested} onChange={e => setDatesRequested(e.target.value)} placeholder='e.g. "August 5th to August 18th"' className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Time Requested <span className="text-red-400">*</span></label>
               <input type="text" value={timeRequested} onChange={e => setTimeRequested(e.target.value)} className={inputClass} />
             </div>
-            <div>
-              <label className={labelClass}>Wedding Date</label>
-              <input type="date" value={weddingDate} onChange={e => setWeddingDate(e.target.value)} className={inputClass} />
-            </div>
           </div>
-          <div>
-            <label className={labelClass}>Studio</label>
-            <select value={studio} onChange={e => setStudio(e.target.value)} className={inputClass}>
-              <option value="">—</option>
-              {WAITLIST_STUDIO_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          {/* Row 3: Email, Phone, Wedding Date */}
+          <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className={labelClass}>Contact Email</label>
+              <label className={labelClass}>Email</label>
               <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Contact Phone</label>
+              <label className={labelClass}>Phone</label>
               <input type="tel" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className={inputClass} />
             </div>
+            <FormDateField label="Wedding Date" value={weddingDate} onChange={setWeddingDate} />
           </div>
+          {/* Row 4: Notes */}
           <div>
             <label className={labelClass}>Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={inputClass + ' resize-none'} />
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end gap-3 flex-shrink-0">
-          <button type="button" onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
-            Cancel
-          </button>
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end flex-shrink-0">
           <button type="button" onClick={handleSave} disabled={!canSave}
             className={[
               'px-4 py-2 text-sm rounded-lg bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] font-medium transition-colors disabled:cursor-not-allowed',
@@ -483,47 +541,88 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
 // ─────────────────────────────────────────────────────────────────────────────
 // WAITLIST DETAIL MODAL — view/edit an existing Active Waitlist record.
 // Independent of FullProfileModal by design (see pipeline.README.md) — no
-// stage-stepper, no All-Stages toggle, no past/future read-only logic. Just
-// the fields the creation form collects, editable via the same
-// EditableText/EditableDate/EditableSelect components used elsewhere in this
-// file, pointed at the Waitlist table.
+// stage-stepper, no All-Stages toggle, no past/future read-only logic. Full
+// page, same slide-in shell/layout as FullProfileModal for visual
+// consistency, just with only the fields that apply to a Waitlist entry.
+// Editable via the same EditableText/EditableDate/EditableSelect components
+// used elsewhere in this file, pointed at the Waitlist table.
 // ─────────────────────────────────────────────────────────────────────────────
 function WaitlistDetailModal({ entry, base, waitlistTable, onClose }: { entry: WaitlistEntry; base: Base; waitlistTable: Table | null; onClose: () => void }) {
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const handleClose = useCallback(() => {
+    setVisible(false);
+    setTimeout(onClose, 220);
   }, [onClose]);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [handleClose]);
 
   if (!waitlistTable) return null;
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.38)', zIndex: 9700 }} onClick={onClose}>
-      <div className="bg-white dark:bg-[#242220] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
-        style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
-        <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-[#34312C] flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">{entry.brideName || 'Waitlist entry'}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">On the Waitlist — not yet matched to a DF Client.</p>
+    <div
+      className="bg-gray-50 dark:bg-[#1A1917]"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        overflowY: 'auto',
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'none' : 'translateX(32px)',
+        transition: 'opacity 0.22s ease, transform 0.22s ease',
+      }}
+    >
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1A1917] border-b border-gray-200 dark:border-white/10 px-6 py-3">
+        <div className="max-w-[1200px] mx-auto flex items-center gap-3">
+          <button type="button" onClick={handleClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors">
+            <CaretLeftIcon size={16} />
+            Go back
+          </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <EditableText label="Bride Name" value={entry.brideName} fieldId={WAITLIST_FIELD_IDS.BRIDE_NAME} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
-          <EditableDate label="Earliest Date Requested" value={entry.earliestDateRequested} fieldId={WAITLIST_FIELD_IDS.EARLIEST_DATE_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
-          <EditableText label="Dates Requested" value={entry.datesRequested} fieldId={WAITLIST_FIELD_IDS.DATES_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+      </div>
+      <div className="max-w-[1200px] mx-auto p-6 space-y-4">
+
+        {/* Header card — same shape as FullProfileModal's, minus fields that don't apply */}
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+          <div className="flex items-start gap-6 flex-wrap">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0">
+                <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF]">{entry.brideName || '—'}</div>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-lg font-medium"
+                    style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
+                    {WAITLIST_STAGE_LABEL}
+                  </span>
+                  <span className="text-lg text-gray-500 dark:text-gray-400">{entry.studio || '—'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Fields — same organization as the create form, plus Earliest Date
+            Requested (formula, read-only) at the end of row 2 */}
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
+            <EditableText label="Bride Name" value={entry.brideName} fieldId={WAITLIST_FIELD_IDS.BRIDE_NAME} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableSelect label="Studio" value={entry.studio} options={WAITLIST_STUDIO_OPTIONS} fieldId={WAITLIST_FIELD_IDS.STUDIO} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <EditableText label="Dates Requested" value={entry.datesRequested} fieldId={WAITLIST_FIELD_IDS.DATES_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
             <EditableText label="Time Requested" value={entry.timeRequested} fieldId={WAITLIST_FIELD_IDS.TIME_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            {/* Formula field, populated by the date_requested_parser AI field from Dates Requested — always read-only */}
+            <DetailRow label="Earliest Date Requested" value={entry.earliestDateRequested ? formatFullDate(entry.earliestDateRequested) : '—'} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <EditableText label="Email" value={entry.contactEmail} fieldId={WAITLIST_FIELD_IDS.CONTACT_EMAIL} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableText label="Phone" value={entry.contactPhone} fieldId={WAITLIST_FIELD_IDS.CONTACT_PHONE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
             <EditableDate label="Wedding Date" value={entry.weddingDate} fieldId={WAITLIST_FIELD_IDS.WEDDING_DATE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
           </div>
-          <EditableSelect label="Studio" value={entry.studio} options={WAITLIST_STUDIO_OPTIONS} fieldId={WAITLIST_FIELD_IDS.STUDIO} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
-          <div className="grid grid-cols-2 gap-3">
-            <EditableText label="Contact Email" value={entry.contactEmail} fieldId={WAITLIST_FIELD_IDS.CONTACT_EMAIL} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
-            <EditableText label="Contact Phone" value={entry.contactPhone} fieldId={WAITLIST_FIELD_IDS.CONTACT_PHONE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
-          </div>
           <EditableText label="Notes" value={entry.notes} fieldId={WAITLIST_FIELD_IDS.NOTES} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} multiline />
-        </div>
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end gap-3 flex-shrink-0">
-          <button type="button" onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
-            Close
-          </button>
         </div>
       </div>
     </div>
@@ -570,7 +669,7 @@ const WAITLIST_STAGE_LABEL = 'Waitlist';
 // Not a real Airtable single-select choice color — Waitlist isn't a Stage-field
 // value, so it never appears in stageColorsByStage. Bespoke neutral tone to
 // visually read as "not yet a client."
-const WAITLIST_COLUMN_COLORS = { bg: '#EEECE7', fg: '#6B675F' };
+const WAITLIST_COLUMN_COLORS = { bg: '#BFAEFC', fg: '#3F2E8C' };
 
 const THREE_PL_OPTIONS = ['UPS', 'FedEx', 'DHL', 'INTERJUMBO'];
 
@@ -1201,8 +1300,8 @@ const WaitlistCard = React.memo(function WaitlistCard({ entry, onClick }: { entr
       onClick={onClick}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
       onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
-      className="relative bg-white dark:bg-[#242220] border border-dashed border-gray-300 dark:border-[#34312C] rounded-lg p-3 cursor-pointer transition-colors space-y-1"
-      style={{ borderLeftColor: WAITLIST_COLUMN_COLORS.bg, borderLeftWidth: '3px', borderLeftStyle: 'solid', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+      className="relative bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-3 cursor-pointer transition-colors space-y-1"
+      style={{ borderLeftColor: WAITLIST_COLUMN_COLORS.bg, borderLeftWidth: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
     >
       <div className="text-sm font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{entry.brideName || '—'}</div>
       {entry.earliestDateRequested && (
@@ -3602,7 +3701,7 @@ function Pipeline(): React.ReactElement {
           <button
             type="button"
             onClick={() => setShowWaitlistFormModal(true)}
-            className="bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors"
+            className="flex items-center justify-center w-[110px] rounded-lg px-3 py-1.5 text-sm font-semibold bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors"
           >
             + Waitlist
           </button>
