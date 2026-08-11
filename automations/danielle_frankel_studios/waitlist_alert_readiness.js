@@ -125,9 +125,12 @@ class DateManager {
   }
   static parseDateOnly(str) {
     if (!str) return null;
-    // Airtable date-only fields read back as "YYYY-MM-DD" — parse as local
-    // midnight, not UTC, so day-of-week math below stays correct.
-    const [y, m, d] = str.split('-').map(Number);
+    // record.getCellValue() on a date field always returns an ISO 8601
+    // string (e.g. "2026-08-13" or "2026-08-13T00:00:00.000Z") regardless
+    // of the field's display format (US, European, etc). Take just the
+    // date portion and parse as local midnight, not UTC, so day-of-week
+    // math below stays correct.
+    const [y, m, d] = str.slice(0, 10).split('-').map(Number);
     if (!y || !m || !d) return null;
     return new Date(y, m - 1, d);
   }
@@ -272,7 +275,7 @@ class WaitlistAlertReadinessService {
       notes                   : record.getCellValueAsString(FIELDS_WAITLIST.notes),
       resolutionStatus        : record.getCellValueAsString(FIELDS_WAITLIST.resolution_status),
       hasLinkedClient         : Array.isArray(linkedClients) && linkedClients.length > 0,
-      earliestDateRequested   : DateManager.parseDateOnly(record.getCellValueAsString(FIELDS_WAITLIST.earliest_date_requested)),
+      earliestDateRequested   : DateManager.parseDateOnly(record.getCellValue(FIELDS_WAITLIST.earliest_date_requested)),
       lastAlertSent           : record.getCellValue(FIELDS_WAITLIST.last_alert_sent),
     };
     this.logger.debug(`Extracted → ${JSON.stringify({ ...data, earliestDateRequested: data.earliestDateRequested?.toISOString() ?? null })}`);
