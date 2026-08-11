@@ -6,7 +6,10 @@ TABLE SRC  : Waitlist (tblbm3hKDShEPNpoq)
 TRIGGER    : When record matches conditions — Waitlist
              (resolution_status = Active AND resolved_by_df_clients_record
              is empty AND earliest_date_requested is not empty)
-VERSION    : 1.0.0 — Initial build (JuliMigLui37091, waitlist_definitions.md
+VERSION    : 1.1.0 — Added is_exception guard clause (records Julia has
+             flagged as never becoming a DF Client are permanently excluded
+             from this alert, not just from the Pipeline UI).
+             1.0.0 — Initial build (JuliMigLui37091, waitlist_definitions.md
              section 4.1). Replaces the declarative "isWithin 5 calendar
              days" filter (Airtable's automation filters can't compute
              business days, and can't express a rolling "more than 24h
@@ -27,14 +30,16 @@ GUARD CLAUSE (spec 4.1 + business realities of the free-text sheet)
   2. The record must actually exist when read back.
   3. resolution_status must be "Active" — otherwise no-op (already handled).
   4. resolved_by_df_clients_record must be empty — otherwise no-op (matched).
-  5. earliest_date_requested must be set — if blank, no-op (this is a
+  5. is_exception must not be checked — otherwise no-op (Julia has flagged
+     this lead as never becoming a DF Client; permanently excluded).
+  6. earliest_date_requested must be set — if blank, no-op (this is a
      data-entry gap staff needs to fill in; the record simply never alerts
      until it is set — see spec's free-text dates_requested limitation).
-  6. earliest_date_requested must fall within the next 5 BUSINESS days
+  7. earliest_date_requested must fall within the next 5 BUSINESS days
      (Mon-Fri), and must not already be in the past.
-  7. Anti-spam — if last_alert_sent is set and less than 24 hours have
+  8. Anti-spam — if last_alert_sent is set and less than 24 hours have
      elapsed, no-op (do not re-alert within the same day).
-  None of steps 3-7 failing is an error — they're normal no-op outcomes.
+  None of steps 3-8 failing is an error — they're normal no-op outcomes.
   shouldSend = false covers all of them; check log_summary for which one.
 
 ERROR HANDLING
@@ -73,6 +78,7 @@ const FIELDS_WAITLIST = {
   notes                           : 'fldsn4PKhpwnOx5gu',
   last_alert_sent                 : 'flddV0or0cD3UHHbR', // dateTime
   earliest_date_requested         : 'fld5s87GbT2G3C60e', // date (real, staff-entered)
+  is_exception                    : 'fldZ2AGU7kvmizrji', // checkbox — Julia-flagged, never becoming a DF Client
 };
 
 const CONFIG = {
@@ -214,6 +220,10 @@ class EligibilityResolver {
       this.logger.step(3, 'Not eligible → already linked to a DF Clients record');
       return { eligible: false, reasonBlocked: 'already_matched' };
     }
+    if (data.isException) {
+      this.logger.step(3, 'Not eligible → flagged is_exception (Julia marked this as never becoming a DF Client)');
+      return { eligible: false, reasonBlocked: 'exception' };
+    }
     if (!data.earliestDateRequested) {
       this.logger.step(3, 'Not eligible → earliest_date_requested is blank (needs staff data entry)');
       return { eligible: false, reasonBlocked: 'missing_date' };
@@ -300,6 +310,7 @@ class WaitlistAlertReadinessService {
       notes                   : record.getCellValueAsString(FIELDS_WAITLIST.notes),
       resolutionStatus        : record.getCellValueAsString(FIELDS_WAITLIST.resolution_status),
       hasLinkedClient         : Array.isArray(linkedClients) && linkedClients.length > 0,
+      isException             : record.getCellValue(FIELDS_WAITLIST.is_exception) === true,
       earliestDateRequested   : DateManager.parseDateOnly(record.getCellValue(FIELDS_WAITLIST.earliest_date_requested)),
       lastAlertSent           : record.getCellValue(FIELDS_WAITLIST.last_alert_sent),
     };
