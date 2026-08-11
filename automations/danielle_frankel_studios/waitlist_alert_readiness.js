@@ -81,6 +81,11 @@ const CONFIG = {
   BUSINESS_DAYS_WINDOW  : 5,
   ANTI_SPAM_HOURS       : 24,
   JULIA_EMAIL           : 'it@daniellefrankelstudios.com',
+  // Airtable's script runtime executes in UTC, not the studio's local time.
+  // "today" must be computed in the studio's actual timezone or the
+  // business-day count goes off by one whenever the script runs after
+  // ~8pm ET (once UTC has already rolled to the next calendar day).
+  BUSINESS_TIME_ZONE    : 'America/New_York',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,9 +124,19 @@ class Logger {
 
 class DateManager {
   static today() {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    // Get the current date *as observed in the studio's timezone*, not the
+    // script runtime's (Airtable scripts execute in UTC). Using
+    // Intl.DateTimeFormat to read the y/m/d in CONFIG.BUSINESS_TIME_ZONE,
+    // then building a local-midnight Date from those parts, keeps this
+    // directly comparable to parseDateOnly()'s output.
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: CONFIG.BUSINESS_TIME_ZONE,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date());
+    const y = Number(parts.find(p => p.type === 'year').value);
+    const m = Number(parts.find(p => p.type === 'month').value);
+    const d = Number(parts.find(p => p.type === 'day').value);
+    return new Date(y, m - 1, d);
   }
   static parseDateOnly(str) {
     if (!str) return null;
