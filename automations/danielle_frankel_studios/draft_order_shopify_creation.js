@@ -128,6 +128,9 @@ const CONFIG = {
   LOG_LEVEL         : 'B', // A=minimal | B=audit (default) | C=debug
   COBALT_ENDPOINT   : 'https://df-airtable-crm-sync-staging-deeae361b95c.herokuapp.com/draft-orders/create',
   STUDIO_ADMIN_EMAIL : 'julia.shao.collins@daniellefrankelstudio.com',
+  // Same convention as waitlist_alert_readiness.js's BUSINESS_TIME_ZONE —
+  // Airtable's script runtime executes in UTC, not the studio's local time.
+  STUDIO_TIME_ZONE : 'America/New_York',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +170,31 @@ class Logger {
 
 class DateManager {
   static nowIso() { return new Date().toISOString(); }
+
+  // Human-friendly timestamp for the failure email, e.g. "July 4th, 2026
+  // 10:00 am" — studio timezone (matches CONFIG.STUDIO_TIME_ZONE, same
+  // convention as waitlist_alert_readiness.js's BUSINESS_TIME_ZONE), not UTC
+  // (Airtable's script runtime executes in UTC).
+  static formatFriendly(date, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      month: 'long', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    }).formatToParts(date);
+    const get = (type) => parts.find(p => p.type === type)?.value ?? '';
+    const day = Number(get('day'));
+    return `${get('month')} ${day}${DateManager._ordinalSuffix(day)}, ${get('year')} ${get('hour')}:${get('minute')} ${get('dayPeriod').toLowerCase()}`;
+  }
+
+  static _ordinalSuffix(day) {
+    if (day % 100 >= 11 && day % 100 <= 13) return 'th';
+    switch (day % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,7 +378,7 @@ class MessageBuilder {
       `A Shopify draft order creation attempt failed and needs review.\n\n` +
       `- **Draft order:** ${draftId}\n` +
       `- **Reason:** ${reason}\n` +
-      `- **Time:** ${DateManager.nowIso()}`;
+      `- **Time:** ${DateManager.formatFriendly(new Date(), CONFIG.STUDIO_TIME_ZONE)}`;
     return { subject, message };
   }
 }
