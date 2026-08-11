@@ -221,7 +221,7 @@ class EligibilityResolver {
     }
 
     this.logger.step(3, `Eligible → ${businessDaysOut} business day(s) out, last alert ${hoursSinceLastAlert === Infinity ? 'never' : hoursSinceLastAlert.toFixed(1) + 'h ago'}`);
-    return { eligible: true, reasonBlocked: null };
+    return { eligible: true, reasonBlocked: null, businessDaysOut };
   }
 }
 
@@ -231,16 +231,26 @@ class EligibilityResolver {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MessageBuilder {
-  static build(data) {
+  static build(data, businessDaysOut) {
     const subject = `[Waitlist Alert] ${data.brideName} — Requested dates within 5 days, unresolved`;
+
+    const dayWord = businessDaysOut === 1 ? 'business day' : 'business days';
+    const intro =
+      `This Waitlist request is still unresolved and its earliest requested ` +
+      `date is only **${businessDaysOut} ${dayWord}** away. It hasn't been matched to ` +
+      `a DF Clients record yet — please review and follow up with the bride ` +
+      `directly if needed.`;
+
     const message =
-      `**Bride:** ${data.brideName}\n` +
-      `**Dates requested:** ${data.datesRequested || '—'}\n` +
-      `**Time requested:** ${data.timeRequested || '—'}\n` +
-      `**Wedding date:** ${data.weddingDate || '—'}\n` +
-      `**Email:** ${data.contactEmail || '—'}\n` +
-      `**Phone:** ${data.contactPhone || '—'}\n` +
-      `**Notes:** ${data.notes || '—'}`;
+      `${intro}\n\n` +
+      `- **Bride:** ${data.brideName}\n` +
+      `- **Dates requested:** ${data.datesRequested || '—'}\n` +
+      `- **Time requested:** ${data.timeRequested || '—'}\n` +
+      `- **Wedding date:** ${data.weddingDate || '—'}\n` +
+      `- **Email:** ${data.contactEmail || '—'}\n` +
+      `- **Phone:** ${data.contactPhone || '—'}\n` +
+      `- **Notes:** ${data.notes || '—'}`;
+
     return { subject, message };
   }
 }
@@ -281,7 +291,7 @@ class WaitlistAlertReadinessService {
     this.logger.debug(`Extracted → ${JSON.stringify({ ...data, earliestDateRequested: data.earliestDateRequested?.toISOString() ?? null })}`);
 
     // Step 3 — Resolve eligibility (may resolve to eligible: false — not an error)
-    const { eligible, reasonBlocked } = this.resolver.resolve(data);
+    const { eligible, reasonBlocked, businessDaysOut } = this.resolver.resolve(data);
 
     if (!eligible) {
       this.logger.minimal(`SUCCESS → no-op, not eligible (${reasonBlocked})`);
@@ -296,7 +306,7 @@ class WaitlistAlertReadinessService {
     await this.waitlistRepo.stampAlertSent(recordId);
 
     // Step 5 — Build the email content
-    const { subject, message } = MessageBuilder.build(data);
+    const { subject, message } = MessageBuilder.build(data, businessDaysOut);
 
     this.logger.minimal(`SUCCESS → alert ready for "${data.brideName}"`);
 
