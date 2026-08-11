@@ -560,8 +560,14 @@ const cfg = input.config();
 const draftOrderRecordId = cfg.draftOrderRecordId;
 // Email-content simulation — see SIMULATION MODE in the header comment.
 // Both default to false/off; a real trigger run never sets these.
-const simulateSuccessEmail = cfg.simulateSuccessEmail === true;
-const simulateFailureEmail = cfg.simulateFailureEmail === true;
+// Airtable's "Run a Script" Variables panel stores a manually-typed value as
+// the literal string "true"/"false", not a real boolean — input.config()
+// hands it back exactly as typed. A strict `=== true` check silently misses
+// that (same pitfall as the is_prod bug elsewhere in this project), so
+// accept the string form too.
+const isTruthyInput = (v) => v === true || v === 'true';
+const simulateSuccessEmail = isTruthyInput(cfg.simulateSuccessEmail);
+const simulateFailureEmail = isTruthyInput(cfg.simulateFailureEmail);
 // COBALT_API_KEY lives in Airtable's Secrets panel (input.secret()), not the
 // Variables panel (input.config()) — keeps the raw key value out of the
 // automation's Variables UI and run logs, unlike a plain input variable.
