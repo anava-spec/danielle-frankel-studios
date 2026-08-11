@@ -41,7 +41,8 @@ GUARD CLAUSE (reconfirmed here even though the interface already checked
 
 COBALT CALL
   POST https://df-airtable-crm-sync-staging-deeae361b95c.herokuapp.com/draft-orders/create
-  Header: x-api-key: <COBALT_API_KEY from input.config() secret>
+  Header: x-api-key: <COBALT_API_KEY, read via input.secret() — Airtable's
+  Secrets panel, not input.config()>
   Body:   { "draftOrderId": "<draftOrderRecordId>" }
   Response codes handled: 200 success, 400 (already locked in Cobalt),
   404 (not found in Cobalt), 422 (product/variant unresolvable, including
@@ -466,7 +467,10 @@ class DraftOrderShopifyCreationService {
 
 const cfg = input.config();
 const draftOrderRecordId = cfg.draftOrderRecordId;
-const cobaltApiKey = cfg.COBALT_API_KEY;
+// COBALT_API_KEY lives in Airtable's Secrets panel (input.secret()), not the
+// Variables panel (input.config()) — keeps the raw key value out of the
+// automation's Variables UI and run logs, unlike a plain input variable.
+const cobaltApiKey = input.secret('COBALT_API_KEY');
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
@@ -492,7 +496,7 @@ try {
     'Guard clause: missing required input "draftOrderRecordId". Map the trigger\'s record ID to this input in the Run Script action.'
   );
   if (!cobaltApiKey) throw new Error(
-    'Guard clause: missing required input "COBALT_API_KEY". Add it as a secret in this automation\'s Run Script config.'
+    'Guard clause: missing required secret "COBALT_API_KEY". Add it in this automation\'s Secrets panel (not Variables) and give this script access to it.'
   );
 
   logger.audit(`Automation started → draftOrderRecordId: ${draftOrderRecordId}`);
