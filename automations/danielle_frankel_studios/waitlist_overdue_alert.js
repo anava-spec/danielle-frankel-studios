@@ -303,7 +303,11 @@ const cfg = input.config();
 const waitlistRecordId = cfg.waitlistRecordId;
 // Set literally true/false per environment when mapping this Run Script
 // step's inputs — sandbox's copy gets false, production's copy gets true.
-const isProd = cfg.is_prod === true;
+// Tolerant to both an actual boolean AND a text-typed "true"/"false" input
+// (Airtable's Run Script input mapper often sends text-input values as
+// strings even when the intent was boolean — a bare `=== true` silently
+// stays false in that case, which is why prod was rendering the sandbox link).
+const isProd = cfg.is_prod === true || String(cfg.is_prod).trim().toLowerCase() === 'true';
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
