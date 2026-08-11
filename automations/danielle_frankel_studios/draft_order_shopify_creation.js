@@ -23,6 +23,17 @@ OBJECTIVE
   sync_error_message and hands off a failure alert for the studio admin
   mailbox via a second downstream Send Email action.
 
+SIMULATION MODE (email-content testing only, 2026-08-11)
+  Two optional boolean inputs — simulateSuccessEmail / simulateFailureEmail —
+  let you generate one or both email outputs WITHOUT calling Cobalt or
+  writing anything to Airtable, so you can eyeball the email text without a
+  real draft order or a valid COBALT_API_KEY. If draftOrderRecordId is also
+  provided, the real draft_id/initiated_by_email are read for realism; if
+  omitted (or the lookup fails), placeholder values are used instead. Either
+  flag can be set alone or both together. When either is true, the normal
+  guard clause / Cobalt call / Airtable writes are skipped entirely — this
+  path never locks a record or hits the real endpoint.
+
 GUARD CLAUSE (reconfirmed here even though the interface already checked
   before setting shopify_draft_order_status — this script is the source of
   truth, the interface check is only for UX)
@@ -461,16 +472,102 @@ class DraftOrderShopifyCreationService {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SIMULATION SERVICE
+// Builds the same shouldSendConfirmation/shouldSendFailureAlert output shape
+// as a real run, but without ever calling Cobalt or writing to Airtable —
+// used only to eyeball email content. See header comment for the two
+// gating inputs (simulateSuccessEmail / simulateFailureEmail).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SimulationService {
+  constructor(draftOrderRepo, logger) {
+    this.draftOrderRepo = draftOrderRepo;
+    this.logger = logger;
+  }
+
+  // Best-effort: pull the real draft_id/initiated_by_email if a valid
+  // draftOrderRecordId was also provided, so the simulated email reads
+  // realistically. Falls back to placeholders if it's missing or can't be
+  // read — simulation mode should never fail just because of that.
+  async _loadContext(draftOrderRecordId) {
+    if (!draftOrderRecordId) {
+      return { draftId: 'TEST-DRAFT', initiatedByEmail: 'simulation-test@example.com' };
+    }
+    try {
+      const record = await this.draftOrderRepo.getById(draftOrderRecordId);
+      const draftId = record.getCellValueAsString(FIELDS_DRAFT_ORDER.draft_id) || draftOrderRecordId;
+      const initiatedByEmail = record.getCellValueAsString(FIELDS_DRAFT_ORDER.initiated_by_email) || 'simulation-test@example.com';
+      return { draftId, initiatedByEmail };
+    } catch (lookupErr) {
+      this.logger.audit(`Simulation: could not load draftOrderRecordId (${lookupErr.message}) — using placeholder values.`);
+      return { draftId: 'TEST-DRAFT', initiatedByEmail: 'simulation-test@example.com' };
+    }
+  }
+
+  async run(draftOrderRecordId, simulateSuccessEmail, simulateFailureEmail) {
+    this.logger.audit('Simulation mode → skipping guard clause, Cobalt call, and all Airtable writes.');
+    const { draftId, initiatedByEmail } = await this._loadContext(draftOrderRecordId);
+
+    const result = {
+      status: 'SUCCESS',
+      outcome: null,
+      shopifyDraftOrderId: null,
+      draftOrderName: null,
+      invoiceUrl: null,
+      shouldSendConfirmation: false,
+      confirmationToEmail: null,
+      confirmationSubject: null,
+      confirmationMessage: null,
+      shouldSendFailureAlert: false,
+      failureToEmail: null,
+      failureSubject: null,
+      failureMessage: null,
+      error_message: null,
+    };
+
+    if (simulateSuccessEmail) {
+      const { subject, message } = MessageBuilder.confirmation(
+        draftId, 'TEST-1001', 'https://example.myshopify.com/admin/draft_orders/999999/invoice'
+      );
+      result.shouldSendConfirmation = true;
+      result.confirmationToEmail = initiatedByEmail;
+      result.confirmationSubject = subject;
+      result.confirmationMessage = message;
+      this.logger.minimal('Simulation → confirmation email output generated.');
+    }
+
+    if (simulateFailureEmail) {
+      const { subject, message } = MessageBuilder.failureAlert(
+        draftId, 'Simulated failure — for email content verification only, not a real error.'
+      );
+      result.shouldSendFailureAlert = true;
+      result.failureToEmail = CONFIG.STUDIO_ADMIN_EMAIL;
+      result.failureSubject = subject;
+      result.failureMessage = message;
+      this.logger.minimal('Simulation → failure alert email output generated.');
+    }
+
+    return result;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN EXECUTION BLOCK
 // input.config() called ONCE — Airtable only allows one call per script.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const cfg = input.config();
 const draftOrderRecordId = cfg.draftOrderRecordId;
+// Email-content simulation — see SIMULATION MODE in the header comment.
+// Both default to false/off; a real trigger run never sets these.
+const simulateSuccessEmail = cfg.simulateSuccessEmail === true;
+const simulateFailureEmail = cfg.simulateFailureEmail === true;
 // COBALT_API_KEY lives in Airtable's Secrets panel (input.secret()), not the
 // Variables panel (input.config()) — keeps the raw key value out of the
 // automation's Variables UI and run logs, unlike a plain input variable.
-const cobaltApiKey = input.secret('COBALT_API_KEY');
+// Not read at all in simulation mode, so it's fine to leave unset while
+// testing email content.
+const cobaltApiKey = (simulateSuccessEmail || simulateFailureEmail) ? null : input.secret('COBALT_API_KEY');
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
@@ -492,33 +589,40 @@ let result = {
 };
 
 try {
-  if (!draftOrderRecordId) throw new Error(
-    'Guard clause: missing required input "draftOrderRecordId". Map the trigger\'s record ID to this input in the Run Script action.'
-  );
-  if (!cobaltApiKey) throw new Error(
-    'Guard clause: missing required secret "COBALT_API_KEY". Add it in this automation\'s Secrets panel (not Variables) and give this script access to it.'
-  );
+  if (simulateSuccessEmail || simulateFailureEmail) {
+    logger.audit(`Automation started → SIMULATION MODE (simulateSuccessEmail: ${simulateSuccessEmail}, simulateFailureEmail: ${simulateFailureEmail})`);
+    const simulationService = new SimulationService(new DraftOrderRepository(logger), logger);
+    result = await simulationService.run(draftOrderRecordId, simulateSuccessEmail, simulateFailureEmail);
+  } else {
+    if (!draftOrderRecordId) throw new Error(
+      'Guard clause: missing required input "draftOrderRecordId". Map the trigger\'s record ID to this input in the Run Script action.'
+    );
+    if (!cobaltApiKey) throw new Error(
+      'Guard clause: missing required secret "COBALT_API_KEY". Add it in this automation\'s Secrets panel (not Variables) and give this script access to it.'
+    );
 
-  logger.audit(`Automation started → draftOrderRecordId: ${draftOrderRecordId}`);
+    logger.audit(`Automation started → draftOrderRecordId: ${draftOrderRecordId}`);
 
-  const service = new DraftOrderShopifyCreationService(
-    new DraftOrderRepository(logger),
-    new DFClientsRepository(logger),
-    new EligibilityValidator(logger),
-    new CobaltService(cobaltApiKey, logger),
-    logger
-  );
+    const service = new DraftOrderShopifyCreationService(
+      new DraftOrderRepository(logger),
+      new DFClientsRepository(logger),
+      new EligibilityValidator(logger),
+      new CobaltService(cobaltApiKey, logger),
+      logger
+    );
 
-  result = await service.run(draftOrderRecordId);
+    result = await service.run(draftOrderRecordId);
+  }
 
 } catch (err) {
   logger.error(`Automation failed → ${err.message}`);
   result.error_message = err.message;
 
   // Best-effort: try to leave a trail on the record even for a true script
-  // error, but don't let a failure here mask the original error.
+  // error, but don't let a failure here mask the original error. Never
+  // writes in simulation mode — that path must never touch Airtable.
   try {
-    if (draftOrderRecordId) {
+    if (draftOrderRecordId && !simulateSuccessEmail && !simulateFailureEmail) {
       const draftOrdersTable = base.getTable(TABLE_IDS.DRAFT_ORDERS);
       await draftOrdersTable.updateRecordAsync(draftOrderRecordId, {
         [FIELDS_DRAFT_ORDER.shopify_draft_order_status] : { name: STATUS.FAILED },
