@@ -1,52 +1,47 @@
 /*
 ================================================================================
-AUTOMATION : Waitlist Alert Readiness — Unresolved Within 5 Business Days
+AUTOMATION : Waitlist Overdue Alert — Notify Julia: Overdue & Unmatched
 BASE       : appMmEE4zyHMGhkkd (sandbox — mirror to Production when ready)
 TABLE SRC  : Waitlist (tblbm3hKDShEPNpoq)
 TRIGGER    : When record matches conditions — Waitlist
              (resolution_status = Active AND resolved_by_df_clients_record
-             is empty AND earliest_date_requested is not empty)
-VERSION    : 1.0.0 — Initial build (JuliMigLui37091, waitlist_definitions.md
-             section 4.1). Replaces the declarative "isWithin 5 calendar
-             days" filter (Airtable's automation filters can't compute
-             business days, and can't express a rolling "more than 24h
-             since last alert" anti-spam guard) — this script implements the
-             spec's real rule and hands off to a native Send Email action.
+             is empty AND earliest_date_requested <= today AND
+             overdue_notified is unchecked)
+VERSION    : 1.0.0 — Initial build. Companion to waitlist_alert_readiness.js
+             (the 5-business-day heads-up alert) — this one is the more
+             urgent tier: the requested date has already passed and no one
+             has acted. Feeds the "Waitlist Follow-Up" native Airtable page,
+             where staff either link the matching DF Client or set
+             resolution_status to "Exception" (never becoming a DF Client —
+             a third choice on the same select field, not a separate flag).
 
 OBJECTIVE
-  Decide whether THIS Waitlist record is due for Julia's "unresolved within
-  5 business days" review-alert email right now, and if so, stamp
-  last_alert_sent and hand a ready-made subject/message to the downstream
-  native Send Email action. This script never sends the email itself — it
-  only decides + writes the anti-spam stamp, so Airtable's own Send Email
-  node (wired to output.shouldSend / output.subject / output.message) stays
-  the single place that actually dispatches mail.
+  Decide whether THIS Waitlist record is overdue and unnotified right now,
+  and if so, stamp overdue_notified and hand a ready-made subject/message to
+  the downstream native Send Email action. Mirrors the anti-spam-before-send
+  pattern in waitlist_alert_readiness.js: the stamp is written BEFORE
+  returning shouldSend=true, so a slow downstream node can never cause a
+  duplicate send.
 
-GUARD CLAUSE (spec 4.1 + business realities of the free-text sheet)
+GUARD CLAUSE
   1. waitlistRecordId must be present in input.config().
   2. The record must actually exist when read back.
   3. resolution_status must be "Active" — otherwise no-op. This alone
      excludes both "Resolved" (matched) and "Exception" (Julia flagged it as
-     never becoming a DF Client — a third choice on this same select field).
-  4. resolved_by_df_clients_record must be empty — otherwise no-op (matched).
-  5. earliest_date_requested must be set — if blank, no-op (this is a
-     data-entry gap staff needs to fill in; the record simply never alerts
-     until it is set — see spec's free-text dates_requested limitation).
-  6. earliest_date_requested must fall within the next 5 BUSINESS days
-     (Mon-Fri), and must not already be in the past.
-  7. Anti-spam — if last_alert_sent is set and less than 24 hours have
-     elapsed, no-op (do not re-alert within the same day).
-  None of steps 3-7 failing is an error — they're normal no-op outcomes.
-  shouldSend = false covers all of them; check log_summary for which one.
-
-ERROR HANDLING
-  Errors thrown with descriptive messages. Airtable's native run-failure
-  notification alerts the automation owner.
+     never becoming a DF Client) records, since both are different select
+     values than "Active".
+  4. resolved_by_df_clients_record must be empty — otherwise no-op (matched;
+     redundant with #3 in practice, kept as a defensive check).
+  5. earliest_date_requested must be set — if blank, no-op (data-entry gap).
+  6. earliest_date_requested must be today or in the past — otherwise no-op
+     (not yet overdue; the 5-business-day alert covers the heads-up case).
+  7. overdue_notified must be unchecked — otherwise no-op (already alerted;
+     this fires once per record, not on a rolling anti-spam window, since
+     the Follow-Up page is meant to be worked as a backlog, not re-pinged).
 
 OUTPUTS (output.set)
   status         : "SUCCESS" | "ERROR"
   shouldSend     : true | false — gates the downstream Send Email action
-  toEmail        : "it@daniellefrankelstudios.com" (blank if shouldSend false)
   subject        : email subject line (blank if shouldSend false)
   message        : email body, Markdown (blank if shouldSend false)
   error_message  : null on success
@@ -67,26 +62,21 @@ const FIELDS_WAITLIST = {
   bride_name                   : 'fldI90ApFwjte8HBv',
   dates_requested               : 'fldDjo0WRAKvHdgR4',
   time_requested                 : 'fldLuKMVvuzadx630',
-  wedding_date                    : 'fldUS6OAwOhngc71o',
-  resolution_status               : 'fldiEQbjks80y5xTi', // singleSelect — Active / Resolved
-  resolved_by_df_clients_record   : 'fldXI88jaK0MepaLn', // multipleRecordLinks
-  contact_email                   : 'fld2cI0r58UEiinvC',
-  contact_phone                   : 'fldrMkTOA2Y6DT8mC',
-  notes                           : 'fldsn4PKhpwnOx5gu',
-  last_alert_sent                 : 'flddV0or0cD3UHHbR', // dateTime
-  earliest_date_requested         : 'fld5s87GbT2G3C60e', // date (real, staff-entered)
+  earliest_date_requested          : 'fld5s87GbT2G3C60e', // date
+  resolution_status                 : 'fldiEQbjks80y5xTi', // singleSelect — Active / Resolved / Exception
+  resolved_by_df_clients_record      : 'fldXI88jaK0MepaLn', // multipleRecordLinks
+  contact_email                       : 'fld2cI0r58UEiinvC',
+  contact_phone                        : 'fldrMkTOA2Y6DT8mC',
+  notes                                 : 'fldsn4PKhpwnOx5gu',
+  overdue_notified                       : 'fldzl6UCfITyAGeRg', // checkbox
 };
 
 const CONFIG = {
   LOG_LEVEL             : 'B', // A=minimal | B=audit (default) | C=debug
   ACTIVE_STATUS_NAME    : 'Active',
-  BUSINESS_DAYS_WINDOW  : 5,
-  ANTI_SPAM_HOURS       : 24,
-  JULIA_EMAIL           : 'it@daniellefrankelstudios.com',
-  // Airtable's script runtime executes in UTC, not the studio's local time.
-  // "today" must be computed in the studio's actual timezone or the
-  // business-day count goes off by one whenever the script runs after
-  // ~8pm ET (once UTC has already rolled to the next calendar day).
+  // Script runtime executes in UTC — "today" must be computed in the
+  // studio's actual timezone or an overdue record near midnight ET could be
+  // evaluated a day off. Same fix as waitlist_alert_readiness.js.
   BUSINESS_TIME_ZONE    : 'America/New_York',
 };
 
@@ -121,16 +111,10 @@ class Logger {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATE MANAGER CLASS
-// Pure date logic. No Airtable calls, no side effects.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DateManager {
   static today() {
-    // Get the current date *as observed in the studio's timezone*, not the
-    // script runtime's (Airtable scripts execute in UTC). Using
-    // Intl.DateTimeFormat to read the y/m/d in CONFIG.BUSINESS_TIME_ZONE,
-    // then building a local-midnight Date from those parts, keeps this
-    // directly comparable to parseDateOnly()'s output.
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: CONFIG.BUSINESS_TIME_ZONE,
       year: 'numeric', month: '2-digit', day: '2-digit',
@@ -143,34 +127,11 @@ class DateManager {
   static parseDateOnly(str) {
     if (!str) return null;
     // record.getCellValue() on a date field always returns an ISO 8601
-    // string (e.g. "2026-08-13" or "2026-08-13T00:00:00.000Z") regardless
-    // of the field's display format (US, European, etc). Take just the
-    // date portion and parse as local midnight, not UTC, so day-of-week
-    // math below stays correct.
+    // string regardless of the field's display format — take just the date
+    // portion and parse as local midnight, not UTC.
     const [y, m, d] = str.slice(0, 10).split('-').map(Number);
     if (!y || !m || !d) return null;
     return new Date(y, m - 1, d);
-  }
-  // Counts business days (Mon-Fri) strictly between "today" and "target",
-  // inclusive of target, exclusive of today. Returns null if target is in
-  // the past (before today).
-  static businessDaysFromToday(target) {
-    const today = DateManager.today();
-    if (target < today) return null;
-    let count = 0;
-    const cursor = new Date(today);
-    while (cursor < target) {
-      cursor.setDate(cursor.getDate() + 1);
-      const dow = cursor.getDay(); // 0=Sun, 6=Sat
-      if (dow !== 0 && dow !== 6) count++;
-    }
-    return count;
-  }
-  static hoursSince(isoString) {
-    if (!isoString) return Infinity;
-    const then = new Date(isoString).getTime();
-    if (Number.isNaN(then)) return Infinity;
-    return (Date.now() - then) / (1000 * 60 * 60);
   }
 }
 
@@ -190,18 +151,16 @@ class WaitlistRepository {
     this.logger.audit(`Record loaded → ${recordId}`);
     return record;
   }
-  async stampAlertSent(recordId) {
-    this.logger.step(4, `Stamping last_alert_sent → ${recordId}`);
+  async stampNotified(recordId) {
+    this.logger.step(4, `Stamping overdue_notified → ${recordId}`);
     await this.table.updateRecordAsync(recordId, {
-      [FIELDS_WAITLIST.last_alert_sent]: new Date().toISOString(),
+      [FIELDS_WAITLIST.overdue_notified]: true,
     });
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ELIGIBILITY RESOLVER CLASS
-// Pure business logic — decides whether this record is due for an alert
-// right now. No Airtable calls.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class EligibilityResolver {
@@ -220,50 +179,39 @@ class EligibilityResolver {
       this.logger.step(3, 'Not eligible → earliest_date_requested is blank (needs staff data entry)');
       return { eligible: false, reasonBlocked: 'missing_date' };
     }
-
-    const businessDaysOut = DateManager.businessDaysFromToday(data.earliestDateRequested);
-    if (businessDaysOut === null) {
-      this.logger.step(3, 'Not eligible → earliest_date_requested is already in the past');
-      return { eligible: false, reasonBlocked: 'date_in_past' };
+    if (data.earliestDateRequested > DateManager.today()) {
+      this.logger.step(3, 'Not eligible → earliest_date_requested is still in the future (not yet overdue)');
+      return { eligible: false, reasonBlocked: 'not_yet_overdue' };
     }
-    if (businessDaysOut > CONFIG.BUSINESS_DAYS_WINDOW) {
-      this.logger.step(3, `Not eligible → ${businessDaysOut} business days out, outside the ${CONFIG.BUSINESS_DAYS_WINDOW}-day window`);
-      return { eligible: false, reasonBlocked: 'outside_window' };
+    if (data.overdueNotified) {
+      this.logger.step(3, 'Not eligible → overdue_notified already checked (already alerted once)');
+      return { eligible: false, reasonBlocked: 'already_notified' };
     }
 
-    const hoursSinceLastAlert = DateManager.hoursSince(data.lastAlertSent);
-    if (hoursSinceLastAlert < CONFIG.ANTI_SPAM_HOURS) {
-      this.logger.step(3, `Not eligible → alerted ${hoursSinceLastAlert.toFixed(1)}h ago, inside the ${CONFIG.ANTI_SPAM_HOURS}h anti-spam window`);
-      return { eligible: false, reasonBlocked: 'anti_spam' };
-    }
-
-    this.logger.step(3, `Eligible → ${businessDaysOut} business day(s) out, last alert ${hoursSinceLastAlert === Infinity ? 'never' : hoursSinceLastAlert.toFixed(1) + 'h ago'}`);
-    return { eligible: true, reasonBlocked: null, businessDaysOut };
+    this.logger.step(3, 'Eligible → overdue and unnotified');
+    return { eligible: true, reasonBlocked: null };
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MESSAGE BUILDER CLASS
-// Composes the email Julia receives. No logic — strings only.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MessageBuilder {
-  static build(data, businessDaysOut) {
-    const subject = `[Waitlist Alert] ${data.brideName} — Requested dates within 5 days, unresolved`;
+  static build(data) {
+    const subject = `[Waitlist Overdue] ${data.brideName} — earliest date has passed, unmatched`;
 
-    const dayWord = businessDaysOut === 1 ? 'business day' : 'business days';
     const intro =
-      `This Waitlist request is still unresolved and its earliest requested ` +
-      `date is only **${businessDaysOut} ${dayWord}** away. It hasn't been matched to ` +
-      `a DF Clients record yet — please review and follow up with the bride ` +
-      `directly if needed.`;
+      `This Waitlist request's earliest requested date has already passed ` +
+      `and it still hasn't been matched to a DF Client. Please review it on ` +
+      `the Waitlist Follow-Up page — link the client if they exist, or set ` +
+      `the status to Exception if this lead will never become a DF Client.`;
 
     const message =
       `${intro}\n\n` +
       `- **Bride:** ${data.brideName}\n` +
       `- **Dates requested:** ${data.datesRequested || '—'}\n` +
       `- **Time requested:** ${data.timeRequested || '—'}\n` +
-      `- **Wedding date:** ${data.weddingDate || '—'}\n` +
       `- **Email:** ${data.contactEmail || '—'}\n` +
       `- **Phone:** ${data.contactPhone || '—'}\n` +
       `- **Notes:** ${data.notes || '—'}`;
@@ -276,7 +224,7 @@ class MessageBuilder {
 // SERVICE CLASS — Orchestrates all steps
 // ─────────────────────────────────────────────────────────────────────────────
 
-class WaitlistAlertReadinessService {
+class WaitlistOverdueAlertService {
   constructor(waitlistRepo, resolver, logger) {
     this.waitlistRepo = waitlistRepo;
     this.resolver      = resolver;
@@ -286,57 +234,43 @@ class WaitlistAlertReadinessService {
   async run(recordId) {
     this.logger.audit(`Service started → Waitlist record: ${recordId}`);
 
-    // Step 1 — Load record
     const record = await this.waitlistRepo.getById(recordId);
 
-    // Step 2 — Extract plain data
     this.logger.step(2, 'Extracting plain values from record');
     const linkedClients = record.getCellValue(FIELDS_WAITLIST.resolved_by_df_clients_record);
     const data = {
       brideName             : record.getCellValueAsString(FIELDS_WAITLIST.bride_name),
       datesRequested         : record.getCellValueAsString(FIELDS_WAITLIST.dates_requested),
       timeRequested           : record.getCellValueAsString(FIELDS_WAITLIST.time_requested),
-      weddingDate             : record.getCellValueAsString(FIELDS_WAITLIST.wedding_date),
       contactEmail            : record.getCellValueAsString(FIELDS_WAITLIST.contact_email),
-      contactPhone            : record.getCellValueAsString(FIELDS_WAITLIST.contact_phone),
-      notes                   : record.getCellValueAsString(FIELDS_WAITLIST.notes),
-      resolutionStatus        : record.getCellValueAsString(FIELDS_WAITLIST.resolution_status),
-      hasLinkedClient         : Array.isArray(linkedClients) && linkedClients.length > 0,
-      earliestDateRequested   : DateManager.parseDateOnly(record.getCellValue(FIELDS_WAITLIST.earliest_date_requested)),
-      lastAlertSent           : record.getCellValue(FIELDS_WAITLIST.last_alert_sent),
+      contactPhone             : record.getCellValueAsString(FIELDS_WAITLIST.contact_phone),
+      notes                     : record.getCellValueAsString(FIELDS_WAITLIST.notes),
+      resolutionStatus          : record.getCellValueAsString(FIELDS_WAITLIST.resolution_status),
+      hasLinkedClient           : Array.isArray(linkedClients) && linkedClients.length > 0,
+      earliestDateRequested     : DateManager.parseDateOnly(record.getCellValue(FIELDS_WAITLIST.earliest_date_requested)),
+      overdueNotified           : record.getCellValue(FIELDS_WAITLIST.overdue_notified) === true,
     };
     this.logger.debug(`Extracted → ${JSON.stringify({ ...data, earliestDateRequested: data.earliestDateRequested?.toISOString() ?? null })}`);
 
-    // Step 3 — Resolve eligibility (may resolve to eligible: false — not an error)
-    const { eligible, reasonBlocked, businessDaysOut } = this.resolver.resolve(data);
+    const { eligible, reasonBlocked } = this.resolver.resolve(data);
 
     if (!eligible) {
       this.logger.minimal(`SUCCESS → no-op, not eligible (${reasonBlocked})`);
-      return {
-        status: 'SUCCESS', shouldSend: false,
-        toEmail: null, subject: null, message: null, error_message: null,
-      };
+      return { status: 'SUCCESS', shouldSend: false, subject: null, message: null, error_message: null };
     }
 
-    // Step 4 — Stamp the anti-spam guard before handing off to Send Email,
-    // so a slow downstream node can never cause a duplicate send.
-    await this.waitlistRepo.stampAlertSent(recordId);
+    await this.waitlistRepo.stampNotified(recordId);
 
-    // Step 5 — Build the email content
-    const { subject, message } = MessageBuilder.build(data, businessDaysOut);
+    const { subject, message } = MessageBuilder.build(data);
 
-    this.logger.minimal(`SUCCESS → alert ready for "${data.brideName}"`);
+    this.logger.minimal(`SUCCESS → overdue alert ready for "${data.brideName}"`);
 
-    return {
-      status: 'SUCCESS', shouldSend: true,
-      toEmail: CONFIG.JULIA_EMAIL, subject, message, error_message: null,
-    };
+    return { status: 'SUCCESS', shouldSend: true, subject, message, error_message: null };
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN EXECUTION BLOCK
-// input.config() called ONCE — Airtable only allows one call per script.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const cfg = input.config();
@@ -347,7 +281,6 @@ const logger = new Logger(CONFIG.LOG_LEVEL);
 let result = {
   status        : 'ERROR',
   shouldSend    : false,
-  toEmail       : null,
   subject       : null,
   message       : null,
   error_message : null,
@@ -360,7 +293,7 @@ try {
 
   logger.audit(`Automation started → waitlistRecordId: ${waitlistRecordId}`);
 
-  const service = new WaitlistAlertReadinessService(
+  const service = new WaitlistOverdueAlertService(
     new WaitlistRepository(logger),
     new EligibilityResolver(logger),
     logger
@@ -376,13 +309,8 @@ try {
   throw err;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// OUTPUTS — only reached on SUCCESS (catch block re-throws on error)
-// ─────────────────────────────────────────────────────────────────────────────
-
 output.set('status',        result.status);
 output.set('shouldSend',    result.shouldSend);
-output.set('toEmail',       result.toEmail);
 output.set('subject',       result.subject);
 output.set('message',       result.message);
 output.set('error_message', result.error_message);
