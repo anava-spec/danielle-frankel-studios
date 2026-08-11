@@ -3302,7 +3302,10 @@ function Layer4({
             <div className="p-6">
               <h3 className="text-base font-semibold mb-2">Create Shopify draft order?</h3>
               <p className="text-sm" style={{ color: theme.textSecondary }}>
-                This will lock this draft and start creating a real Shopify draft order. This can't be easily undone — make sure the pricing and items below are correct before continuing.
+                This will lock this draft and start creating a real Shopify draft order.
+              </p>
+              <p className="text-sm mt-2" style={{ color: theme.textSecondary }}>
+                This can't be easily undone — make sure the pricing and items below are correct before continuing.
               </p>
             </div>
             <div className="px-6 py-4 border-t flex justify-end gap-3" style={{ borderColor: theme.border }}>
