@@ -17,9 +17,13 @@ never swallowed.
 
 **Base note:** most scripts below target the sandbox base
 (`app6Q4xMZ1ngJxiV8`) — mirror to production (`appUC2NFAlURayLx9`) once
-verified. The Waitlist scripts target the separate sandbox base used for that
-project (`appMmEE4zyHMGhkkd`) — mirror to `appUC2NFAlURayLx9` (production,
-same base as the rest) once verified.
+verified. The Waitlist scripts target `appMmEE4zyHMGhkkd` — as of 2026-08-11,
+confirmed to be Airtable's actual Base Sandbox pairing with
+`appUC2NFAlURayLx9` (production): table/field/automation IDs are identical
+across both, only record data differs, and automations are literally shared
+objects between them (creating/editing one via either base ID edits the same
+automation). Waitlist data has already been migrated/backfilled into
+production — see `session_summaries/2026-08-11_waitlist-pipeline-overdue-automation-production-migration.md`.
 
 ---
 
@@ -89,15 +93,22 @@ order item is category ALTERATIONS, via the client-level formula field
 
 ---
 
-## Waitlist project (JuliMigLui37091) — base `appMmEE4zyHMGhkkd`
+## Waitlist project (JuliMigLui37091) — base `appMmEE4zyHMGhkkd` (shared with production `appUC2NFAlURayLx9`)
 
-Two scripts implementing `waitlist_definitions.md` sections 2–4. Both replace
-declarative automation nodes that turned out to be inexpressible through
-Airtable's automation-builder API: it can't concatenate two dynamic fields for
-a strict text-equals filter, can't express a conditional "match only if both
-sides have a value" rule, and can't compute business days or a rolling
-anti-spam window. Both are currently unwired — drop them into their
-automation's Script step and connect the inputs/outputs described below.
+Three scripts. All follow the same pattern: hand-write the Script step's logic
+because Airtable's automation-builder API can't express what's needed
+declaratively (can't concatenate two dynamic fields for a strict text-equals
+filter, can't express "match only if both sides have a value," can't compute
+business days or a rolling anti-spam window). **`customScript` nodes are fully
+read-only through the Airtable MCP toolkit used to build these** — they can
+only be pasted into the Script step by hand in the Airtable UI, never created
+or edited via API. All three are wired and live as of 2026-08-11.
+
+`resolution_status` (singleSelect) is the single source of truth for a
+Waitlist record's state: **Active** / **Resolved** (matched to a DF Client) /
+**Exception** (Julia has flagged it as never becoming a DF Client — a plain
+select choice, not a separate field). Both alert scripts below key off this
+one field.
 
 ### `waitlist_matching.js`
 **Automation:** Waitlist - Match New DF Client
@@ -133,9 +144,27 @@ from this script's outputs.
 **Outputs:** `status`, `shouldSend`, `toEmail`, `subject`, `message`,
 `error_message`, `log_summary`.
 
-**Known data-model caveat:** `dates_requested` is free text (e.g. "before
-July 27th"), not a real date, so the alert can't reason about it directly. A
-companion real Date field, `earliest_date_requested`, was added to the
-Waitlist table for this — it's populated for the original 9 imported Active
-records except one ("before July 27th" has no earliest bound to parse), and
-needs to be filled in by staff going forward for the alert to fire.
+### `waitlist_overdue_alert.js`
+**Automation:** Waitlist - Notify Julia: Overdue & Unmatched
+**Trigger:** `Waitlist` matches conditions (Active + `resolved_by_df_clients_record`
+empty + `earliest_date_requested` not empty)
+**Script input:** `waitlistRecordId` ← the trigger record's ID; `is_prod` ←
+literal `true` on production's copy of this step, `false` on sandbox's (the
+automation object is shared between environments, so the script can't infer
+this from the base ID it happens to run in)
+The more urgent companion to the 5-day heads-up alert above: fires once
+`earliest_date_requested` is **today or already in the past** and the record
+still hasn't been marked `overdue_notified` (a checkbox anti-spam guard —
+fires once per record, not on a rolling window, since this feeds a Follow-Up
+page meant to be worked as a backlog rather than re-pinged). The email links
+directly to the record's detail page in the Waitlist Follow-Up interface
+(sandbox or production URL, picked by `is_prod`), so Julia can jump straight
+to linking the client or marking it Exception.
+**Outputs:** `status`, `shouldSend`, `subject`, `message`, `error_message`,
+`log_summary`.
+
+**Known data-model note:** `dates_requested` is free text (e.g. "before July
+27th"), not a real date. `earliest_date_requested` is now a **formula field**
+fed by an AI field (`date_requested_parser`) that parses `dates_requested`
+automatically — no manual staff data entry required going forward (this
+replaced the original plain Date field staff had to fill in by hand).

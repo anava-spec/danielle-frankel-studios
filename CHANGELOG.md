@@ -11,6 +11,18 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Aug 10, 2026
+
+**Waitlist**
+- Milestone: the Waitlist is now a real, working part of the daily workflow instead of a spreadsheet-style list off to the side.
+- Active Waitlist leads now show up right inside Pipeline, alongside the regular sales stages — staff can see who's waiting without switching screens.
+- Staff can add a new bride to the Waitlist directly from Pipeline with a simple form, and open any Waitlist lead to view or update her details.
+- If a Waitlist lead's requested dates are typed in free text (e.g. "before July 27th" or "5/16 through 5/21"), the system now figures out her earliest available date automatically — no one has to manually enter it anymore.
+- New automatic email alert: if a Waitlist lead's requested date has already come and gone and she still hasn't been matched to a client, Julia gets notified right away with a direct link to review and act on it. This is in addition to the existing "coming up in the next 5 days" heads-up alert.
+- Waitlist leads who will never become clients can now be marked as an exception, which quietly removes them from Pipeline and from future alerts without deleting their history.
+- Once a Waitlist lead becomes an actual client, her original Waitlist details stay visible on her full profile, so that history isn't lost.
+- The full historical Waitlist (95 leads) is now live in the production system, with everyone who's already a known client automatically linked to their client record.
+
 ## Week of Aug 3, 2026
 
 **Recap Doc**
