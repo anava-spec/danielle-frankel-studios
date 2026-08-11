@@ -409,7 +409,7 @@ function FormDateField({ label, value, onChange }: { label: string; value: strin
 
   return (
     <div ref={containerRef} className="relative">
-      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
       <input type="text" value={inputText} placeholder="Select date…"
         onChange={e => setInputText(e.target.value)}
         onBlur={handleInputBlur}
@@ -455,7 +455,7 @@ function WaitlistFormModal({ waitlistTable, activeStudioOptions, onClose, onSave
         [WAITLIST_FIELD_IDS.STUDIO]: studioId ? [{ id: studioId }] : [],
         [WAITLIST_FIELD_IDS.DATES_REQUESTED]: datesRequested.trim(),
         [WAITLIST_FIELD_IDS.TIME_REQUESTED]: timeRequested.trim(),
-        [WAITLIST_FIELD_IDS.RESOLUTION_STATUS]: 'Active',
+        [WAITLIST_FIELD_IDS.RESOLUTION_STATUS]: { name: 'Active' },
       };
       if (contactEmail.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_EMAIL] = contactEmail.trim();
       if (contactPhone.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_PHONE] = contactPhone.trim();
@@ -470,7 +470,7 @@ function WaitlistFormModal({ waitlistTable, activeStudioOptions, onClose, onSave
   };
 
   const inputClass = "w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors";
-  const labelClass = "block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1";
+  const labelClass = "block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1";
 
   return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} onClick={onClose}>
@@ -1304,7 +1304,7 @@ function LinkedRecordSelectBody({ options, selectedId, onChange }: { options: Ar
 function LinkedRecordSelect({ label, options, selectedId, onChange }: { label: string; options: Array<{ id: string; name: string }>; selectedId: string | null; onChange: (id: string | null) => void }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">{label}</label>
+      <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5">{label}</label>
       <LinkedRecordSelectBody options={options} selectedId={selectedId} onChange={onChange} />
     </div>
   );
@@ -3026,12 +3026,6 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       type: 'table' as const,
       defaultValue: base.tables.find(t => t.id === WAITLIST_TABLE_ID),
     },
-    {
-      key: 'studioTable',
-      label: 'Studio',
-      type: 'table' as const,
-      defaultValue: base.tables.find(t => t.id === STUDIO_TABLE_ID),
-    },
   ];
 }
 
@@ -3227,7 +3221,6 @@ function Pipeline(): React.ReactElement {
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = customPropertyValueByKey?.clientsTable as Table | undefined;
   const waitlistTable = customPropertyValueByKey?.waitlistTable as Table | undefined;
-  const studioCustomPropTable = customPropertyValueByKey?.studioTable as Table | undefined;
 
   // Only subscribe to fields that drive kanban cards, filters, and search.
   // Detail-panel-only fields (orders, measurements, notes, etc.) are still read
@@ -3326,7 +3319,7 @@ function Pipeline(): React.ReactElement {
 
   // Master Studio/Location table — active options for the Studio picker on
   // the Waitlist create form and detail page.
-  const studioTable = studioCustomPropTable ?? null;
+  const studioTable = base.getTableByIdIfExists(STUDIO_TABLE_ID);
   const studioNameField     = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_NAME) ?? null, [studioTable]);
   const studioIsActiveField = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_IS_ACTIVE) ?? null, [studioTable]);
   const studioQueryFields = useMemo(() => {
