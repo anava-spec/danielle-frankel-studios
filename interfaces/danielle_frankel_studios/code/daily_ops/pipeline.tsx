@@ -410,17 +410,11 @@ function FormDateField({ label, value, onChange }: { label: string; value: strin
   return (
     <div ref={containerRef} className="relative">
       <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
-      <div className="flex items-center gap-1">
-        <input type="text" value={inputText} placeholder="Select date…"
-          onChange={e => setInputText(e.target.value)}
-          onBlur={handleInputBlur}
-          onFocus={() => setOpen(true)}
-          className="flex-1 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
-        <button type="button" onClick={() => setOpen(o => !o)}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:border-gray-400 dark:hover:border-white/20 transition-colors">
-          <CalendarIcon size={14} />
-        </button>
-      </div>
+      <input type="text" value={inputText} placeholder="Select date…"
+        onChange={e => setInputText(e.target.value)}
+        onBlur={handleInputBlur}
+        onFocus={() => setOpen(true)}
+        className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
       {open && (
         <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)} width={270} noStyle>
           <CalendarPopup selectedDate={selectedDate} onSelect={handleCalendarSelect} onClose={() => setOpen(false)} />
@@ -430,9 +424,9 @@ function FormDateField({ label, value, onChange }: { label: string; value: strin
   );
 }
 
-function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable: Table | null; onClose: () => void; onSaved: (newId: string) => void }) {
+function WaitlistFormModal({ waitlistTable, activeStudioOptions, onClose, onSaved }: { waitlistTable: Table | null; activeStudioOptions: Array<{ id: string; name: string }>; onClose: () => void; onSaved: (newId: string) => void }) {
   const [brideName, setBrideName] = useState('');
-  const [studio, setStudio] = useState<string | null>(null);
+  const [studioId, setStudioId] = useState<string | null>(null);
   const [datesRequested, setDatesRequested] = useState('');
   const [timeRequested, setTimeRequested] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -450,7 +444,7 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
   // earliest_date_requested is deliberately absent here — it's a formula
   // field, populated from Dates Requested by the date_requested_parser AI
   // field, never staff-entered.
-  const canSave = !!waitlistTable && brideName.trim() !== '' && !!studio && datesRequested.trim() !== '' && timeRequested.trim() !== '' && !saving;
+  const canSave = !!waitlistTable && brideName.trim() !== '' && !!studioId && datesRequested.trim() !== '' && timeRequested.trim() !== '' && !saving;
 
   const handleSave = async () => {
     if (!canSave || !waitlistTable) return;
@@ -458,7 +452,7 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
     try {
       const fields: Record<string, unknown> = {
         [WAITLIST_FIELD_IDS.BRIDE_NAME]: brideName.trim(),
-        [WAITLIST_FIELD_IDS.STUDIO]: studio,
+        [WAITLIST_FIELD_IDS.STUDIO]: studioId ? [{ id: studioId }] : [],
         [WAITLIST_FIELD_IDS.DATES_REQUESTED]: datesRequested.trim(),
         [WAITLIST_FIELD_IDS.TIME_REQUESTED]: timeRequested.trim(),
         [WAITLIST_FIELD_IDS.RESOLUTION_STATUS]: 'Active',
@@ -492,7 +486,10 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
               <label className={labelClass}>Bride Name <span className="text-red-400">*</span></label>
               <input type="text" value={brideName} onChange={e => setBrideName(e.target.value)} className={inputClass} />
             </div>
-            <SingleSelectDropdown label="Studio *" options={WAITLIST_STUDIO_OPTIONS} selected={studio} onChange={setStudio} />
+            <div>
+              <label className={labelClass}>Studio <span className="text-red-400">*</span></label>
+              <LinkedRecordSelectBody options={activeStudioOptions} selectedId={studioId} onChange={setStudioId} />
+            </div>
           </div>
           {/* Row 2: Dates Requested, Time Requested */}
           <div className="grid grid-cols-2 gap-3">
@@ -547,7 +544,7 @@ function WaitlistFormModal({ waitlistTable, onClose, onSaved }: { waitlistTable:
 // Editable via the same EditableText/EditableDate/EditableSelect components
 // used elsewhere in this file, pointed at the Waitlist table.
 // ─────────────────────────────────────────────────────────────────────────────
-function WaitlistDetailModal({ entry, base, waitlistTable, onClose }: { entry: WaitlistEntry; base: Base; waitlistTable: Table | null; onClose: () => void }) {
+function WaitlistDetailModal({ entry, base, waitlistTable, activeStudioOptions, onClose }: { entry: WaitlistEntry; base: Base; waitlistTable: Table | null; activeStudioOptions: Array<{ id: string; name: string }>; onClose: () => void }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setVisible(true));
@@ -597,7 +594,7 @@ function WaitlistDetailModal({ entry, base, waitlistTable, onClose }: { entry: W
                     style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
                     {WAITLIST_STAGE_LABEL}
                   </span>
-                  <span className="text-lg text-gray-500 dark:text-gray-400">{entry.studio || '—'}</span>
+                  <span className="text-lg text-gray-500 dark:text-gray-400">{entry.studioName || '—'}</span>
                 </div>
               </div>
             </div>
@@ -609,7 +606,7 @@ function WaitlistDetailModal({ entry, base, waitlistTable, onClose }: { entry: W
         <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <EditableText label="Bride Name" value={entry.brideName} fieldId={WAITLIST_FIELD_IDS.BRIDE_NAME} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
-            <EditableSelect label="Studio" value={entry.studio} options={WAITLIST_STUDIO_OPTIONS} fieldId={WAITLIST_FIELD_IDS.STUDIO} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableLinkedRecordSelect label="Studio" value={entry.studioId} options={activeStudioOptions} fieldId={WAITLIST_FIELD_IDS.STUDIO} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <EditableText label="Dates Requested" value={entry.datesRequested} fieldId={WAITLIST_FIELD_IDS.DATES_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
@@ -662,9 +659,13 @@ const WAITLIST_FIELD_IDS = {
   RESOLVED_AT:                   'fldi1u7Otn5dX5web',
   RESOLVED_BY_DF_CLIENTS_RECORD:  'fldXI88jaK0MepaLn',
   LAST_ALERT_SENT:                 'flddV0or0cD3UHHbR',
-  STUDIO:                           'fldr0iuC9I9FLgAk6',
+  STUDIO:                           'fldUrBNGSh5zRBe0i', // linked record -> STUDIO_TABLE_ID
 };
-const WAITLIST_STUDIO_OPTIONS = ['NY', 'LA', 'Virtual'];
+// Master Studio/Location table — Waitlist's `studio` field links here.
+// Selection UI only offers is_active = true studios (see StudioRepository).
+const STUDIO_TABLE_ID = 'tblYM02GzeYdYk23v';
+const STUDIO_FIELD_NAME      = 'fldA1F8Hx7cOyI6lu';
+const STUDIO_FIELD_IS_ACTIVE = 'fldFyn3fKsxajrvsy';
 const WAITLIST_STAGE_LABEL = 'Waitlist';
 // Not a real Airtable single-select choice color — Waitlist isn't a Stage-field
 // value, so it never appears in stageColorsByStage. Bespoke neutral tone to
@@ -998,7 +999,8 @@ interface WaitlistEntry {
   notes: string;
   resolutionStatus: string;
   resolvedByClientId: string | null;
-  studio: string;
+  studioId: string | null;
+  studioName: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1246,6 +1248,95 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LINKED RECORD SELECT — full-width dropdown (trigger + panel only, no label)
+// for a single-link field. Distinct from EditableSelect (which writes a plain
+// string to a singleSelect field) — this writes `[{ id }]` to a
+// multipleRecordLinks field. Two thin wrappers below add the label:
+// LinkedRecordSelect (form — local state only) and EditableLinkedRecordSelect
+// (detail page — persists directly to the record, like EditableSelect).
+// ─────────────────────────────────────────────────────────────────────────────
+function LinkedRecordSelectBody({ options, selectedId, onChange }: { options: Array<{ id: string; name: string }>; selectedId: string | null; onChange: (id: string | null) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const selected = options.find(o => o.id === selectedId) ?? null;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setIsOpen(o => !o)}
+        className="flex items-center justify-between w-full bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+        <span className={`truncate ${selected ? 'text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-400 dark:text-gray-500'}`}>{selected ? selected.name : 'Select…'}</span>
+        {selected ? (
+          <span role="button" tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onChange(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onChange(null); } }}
+            className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            <XIcon size={14} />
+          </span>
+        ) : (
+          <CaretDownIcon size={14} className={`flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      {isOpen && (
+        <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg max-h-[260px] overflow-y-auto w-full py-1">
+          {options.map(o => (
+            <button key={o.id} type="button" onClick={() => { onChange(o.id); setIsOpen(false); }}
+              className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selectedId === o.id ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              <span className="truncate">{o.name}</span>
+            </button>
+          ))}
+          {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No options</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkedRecordSelect({ label, options, selectedId, onChange }: { label: string; options: Array<{ id: string; name: string }>; selectedId: string | null; onChange: (id: string | null) => void }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">{label}</label>
+      <LinkedRecordSelectBody options={options} selectedId={selectedId} onChange={onChange} />
+    </div>
+  );
+}
+
+function EditableLinkedRecordSelect({ label, value, options, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c' }: { label: string; value: string | null; options: Array<{ id: string; name: string }>; fieldId: string; recordId: string; base: Base; tableId?: string }) {
+  const [localValue, setLocalValue] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setLocalValue(value); }, [value]);
+
+  const handleChange = async (id: string | null) => {
+    setLocalValue(id);
+    setSaving(true); setError(null);
+    try {
+      const t = base.getTableByIdIfExists(tableId);
+      if (!t) throw new Error('Table not found');
+      await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: id ? [{ id }] : [] }));
+    } catch (e: any) {
+      setError('Save failed'); console.error(`EditableLinkedRecordSelect [${fieldId}]:`, e); setLocalValue(value);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div>
+      <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
+      <LinkedRecordSelectBody options={options} selectedId={localValue} onChange={handleChange} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CLIENT CARD (kanban)
 // ─────────────────────────────────────────────────────────────────────────────
 interface ClientCardProps {
@@ -1307,8 +1398,8 @@ const WaitlistCard = React.memo(function WaitlistCard({ entry, onClick }: { entr
       {entry.earliestDateRequested && (
         <div className="text-xs text-gray-400 dark:text-gray-500">Earliest date: {formatFullDate(entry.earliestDateRequested)}</div>
       )}
-      {entry.studio && (
-        <div className="text-xs text-gray-600 dark:text-gray-400">Studio: {entry.studio}</div>
+      {entry.studioName && (
+        <div className="text-xs text-gray-600 dark:text-gray-400">Studio: {entry.studioName}</div>
       )}
     </div>
   );
@@ -2167,7 +2258,7 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage, waitl
                 <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.weddingDate ? formatFullDate(entry.weddingDate) : '—'}</td>
                 <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
-                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.studio || '—'}</td>
+                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.studioName || '—'}</td>
                 <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
@@ -2866,7 +2957,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
                   <FieldRow>
                     <DetailRow label="Contact Email" value={matchedWaitlistEntry.contactEmail || '—'} />
                     <DetailRow label="Contact Phone" value={matchedWaitlistEntry.contactPhone || '—'} />
-                    <DetailRow label="Studio" value={matchedWaitlistEntry.studio || '—'} />
+                    <DetailRow label="Studio" value={matchedWaitlistEntry.studioName || '—'} />
                   </FieldRow>
                   <DetailRow label="Notes" value={matchedWaitlistEntry.notes || '—'} />
                 </div>
@@ -3213,9 +3304,38 @@ function Pipeline(): React.ReactElement {
         const linked = getCellValueSafe<Array<{ id: string }>>(record, waitlistFieldObjs.resolvedByClient);
         return Array.isArray(linked) && linked.length > 0 ? linked[0].id : null;
       })(),
-      studio: getCellValueAsStringSafe(record, waitlistFieldObjs.studio),
+      studioId: (() => {
+        if (!waitlistFieldObjs.studio) return null;
+        const linked = getCellValueSafe<Array<{ id: string; name?: string }>>(record, waitlistFieldObjs.studio);
+        return Array.isArray(linked) && linked.length > 0 ? linked[0].id : null;
+      })(),
+      studioName: (() => {
+        if (!waitlistFieldObjs.studio) return '';
+        const linked = getCellValueSafe<Array<{ id: string; name?: string }>>(record, waitlistFieldObjs.studio);
+        return Array.isArray(linked) && linked.length > 0 ? (linked[0].name ?? '') : '';
+      })(),
     }));
   }, [waitlistRecords, waitlistFieldObjs]);
+
+  // Master Studio/Location table — active options for the Studio picker on
+  // the Waitlist create form and detail page.
+  const studioTable = base.getTableByIdIfExists(STUDIO_TABLE_ID);
+  const studioNameField     = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_NAME) ?? null, [studioTable]);
+  const studioIsActiveField = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_IS_ACTIVE) ?? null, [studioTable]);
+  const studioQueryFields = useMemo(() => {
+    const f: Field[] = [];
+    if (studioNameField) f.push(studioNameField);
+    if (studioIsActiveField) f.push(studioIsActiveField);
+    return f;
+  }, [studioNameField, studioIsActiveField]);
+  const studioRecords = useRecords(studioTable ?? null, studioQueryFields.length > 0 ? { fields: studioQueryFields } : undefined);
+  const activeStudioOptions = useMemo(() => {
+    if (!studioRecords || !studioNameField || !studioIsActiveField) return [];
+    return studioRecords
+      .filter(r => getCellValueSafe<boolean>(r, studioIsActiveField) === true)
+      .map(r => ({ id: r.id, name: getCellValueAsStringSafe(r, studioNameField) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [studioRecords, studioNameField, studioIsActiveField]);
 
   // Active + unmatched — same eligibility shape as the alert automation, kept
   // intentionally consistent. These are the cards/rows staff see as "on the
@@ -3838,6 +3958,7 @@ function Pipeline(): React.ReactElement {
           entry={selectedWaitlistEntry}
           base={base}
           waitlistTable={waitlistTable ?? null}
+          activeStudioOptions={activeStudioOptions}
           onClose={() => setSelectedWaitlistId(null)}
         />
       )}
@@ -3846,6 +3967,7 @@ function Pipeline(): React.ReactElement {
       {showWaitlistFormModal && (
         <WaitlistFormModal
           waitlistTable={waitlistTable ?? null}
+          activeStudioOptions={activeStudioOptions}
           onClose={() => setShowWaitlistFormModal(false)}
           onSaved={() => setShowWaitlistFormModal(false)}
         />
