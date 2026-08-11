@@ -23,6 +23,15 @@ OBJECTIVE
   sync_error_message and hands off a failure alert for the studio admin
   mailbox via a second downstream Send Email action.
 
+isProd (real end-to-end test without emailing anyone, 2026-08-11)
+  Optional boolean input, defaults to true (production behavior) when left
+  unset. Set to false to run the REAL flow end-to-end — guard clause, real
+  Cobalt call, real Shopify draft order, real Airtable write-back — but with
+  shouldSendConfirmation/shouldSendFailureAlert forced to false afterward, so
+  the downstream Send Email nodes never fire. Use this to verify Shopify +
+  Airtable behavior without sending anyone an email. Independent of
+  SIMULATION MODE below (which never touches Cobalt/Airtable at all).
+
 SIMULATION MODE (email-content testing only, 2026-08-11)
   Two optional boolean inputs — simulateSuccessEmail / simulateFailureEmail —
   let you generate one or both email outputs WITHOUT calling Cobalt or
@@ -596,6 +605,14 @@ const draftOrderRecordId = cfg.draftOrderRecordId;
 const isTruthyInput = (v) => v === true || v === 'true';
 const simulateSuccessEmail = isTruthyInput(cfg.simulateSuccessEmail);
 const simulateFailureEmail = isTruthyInput(cfg.simulateFailureEmail);
+// isProd — lets Axel run the REAL flow end-to-end (locks the record, hits
+// the real Cobalt endpoint, creates a real Shopify draft order, writes the
+// result back) while suppressing only the email hand-off, so he can verify
+// Shopify/Airtable behavior without spamming an inbox. Defaults to true
+// (production behavior — emails send) whenever the input is left unset, so
+// the real deployed trigger never has to remember to set it; only set it to
+// false explicitly when testing.
+const isProd = cfg.isProd === undefined ? true : isTruthyInput(cfg.isProd);
 // COBALT_API_KEY lives in Airtable's Secrets panel (input.secret()), not the
 // Variables panel (input.config()) — keeps the raw key value out of the
 // automation's Variables UI and run logs, unlike a plain input variable.
@@ -646,6 +663,18 @@ try {
     );
 
     result = await service.run(draftOrderRecordId);
+
+    // isProd = false → everything above still ran for real (lock, Cobalt
+    // call, Shopify draft order, Airtable write-back) — only the email
+    // hand-off is suppressed, so the downstream Send Email nodes never
+    // fire. shouldSend flags are what those nodes gate on; leaving the
+    // subject/message populated still lets the run log show what *would*
+    // have been sent.
+    if (!isProd) {
+      logger.audit('isProd is false → suppressing email hand-off (shouldSendConfirmation/shouldSendFailureAlert forced to false).');
+      result.shouldSendConfirmation = false;
+      result.shouldSendFailureAlert = false;
+    }
   }
 
 } catch (err) {
