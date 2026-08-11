@@ -205,7 +205,10 @@ class MessageBuilder {
       `This Waitlist request's earliest requested date has already passed ` +
       `and it still hasn't been matched to a DF Client. Please review it on ` +
       `the Waitlist Follow-Up page — link the client if they exist, or set ` +
-      `the status to Exception if this lead will never become a DF Client.`;
+      `the status to Exception if this lead will never become a DF Client. ` +
+      `If you link a client and mark it Resolved, please also fill in the ` +
+      `resolved_at field yourself — that's not stamped automatically for ` +
+      `manual matches, only for automatic ones.`;
 
     const message =
       `${intro}\n\n` +
