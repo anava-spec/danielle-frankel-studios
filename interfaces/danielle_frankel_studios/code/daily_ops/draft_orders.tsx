@@ -57,9 +57,6 @@ const FIELD_IDS = {
   DRAFT_SHOPIFY_STATUS: 'fldsQlDqjhvTodXgR',
   DRAFT_SYNC_ERROR_MESSAGE: 'fldvexiG5evwmjnaw',
   DRAFT_INITIATED_BY_EMAIL: 'fldCapGqxZZo1b9o4',
-  DRAFT_SHOPIFY_ORDER_ID: 'fldV3F3ZNE1e4Dvv9',
-  DRAFT_SHOPIFY_ORDER_NAME: 'fldVMaJhy6aMND88N',
-  DRAFT_SHOPIFY_INVOICE_URL: 'fldTUOmkWL6x6wFsH',
 
   CLIENT_FULL_NAME: 'fldB3Wyam01D3wR5Q',
   // The three existing-address sources a client can have on file — the
@@ -101,7 +98,6 @@ const FIELD_IDS = {
   CUSTOMIZATION_EFFECTIVE_PRICE: 'fldFjHCKBNcWz6z0V',
   // customization_type: singleSelect — "Hybrid" | "Regular".
   CUSTOMIZATION_TYPE: 'fld1stC4sHuPT4pT4',
-  CUSTOMIZATION_HYBRID_STYLES: 'fldPOXPAaTSW52iJX', // "For Hybrid Gown Select Styles"
 
   // state_costs: single linked record on Draft Orders that Shipping (lookup)
   // and Taxes (formula) are calculated from.
@@ -863,14 +859,39 @@ function ClientMiniPanel({
 }
 
 function getCustomProperties(base: ReturnType<typeof useBase>) {
+  const draftOrdersTable = base.getTableByIdIfExists('tblp7foUmlN9823WW');
+  const clientsTable = base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c');
+  const customizationsTable = base.getTableByIdIfExists('tbl7HUWDI7IRjWY92');
+
   return [
-    { key: 'draftOrdersTable', label: 'Draft orders', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblp7foUmlN9823WW') },
-    { key: 'clientsTable', label: 'Clients', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c') },
+    { key: 'draftOrdersTable', label: 'Draft orders', type: 'table' as const, defaultValue: draftOrdersTable },
+    { key: 'clientsTable', label: 'Clients', type: 'table' as const, defaultValue: clientsTable },
     { key: 'stylesTable', label: 'Styles', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl0hWIRBbcB4UkVC') },
-    { key: 'customizationsTable', label: 'Customizations', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl7HUWDI7IRjWY92') },
+    { key: 'customizationsTable', label: 'Customizations', type: 'table' as const, defaultValue: customizationsTable },
     { key: 'stateCostsTable', label: 'State costs', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblMnPV8Z00QePma9') },
     { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') },
     { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') },
+
+    // Shopify Draft Order Creation story (2026-08-11) — fields must be
+    // explicitly declared as 'field' custom properties (not just their
+    // parent table) for the Interface Designer to grant this page access
+    // to them; a hardcoded field ID alone is not enough. defaultValue
+    // pre-fills the mapping so no admin action is required unless the
+    // field ID ever changes.
+    ...(draftOrdersTable ? [
+      { key: 'draftShopifyStatusField', label: 'Draft: Shopify status', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_SHOPIFY_STATUS) ?? undefined },
+      { key: 'draftSyncErrorMessageField', label: 'Draft: sync error message', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_SYNC_ERROR_MESSAGE) ?? undefined },
+      { key: 'draftInitiatedByEmailField', label: 'Draft: initiated by email', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_INITIATED_BY_EMAIL) ?? undefined },
+    ] : []),
+    ...(clientsTable ? [
+      { key: 'clientReadyToWearSizeField', label: 'Client: Ready to Wear size', type: 'field' as const, table: clientsTable, defaultValue: clientsTable.getFieldByIdIfExists(FIELD_IDS.CLIENT_READY_TO_WEAR_SIZE) ?? undefined },
+      { key: 'clientEmailField', label: 'Client: Email', type: 'field' as const, table: clientsTable, defaultValue: clientsTable.getFieldByIdIfExists(FIELD_IDS.CLIENT_EMAIL) ?? undefined },
+      { key: 'clientPhoneField', label: 'Client: Phone', type: 'field' as const, table: clientsTable, defaultValue: clientsTable.getFieldByIdIfExists(FIELD_IDS.CLIENT_PHONE) ?? undefined },
+      { key: 'clientSalesAssociateNameField', label: 'Client: Sales associate name', type: 'field' as const, table: clientsTable, defaultValue: clientsTable.getFieldByIdIfExists(FIELD_IDS.CLIENT_SALES_ASSOCIATE_NAME) ?? undefined },
+    ] : []),
+    ...(customizationsTable ? [
+      { key: 'customizationTypeField', label: 'Customization: type', type: 'field' as const, table: customizationsTable, defaultValue: customizationsTable.getFieldByIdIfExists(FIELD_IDS.CUSTOMIZATION_TYPE) ?? undefined },
+    ] : []),
   ];
 }
 
@@ -2657,6 +2678,7 @@ function Layer4({
   const [showClientPanel, setShowClientPanel] = useState(false);
   const [creatingShopifyDraftOrder, setCreatingShopifyDraftOrder] = useState(false);
   const [shopifyActionError, setShopifyActionError] = useState<string | null>(null);
+  const [showShopifyConfirm, setShowShopifyConfirm] = useState(false);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [addressLocal, setAddressLocal] = useState('');
@@ -2978,11 +3000,25 @@ function Layer4({
     styleRecords,
   });
 
-  const handleCreateShopifyDraftOrder = async () => {
+  // Click handler for the button itself — re-checks eligibility immediately
+  // and, if it passes, opens the confirmation dialog instead of writing
+  // anything yet. Nothing is created until the user confirms in that dialog.
+  const handleCreateShopifyDraftOrderClick = () => {
     if (!canUpdate || !lockedField || !shopifyStatusField) return;
-    // Re-run the eligibility check right at click time — the button's
-    // disabled state already gates most of this, but data can change
-    // between renders (e.g. another tab), so this is the source of truth.
+    if (!shopifyEligibility.eligible) {
+      setShopifyActionError(shopifyEligibility.reason);
+      return;
+    }
+    setShopifyActionError(null);
+    setShowShopifyConfirm(true);
+  };
+
+  // Runs only after the user explicitly confirms in the dialog — re-checks
+  // eligibility one more time (data can change while the dialog is open)
+  // before actually locking the record and kicking off the Cobalt call.
+  const handleConfirmCreateShopifyDraftOrder = async () => {
+    setShowShopifyConfirm(false);
+    if (!canUpdate || !lockedField || !shopifyStatusField) return;
     if (!shopifyEligibility.eligible) {
       setShopifyActionError(shopifyEligibility.reason);
       return;
@@ -3209,7 +3245,7 @@ function Layer4({
         <div className="flex-1" />
         {canUpdate && !shopifyButtonHidden && (
           <button
-            onClick={handleCreateShopifyDraftOrder}
+            onClick={handleCreateShopifyDraftOrderClick}
             disabled={creatingShopifyDraftOrder}
             title={!shopifyEligibility.eligible ? shopifyEligibility.reason : undefined}
             className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -3250,6 +3286,43 @@ function Layer4({
           getField={getField}
           onClose={() => setShowClientPanel(false)}
         />
+      )}
+
+      {showShopifyConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setShowShopifyConfirm(false)}
+        >
+          <div
+            className="w-full rounded-xl overflow-hidden"
+            style={{ backgroundColor: theme.bgCard, maxWidth: '440px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <h3 className="text-base font-semibold mb-2">Create Shopify draft order?</h3>
+              <p className="text-sm" style={{ color: theme.textSecondary }}>
+                This will lock this draft and start creating a real Shopify draft order. This can't be easily undone — make sure the pricing and items below are correct before continuing.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3" style={{ borderColor: theme.border }}>
+              <button
+                onClick={() => setShowShopifyConfirm(false)}
+                className="px-3 py-1.5 rounded-md shadow-xs hover:shadow-sm hover:cursor-pointer text-sm"
+                style={{ backgroundColor: theme.bg, border: `1px solid ${theme.border}`, color: theme.text }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCreateShopifyDraftOrder}
+                className="px-3 py-1.5 rounded-md hover:shadow-sm hover:cursor-pointer text-sm font-medium"
+                style={{ backgroundColor: theme.accent, color: '#FFFFFF' }}
+              >
+                Create Draft Order
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {!isEditable && (
