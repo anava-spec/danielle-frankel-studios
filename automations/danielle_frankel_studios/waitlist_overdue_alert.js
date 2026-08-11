@@ -7,7 +7,12 @@ TRIGGER    : When record matches conditions — Waitlist
              (resolution_status = Active AND resolved_by_df_clients_record
              is empty AND earliest_date_requested <= today AND
              overdue_notified is unchecked)
-VERSION    : 1.0.0 — Initial build. Companion to waitlist_alert_readiness.js
+VERSION    : 1.1.0 — Email now includes a link to the record's Waitlist
+             Follow-Up detail page. Sandbox and production share this same
+             automation, so the correct base-specific URL is picked at
+             runtime by the new is_prod input (map it to a literal true in
+             production's copy of this step, false in sandbox's).
+             1.0.0 — Initial build. Companion to waitlist_alert_readiness.js
              (the 5-business-day heads-up alert) — this one is the more
              urgent tier: the requested date has already passed and no one
              has acted. Feeds the "Waitlist Follow-Up" native Airtable page,
@@ -78,6 +83,14 @@ const CONFIG = {
   // studio's actual timezone or an overdue record near midnight ET could be
   // evaluated a day off. Same fix as waitlist_alert_readiness.js.
   BUSINESS_TIME_ZONE    : 'America/New_York',
+  // Waitlist Follow-Up detail-page URL, one per environment — the same
+  // automation is shared between the sandbox and production copies of this
+  // base, so which one applies is decided at runtime by the isProd input
+  // (set per environment in the Run Script step), not by the base ID the
+  // script happens to execute in. "{recordId}" is replaced with the
+  // triggering Waitlist record's ID — nothing else about the URL changes.
+  DETAIL_PAGE_URL_SANDBOX : 'https://airtable.com/appMmEE4zyHMGhkkd/pag3T4oDLEuMSuX9C/{recordId}?home=pag9MWcKpDSicCT7U',
+  DETAIL_PAGE_URL_PROD    : 'https://airtable.com/appUC2NFAlURayLx9/pag3T4oDLEuMSuX9C/{recordId}?home=pag9MWcKpDSicCT7U',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,7 +211,15 @@ class EligibilityResolver {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MessageBuilder {
-  static build(data) {
+  // Swaps "{recordId}" into the environment-appropriate detail-page URL
+  // template. isProd picks the template; everything else about the URL is
+  // identical between environments.
+  static buildDetailPageLink(recordId, isProd) {
+    const template = isProd ? CONFIG.DETAIL_PAGE_URL_PROD : CONFIG.DETAIL_PAGE_URL_SANDBOX;
+    return template.replace('{recordId}', recordId);
+  }
+
+  static build(data, detailPageUrl) {
     const subject = `[Waitlist Overdue] ${data.brideName} — earliest date has passed, unmatched`;
 
     const intro =
@@ -217,7 +238,8 @@ class MessageBuilder {
       `- **Time requested:** ${data.timeRequested || '—'}\n` +
       `- **Email:** ${data.contactEmail || '—'}\n` +
       `- **Phone:** ${data.contactPhone || '—'}\n` +
-      `- **Notes:** ${data.notes || '—'}`;
+      `- **Notes:** ${data.notes || '—'}\n\n` +
+      `[View this record →](${detailPageUrl})`;
 
     return { subject, message };
   }
@@ -234,8 +256,8 @@ class WaitlistOverdueAlertService {
     this.logger        = logger;
   }
 
-  async run(recordId) {
-    this.logger.audit(`Service started → Waitlist record: ${recordId}`);
+  async run(recordId, isProd) {
+    this.logger.audit(`Service started → Waitlist record: ${recordId} (isProd=${isProd})`);
 
     const record = await this.waitlistRepo.getById(recordId);
 
@@ -264,7 +286,8 @@ class WaitlistOverdueAlertService {
 
     await this.waitlistRepo.stampNotified(recordId);
 
-    const { subject, message } = MessageBuilder.build(data);
+    const detailPageUrl = MessageBuilder.buildDetailPageLink(recordId, isProd);
+    const { subject, message } = MessageBuilder.build(data, detailPageUrl);
 
     this.logger.minimal(`SUCCESS → overdue alert ready for "${data.brideName}"`);
 
@@ -278,6 +301,9 @@ class WaitlistOverdueAlertService {
 
 const cfg = input.config();
 const waitlistRecordId = cfg.waitlistRecordId;
+// Set literally true/false per environment when mapping this Run Script
+// step's inputs — sandbox's copy gets false, production's copy gets true.
+const isProd = cfg.is_prod === true;
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
@@ -302,7 +328,7 @@ try {
     logger
   );
 
-  result = await service.run(waitlistRecordId);
+  result = await service.run(waitlistRecordId, isProd);
 
 } catch (err) {
   logger.error(`Automation failed → ${err.message}`);
