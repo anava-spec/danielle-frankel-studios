@@ -212,6 +212,70 @@ Generated this transcript file and committed/pushed it along with the outstandin
 
 ---
 
+## Turn 6 — User
+
+> Para el link del form, el nombre del campo es "sample" no "Sample", y creo que para hacerlo más "dinámico" el código debe buscar el nombre del campo en vez de hardcodearlo
+
+## Turn 6 — Assistant
+
+1. Grepped the file for `prefill_Sample`/`hide_Sample`/`conditionFormUrl` to locate the URL-building code in `SampleDetailModal`.
+2. Edited it to read the Sample-link field's live display name via `conditionHistoryTable.getFieldIfExists(FIELD_IDS.CONDITION_HISTORY.SAMPLE_LINK)?.name` (falling back to the literal `'sample'` only if the field lookup fails), and build `prefill_<name>`/`hide_<name>` from that instead of the hardcoded `Sample`/`sample` literals — with a code comment explaining why (so a future field rename doesn't silently break the link).
+3. Asked whether to push now or wait.
+
+---
+
+## Turn 7 — User
+
+> Siempre haz push, hay algo más que falte para cumplir con el AC de la story?
+
+## Turn 7 — Assistant
+
+1. Committed and pushed the Turn 6 field-name fix immediately (commit `3b3bc9d`).
+2. Saved a memory update ([[git-workflow-main-only]]) recording that the user wants pushes done immediately without a confirmation round-trip in this repo, not just "prefer main over branches."
+3. Re-reviewed the whole file against the locked AC and, while doing so, grepped for every remaining use of `STYLE_NAME_LEGACY` — found that `filteredSamples` (search/sort), `inStudioByStyle` (the close-size/alert-matching index), the favorite-style matching loop, the table row's style-name cell, and the alert-row's sample label all read `FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY` directly. Since the Add Sample form (per the Turn 4 rework) only ever populates `parent_style`, never `style_name_legacy`, every sample created after that rework would have no name in the table and would be invisible to the alert/availability matching — a direct violation of the AC bullet "including all fields required for downstream availability and alerting support."
+4. Fixed it: added a `getEffectiveStyleName(record)` helper (mirroring the LABEL formula's own precedence — Parent Style Name, falling back to Style Name Legacy) directly below `getLocationValue`, and swapped every one of those five read sites to use it instead of reading `STYLE_NAME_LEGACY` directly. Left `SampleDetailModal`'s own editable Style Name Legacy field/state untouched (intentional — that's editing the legacy field itself, not deriving a display value).
+5. Committed and pushed the fix (commit `c891f61`).
+6. Reported the fix, then walked through the remaining AC gaps that aren't code bugs but need explicit sign-off for the eventual spec doc:
+   - Condition/Photo are no longer "updatable from the Sample Tracker interface" in the literal sense — updating happens via an external native Airtable Form; only reading (history) happens in-app. Flagged as needing the same "approved reinterpretation" documentation treatment as the Figma omission.
+   - The AC's "partial save" clause (sample data saves but photo doesn't) no longer applies as written, since photo capture moved entirely to a native Airtable Form whose save atomicity is Airtable's responsibility, not this file's code.
+   - The AC's duplicate-submission guard is only implemented in code for the Add Sample form; the Condition History Form's duplicate-submission behavior (if any) is likewise Airtable's responsibility now, not this file's.
+7. Listed the remaining operational (non-code) blockers: LABEL as Sample Log's primary field, the Form view on `sample_condition_history`, and the `sample_condition_entry_form` resources record.
+
+---
+
+## Turn 8 — User
+
+*(Sent two screenshots of the Airtable UI, not reproducible verbatim here — image content, not text.)* Screenshot 1 showed the `resources` grid with a `sample_condition_entry_form` row (`url` field populated, truncated to `https://airtable.com/appM...`). Screenshot 2 showed the Sample Log grid with `label` as the leftmost (primary, formula-icon) column, `style_name_legacy` as the next column with existing historical data, and a `status` column reading `Active`. Caption:
+
+> Te mando screenshot con las pruebas de los tres bullets
+
+## Turn 8 — Assistant
+
+Confirmed from the screenshots that two of the three pending items were done (LABEL is now the primary field; the `resources` record exists with a populated URL) and that `style_name_legacy` still holds its historical data as expected. Noted the URL in the screenshot was truncated and asked for the full URL to confirm it actually pointed to the Form view (not the raw table) and that the Form's Sample field name matched what the code reads.
+
+---
+
+## Turn 9 — User
+
+> https://airtable.com/appMmEE4zyHMGhkkd/pagxTj5vLJSeoI04T/form
+
+## Turn 9 — Assistant
+
+Confirmed the URL shape (`pag.../form`) matches an Interface-embedded Form page, consistent with how this was set up. Explained that this environment's browser has no authenticated Airtable session, so an end-to-end click-through couldn't be verified directly, and asked the user to test the "Register Condition" button themselves: confirm the Form opens with `sample` prefilled/hidden, the other fields are visible, and a submitted entry shows up back in that sample's Condition History section.
+
+---
+
+## Turn 10 — User
+
+> Te confirmo que todo funciona bien, ya no es necesario más.
+> Actualiza el transcript de la sesión y el readme del código.
+
+## Turn 10 — Assistant
+
+Confirmed end-to-end: Register Condition opens the Form with `sample` prefilled/hidden, and a submitted entry appears in the sample's Condition History on return to the interface. Updated this transcript (this section) and [`sample_tracker.README.md`](../interfaces/danielle_frankel_studios/readmes/sample_tracker.README.md) to document the shipped Add/Retire/Condition behavior, the `style_name_legacy` → `parent_style`/`parent_style_name` precedence rule and the `getEffectiveStyleName` requirement, the `sample_condition_history` table's role as system of record (with `current_condition_rollup` explicitly marked non-authoritative), and the resources-table-driven Condition Form URL resolution — then committed and pushed both.
+
+---
+
 ## Airtable schema changes made this session (all via MCP, base `appMmEE4zyHMGhkkd`)
 
 | Action | Table | Field | ID |
@@ -232,11 +296,25 @@ Generated this transcript file and committed/pushed it along with the outstandin
 | Renamed by user (manually) | Sample Log | Status choice "Unactive" → "Retired" | `fldGUFM9bxpEGrwtj` |
 | Deleted by user (manually) | Sample Log | Legacy `Condition` field | `fldZ7FUzHZ6KwVeNF` |
 
-## Still pending (user's side)
+## Status as of end of session
 
-1. Set the LABEL field as Sample Log's primary field (not possible via MCP).
-2. Create the native Airtable Form view on `Sample Condition History`.
-3. Create/populate the `sample_condition_entry_form` record in `resources` with the correct Form share URL — once for the sandbox base, and separately for production when this ships there.
+All three previously-pending user-side items are done and confirmed:
+
+1. ✅ LABEL set as Sample Log's primary field.
+2. ✅ Native Airtable Form view created on `sample_condition_history` (an Interface Form page, `pagxTj5vLJSeoI04T`).
+3. ✅ `sample_condition_entry_form` record populated in `resources` (sandbox) with that Form's URL.
+
+End-to-end confirmed by the user 2026-08-12: Register Condition opens the Form with `sample` prefilled/hidden, and a submitted entry appears in the sample's Condition History on return to the interface.
+
+Still open (tracked separately, not blocking this story): populate/verify a **production** `sample_condition_entry_form` resource record with the production Form URL once this ships to production (sandbox and production are separate Airtable bases with independently-editable resource records — see `sample_tracker.README.md`).
+
+## AC gaps requiring explicit sign-off before the spec doc is generated
+
+These are not code bugs — they're deliberate technical reinterpretations surfaced during this session that deviate from the literal locked AC text and should be documented as approved reinterpretations (same treatment as the Figma-bullet omission), not silently dropped:
+
+1. Condition and Photo are no longer "viewable **and updatable** from the Sample Tracker interface" in the literal sense — updating happens via an external native Airtable Form; only reading (the Condition History section) happens in-app. This was a deliberate, user-directed change once it became clear the Interface Extension SDK can't reliably persist file uploads.
+2. The AC's "partial save" clause (sample data saves but photo upload doesn't) no longer applies as originally written — photo capture now happens entirely inside a native Airtable Form submission, whose save atomicity is Airtable's own responsibility, not this file's code. The risk that clause was meant to mitigate no longer exists in the shipped mechanism, but for a different reason than the AC anticipated.
+3. The AC's duplicate-submission guard is implemented in code only for the Add Sample form. The Condition History Form's duplicate-submission behavior (if any) is likewise Airtable's own responsibility now, not this file's.
 
 ## Known tooling limitations surfaced this session
 
