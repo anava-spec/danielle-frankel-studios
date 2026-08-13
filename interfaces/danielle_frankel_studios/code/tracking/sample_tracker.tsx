@@ -1335,8 +1335,14 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
   }, [conditionHistoryRecords, record.id]);
   const latestCondition = conditionHistory[0] ?? null;
 
+  // Airtable Form prefill query params are keyed by the field's live display
+  // name (e.g. `prefill_sample`), not its field ID — read it from the field
+  // itself rather than hardcoding "Sample"/"sample", so a future rename of
+  // this field doesn't silently break the prefill link.
+  const conditionHistorySampleField = conditionHistoryTable?.getFieldIfExists(FIELD_IDS.CONDITION_HISTORY.SAMPLE_LINK) ?? null;
+  const conditionHistorySampleFieldName = conditionHistorySampleField?.name ?? 'sample';
   const conditionFormFullUrl = conditionFormUrl
-    ? `${conditionFormUrl}?prefill_Sample=${record.id}&hide_Sample=true`
+    ? `${conditionFormUrl}?prefill_${encodeURIComponent(conditionHistorySampleFieldName)}=${record.id}&hide_${encodeURIComponent(conditionHistorySampleFieldName)}=true`
     : null;
 
   const save = useCallback((patch: Record<string, unknown>) => {
