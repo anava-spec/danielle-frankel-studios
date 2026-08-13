@@ -17,9 +17,9 @@ import {
   MagnifyingGlassPlus as MagnifyingGlassPlusIcon,
   MagnifyingGlassMinus as MagnifyingGlassMinusIcon,
   DownloadSimple as DownloadSimpleIcon,
-  Trash as TrashIcon,
   CaretLeft as CaretLeftIcon,
   CaretRight as CaretRightIcon,
+  ArrowsOut as ArrowsOutIcon,
 } from '@phosphor-icons/react';
 
 // ─── WRITE QUEUE (safe sequential writes) ────────────────────────────────────
@@ -1287,8 +1287,119 @@ const CONDITION_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
   'Needing Repair':  { bg: '#FEF3C7', text: '#92400E' },
 };
 // ─── IMAGE LIGHTBOX (in-app full-size preview, zoom/download/cycle) ───────────
-// Delete is intentionally a no-op placeholder, not real deletion — see onDelete
-// below for why.
+// No delete action here, by design — Condition History is an append-only
+// audit log (staff shouldn't be able to remove condition-check evidence
+// from in-app), so this viewer only ever downloads/zooms/navigates.
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 6;
+interface ZoomableImageProps { src: string; alt?: string; }
+function ZoomableImage({ src, alt }: ZoomableImageProps) {
+  const [scale, setScale] = useState(1);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+
+  useEffect(() => { setScale(1); setTx(0); setTy(0); }, [src]);
+
+  // Pan with window-level listeners so movement stays 1:1 and never drops
+  // frames when the pointer leaves the image while dragging.
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e: PointerEvent) => {
+      setTx(start.current.tx + (e.clientX - start.current.x));
+      setTy(start.current.ty + (e.clientY - start.current.y));
+    };
+    const up = () => setDragging(false);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, [dragging]);
+
+  const clamp = (s: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s));
+  const setZoom = (next: number) => {
+    const ns = clamp(next);
+    setScale(ns);
+    if (ns === 1) { setTx(0); setTy(0); }
+  };
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // Only zoom with Ctrl/Cmd held (trackpad pinch also reports ctrlKey) —
+    // plain scroll should still scroll the page/modal, not hijack zoom.
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom(scale + (e.deltaY < 0 ? 0.35 : -0.35));
+  };
+  const onDoubleClick = () => setZoom(scale > 1 ? 1 : 2.5);
+  const onPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (scale <= 1) return;
+    e.preventDefault();
+    start.current = { x: e.clientX, y: e.clientY, tx, ty };
+    setDragging(true);
+  };
+
+  const ctrlBtnStyle: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent',
+    color: 'rgba(255,255,255,0.9)', cursor: 'pointer',
+  };
+  const zoomed = scale > 1;
+  const SQUARE = 'min(90vw, 80vh)';
+
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      onWheel={onWheel}
+      style={{
+        position: 'relative', overflow: 'hidden', borderRadius: '10px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.4)', touchAction: 'none',
+        display: zoomed ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        ...(zoomed ? { width: SQUARE, height: SQUARE } : {}),
+      }}
+    >
+      <img
+        src={src}
+        alt={alt ?? ''}
+        draggable={false}
+        onDoubleClick={onDoubleClick}
+        onPointerDown={onPointerDown}
+        style={{
+          display: 'block', objectFit: 'contain', userSelect: 'none',
+          maxWidth: zoomed ? '100%' : 'min(90vw, 1200px)', maxHeight: zoomed ? '100%' : '80vh',
+          transform: `translate(${tx}px, ${ty}px) scale(${scale})`, transformOrigin: 'center center',
+          cursor: scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
+          transition: dragging ? 'none' : 'transform 0.12s ease-out',
+        }}
+      />
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)',
+          display: 'flex', alignItems: 'center', gap: '2px', padding: '2px',
+          background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', borderRadius: '9px',
+        }}
+      >
+        <button type="button" onClick={() => setZoom(scale - 0.5)} disabled={scale <= ZOOM_MIN} aria-label="Zoom out" style={{ ...ctrlBtnStyle, opacity: scale <= ZOOM_MIN ? 0.3 : 1 }}>
+          <MagnifyingGlassMinusIcon size={16} />
+        </button>
+        <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px', fontWeight: 600, width: '42px', textAlign: 'center' }}>
+          {Math.round(scale * 100)}%
+        </span>
+        <button type="button" onClick={() => setZoom(scale + 0.5)} disabled={scale >= ZOOM_MAX} aria-label="Zoom in" style={{ ...ctrlBtnStyle, opacity: scale >= ZOOM_MAX ? 0.3 : 1 }}>
+          <MagnifyingGlassPlusIcon size={16} />
+        </button>
+        <button type="button" onClick={() => setZoom(1)} disabled={scale === 1} aria-label="Reset zoom" style={{ ...ctrlBtnStyle, opacity: scale === 1 ? 0.3 : 1 }}>
+          <ArrowsOutIcon size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface ImageLightboxImage { url: string; filename?: string; }
 interface ImageLightboxProps {
   images: ImageLightboxImage[];
@@ -1298,122 +1409,70 @@ interface ImageLightboxProps {
 }
 function ImageLightbox({ images, startIndex, onClose, tok }: ImageLightboxProps) {
   const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(images.length - 1, 0)));
-  const [zoom, setZoom] = useState(100);
-  const [deleteNotice, setDeleteNotice] = useState(false);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft') setIndex(i => (i - 1 + images.length) % images.length);
-      if (e.key === 'ArrowRight') setIndex(i => (i + 1) % images.length);
+      if (e.key === 'ArrowLeft' && index > 0) setIndex(i => i - 1);
+      if (e.key === 'ArrowRight' && index < images.length - 1) setIndex(i => i + 1);
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [onClose, images.length]);
+  }, [onClose, index, images.length]);
 
   if (images.length === 0) return null;
   const current = images[index];
 
   const iconButtonStyle: React.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-    padding: '8px 12px', borderRadius: '8px', border: `1px solid rgba(255,255,255,0.25)`,
-    background: 'rgba(255,255,255,0.08)', color: '#F5F0E8', fontSize: '12px', fontWeight: 600,
-    cursor: 'pointer',
+    padding: '8px 12px', borderRadius: '8px', border: 'none',
+    background: 'rgba(255,255,255,0.12)', color: '#F5F0E8', fontSize: '12px', fontWeight: 600,
+    cursor: 'pointer', textDecoration: 'none',
   };
 
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 9800,
+        position: 'fixed', inset: 0, zIndex: 9800, padding: '16px',
         background: tok.overlay, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center', justifyContent: 'center', gap: '16px',
       }}
     >
-      {/* Top bar */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, padding: '14px 18px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ fontSize: '13px', color: '#F5F0E8', opacity: 0.85 }}>
-          {current.filename ?? 'Photo'}{images.length > 1 ? ` · ${index + 1}/${images.length}` : ''}
-        </div>
-        <button type="button" onClick={onClose} style={{ ...iconButtonStyle, padding: '8px' }}>
-          <XIcon size={16} />
-        </button>
-      </div>
+      <button type="button" onClick={onClose} aria-label="Close" style={{ ...iconButtonStyle, position: 'absolute', top: '16px', right: '16px', padding: '8px' }}>
+        <XIcon size={18} />
+      </button>
 
-      {/* Prev/Next arrows */}
-      {images.length > 1 && (
-        <>
-          <button
-            type="button"
-            onClick={() => setIndex(i => (i - 1 + images.length) % images.length)}
-            style={{ ...iconButtonStyle, position: 'absolute', left: '18px', top: '50%', transform: 'translateY(-50%)', padding: '10px' }}
-          >
-            <CaretLeftIcon size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setIndex(i => (i + 1) % images.length)}
-            style={{ ...iconButtonStyle, position: 'absolute', right: '18px', top: '50%', transform: 'translateY(-50%)', padding: '10px' }}
-          >
-            <CaretRightIcon size={18} />
-          </button>
-        </>
+      {index > 0 && (
+        <button
+          type="button"
+          onClick={() => setIndex(i => i - 1)}
+          aria-label="Previous"
+          style={{ ...iconButtonStyle, position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', padding: '10px', borderRadius: '999px' }}
+        >
+          <CaretLeftIcon size={18} />
+        </button>
+      )}
+      {index < images.length - 1 && (
+        <button
+          type="button"
+          onClick={() => setIndex(i => i + 1)}
+          aria-label="Next"
+          style={{ ...iconButtonStyle, position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', padding: '10px', borderRadius: '999px' }}
+        >
+          <CaretRightIcon size={18} />
+        </button>
       )}
 
-      {/* Image */}
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '80vw', maxHeight: '70vh', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <img
-          src={current.url}
-          alt={current.filename ?? 'Photo'}
-          style={{ transform: `scale(${zoom / 100})`, transition: 'transform 0.15s', maxWidth: '80vw', maxHeight: '70vh', objectFit: 'contain' }}
-        />
-      </div>
-
-      {/* Bottom controls: zoom, download, delete */}
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ position: 'absolute', bottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}
-      >
-        <button type="button" onClick={() => setZoom(z => Math.max(z - 25, 50))} style={iconButtonStyle}>
-          <MagnifyingGlassMinusIcon size={16} />
-        </button>
-        <div style={{ fontSize: '12px', color: '#F5F0E8', minWidth: '38px', textAlign: 'center' }}>{zoom}%</div>
-        <button type="button" onClick={() => setZoom(z => Math.min(z + 25, 300))} style={iconButtonStyle}>
-          <MagnifyingGlassPlusIcon size={16} />
-        </button>
-        <a
-          href={current.url}
-          download={current.filename ?? 'photo'}
-          style={{ ...iconButtonStyle, textDecoration: 'none' }}
-        >
+      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', maxWidth: '100%', maxHeight: '100%' }}>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#F5F0E8', opacity: 0.9, maxWidth: '80vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>
+          {current.filename ?? 'Photo'}{images.length > 1 ? <span style={{ opacity: 0.6 }}> · {index + 1}/{images.length}</span> : null}
+        </p>
+        <ZoomableImage src={current.url} alt={current.filename ?? ''} />
+        <a href={current.url} download={current.filename ?? 'photo'} style={{ ...iconButtonStyle, background: 'rgba(255,255,255,0.15)' }}>
           <DownloadSimpleIcon size={16} /> Download
         </a>
-        {/* Delete is a placeholder only — Condition History is an append-only
-            audit log by design, and this pass does not wire it to actually
-            mutate the sample_condition_history record's Photo field. A real
-            product decision on whether/how staff can remove condition-check
-            evidence is needed before this becomes a real mutation. */}
-        <button type="button" onClick={() => setDeleteNotice(true)} style={{ ...iconButtonStyle, borderColor: 'rgba(239,68,68,0.5)' }}>
-          <TrashIcon size={16} /> Delete
-        </button>
       </div>
-      {deleteNotice && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute', bottom: '68px', padding: '8px 12px', borderRadius: '8px',
-            background: 'rgba(0,0,0,0.7)', color: '#F5F0E8', fontSize: '11px',
-          }}
-        >
-          Deleting isn't available for condition history photos yet.
-        </div>
-      )}
     </div>
   );
 }
