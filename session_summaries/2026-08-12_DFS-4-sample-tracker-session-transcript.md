@@ -321,3 +321,75 @@ These are not code bugs — they're deliberate technical reinterpretations surfa
 - The Airtable MCP `update_field` tool cannot rename singleSelect choice labels — only the field's own `name`/`description`, or a formula field's `formula`. Choice renames must be done manually in the Airtable UI.
 - No `delete_field` tool is exposed via this MCP server — orphaned/superseded fields must be deleted manually.
 - `npx tsc` is not available in this repo (TypeScript isn't installed) — all tsc verification this session used a disposable scratch harness (temp `npm init`, install `typescript`+`@types/react`, stub `.d.ts` files for `@airtable/blocks/*` and `@phosphor-icons/react`) to distinguish genuine new type errors from the pre-existing, ignorable module-resolution baseline.
+
+---
+
+## Turn 11 — User
+
+> Antes de pasar a lo siguiente, se me pasaron algunos ajustes: * En el form de "Add Sample" todo bien con la selección de Parent Style, pero en el pop up detail page seguimos teniendo el campo de parent name, cuando debería ser reemplazado por el campo de parent style. Parent name ya es legacy y no debería mostrarse en la UI, esto lo incluye en reemplazar la columna de style en la página principal y el filtro de búsqueda en el search box. * El botón de retire no es necesario, ya que el usuario solo necesita cambiar el status en el dropdown. * La sección de Condition History debe ser una tabla de tipo inline item, como las de customization requests, donde: * Columna 1: fecha del registro * Columna 2: condition * Columna 3: Notas * Columna 4: attachment * Al dar click a la imagen, se debe abrir un preview de la imagen en la misma ventana, con las opciones de descargar, bottar, hacer zoom in/out, como lo puedes ver en la imagen. Estoy extrayendo el código de la página que ves en la imagen, mientras tanto haz un intento de ese feature.
+
+## Turn 11 — Assistant
+
+1. Searched the code and, given the file's size, delegated the pass to a subagent with precise instructions for the four adjustments.
+2. Subagent ran, made the changes, and confirmed `retireStep`/`handleRetireClick` were fully removed and everything else was consistent.
+3. Committed and pushed (`23a2df2`). Summary of the four adjustments:
+   1. **Parent Style in the detail modal** — replaced the free-text "Style Name" field with the same DF Styles picker used by Add Sample (reused `RecordSelect` component). `style_name_legacy` remains a real field, just no longer shown/edited in the UI.
+   2. **Retire button removed** — the Status dropdown (already offering Active/Retired) is now the only path to retire a sample.
+   3. **Condition History as a table** — 4 fixed columns (Date / Condition / Notes / Attachment), every row rendered the same way, most-recent row only gets a subtle highlight instead of a separate card+badge treatment.
+   4. **Image lightbox** — clicking a thumbnail opens an in-app preview with zoom in/out, download, and prev/next arrows when a row has more than one photo. Built using the user's screenshot as a visual pattern reference only (the referenced Mango Krafts project itself was not touched).
+4. Flagged one pending product decision: the lightbox's Delete button was left as an inactive placeholder (no-op) since Condition History is an append-only audit log and real deletion is a product call, not something to ship implicitly in a UI pass — asked whether deletion should be wired up or stay inactive.
+
+---
+
+## Turn 12 — User
+
+> Mejor quitalo, que no se pueda borrar. Te paso el código de referencia por si encuentras algo que puedas refinar y sea más similar. También actualiza el readme.
+
+*(User attached `ZoomableImage.tsx` as a reference component.)*
+
+## Turn 12 — Assistant
+
+1. Reviewed the reference `ZoomableImage.tsx` in detail.
+2. Rewrote `ImageLightbox` to move closer to the reference pattern: extracted a new `ZoomableImage` sub-component with pan+zoom via drag, double-click (1x↔2.5x), and Ctrl/Cmd+wheel (1x–6x, with live percentage readout and zoom in/out/reset controls); removed the Delete button entirely (not just disabled — the `TrashIcon` import, `deleteNotice` state, and the placeholder inline note were all removed).
+3. Verified no leftover references to `deleteNotice`/`TrashIcon` remained.
+4. Ran the usual tsc verification harness — zero new errors (only the known pre-existing `TS2315` baseline noise, which didn't even surface this time).
+5. Updated the README line describing Condition + Photo/`ImageLightbox` to match.
+6. Left both files uncommitted at the end of this turn (working tree changes only).
+
+---
+
+## Turn 13 — User (new chat/session continuation)
+
+> Continue from where you left off.
+
+The user then pasted, mid-turn (surfaced via system-reminder), the same Turn 11/12 exchange already covered above (context carried over from a prior session), followed by additional code excerpts from `sample_tracker.tsx` (the Sample Alerts panel, `RiskCard`, and the modal-wiring/`initializeBlock` tail of the file) and the full current `sample_tracker.README.md` content, for verification against the working tree — no new instructions in this turn.
+
+## Turn 13 — Assistant
+
+1. Ran `git status`/`git log` to confirm the described work (pan+zoom `ImageLightbox` rewrite, Delete button removal, README line update) was present in the working tree, uncommitted, on top of `23a2df2` (151 insertions / 92 deletions on the `.tsx`, 1 line on the README).
+2. Reviewed the full `git diff` of `sample_tracker.tsx` and confirmed it matched the described `ZoomableImage` rewrite exactly (drag-pan via window-level pointer listeners, double-click, Ctrl/Cmd+wheel zoom 1x–6x, zoom control bar, no delete affordance anywhere, prev/next arrows now hide at the ends instead of wrapping around).
+3. Confirmed the pasted alerts-panel/`RiskCard`/`initializeBlock` code block matched the current file as-is (not a diff to apply).
+4. Compared the user-pasted README content against the actual file and found the Workflow section (item 7) was already correct, but the **Rules section's last bullet was stale** — it still described the old `ImageLightbox` (50–300% zoom in 25% steps, a Delete button described as "placeholder/no-op"), left over from before the Turn 12 rewrite.
+5. Edited that bullet to describe the shipped `ZoomableImage`-based lightbox (pan/drag, double-click, Ctrl/Cmd+wheel, 1x–6x) and to state plainly that there is no delete action at all, citing the client's 2026-08-12 confirmation.
+6. Reported the correction and asked whether to run tsc or continue with more batches before commit.
+
+---
+
+## Turn 14 — User
+
+> Ya quedó todo, pushea los cambios a main. Y habla en español méxico
+
+## Turn 14 — Assistant
+
+1. Attempted `npx tsc --noEmit --jsx react` directly — unavailable in this environment (no TypeScript installed, same known limitation as earlier in the session; no scratch harness was set up this time since the user had already confirmed everything was ready).
+2. Committed both files (`sample_tracker.tsx`, `sample_tracker.README.md`) and pushed directly to `main` — commit [`512c531`](https://github.com/mbenavides211/DFS-Brain/commit/512c531): "DFS-4: pan-to-zoom ImageLightbox (ZoomableImage), remove photo delete action, README sync".
+3. Reported the push and flagged that the AC-gaps sign-off (Turn 7's three items: Condition/Photo not literally "updatable from the interface," the partial-save clause no longer applying as written, and the duplicate-submission guard being Airtable's responsibility for the Condition Form) plus the new Parent Style link addition remained open from the earlier Claude Chat conversation, pending explicit approval before the spec doc generation.
+4. Switched to Spanish (México) per the user's request, per this turn onward.
+
+---
+
+## Status as of end of Turn 14
+
+- `ImageLightbox`/`ZoomableImage` pan-to-zoom rewrite, Delete action fully removed (not placeholder), and README sync are committed and pushed to `main` (`512c531`).
+- Parent Style picker now used in both Add Sample and the detail modal; Retire button removed in favor of the Status dropdown; Condition History rendered as a strict 4-column table — all shipped as of `23a2df2`/`512c531`.
+- **Still pending, unresolved from the Claude Chat / `airtable-spec-docs` conversation**: explicit client approval to document as "approved reinterpretations" (same treatment as the Figma omission) — (1) Condition/Photo update happening via an external native Airtable Form rather than in-app, (2) the AC's partial-save clause no longer applying as originally written, (3) the duplicate-submission guard for the Condition Form being Airtable's responsibility rather than this file's code, and (4) the Parent Style link being a schema addition not in the original locked AC. The spec doc has not yet been generated pending that sign-off.
