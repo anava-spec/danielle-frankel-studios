@@ -14,6 +14,12 @@ import {
   ChatCircleText as ChatCircleTextIcon,
   Paperclip as PaperclipIcon,
   Plus as PlusIcon,
+  MagnifyingGlassPlus as MagnifyingGlassPlusIcon,
+  MagnifyingGlassMinus as MagnifyingGlassMinusIcon,
+  DownloadSimple as DownloadSimpleIcon,
+  Trash as TrashIcon,
+  CaretLeft as CaretLeftIcon,
+  CaretRight as CaretRightIcon,
 } from '@phosphor-icons/react';
 
 // ─── WRITE QUEUE (safe sequential writes) ────────────────────────────────────
@@ -1280,6 +1286,138 @@ const CONDITION_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
   'Damaged':         { bg: '#FEE2E2', text: '#991B1B' },
   'Needing Repair':  { bg: '#FEF3C7', text: '#92400E' },
 };
+// ─── IMAGE LIGHTBOX (in-app full-size preview, zoom/download/cycle) ───────────
+// Delete is intentionally a no-op placeholder, not real deletion — see onDelete
+// below for why.
+interface ImageLightboxImage { url: string; filename?: string; }
+interface ImageLightboxProps {
+  images: ImageLightboxImage[];
+  startIndex: number;
+  onClose: () => void;
+  tok: Tok;
+}
+function ImageLightbox({ images, startIndex, onClose, tok }: ImageLightboxProps) {
+  const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(images.length - 1, 0)));
+  const [zoom, setZoom] = useState(100);
+  const [deleteNotice, setDeleteNotice] = useState(false);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') setIndex(i => (i - 1 + images.length) % images.length);
+      if (e.key === 'ArrowRight') setIndex(i => (i + 1) % images.length);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose, images.length]);
+
+  if (images.length === 0) return null;
+  const current = images[index];
+
+  const iconButtonStyle: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+    padding: '8px 12px', borderRadius: '8px', border: `1px solid rgba(255,255,255,0.25)`,
+    background: 'rgba(255,255,255,0.08)', color: '#F5F0E8', fontSize: '12px', fontWeight: 600,
+    cursor: 'pointer',
+  };
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9800,
+        background: tok.overlay, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      {/* Top bar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, padding: '14px 18px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ fontSize: '13px', color: '#F5F0E8', opacity: 0.85 }}>
+          {current.filename ?? 'Photo'}{images.length > 1 ? ` · ${index + 1}/${images.length}` : ''}
+        </div>
+        <button type="button" onClick={onClose} style={{ ...iconButtonStyle, padding: '8px' }}>
+          <XIcon size={16} />
+        </button>
+      </div>
+
+      {/* Prev/Next arrows */}
+      {images.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setIndex(i => (i - 1 + images.length) % images.length)}
+            style={{ ...iconButtonStyle, position: 'absolute', left: '18px', top: '50%', transform: 'translateY(-50%)', padding: '10px' }}
+          >
+            <CaretLeftIcon size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIndex(i => (i + 1) % images.length)}
+            style={{ ...iconButtonStyle, position: 'absolute', right: '18px', top: '50%', transform: 'translateY(-50%)', padding: '10px' }}
+          >
+            <CaretRightIcon size={18} />
+          </button>
+        </>
+      )}
+
+      {/* Image */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '80vw', maxHeight: '70vh', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <img
+          src={current.url}
+          alt={current.filename ?? 'Photo'}
+          style={{ transform: `scale(${zoom / 100})`, transition: 'transform 0.15s', maxWidth: '80vw', maxHeight: '70vh', objectFit: 'contain' }}
+        />
+      </div>
+
+      {/* Bottom controls: zoom, download, delete */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}
+      >
+        <button type="button" onClick={() => setZoom(z => Math.max(z - 25, 50))} style={iconButtonStyle}>
+          <MagnifyingGlassMinusIcon size={16} />
+        </button>
+        <div style={{ fontSize: '12px', color: '#F5F0E8', minWidth: '38px', textAlign: 'center' }}>{zoom}%</div>
+        <button type="button" onClick={() => setZoom(z => Math.min(z + 25, 300))} style={iconButtonStyle}>
+          <MagnifyingGlassPlusIcon size={16} />
+        </button>
+        <a
+          href={current.url}
+          download={current.filename ?? 'photo'}
+          style={{ ...iconButtonStyle, textDecoration: 'none' }}
+        >
+          <DownloadSimpleIcon size={16} /> Download
+        </a>
+        {/* Delete is a placeholder only — Condition History is an append-only
+            audit log by design, and this pass does not wire it to actually
+            mutate the sample_condition_history record's Photo field. A real
+            product decision on whether/how staff can remove condition-check
+            evidence is needed before this becomes a real mutation. */}
+        <button type="button" onClick={() => setDeleteNotice(true)} style={{ ...iconButtonStyle, borderColor: 'rgba(239,68,68,0.5)' }}>
+          <TrashIcon size={16} /> Delete
+        </button>
+      </div>
+      {deleteNotice && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute', bottom: '68px', padding: '8px 12px', borderRadius: '8px',
+            background: 'rgba(0,0,0,0.7)', color: '#F5F0E8', fontSize: '11px',
+          }}
+        >
+          Deleting isn't available for condition history photos yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConditionBadge({ value, tok }: { value: string | null; tok: Tok }) {
   const c = value ? (CONDITION_BADGE_COLORS[value] ?? { bg: tok.badge_away, text: tok.badge_away_text }) : null;
   return (
@@ -1316,7 +1454,11 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
   };
 
   const label      = getStr(FIELD_IDS.SAMPLE.LABEL) || getStr(FIELD_IDS.SAMPLE.PARENT_STYLE_NAME) || getStr(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY);
-  const [styleName, setStyleName] = useState(getStr(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY));
+  const getRecordLinkId = (fid: string): string | null => {
+    const v = record.getCellValue(fid) as Array<{ id: string }> | null;
+    return v && v.length > 0 ? v[0].id : null;
+  };
+  const [parentStyleId, setParentStyleId] = useState<string | null>(getRecordLinkId(FIELD_IDS.SAMPLE.PARENT_STYLE));
   const [size,      setSize]      = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.SIZE));
   const [type,      setType]      = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.TYPE));
   const [locVal,    setLocVal]    = useState<string | null>(getLocationValue(record));
@@ -1324,6 +1466,16 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
   const [statusVal, setStatusVal] = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.STATUS));
 
   const canWrite = sampleTable.hasPermissionToUpdateRecords?.() ?? true;
+
+  // ── Parent Style options (DF Styles) — same source/pattern as AddSampleModal ──
+  const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
+  const dfStylesRecords = useRecords(dfStylesTable ?? null);
+  const styleOptions: RecordOption[] = useMemo(() => {
+    if (!dfStylesRecords) return [];
+    return dfStylesRecords
+      .map(r => ({ id: r.id, label: r.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)' }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [dfStylesRecords]);
 
   // ── Condition History (authoritative "current condition" — computed here
   // from Sample Condition History sorted by Logged At, NOT from the rollup) ──
@@ -1342,7 +1494,10 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
         return bT.localeCompare(aT); // most recent first
       });
   }, [conditionHistoryRecords, record.id]);
-  const latestCondition = conditionHistory[0] ?? null;
+
+  // ── Lightbox state — clicking a Condition History attachment thumbnail
+  // opens the in-app preview instead of a new browser tab ──
+  const [lightboxImages, setLightboxImages] = useState<{ images: Array<{ url: string; filename?: string }>; startIndex: number } | null>(null);
 
   // Airtable Form prefill query params are keyed by the field's live display
   // name (e.g. `prefill_sample`), not its field ID — read it from the field
@@ -1358,34 +1513,6 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
     queueWrite(() => sampleTable.updateRecordAsync(record.id, patch))
       .catch(err => console.error('[SampleTracker] save error:', err));
   }, [sampleTable, record.id]);
-
-  // ── Retire action (Status → Retired). No native window.confirm anywhere
-  // else in this file, so we use a lightweight two-step button confirm ──
-  const [retireStep, setRetireStep] = useState<'idle' | 'confirm'>('idle');
-  const [retiring, setRetiring] = useState(false);
-  const [retireError, setRetireError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (retireStep !== 'confirm') return;
-    const t = setTimeout(() => setRetireStep('idle'), 3000);
-    return () => clearTimeout(t);
-  }, [retireStep]);
-
-  const handleRetireClick = () => {
-    if (retireStep !== 'confirm') { setRetireStep('confirm'); return; }
-    setRetireStep('idle');
-    setRetireError(null);
-    setRetiring(true);
-    const prevStatus = statusVal;
-    setStatusVal('Retired'); // optimistic — rolled back below on failure
-    queueWrite(() => sampleTable.updateRecordAsync(record.id, { [FIELD_IDS.SAMPLE.STATUS]: { name: 'Retired' } }))
-      .catch(err => {
-        console.error('[SampleTracker] retire error:', err);
-        setStatusVal(prevStatus);
-        setRetireError(err instanceof Error ? err.message : 'Failed to retire sample');
-      })
-      .finally(() => setRetiring(false));
-  };
 
   const handleLocation = (val: string) => {
     setLocVal(val);
@@ -1403,8 +1530,9 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
     setStatusVal(val);
     save({ [FIELD_IDS.SAMPLE.STATUS]: { name: val } });
   };
-  const handleStyleName = () => {
-    save({ [FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY]: styleName || null });
+  const handleParentStyle = (id: string) => {
+    setParentStyleId(id);
+    save({ [FIELD_IDS.SAMPLE.PARENT_STYLE]: [{ id }] });
   };
   const handleNotes = () => {
     save({ [FIELD_IDS.SAMPLE.NOTES]: notes || null });
@@ -1480,59 +1608,34 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
             >
               Register Condition
             </button>
-            {canWrite && statusVal !== 'Retired' && (
-              <button
-                type="button"
-                onClick={handleRetireClick}
-                disabled={retiring}
-                style={{
-                  padding: '4px 10px', fontSize: '11px', fontWeight: 600,
-                  borderRadius: '999px', cursor: retiring ? 'not-allowed' : 'pointer',
-                  border: `1px solid ${retireStep === 'confirm' ? '#EF4444' : tok.border}`,
-                  background: retireStep === 'confirm' ? '#EF444420' : 'transparent',
-                  color: retireStep === 'confirm' ? '#EF4444' : tok.text_secondary,
-                  opacity: retiring ? 0.6 : 1,
-                }}
-              >
-                {retiring ? 'Retiring…' : retireStep === 'confirm' ? 'Confirm Retire?' : 'Retire'}
-              </button>
-            )}
           </div>
           {!conditionFormFullUrl && (
             <div style={{ fontSize: '11px', color: tok.text_muted, marginTop: '6px' }}>
               Condition form link not configured yet.
             </div>
           )}
-          {retireError && <div style={{ fontSize: '11px', color: '#EF4444', marginTop: '6px' }}>{retireError}</div>}
         </div>
 
         {/* Body */}
         <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          {/* Style Name — full-width row */}
+          {/* Parent Style — full-width row (record picker over DF Styles; the
+              legacy free-text Style Name field is no longer shown/editable here) */}
           <div>
-            <FieldLabel>Style Name</FieldLabel>
+            <FieldLabel>Parent Style</FieldLabel>
             {canWrite ? (
-              <input
-                type="text"
-                value={styleName}
-                onChange={e => setStyleName(e.target.value)}
-                onBlur={e => {
-                  (e.target as HTMLInputElement).style.borderColor = tok.input_border;
-                  handleStyleName();
-                }}
-                onFocus={e => { (e.target as HTMLInputElement).style.borderColor = tok.input_focus; }}
-                placeholder="Style name…"
-                style={{
-                  width: '100%', boxSizing: 'border-box',
-                  padding: '7px 10px', borderRadius: '8px',
-                  border: `1px solid ${tok.input_border}`,
-                  background: tok.surface, color: tok.text_primary,
-                  fontSize: '13px', outline: 'none', fontFamily: 'inherit',
-                }}
+              <RecordSelect
+                value={parentStyleId}
+                options={styleOptions}
+                onChange={handleParentStyle}
+                placeholder="Select a style…"
+                tok={tok}
+                escapeModal
               />
             ) : (
-              <div style={{ fontSize: '13px', color: tok.text_primary }}>{styleName || '—'}</div>
+              <div style={{ fontSize: '13px', color: tok.text_primary }}>
+                {styleOptions.find(o => o.id === parentStyleId)?.label ?? '—'}
+              </div>
             )}
           </div>
 
@@ -1617,82 +1720,61 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
                 No condition history yet.
               </div>
             ) : (
-              <>
-                {/* Most recent entry — prominent */}
+              <div style={{ border: `1px solid ${tok.border}`, borderRadius: '8px', overflow: 'hidden' }}>
                 <div style={{
-                  display: 'flex', alignItems: 'flex-start', gap: '10px',
-                  padding: '10px', borderRadius: '8px', background: tok.surface_alt,
-                  border: `1px solid ${tok.border}`, marginBottom: '8px',
+                  display: 'grid', gridTemplateColumns: '92px 1fr 1.4fr 48px',
+                  padding: '6px 10px', background: tok.surface_alt,
+                  fontSize: '10px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.06em',
                 }}>
-                  {(() => {
-                    const photos = (latestCondition!.getCellValue(FIELD_IDS.CONDITION_HISTORY.PHOTO) as Array<{ id?: string; url: string; filename: string }> | null) ?? [];
-                    return photos.length > 0 ? (
-                      <a href={photos[0].url} target="_blank" rel="noreferrer">
-                        <img
-                          src={photos[0].url}
-                          alt={photos[0].filename}
-                          style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', border: `1px solid ${tok.border}`, flexShrink: 0 }}
-                        />
-                      </a>
-                    ) : null;
-                  })()}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.05em', marginBottom: '4px' }}>
-                      Current Condition
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <ConditionBadge value={latestCondition!.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.CONDITION) || null} tok={tok} />
-                      <span style={{ fontSize: '11px', color: tok.text_muted }}>
-                        {fmtDate((latestCondition!.getCellValue(FIELD_IDS.CONDITION_HISTORY.LOGGED_AT) as string) ?? '')}
-                      </span>
-                    </div>
-                    {latestCondition!.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.NOTES) && (
-                      <div style={{ fontSize: '12px', color: tok.text_secondary, lineHeight: 1.4 }}>
-                        {latestCondition!.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.NOTES)}
-                      </div>
-                    )}
-                  </div>
+                  <div>DATE</div>
+                  <div>CONDITION</div>
+                  <div>NOTES</div>
+                  <div>PHOTO</div>
                 </div>
-
-                {/* Rest of history — compact read-only timeline */}
-                {conditionHistory.length > 1 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {conditionHistory.slice(1).map(h => {
-                      const photos = (h.getCellValue(FIELD_IDS.CONDITION_HISTORY.PHOTO) as Array<{ id?: string; url: string; filename: string }> | null) ?? [];
-                      const noteStr = h.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.NOTES);
-                      return (
-                        <div key={h.id} style={{
-                          display: 'flex', alignItems: 'flex-start', gap: '8px',
-                          padding: '6px 0', borderTop: `1px solid ${tok.border}`,
-                        }}>
-                          {photos.length > 0 && (
-                            <a href={photos[0].url} target="_blank" rel="noreferrer">
-                              <img
-                                src={photos[0].url}
-                                alt={photos[0].filename}
-                                style={{ width: '32px', height: '32px', borderRadius: '5px', objectFit: 'cover', border: `1px solid ${tok.border}`, flexShrink: 0 }}
-                              />
-                            </a>
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <ConditionBadge value={h.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.CONDITION) || null} tok={tok} />
-                              <span style={{ fontSize: '11px', color: tok.text_muted }}>
-                                {fmtDate((h.getCellValue(FIELD_IDS.CONDITION_HISTORY.LOGGED_AT) as string) ?? '')}
-                              </span>
-                            </div>
-                            {noteStr && (
-                              <div style={{ fontSize: '11px', color: tok.text_muted, marginTop: '2px' }}>
-                                {truncate(noteStr, 80)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
+                {conditionHistory.map((h, idx) => {
+                  const photos = (h.getCellValue(FIELD_IDS.CONDITION_HISTORY.PHOTO) as Array<{ id?: string; url: string; filename: string }> | null) ?? [];
+                  const noteStr = h.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.NOTES);
+                  return (
+                    <div
+                      key={h.id}
+                      style={{
+                        display: 'grid', gridTemplateColumns: '92px 1fr 1.4fr 48px',
+                        alignItems: 'center', gap: '4px', padding: '8px 10px',
+                        borderTop: idx === 0 ? 'none' : `1px solid ${tok.border}`,
+                        background: idx === 0 ? tok.row_hover : 'transparent',
+                      }}
+                    >
+                      <div style={{ fontSize: '11px', color: tok.text_secondary }}>
+                        {fmtDate((h.getCellValue(FIELD_IDS.CONDITION_HISTORY.LOGGED_AT) as string) ?? '')}
+                      </div>
+                      <div>
+                        <ConditionBadge value={h.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.CONDITION) || null} tok={tok} />
+                      </div>
+                      <div style={{ fontSize: '11px', color: noteStr ? tok.text_secondary : tok.text_muted }}>
+                        {noteStr ? truncate(noteStr, 60) : '—'}
+                      </div>
+                      <div>
+                        {photos.length > 0 ? (
+                          <img
+                            src={photos[0].url}
+                            alt={photos[0].filename}
+                            onClick={() => setLightboxImages({
+                              images: photos.map(p => ({ url: p.url, filename: p.filename })),
+                              startIndex: 0,
+                            })}
+                            style={{
+                              width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover',
+                              border: `1px solid ${tok.border}`, cursor: 'pointer',
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '13px', color: tok.text_muted }}>—</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -1703,6 +1785,14 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
           )}
         </div>
       </div>
+      {lightboxImages && (
+        <ImageLightbox
+          images={lightboxImages.images}
+          startIndex={lightboxImages.startIndex}
+          onClose={() => setLightboxImages(null)}
+          tok={tok}
+        />
+      )}
     </div>
   );
 }
