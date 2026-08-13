@@ -23,6 +23,23 @@ OBJECTIVE
   sync_error_message and hands off a failure alert for the studio admin
   mailbox via a second downstream Send Email action.
 
+LOCKED FIELD — Cobalt reads it too (fix, 2026-08-13)
+  Cobalt loads this record directly from Airtable and rejects with 400
+  ("already converted to a Shopify draft order") whenever it sees
+  locked=true, regardless of whether a Shopify draft order actually
+  exists yet — confirmed via a controlled curl A/B test (same client,
+  same style, same status; only `locked` differed: true → 400, false →
+  advanced to real Cobalt logic). The interface sets locked=true on click
+  purely for its own UI protection (staff can't edit mid-flight), which
+  previously made every real Cobalt call fail. Fix: DraftOrderRepository
+  .unlock() flips it back to false right before the Cobalt call, then
+  writeCompleted/writeFailed/the catch-all error handler each restore the
+  correct final value. Per Nadiia (2026-08-13): a draft order should only
+  end up locked when Cobalt actually returns 200 — every other outcome
+  (guard clause failure, Cobalt error response, network error, script
+  error) leaves it unlocked so staff can fix and retry without a manual
+  unlock step.
+
 isProd (real end-to-end test without emailing anyone, 2026-08-11)
   Optional boolean input, defaults to true (production behavior) when left
   unset. Set to false to run the REAL flow end-to-end — guard clause, real
@@ -226,13 +243,33 @@ class DraftOrderRepository {
     return record;
   }
 
+  // Cobalt reads this record's `locked` field itself when it loads the
+  // draft order — and rejects with 400 ("already converted") whenever it
+  // sees locked=true, regardless of whether a Shopify draft order actually
+  // exists yet (confirmed via direct curl A/B test, 2026-08-13). The
+  // interface sets locked=true immediately on click for UI protection, so
+  // this must be flipped back to false right before calling Cobalt, or
+  // every real call fails.
+  async unlock(recordId) {
+    this.logger.step(3, `Unlocking before Cobalt call (Cobalt itself rejects locked=true) → ${recordId}`);
+    await this.table.updateRecordAsync(recordId, {
+      [FIELDS_DRAFT_ORDER.locked] : false,
+    });
+  }
+
   async writeFailed(recordId, errorMessage) {
     this.logger.step(6, `Writing Failed outcome → ${recordId}`);
     await this.table.updateRecordAsync(recordId, {
       [FIELDS_DRAFT_ORDER.shopify_draft_order_status] : { name: STATUS.FAILED },
       [FIELDS_DRAFT_ORDER.sync_error_message]          : errorMessage,
+      // Per Nadiia (2026-08-13): a draft order should only end up locked
+      // when Cobalt actually returned 200. Any non-success outcome —
+      // guard clause failure, Cobalt error response, network error —
+      // leaves it unlocked so staff can fix and retry without an extra
+      // manual unlock step.
+      [FIELDS_DRAFT_ORDER.locked]                      : false,
     });
-    this.logger.audit('Failed status + sync_error_message written');
+    this.logger.audit('Failed status + sync_error_message written, locked cleared');
   }
 
   async writeCompleted(recordId, { shopifyDraftOrderId, draftOrderName, invoiceUrl }) {
@@ -240,12 +277,14 @@ class DraftOrderRepository {
     const payload = {
       [FIELDS_DRAFT_ORDER.shopify_draft_order_status] : { name: STATUS.COMPLETED },
       [FIELDS_DRAFT_ORDER.sync_error_message]          : null,
+      // Only a real Cobalt 200 re-locks the record — see writeFailed.
+      [FIELDS_DRAFT_ORDER.locked]                      : true,
     };
     if (shopifyDraftOrderId) payload[FIELDS_DRAFT_ORDER.draft_order_id]   = String(shopifyDraftOrderId);
     if (draftOrderName)      payload[FIELDS_DRAFT_ORDER.draft_order_name] = String(draftOrderName);
     if (invoiceUrl)          payload[FIELDS_DRAFT_ORDER.invoice_url]       = String(invoiceUrl);
     await this.table.updateRecordAsync(recordId, payload);
-    this.logger.audit('Completed status + Shopify identifiers written');
+    this.logger.audit('Completed status + Shopify identifiers written, locked set');
   }
 }
 
@@ -408,7 +447,13 @@ class DraftOrderShopifyCreationService {
   // Maps a Cobalt HTTP status to a specific, actionable sync_error_message.
   _reasonForHttpFailure(httpStatus, body) {
     if (httpStatus === 404) return 'Draft order record not found in Cobalt (404).';
-    if (httpStatus === 400) return 'Draft order is already locked in Cobalt (400).';
+    // Cobalt's actual 400 reason varies (e.g. "already converted to a
+    // Shopify draft order") — surface their literal message instead of a
+    // fixed guess, now that we know locked=true (not this record's real
+    // processing state) was the false-positive cause of most 400s we saw
+    // during testing (2026-08-13); unlock() below prevents that specific
+    // case, but Cobalt may still 400 for other reasons.
+    if (httpStatus === 400) return `Draft order rejected by Cobalt (400)${body?.error ? `: ${body.error}` : '.'}`;
     if (httpStatus === 422) return 'Could not resolve a product/variant for this draft order, including fallback (422).';
     const detail = body?.error || body?.message;
     return `Cobalt returned an unexpected error (HTTP ${httpStatus})${detail ? `: ${detail}` : '.'}`;
@@ -436,6 +481,14 @@ class DraftOrderShopifyCreationService {
     }
 
     this.logger.step(2, `Guard passed → draft: ${draftId}`);
+
+    // Step 3 — Unlock before calling Cobalt. Cobalt loads this record
+    // itself and rejects with 400 whenever it sees locked=true (confirmed
+    // 2026-08-13) — the interface sets locked=true on click purely for its
+    // own UI protection, so it must come back off right here or every real
+    // call fails. writeCompleted/writeFailed below restore the correct
+    // final value once we know the outcome.
+    await this.draftOrderRepo.unlock(draftOrderRecordId);
 
     // Step 3-4 — Call Cobalt
     let cobaltResult;
@@ -690,8 +743,10 @@ try {
       await draftOrdersTable.updateRecordAsync(draftOrderRecordId, {
         [FIELDS_DRAFT_ORDER.shopify_draft_order_status] : { name: STATUS.FAILED },
         [FIELDS_DRAFT_ORDER.sync_error_message]          : `Script error: ${err.message}`,
+        // Same "only 200 locks it" rule as writeFailed/writeCompleted.
+        [FIELDS_DRAFT_ORDER.locked]                      : false,
       });
-      logger.audit('Script-error message written to draft_orders record');
+      logger.audit('Script-error message written to draft_orders record, locked cleared');
     }
   } catch (writeErr) {
     logger.error(`Could not write script-error message → ${writeErr.message}`);
