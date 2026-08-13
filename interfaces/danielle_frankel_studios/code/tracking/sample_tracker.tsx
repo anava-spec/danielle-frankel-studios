@@ -782,6 +782,15 @@ function getLocationValue(r: Record): string | null {
   if (typeof v === 'object' && 'name' in (v as object)) return (v as any).name;
   return null;
 }
+// Effective style name for search/sort/display/alert-matching — mirrors the
+// LABEL formula's own precedence (Parent Style Name, falling back to Style
+// Name Legacy). Samples created via the Parent Style picker never populate
+// Style Name Legacy, so any code that read that field directly would treat
+// every new sample as nameless/unmatched. Use this everywhere instead of
+// reading FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY on its own.
+function getEffectiveStyleName(r: Record): string {
+  return r.getCellValueAsString(FIELD_IDS.SAMPLE.PARENT_STYLE_NAME) || r.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY);
+}
 // Status choice names/colors are read live from the field itself (not
 // hardcoded), so they stay correct if choices are added/recolored later.
 // The SELECTED chip shows the choice's real Airtable color; the open
@@ -1797,7 +1806,7 @@ function SampleTracker() {
         const locVal      = getLocationValue(r);
         const locationVal = r.getCellValueAsString(FIELD_IDS.SAMPLE.LOCATION_BUCKET);
         const typeVal     = r.getCellValueAsString(FIELD_IDS.SAMPLE.TYPE);
-        const styleName   = r.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY);
+        const styleName   = getEffectiveStyleName(r);
 
         if (locationFilter.length > 0 && !locationFilter.includes(locationVal)) return false;
         if (typeFilter.length > 0 && !typeFilter.includes(typeVal)) return false;
@@ -1816,8 +1825,7 @@ function SampleTracker() {
         const la = deriveLocationStatus(getLocationValue(a));
         const lb = deriveLocationStatus(getLocationValue(b));
         if (ord[la] !== ord[lb]) return ord[la] - ord[lb];
-        return a.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY)
-          .localeCompare(b.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY));
+        return getEffectiveStyleName(a).localeCompare(getEffectiveStyleName(b));
       });
   }, [sampleRecords, locationFilter, typeFilter, sampleStatusFilter, search]);
 
@@ -1828,7 +1836,7 @@ function SampleTracker() {
     for (const sample of sampleRecords) {
       const locVal = getLocationValue(sample);
       if (deriveLocationStatus(locVal) !== 'in-studio') continue;
-      const name = sample.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY).toLowerCase().trim();
+      const name = getEffectiveStyleName(sample).toLowerCase().trim();
       if (!map.has(name)) map.set(name, []);
       map.get(name)!.push(sample);
     }
@@ -1914,7 +1922,7 @@ function SampleTracker() {
         // Find any sample of this style (even if not in-studio) for modal on missing rows
         let anySample: Record | null = null;
         for (const sample of sampleRecords) {
-          const sName = sample.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY).toLowerCase().trim();
+          const sName = getEffectiveStyleName(sample).toLowerCase().trim();
           if (sName === fs || sName.includes(fs) || fs.includes(sName)) { anySample = sample; break; }
         }
 
@@ -2113,7 +2121,7 @@ function SampleTracker() {
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = tok.surface; }}
                     >
                       <td style={{ padding: '7px 12px', fontWeight: 600, color: tok.text_primary, maxWidth: '160px' }}>
-                        {truncate(record.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY), 28)}
+                        {truncate(getEffectiveStyleName(record), 28)}
                       </td>
                       <td style={{ padding: '7px 12px' }}>
                         <LocationBadge status={deriveLocationStatus(locVal)} tok={tok} />
@@ -2280,7 +2288,7 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
           {alert.styleMatches.map(m => {
             const sampleToOpen = m.bestSample ?? m.anySample;
             const rowLabel = sampleToOpen
-              ? (sampleToOpen.getCellValueAsString(FIELD_IDS.SAMPLE.LABEL) || sampleToOpen.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY))
+              ? (sampleToOpen.getCellValueAsString(FIELD_IDS.SAMPLE.LABEL) || getEffectiveStyleName(sampleToOpen))
               : m.style;
             const isClickable = !!sampleToOpen;
             return (
