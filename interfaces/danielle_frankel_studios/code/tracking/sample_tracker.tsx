@@ -112,10 +112,13 @@ const FIELD_IDS = {
   },
   CLIENT: {
     FULL_NAME:        'fldB3Wyam01D3wR5Q',
-    READY_TO_WEAR_SIZE:'fldEEH4CK3Qqp0g0C',
+    READY_TO_WEAR_SIZE:'fldEEH4CK3Qqp0g0C', // number
+    FAVORITE_STYLES:  'fldZzNR0g5VEJ5RmX', // multipleRecordLinks → DF Styles — same field the Champion Match automation watches
+    CHAMPION_SAMPLES: 'fldEDcL6wGGmUt6ni', // multipleRecordLinks → Sample Log — written by the Champion Match automation
   },
   DF_STYLES: {
     STYLE_NAME: 'fldEs3chQAeplPc1w', // singleLineText
+    IS_PARENT_STYLE: 'fldahgBBH19TcIPzi', // checkbox — only parent styles are selectable in the parent_style picker
   },
   CONDITION_HISTORY: {
     SAMPLE_LINK: 'fldg7B8fEq7qwWhGU', // multipleRecordLinks → Sample Log
@@ -590,9 +593,12 @@ interface AddSampleModalProps {
 function AddSampleModal({ base, sampleTable, onClose, tok }: AddSampleModalProps) {
   const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
   const dfStylesRecords = useRecords(dfStylesTable ?? null);
+  // Parent-style constraint: only records with is_parent_style checked are
+  // selectable here — variants (e.g. "-customized") are excluded.
   const styleOptions: RecordOption[] = useMemo(() => {
     if (!dfStylesRecords) return [];
     return dfStylesRecords
+      .filter(r => r.getCellValue(FIELD_IDS.DF_STYLES.IS_PARENT_STYLE) === true)
       .map(r => ({ id: r.id, label: r.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)' }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [dfStylesRecords]);
@@ -751,12 +757,22 @@ function AddSampleModal({ base, sampleTable, onClose, tok }: AddSampleModalProps
 type LocationStatus = 'in-studio' | 'at trunk show' | 'away';
 type TimePeriod = 'today' | '7' | '14' | '30' | 'all';
 
+// Close-size matching state per requested style — 'exact' and 'close' are not
+// mutually exclusive in what's collected (both arrays are always populated),
+// but matchState reflects the best available state for the summary badge.
+// An exact match, when present, must remain visible even if close alternatives
+// also exist — see StyleMatch rendering in RiskCard.
+type MatchState = 'exact' | 'close' | 'none';
 interface StyleMatch {
-  style: string;
-  inStudio: boolean;
-  bestSample: Record | null; // best in-studio match
-  anySample: Record | null;  // any sample of this style (for modal on missing rows)
-  distance: number | null;
+  styleId: string;
+  style: string; // DF Styles record's Style Name — display label
+  matchState: MatchState;
+  exactMatches: Record[];  // distance === 0, in-studio first
+  closeMatches: Record[];  // 0 < distance <= CLOSE_SIZE_THRESHOLD, in-studio first
+  bestSample: Record | null; // exactMatches[0] ?? closeMatches[0] — used to open the detail modal
+  anySample: Record | null;  // any linked sample (any status/distance) — modal fallback when there's no stock
+  inStudio: boolean; // true if bestSample is in-studio (kept for the existing "not in studio" summary line)
+  distance: number | null; // distance of bestSample, if any
 }
 interface RiskAlert {
   apptRecord: Record;
@@ -774,11 +790,27 @@ function deriveLocationStatus(loc: string | null): LocationStatus {
   if (loc === 'Trunk Show') return 'at trunk show';
   return 'away';
 }
-function sizeToNumber(s: string | null): number | null {
-  if (!s) return null;
-  const t = s.trim();
-  if (t === 'OS' || t === 'OS ') return 0;
-  const n = parseInt(t, 10);
+// Size → numeric position on the matching axis. European sizes are their own
+// axis (35–42) and never cross-match against the US/letter axis.
+const SIZE_ORDER: Record<string, number> = {
+  'OS': 0, 'XS': 0, '0': 0,
+  '2': 2,
+  '4': 4, 'S': 4,
+  '6': 6,
+  '8': 8, 'M': 8,
+  '10': 10,
+  '12': 12, 'L': 12,
+  '14': 14, 'XL': 14,
+  '16': 16, 'XXL': 16,
+  '35': 35, '36': 36, '37': 37, '38': 38, '38.5': 38.5,
+  '39': 39, '39.5': 39.5, '40': 40, '41': 41, '42': 42,
+};
+const CLOSE_SIZE_THRESHOLD = 1; // ±1 step on the numeric axis
+function sizeToNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  const t = raw.trim().toUpperCase();
+  if (t in SIZE_ORDER) return SIZE_ORDER[t];
+  const n = parseFloat(t);
   return isNaN(n) ? null : n;
 }
 function getLocationValue(r: Record): string | null {
@@ -1526,15 +1558,19 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
 
   const canWrite = sampleTable.hasPermissionToUpdateRecords?.() ?? true;
 
-  // ── Parent Style options (DF Styles) — same source/pattern as AddSampleModal ──
+  // ── Parent Style options (DF Styles) — same source/pattern as AddSampleModal.
+  // Constrained to is_parent_style records, except the sample's own currently-linked
+  // style is always kept in the list (even if not a parent) so an existing link
+  // never renders blank/unlabeled when reopening this modal. ──
   const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
   const dfStylesRecords = useRecords(dfStylesTable ?? null);
   const styleOptions: RecordOption[] = useMemo(() => {
     if (!dfStylesRecords) return [];
     return dfStylesRecords
+      .filter(r => r.getCellValue(FIELD_IDS.DF_STYLES.IS_PARENT_STYLE) === true || r.id === parentStyleId)
       .map(r => ({ id: r.id, label: r.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)' }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [dfStylesRecords]);
+  }, [dfStylesRecords, parentStyleId]);
 
   // ── Condition History (authoritative "current condition" — computed here
   // from Sample Condition History sorted by Logged At, NOT from the rollup) ──
@@ -1864,11 +1900,13 @@ function SampleTracker() {
   const sampleTable = base.getTableByIdIfExists(TABLE_IDS.SAMPLE_LOG);
   const apptTable   = base.getTableByIdIfExists(TABLE_IDS.APPOINTMENTS);
   const clientTable = base.getTableByIdIfExists(TABLE_IDS.CLIENTS);
+  const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
   const resourcesTable = base.getTableByIdIfExists(TABLE_IDS.RESOURCES);
 
   const sampleRecords = useRecords(sampleTable ?? null);
   const apptRecords   = useRecords(apptTable ?? null);
   const clientRecords = useRecords(clientTable ?? null);
+  const dfStylesRecords = useRecords(dfStylesTable ?? null);
   // useRecords — fall back to sampleTable to keep hook count stable
   const _resourcesRaw    = useRecords(resourcesTable ?? sampleTable ?? null);
   const resourcesRecords = resourcesTable ? _resourcesRaw : null;
@@ -1978,26 +2016,36 @@ function SampleTracker() {
       });
   }, [sampleRecords, locationFilter, typeFilter, sampleStatusFilter, search]);
 
-  // ── Pre-index in-studio samples by normalized style name (avoids O(N²) scan) ──
-  const inStudioByStyle = useMemo(() => {
-    if (!sampleRecords) return new Map<string, Record[]>();
-    const map = new Map<string, Record[]>();
+  // ── Pre-index samples by their linked parent_style (DF Styles) record id —
+  // avoids O(N²) scans and is the same link the Champion Match automation
+  // reads. A sample with no parent_style link is excluded from both maps
+  // (never a valid match candidate). ──
+  const { activeSamplesByStyleId, anySamplesByStyleId } = useMemo(() => {
+    const active = new Map<string, Record[]>();
+    const any = new Map<string, Record[]>();
+    if (!sampleRecords) return { activeSamplesByStyleId: active, anySamplesByStyleId: any };
     for (const sample of sampleRecords) {
-      const locVal = getLocationValue(sample);
-      if (deriveLocationStatus(locVal) !== 'in-studio') continue;
-      const name = getEffectiveStyleName(sample).toLowerCase().trim();
-      if (!map.has(name)) map.set(name, []);
-      map.get(name)!.push(sample);
+      const links = sample.getCellValue(FIELD_IDS.SAMPLE.PARENT_STYLE) as Array<{ id: string }> | null;
+      if (!links || links.length === 0) continue; // rule 6 — no parent-style link, not a candidate
+      const styleId = links[0].id;
+      if (!any.has(styleId)) any.set(styleId, []);
+      any.get(styleId)!.push(sample);
+      if (sample.getCellValueAsString(FIELD_IDS.SAMPLE.STATUS) === 'Active') {
+        if (!active.has(styleId)) active.set(styleId, []);
+        active.get(styleId)!.push(sample);
+      }
     }
-    return map;
+    return { activeSamplesByStyleId: active, anySamplesByStyleId: any };
   }, [sampleRecords]);
 
   // ── Risk alerts (future appointments, one per client) ──
   const { allAlerts, unevaluatedCount } = useMemo((): { allAlerts: RiskAlert[]; unevaluatedCount: number } => {
-    if (!apptRecords || !clientRecords || !sampleRecords) return { allAlerts: [], unevaluatedCount: 0 };
+    if (!apptRecords || !clientRecords || !sampleRecords || !dfStylesRecords) return { allAlerts: [], unevaluatedCount: 0 };
     const today = todayStr();
     const clientMap = new Map<string, Record>();
     for (const c of clientRecords) clientMap.set(c.id, c);
+    const styleNameById = new Map<string, string>();
+    for (const s of dfStylesRecords) styleNameById.set(s.id, s.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)');
 
     const futureAppts = apptRecords
       .filter(appt => {
@@ -2037,13 +2085,16 @@ function SampleTracker() {
       const clientSizeRaw = clientRec ? clientRec.getCellValueAsString(FIELD_IDS.CLIENT.READY_TO_WEAR_SIZE) : null;
       const clientSize = clientSizeRaw ? sizeToNumber(clientSizeRaw) : null;
 
-      const favStylesStr = appt.getCellValueAsString(FIELD_IDS.APPT.FAVORITE_STYLES);
-      const favStyles = favStylesStr
-        ? favStylesStr.split(',').map(s => s.toLowerCase().trim()).filter(Boolean)
-        : [];
+      // Favorite styles come from the client's real DF Styles link (same field
+      // the Champion Match automation watches), not the appointment's text
+      // lookup — so matching below is by record id, never by name substring.
+      const favStyleLinks = clientRec
+        ? (clientRec.getCellValue(FIELD_IDS.CLIENT.FAVORITE_STYLES) as Array<{ id: string }> | null)
+        : null;
+      const favStyleIds = favStyleLinks ? favStyleLinks.map(l => l.id) : [];
 
       // #3 — No styles on file: surface as incomplete-data alert
-      if (favStyles.length === 0) {
+      if (favStyleIds.length === 0) {
         unevaluated++;
         alerts.push({
           apptRecord: appt,
@@ -2059,39 +2110,50 @@ function SampleTracker() {
       // #4 — Client size missing: flag but still evaluate style presence
       const sizeIsMissing = clientSize === null;
 
-      // Use pre-indexed map — O(unique style names) instead of O(all samples)
-      const styleMatches: StyleMatch[] = favStyles.map(fs => {
-        const candidates: Record[] = [];
-        for (const [name, samples] of inStudioByStyle) {
-          if (name === fs || name.includes(fs) || fs.includes(name)) {
-            candidates.push(...samples);
-          }
-        }
+      // Close-size matching per style: exact match (distance 0) always shown
+      // when present; close alternatives (0 < distance <= CLOSE_SIZE_THRESHOLD)
+      // shown alongside/instead; otherwise no-stock. Tiebreak: in-studio first.
+      const styleMatches: StyleMatch[] = favStyleIds.map(styleId => {
+        const styleName = styleNameById.get(styleId) ?? '(untitled)';
+        const candidates = activeSamplesByStyleId.get(styleId) ?? [];
+        const anySample = (anySamplesByStyleId.get(styleId) ?? [])[0] ?? null;
 
-        // Find any sample of this style (even if not in-studio) for modal on missing rows
-        let anySample: Record | null = null;
-        for (const sample of sampleRecords) {
-          const sName = getEffectiveStyleName(sample).toLowerCase().trim();
-          if (sName === fs || sName.includes(fs) || fs.includes(sName)) { anySample = sample; break; }
-        }
+        const scored = candidates
+          .map(sample => {
+            const sSize = sizeToNumber(sample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE));
+            const dist = (!sizeIsMissing && clientSize !== null && sSize !== null) ? Math.abs(clientSize - sSize) : null;
+            const inStudioSample = deriveLocationStatus(getLocationValue(sample)) === 'in-studio';
+            return { sample, dist, inStudioSample };
+          })
+          .sort((a, b) => {
+            if (a.inStudioSample !== b.inStudioSample) return a.inStudioSample ? -1 : 1; // rule 8 tiebreak
+            return 0;
+          });
 
-        if (candidates.length === 0) return { style: fs, inStudio: false, bestSample: null, anySample, distance: null };
+        const exactMatches = scored.filter(s => s.dist === 0).map(s => s.sample);
+        const closeMatches = scored.filter(s => s.dist !== null && s.dist > 0 && s.dist <= CLOSE_SIZE_THRESHOLD).map(s => s.sample);
 
-        let bestSample: Record | null = null;
-        let bestDist: number | null = null;
-        for (const sample of candidates) {
-          const sSize = sizeToNumber(sample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE));
-          // If client size is missing, distance is null — don't default to 0
-          const dist = (!sizeIsMissing && clientSize !== null && sSize !== null) ? Math.abs(clientSize - sSize) : null;
-          if (bestSample === null || (dist !== null && (bestDist === null || dist < bestDist))) { bestDist = dist; bestSample = sample; }
-        }
-        return { style: fs, inStudio: true, bestSample, anySample: bestSample, distance: bestDist };
+        const bestSample = exactMatches[0] ?? closeMatches[0] ?? null;
+        const matchState: MatchState = exactMatches.length > 0 ? 'exact' : closeMatches.length > 0 ? 'close' : 'none';
+        const bestScored = scored.find(s => s.sample === bestSample);
+
+        return {
+          styleId,
+          style: styleName,
+          matchState,
+          exactMatches,
+          closeMatches,
+          bestSample,
+          anySample: bestSample ?? anySample,
+          inStudio: bestScored?.inStudioSample ?? false,
+          distance: bestScored?.dist ?? null,
+        };
       });
 
-      if (!styleMatches.some(m => !m.inStudio) && !sizeIsMissing) continue;
+      if (!styleMatches.some(m => m.matchState === 'none') && !sizeIsMissing) continue;
 
-      // If all styles are in-studio but size is missing, still surface as incomplete
-      if (!styleMatches.some(m => !m.inStudio) && sizeIsMissing) {
+      // If every style has stock (exact or close) but size is missing, still surface as incomplete
+      if (!styleMatches.some(m => m.matchState === 'none') && sizeIsMissing) {
         unevaluated++;
         alerts.push({
           apptRecord: appt,
@@ -2115,7 +2177,7 @@ function SampleTracker() {
     }
 
     return { allAlerts: alerts.sort((a, b) => a.daysUntil - b.daysUntil), unevaluatedCount: unevaluated };
-  }, [apptRecords, clientRecords, inStudioByStyle]);
+  }, [apptRecords, clientRecords, sampleRecords, dfStylesRecords, activeSamplesByStyleId, anySamplesByStyleId]);
 
   // ── Apply time period + SA filter ──
   const visibleAlerts = useMemo(() => {
@@ -2410,7 +2472,7 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
             </div>
           ) : (
             <div style={{ fontSize: '11px', color: tok.risk_text, marginTop: '2px' }}>
-              {alert.styleMatches.filter(m => !m.inStudio).length} style(s) not in studio
+              {alert.styleMatches.filter(m => m.matchState === 'none').length} style(s) with no suitable sample in stock
             </div>
           )}
         </div>
@@ -2435,37 +2497,58 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
             </div>
           ) : null}
           {alert.styleMatches.map(m => {
-            const sampleToOpen = m.bestSample ?? m.anySample;
-            const rowLabel = sampleToOpen
-              ? (sampleToOpen.getCellValueAsString(FIELD_IDS.SAMPLE.LABEL) || getEffectiveStyleName(sampleToOpen))
-              : m.style;
-            const isClickable = !!sampleToOpen;
+            // Exact match must remain visible even when close alternatives also
+            // exist (rule 3). Alternates never claim the exact requested size
+            // is available (rule 7) — labeled "Close size", not "In Studio".
+            const alternates = m.matchState === 'exact' ? m.closeMatches : (m.matchState === 'close' ? m.closeMatches.slice(1) : []);
+            const rowSample = m.bestSample ?? m.anySample;
+            const isClickable = !!rowSample;
+            const badge = m.matchState === 'exact'
+              ? { text: 'Exact match', color: tok.badge_in_studio_text, bg: tok.badge_in_studio, border: 'transparent' }
+              : m.matchState === 'close'
+                ? { text: 'Close size', color: tok.badge_trunk_text, bg: tok.badge_trunk, border: 'transparent' }
+                : { text: 'No stock', color: tok.risk_text, bg: tok.risk_bg, border: tok.risk_border };
             return (
-              <div
-                key={m.style}
-                onClick={() => { if (sampleToOpen) onSelectSample(sampleToOpen); }}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '5px 0', borderBottom: `1px solid ${tok.border}`,
-                  cursor: isClickable ? 'pointer' : 'default',
-                }}
-                onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-              >
-                <span style={{ fontSize: '12px', color: tok.text_primary, flex: 1, marginRight: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {rowLabel}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                  {m.inStudio ? (
-                    <span style={{ color: tok.badge_in_studio_text, background: tok.badge_in_studio, padding: '1px 7px', borderRadius: '999px', fontSize: '11px', fontWeight: 600 }}>
-                      In Studio
-                    </span>
-                  ) : (
-                    <span style={{ color: tok.risk_text, background: tok.risk_bg, padding: '1px 7px', borderRadius: '999px', fontSize: '11px', fontWeight: 600, border: `1px solid ${tok.risk_border}` }}>
-                      Missing
-                    </span>
-                  )}
-                </span>
+              <div key={m.styleId} style={{ padding: '5px 0', borderBottom: `1px solid ${tok.border}` }}>
+                <div
+                  onClick={() => { if (rowSample) onSelectSample(rowSample); }}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isClickable ? 'pointer' : 'default' }}
+                  onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                >
+                  <span style={{ fontSize: '12px', color: tok.text_primary, flex: 1, marginRight: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.style}{rowSample ? ` — ${rowSample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}` : ''}
+                  </span>
+                  <span
+                    style={{
+                      color: badge.color, background: badge.bg, padding: '1px 7px', borderRadius: '999px',
+                      fontSize: '11px', fontWeight: 600, flexShrink: 0,
+                      border: badge.border !== 'transparent' ? `1px solid ${badge.border}` : 'none',
+                    }}
+                  >
+                    {badge.text}
+                  </span>
+                </div>
+                {alternates.length > 0 && (
+                  <div style={{ marginTop: '3px', paddingLeft: '10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {alternates.map(alt => (
+                      <div
+                        key={alt.id}
+                        onClick={() => onSelectSample(alt)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                      >
+                        <span style={{ fontSize: '11px', color: tok.text_secondary }}>
+                          Alt size {alt.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}
+                        </span>
+                        <span style={{ color: tok.badge_trunk_text, background: tok.badge_trunk, padding: '1px 6px', borderRadius: '999px', fontSize: '10px', fontWeight: 600 }}>
+                          Close size
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
