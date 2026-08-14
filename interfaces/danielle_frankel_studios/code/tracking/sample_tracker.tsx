@@ -2257,11 +2257,6 @@ function SampleTracker() {
             )}
           </div>
 
-          {/* TEMP — verification counter, remove once matching logic is signed off */}
-          <span style={{ fontSize: '11px', color: tok.text_muted, whiteSpace: 'nowrap' }}>
-            {filteredSamples.length} showing
-          </span>
-
           <FilterDropdown label="Location" values={locationFilter}     options={locationOptions}     onChange={setLocationFilter}     tok={tok} />
           <FilterDropdown label="Status"   values={sampleStatusFilter} options={statusFieldOptions}  onChange={setSampleStatusFilter} tok={tok} />
           <FilterDropdown label="Type"     values={typeFilter}         options={typeOptions}         onChange={setTypeFilter}         tok={tok} />
