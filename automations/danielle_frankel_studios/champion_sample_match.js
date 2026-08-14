@@ -65,7 +65,10 @@ const TABLE_IDS = {
 
 const FIELDS_CLIENTS = {
   favorite_styles:    'fldZzNR0g5VEJ5RmX', // multipleRecordLinks -> DF Styles
-  ready_to_wear_size: 'fldEEH4CK3Qqp0g0C', // number
+  // Formula field — falls back to Size from Acuity Intake when the manual
+  // entry (ready_to_wear_size_manual, fldEEH4CK3Qqp0g0C) is blank. Read this
+  // field, never the manual one directly.
+  ready_to_wear_size: 'fldSwfR25uvynWKI5', // formula (singleLineText result)
   champion_samples:   'fldEDcL6wGGmUt6ni', // multipleRecordLinks -> Sample Log
 };
 

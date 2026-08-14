@@ -112,7 +112,12 @@ const FIELD_IDS = {
   },
   CLIENT: {
     FULL_NAME:        'fldB3Wyam01D3wR5Q',
-    READY_TO_WEAR_SIZE:'fldEEH4CK3Qqp0g0C', // number
+    // Source of truth for RTW size matching — formula: falls back to Size from
+    // Acuity Intake when ready_to_wear_size_manual is blank (manual entry is
+    // rare). Read this field for matching; never read READY_TO_WEAR_SIZE_MANUAL
+    // directly.
+    READY_TO_WEAR_SIZE: 'fldSwfR25uvynWKI5', // formula
+    READY_TO_WEAR_SIZE_MANUAL: 'fldEEH4CK3Qqp0g0C', // number — raw manual entry, superseded by READY_TO_WEAR_SIZE above
     FAVORITE_STYLES:  'fldZzNR0g5VEJ5RmX', // multipleRecordLinks → DF Styles — same field the Champion Match automation watches
     CHAMPION_SAMPLES: 'fldEDcL6wGGmUt6ni', // multipleRecordLinks → Sample Log — written by the Champion Match automation
   },
