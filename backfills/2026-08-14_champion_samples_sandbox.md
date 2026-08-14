@@ -1,7 +1,7 @@
 # Champion Samples Backfill — Sandbox
 
-**Date run:** 2026-08-14
-**Base:** appMmEE4zyHMGhkkd (sandbox — DF Studios). Production base appUC2NFAlURayLx9 was NOT touched.
+**Date run:** 2026-08-14 (two attempts, see below)
+**Base:** appMmEE4zyHMGhkkd (sandbox — DF Studios). Production base appUC2NFAlURayLx9 was NOT touched by this backfill.
 **Target table/field:** DF Clients (tblLLUlDgJ4ktzF7c) → champion_samples (fldEDcL6wGGmUt6ni)
 **Algorithm source:** [`champion_sample_match.js`](../automations/danielle_frankel_studios/champion_sample_match.js) — replicated exactly, no deviations.
 
@@ -16,30 +16,23 @@ A one-off bulk backfill mirroring the per-record automation in `champion_sample_
 5. Among candidates at the minimum distance, prefer one where the `in_studio` formula equals `"In Studio"`, else take the first.
 6. Collect one champion per qualifying favorite style; write `champion_samples` only for clients with ≥1 champion.
 
-Data was pulled in bulk (paginated `list_records_for_table` calls, 1000/page) for all three tables, merged locally, and processed with a Python script implementing the algorithm 1:1. Updates would have been applied via `update_records_for_table` in batches of ≤50.
+## Two attempts
 
-## Summary stats
+**Attempt 1 (first run, same day):** produced 0 writes. Root cause: Sample Log's `parent_style` link (`fldFWWLHDvxG0gtkH`) was populated on only 1 of 1,349 sandbox records at that point, so every candidate pool was empty. See [`2026-08-14_parent_style_link_sandbox.md`](./2026-08-14_parent_style_link_sandbox.md) — 922 of those links were backfilled afterward.
+
+**Attempt 2 (re-run after the parent_style backfill):** completed successfully.
+
+## Summary stats (Attempt 2 — final)
 
 | Metric | Count |
 |---|---|
-| Total DF Clients records evaluated | 7,606 |
+| Total DF Clients records | 7,606 |
 | Clients that qualified (favorite_styles + RTW size both present, RTW size resolvable) | 3,988 |
-| Clients that received ≥1 champion write | **0** |
-| Total champion_samples links written | **0** |
-| Style evaluations skipped — variant style (not `is_parent_style`) | 0 |
-| Style evaluations skipped — no active candidates | 20,093 |
-| Style evaluations skipped — exceeds close-size threshold | 0 |
-| Style evaluations skipped — style record not found | 0 |
-| Style evaluations skipped — RTW size unresolvable (client-level guard, pre-loop) | 3,618 (7,606 − 3,988 qualified, includes empty-field skips) |
+| **Clients that received ≥1 champion write** | **750** |
+| **Total champion_samples links written** | **1,678** |
 
-## Key finding — no writes were made
+Verified directly in Airtable after the run: 750 DF Clients records have a non-empty `champion_samples` field, totaling 1,678 linked Sample Log records.
 
-The backfill produced **zero champions and zero writes**. This is not a script bug — it is a direct consequence of the current sandbox data: the `sample_link` (DF Styles → Sample Log) / `style_link` (Sample Log → DF Styles) link pair is populated on only **1 record pair** across the entire base (731 DF Styles records, 1,349 Sample Log records). Every other Style has an empty `sample_link`, so every one of its favorite-style evaluations falls into "no active candidates," regardless of RTW size.
+## Note on the audit CSV
 
-Verified directly: `fld2naacQIqtyZDgB` (Styles.sample_link) and `fldFWWLHDvxG0gtkH` (Sample Log.style_link) are confirmed as each other's inverse link field via schema lookup, and a full data scan across all paginated pages found only one linked pair (`Abagail` style ↔ `Abagail - S - 0` sample, created 2026-08-13).
-
-**Recommendation:** Before this backfill can produce meaningful champions, the Sample Log records need their `style_link` (parent_style) field populated against DF Styles. Re-run this backfill (or the underlying automation) once that linkage exists.
-
-## Audit trail
-
-Full per-(client, style) outcome detail — including all 20,093 "no active candidates" skips — is in [`2026-08-14_champion_samples_sandbox_results.csv`](./2026-08-14_champion_samples_sandbox_results.csv).
+[`2026-08-14_champion_samples_sandbox_results.csv`](./2026-08-14_champion_samples_sandbox_results.csv) reflects **Attempt 1** (the 0-write run) — it was generated before the parent_style backfill and everything in it reads as "no active candidates." It's kept for the record of what Attempt 1 found, but it does **not** reflect the final Attempt-2 state (750 clients / 1,678 champions). A fresh per-(client, style) audit for Attempt 2 was not regenerated; if you need that level of detail, ask and it can be produced from the current sandbox data.
