@@ -13,6 +13,12 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ## Week of Aug 10, 2026
 
+**Sample Tracker**
+- Close-size matching is live: when checking stock for a client's favorite style, the system now shows an exact-size match if one's in stock, close-size alternatives (one size up or down) if not, or a clear "no stock" state if nothing's close — instead of just a plain "in studio / missing" flag. Ties between equally-close options favor whichever sample is actually in-studio over one that's away or at a trunk show.
+- New "champion sample" automation: whenever a client's favorite styles change, the best-matching in-stock sample per style is automatically computed and saved to her record.
+- Sample-to-style linking is now required for new samples to show up correctly in matching — an initial cleanup pass relinked hundreds of existing samples to their correct style; a full pass across the remaining catalog is planned as a follow-up.
+- The Add Sample form's style picker now only shows actual parent styles, not customized variants, so staff can't accidentally attach a new sample to the wrong record.
+
 **Waitlist**
 - Milestone: the Waitlist is now a real, working part of the daily workflow instead of a spreadsheet-style list off to the side.
 - Active Waitlist leads now show up right inside Pipeline, alongside the regular sales stages — staff can see who's waiting without switching screens.
