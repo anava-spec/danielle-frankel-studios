@@ -714,6 +714,12 @@ function useTheme(): 'light' | 'dark' {
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
+// Canonical stage membership — feeds clientsData (which stages count as "in
+// the pipeline" at all), the List view's Stage filter options, and
+// clientsByStage. Includes "Picked Up" / "Shipped" (the two terminal,
+// closed-out stages already defined on the live `stage` field — fldLcxVZvI1rigBlh)
+// so those records are still queryable from the List filter — see
+// KANBAN_STAGE_ORDER below for the subset that actually renders as Kanban columns.
 const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
@@ -721,8 +727,15 @@ const STAGE_ORDER = [
   'Order Ready',
   'In Alterations',
   'In Fulfillment',
+  'Picked Up',
+  'Shipped',
 ] as const;
 type StageName = (typeof STAGE_ORDER)[number];
+
+// Kanban renders one column per entry here. "Picked Up" / "Shipped" are
+// deliberately excluded — once an order closes out it should disappear from
+// the Kanban board (it's still reachable via the List view's Stage filter).
+const KANBAN_STAGE_ORDER = STAGE_ORDER.filter(s => s !== 'Picked Up' && s !== 'Shipped');
 
 const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Pre-Appointment': 'Pre-Appointment',
@@ -731,6 +744,8 @@ const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Order Ready': 'Order Ready',
   'In Alterations': 'In Alterations',
   'In Fulfillment': 'In Fulfillment',
+  'Picked Up': 'Picked Up',
+  'Shipped': 'Shipped',
 };
 
 const TIMELINE_OPTIONS = [
@@ -3876,7 +3891,7 @@ function Pipeline(): React.ReactElement {
               </div>
             );
           })()}
-          {STAGE_ORDER.map(stage => {
+          {KANBAN_STAGE_ORDER.map(stage => {
             const clients     = clientsByStage[stage] ?? [];
             const stageColors = stageColorsByStage.get(stage) ?? DEFAULT_STAGE_COLORS;
             const stageLabel  = STAGE_DISPLAY_LABELS[stage] ?? stage;

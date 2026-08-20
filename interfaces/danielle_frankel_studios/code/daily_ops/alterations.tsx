@@ -52,6 +52,8 @@ const STAGE_ORDER = [
   'Order Ready',
   'In Alterations',
   'In Fulfillment',
+  'Picked Up',
+  'Shipped',
 ] as const;
 
 const ALTERATIONS_STAGE: (typeof STAGE_ORDER)[number] = 'In Alterations';
