@@ -52,7 +52,7 @@ const STAGE_ORDER = [
   'Order Ready',
   'In Alterations',
   'In Fulfillment',
-  'Picked Up',
+  'Fulfilled',
   'Shipped',
 ] as const;
 

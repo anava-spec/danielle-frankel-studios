@@ -86,8 +86,8 @@ const STAGE_ORDER = [
   'Order Ready',   // antes "In Production"
   'In Alterations',
   'In Fulfillment',
-  'Picked Up',      // stage terminal — orden cerrada in-studio, ver order_close_out.js
-  'Shipped',        // stage terminal — orden cerrada por envío, ver order_close_out.js
+  'Fulfilled',      // stage terminal unificado — cierre del cliente (puede tener varios orders, cada uno picked up o shipped), ver order_close_out.js
+  'Shipped',        // legacy — 0 clientes en vivo al 2026-08-20, se mantiene reconocido por seguridad
 ];
 
 const CONFIG = {

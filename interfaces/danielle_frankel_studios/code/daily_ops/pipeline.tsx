@@ -716,10 +716,13 @@ function useTheme(): 'light' | 'dark' {
 // ─────────────────────────────────────────────────────────────────────────────
 // Canonical stage membership — feeds clientsData (which stages count as "in
 // the pipeline" at all), the List view's Stage filter options, and
-// clientsByStage. Includes "Picked Up" / "Shipped" (the two terminal,
-// closed-out stages already defined on the live `stage` field — fldLcxVZvI1rigBlh)
-// so those records are still queryable from the List filter — see
-// KANBAN_STAGE_ORDER below for the subset that actually renders as Kanban columns.
+// clientsByStage. Includes "Fulfilled" — the unified close-out stage (a client
+// can have multiple orders, each individually picked up or shipped, so the
+// client-level stage closes to one combined "Fulfilled" rather than tracking
+// per-order picked/shipped). Live `stage` field (fldLcxVZvI1rigBlh) choice
+// "Picked Up" was renamed to "Fulfilled" in Airtable (702 clients already had
+// it; "Shipped" had 0 and is kept as a recognized-but-unused legacy choice so
+// a stray record with that value doesn't silently disappear from the List filter.
 const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
@@ -727,15 +730,15 @@ const STAGE_ORDER = [
   'Order Ready',
   'In Alterations',
   'In Fulfillment',
-  'Picked Up',
+  'Fulfilled',
   'Shipped',
 ] as const;
 type StageName = (typeof STAGE_ORDER)[number];
 
-// Kanban renders one column per entry here. "Picked Up" / "Shipped" are
+// Kanban renders one column per entry here. "Fulfilled" / "Shipped" are
 // deliberately excluded — once an order closes out it should disappear from
 // the Kanban board (it's still reachable via the List view's Stage filter).
-const KANBAN_STAGE_ORDER = STAGE_ORDER.filter(s => s !== 'Picked Up' && s !== 'Shipped');
+const KANBAN_STAGE_ORDER = STAGE_ORDER.filter(s => s !== 'Fulfilled' && s !== 'Shipped');
 
 const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Pre-Appointment': 'Pre-Appointment',
@@ -744,7 +747,7 @@ const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Order Ready': 'Order Ready',
   'In Alterations': 'In Alterations',
   'In Fulfillment': 'In Fulfillment',
-  'Picked Up': 'Picked Up',
+  'Fulfilled': 'Fulfilled',
   'Shipped': 'Shipped',
 };
 
