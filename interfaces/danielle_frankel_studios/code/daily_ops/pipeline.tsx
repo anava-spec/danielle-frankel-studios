@@ -721,8 +721,9 @@ function useTheme(): 'light' | 'dark' {
 // client-level stage closes to one combined "Fulfilled" rather than tracking
 // per-order picked/shipped). Live `stage` field (fldLcxVZvI1rigBlh) choice
 // "Picked Up" was renamed to "Fulfilled" in Airtable (702 clients already had
-// it; "Shipped" had 0 and is kept as a recognized-but-unused legacy choice so
-// a stray record with that value doesn't silently disappear from the List filter.
+// it); the separate "Shipped" choice (0 clients, never written by a prod run)
+// was deleted outright, and the one automation that wrote it ("Order is
+// Shipped") was repointed to the same "Fulfilled" choice instead.
 const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
@@ -731,14 +732,13 @@ const STAGE_ORDER = [
   'In Alterations',
   'In Fulfillment',
   'Fulfilled',
-  'Shipped',
 ] as const;
 type StageName = (typeof STAGE_ORDER)[number];
 
-// Kanban renders one column per entry here. "Fulfilled" / "Shipped" are
-// deliberately excluded — once an order closes out it should disappear from
-// the Kanban board (it's still reachable via the List view's Stage filter).
-const KANBAN_STAGE_ORDER = STAGE_ORDER.filter(s => s !== 'Fulfilled' && s !== 'Shipped');
+// Kanban renders one column per entry here. "Fulfilled" is deliberately
+// excluded — once an order closes out it should disappear from the Kanban
+// board (it's still reachable via the List view's Stage filter).
+const KANBAN_STAGE_ORDER = STAGE_ORDER.filter(s => s !== 'Fulfilled');
 
 const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Pre-Appointment': 'Pre-Appointment',
@@ -748,7 +748,6 @@ const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'In Alterations': 'In Alterations',
   'In Fulfillment': 'In Fulfillment',
   'Fulfilled': 'Fulfilled',
-  'Shipped': 'Shipped',
 };
 
 const TIMELINE_OPTIONS = [

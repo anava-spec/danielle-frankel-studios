@@ -87,7 +87,6 @@ const STAGE_ORDER = [
   'In Alterations',
   'In Fulfillment',
   'Fulfilled',      // stage terminal unificado — cierre del cliente (puede tener varios orders, cada uno picked up o shipped), ver order_close_out.js
-  'Shipped',        // legacy — 0 clientes en vivo al 2026-08-20, se mantiene reconocido por seguridad
 ];
 
 const CONFIG = {
