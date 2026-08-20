@@ -11,16 +11,33 @@ VERSION      : 2.0.0 — replaces the direct order_items query from v1.0.0 with
                the new DF Clients.quantity_open_total rollup field
                (fldVfOcvePRxXkVHT), added 2026-08-20 specifically so this
                automation's trigger can watch it directly (chained rollup:
-               order_items.quantity_open_excl_alterations -> Orders -
-               Shopify.quantity_open_total -> DF Clients.quantity_open_total;
-               the ALTERATIONS exclusion happens at the order_items formula
-               level, so both rollups above are plain SUM(values)). This is
-               a separate automation from the original consolidation draft
+               order_items.quantity_open -> Orders - Shopify.quantity_open_total
+               -> DF Clients.quantity_open_total). The ALTERATIONS exclusion
+               (Issue 2 fix) lives on the Orders - Shopify rollup itself, via
+               its "only include linked records that meet conditions" filter
+               (style_category has none of ALTERATIONS) — Axel reconfigured
+               it this way instead of the intermediate order_items formula
+               field this script originally assumed, so there is one fewer
+               field in the chain than the VERSION note above implies; the
+               script itself is unaffected either way since it only reads
+               the final DF Clients.quantity_open_total value. This is a
+               separate automation from the original consolidation draft
                (Order Close Out - In Fulfillment to Fulfilled, wflndcP1aaQD2ORhK)
                because that one already had a script node pasted in, which
                locks it from further API edits — Axel is updating that node
                to this v2.0.0 script by hand and will delete the 3 legacy
                automations below once verified.
+               Trigger note: recordMatchesConditions (which would only fire
+               when a client actually starts matching "stage=In Fulfillment
+               AND (A OR B OR C OR D)") was attempted first, per Axel's
+               feedback that recordUpdated fires too often — but the Airtable
+               MCP's recordMatchesConditions schema only accepts a flat list
+               of leaf conditions under one and/or, not a nested OR-of-ANDs
+               tree (confirmed via two rejected attempts). recordUpdated is
+               what's actually wired on this automation's trigger; switching
+               to recordMatchesConditions or recordEntersView is possible but
+               has to be built by hand in the Airtable UI (its condition
+               builder does support nested groups) — the API can't do it.
 VERSION      : 1.0.0 — consolidates three previously separate automations into
                one, per Axel's request (2026-08-20) to stop fragmenting the
                base into one automation per stage transition:
