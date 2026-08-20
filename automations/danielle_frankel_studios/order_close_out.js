@@ -6,7 +6,21 @@ TABLE SRC    : DF Clients (tblLLUlDgJ4ktzF7c)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
 TRIGGER      : Record updated — DF Clients, watching: stage, sa_override_fulfilled,
                full_order_fulfilled_from_appt, picked_up_from_appt,
-               tracking_number, percent_shipped
+               tracking_number, percent_shipped, quantity_open_total
+VERSION      : 2.0.0 — replaces the direct order_items query from v1.0.0 with
+               the new DF Clients.quantity_open_total rollup field
+               (fldVfOcvePRxXkVHT), added 2026-08-20 specifically so this
+               automation's trigger can watch it directly (chained rollup:
+               order_items.quantity_open_excl_alterations -> Orders -
+               Shopify.quantity_open_total -> DF Clients.quantity_open_total;
+               the ALTERATIONS exclusion happens at the order_items formula
+               level, so both rollups above are plain SUM(values)). This is
+               a separate automation from the original consolidation draft
+               (Order Close Out - In Fulfillment to Fulfilled, wflndcP1aaQD2ORhK)
+               because that one already had a script node pasted in, which
+               locks it from further API edits — Axel is updating that node
+               to this v2.0.0 script by hand and will delete the 3 legacy
+               automations below once verified.
 VERSION      : 1.0.0 — consolidates three previously separate automations into
                one, per Axel's request (2026-08-20) to stop fragmenting the
                base into one automation per stage transition:
@@ -30,9 +44,9 @@ OBJECTIVE
   is one unified client-level stage rather than a per-method value).
 
   Qualifies if the client is currently in "In Fulfillment" AND any ONE of:
-    A. quantity_open == 0 across every non-ALTERATIONS order_item on every
-       Shopify order linked to the client (the "everything physically out"
-       signal — ALTERATIONS items are in-studio work and must never block or
+    A. quantity_open_total == 0 (DF Clients rollup, chained from order_items
+       through Orders - Shopify — see VERSION note above; ALTERATIONS items
+       are excluded at the order_items formula level so they never block or
        misroute this close-out, per the Issue 2 fix).
     B. full_order_fulfilled_from_appt AND picked_up_from_appt are both true
        (staff confirmed pickup in an appointment).
@@ -48,21 +62,6 @@ GUARD CLAUSE
      automation only closes that specific stage; it never regresses or skips
      a stage.
   3. If none of A/B/C/D hold, SKIP without writing anything.
-
-KNOWN LIMITATION
-  Path A depends on order_items.quantity_open, which lives on a different
-  table than the trigger (DF Clients) and has no client-level rollup yet.
-  This script computes it live by querying order_items directly, so it is
-  always evaluated correctly whenever the automation runs — but the
-  automation is NOT triggered purely by an order_items change, only by a
-  change on one of the watched DF Clients fields. In practice this is rarely
-  an issue (an order reaching quantity_open == 0 is normally accompanied by a
-  tracking_number/percent_shipped update from the AM sync, which does fire
-  this trigger), but if Julia ever reports orders sitting at quantity_open ==
-  0 without closing out, the fix is either a client-level rollup of
-  quantity_open (so it can be added to watchFields) or a second trigger on
-  Orders - Shopify resolving to the client (same pattern as
-  order_ready_evaluation.js).
 
 OUTPUTS (output.set)
   status          : "SUCCESS" | "ERROR"
@@ -81,9 +80,7 @@ OUTPUTS (output.set)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TABLE_IDS = {
-  CLIENTS:     'tblLLUlDgJ4ktzF7c', // DF Clients
-  ORDERS:      'tblHFGbijtvZcRPkE', // Orders - Shopify
-  ORDER_ITEMS: 'tblWOBS5nX0GZokaU', // order_items
+  CLIENTS: 'tblLLUlDgJ4ktzF7c', // DF Clients — order_items/Orders - Shopify no longer queried directly, see quantity_open_total rollup below
 };
 
 const FIELDS_CLIENTS = {
@@ -93,20 +90,13 @@ const FIELDS_CLIENTS = {
   picked_up_from_appt:             'fldKPRPO8GeASRimg', // checkbox (lookup from Appointment Records)
   tracking_number:                 'fldY0SvbuYeHUZa15', // singleLineText (client-level)
   percent_shipped:                 'fldigqrFBZwceLCT7', // formula/percent, 0-1 fraction
-  linked_orders:                   'fldWSGqQW9czYdams', // multipleRecordLinks -> Orders - Shopify (reverse of Orders.client)
-};
-
-const FIELDS_ORDER_ITEMS = {
-  order:          'fldXrdBFm5SeGCTvq', // multipleRecordLinks -> Orders - Shopify
-  quantity_open:  'fldvU2sU8b6V0wTlG', // number
-  style_category: 'fld6qGDLnQvtgarg5', // multipleLookupValues (via DF Styles) — contains "ALTERATIONS" for alterations items
+  quantity_open_total:             'fldVfOcvePRxXkVHT', // rollup — chained order_items -> Orders - Shopify -> DF Clients, ALTERATIONS already excluded
 };
 
 const CONFIG = {
   LOG_LEVEL:       'B',                // A=minimal | B=audit (default) | C=debug
   REQUIRED_STAGE:  'In Fulfillment',
   TARGET_STAGE:    'Fulfilled',
-  EXCLUDED_STYLE_CATEGORY: 'ALTERATIONS',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,44 +131,9 @@ class ClientsRepository {
   }
 
   async writeStage(clientId, stageName) {
-    this.logger.step(6, `Writing stage="${stageName}" → client: ${clientId}`);
+    this.logger.step(4, `Writing stage="${stageName}" → client: ${clientId}`);
     await this.table.updateRecordAsync(clientId, { [FIELDS_CLIENTS.stage]: { name: stageName } });
     this.logger.audit(`Stage written → ${stageName}`);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ORDER ITEMS REPOSITORY
-// ─────────────────────────────────────────────────────────────────────────────
-
-class OrderItemsRepository {
-  constructor(logger) { this.table = base.getTable(TABLE_IDS.ORDER_ITEMS); this.logger = logger; }
-
-  // order_items has no reverse link back to Orders - Shopify exposed on this
-  // table's schema in a way we can filter server-side, so — same approach as
-  // fulfillment.tsx — pull everything and filter in memory against the set of
-  // order record IDs linked to this client.
-  async getOpenNonAlterationsQuantity(orderIds) {
-    this.logger.step(4, `Loading order_items for ${orderIds.length} linked order(s)`);
-    const result = await this.table.selectRecordsAsync({
-      fields: [FIELDS_ORDER_ITEMS.order, FIELDS_ORDER_ITEMS.quantity_open, FIELDS_ORDER_ITEMS.style_category],
-    });
-    const orderIdSet = new Set(orderIds);
-    let totalItems = 0;
-    let openQuantity = 0;
-    for (const item of result.records) {
-      const linkedOrders = item.getCellValue(FIELDS_ORDER_ITEMS.order) || [];
-      const belongsToClient = linkedOrders.some(o => orderIdSet.has(o.id));
-      if (!belongsToClient) continue;
-
-      const category = item.getCellValueAsString(FIELDS_ORDER_ITEMS.style_category);
-      if (category.includes(CONFIG.EXCLUDED_STYLE_CATEGORY)) continue; // alterations never block close-out
-
-      totalItems++;
-      openQuantity += item.getCellValue(FIELDS_ORDER_ITEMS.quantity_open) ?? 0;
-    }
-    this.logger.audit(`Non-alterations order_items found: ${totalItems} | total quantity_open: ${openQuantity}`);
-    return { totalItems, openQuantity };
   }
 }
 
@@ -189,8 +144,8 @@ class OrderItemsRepository {
 class CloseOutEvaluator {
   constructor(logger) { this.logger = logger; }
 
-  evaluate({ saOverride, fullOrderFulfilledFromAppt, pickedUpFromAppt, trackingNumber, percentShipped, openQuantity, totalItems }) {
-    this.logger.step(5, 'Evaluating the four close-out paths');
+  evaluate({ saOverride, fullOrderFulfilledFromAppt, pickedUpFromAppt, trackingNumber, percentShipped, quantityOpenTotal }) {
+    this.logger.step(3, 'Evaluating the four close-out paths');
 
     if (saOverride === true) {
       return { qualifies: true, path: 'sa_override' };
@@ -201,9 +156,9 @@ class CloseOutEvaluator {
     if (trackingNumber && percentShipped === 1) {
       return { qualifies: true, path: 'tracking_shipped' };
     }
-    // Only qualifies via quantity_open if the client actually has non-alterations
-    // items to evaluate — an empty set should never look like "fully closed".
-    if (totalItems > 0 && openQuantity === 0) {
+    // quantityOpenTotal is null/undefined when the client has no linked
+    // orders yet — that must never read as "fully closed".
+    if (quantityOpenTotal === 0) {
       return { qualifies: true, path: 'quantity_open' };
     }
 
@@ -229,9 +184,8 @@ class MessageBuilder {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class OrderCloseOutService {
-  constructor(clientsRepo, orderItemsRepo, evaluator, logger) {
+  constructor(clientsRepo, evaluator, logger) {
     this.clientsRepo = clientsRepo;
-    this.orderItemsRepo = orderItemsRepo;
     this.evaluator = evaluator;
     this.logger = logger;
   }
@@ -250,23 +204,16 @@ class OrderCloseOutService {
       };
     }
 
-    const linkedOrders = client.getCellValue(FIELDS_CLIENTS.linked_orders) || [];
-    const orderIds = linkedOrders.map(o => o.id);
-    this.logger.step(2, `Client has ${orderIds.length} linked order(s)`);
-
-    const { totalItems, openQuantity } = orderIds.length
-      ? await this.orderItemsRepo.getOpenNonAlterationsQuantity(orderIds)
-      : { totalItems: 0, openQuantity: 0 };
-
-    this.logger.step(3, 'Reading client-level close-out signals');
+    this.logger.step(2, 'Reading client-level close-out signals');
     const saOverride = client.getCellValue(FIELDS_CLIENTS.sa_override_fulfilled) === true;
     const fullOrderFulfilledFromAppt = client.getCellValue(FIELDS_CLIENTS.full_order_fulfilled_from_appt) === true;
     const pickedUpFromAppt = client.getCellValue(FIELDS_CLIENTS.picked_up_from_appt) === true;
     const trackingNumber = client.getCellValueAsString(FIELDS_CLIENTS.tracking_number);
     const percentShipped = client.getCellValue(FIELDS_CLIENTS.percent_shipped);
+    const quantityOpenTotal = client.getCellValue(FIELDS_CLIENTS.quantity_open_total);
 
     const { qualifies, path } = this.evaluator.evaluate({
-      saOverride, fullOrderFulfilledFromAppt, pickedUpFromAppt, trackingNumber, percentShipped, openQuantity, totalItems,
+      saOverride, fullOrderFulfilledFromAppt, pickedUpFromAppt, trackingNumber, percentShipped, quantityOpenTotal,
     });
 
     if (!qualifies) {
@@ -309,7 +256,6 @@ try {
 
   const service = new OrderCloseOutService(
     new ClientsRepository(logger),
-    new OrderItemsRepository(logger),
     new CloseOutEvaluator(logger),
     logger
   );
