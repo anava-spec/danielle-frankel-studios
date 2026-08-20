@@ -91,6 +91,27 @@ Advances any client to "In Fulfillment" who already meets the live
 order item is category ALTERATIONS, via the client-level formula field
 `has_alterations_item`) but never received it.
 
+### `order_close_out.js`
+**Automation:** Order Close Out - In Fulfillment to Fulfilled
+**Trigger:** `DF Clients` updated (watching `stage`, `sa_override_fulfilled`,
+`full_order_fulfilled_from_appt`, `picked_up_from_appt`, `tracking_number`,
+`percent_shipped`)
+Consolidates three previously separate stage-closing automations into one
+(2026-08-20, per Axel — to stop fragmenting the base into one automation per
+stage transition, and because the `"Shipped"` choice they partly depended on
+was deleted). Closes a client out of `"In Fulfillment"` to `"Fulfilled"` if
+any one of four paths qualifies: (A) every non-ALTERATIONS `order_item`
+linked to the client's orders has `quantity_open == 0`; (B) appointment-
+confirmed pickup (`full_order_fulfilled_from_appt` AND `picked_up_from_appt`,
+both lookups from Appointment Records); (C) `tracking_number` is set AND
+`percent_shipped == 100%`; (D) the manual exception checkbox
+`sa_override_fulfilled` — a true override, doesn't require A/B/C. Alterations
+items are always excluded from path A so they never block or misroute
+close-out (Issue 2 fix). See `fulfillment.README.md` for the two older
+automations this absorbed and why they were safe to consolidate (zero
+production runs on either). **Known limitation:** path A has no dedicated
+trigger of its own yet — see the script's header comment.
+
 ---
 
 ## Waitlist project (JuliMigLui37091) — base `appMmEE4zyHMGhkkd` (shared with production `appUC2NFAlURayLx9`)

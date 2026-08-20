@@ -13,6 +13,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ## Week of Aug 17, 2026
 
+**Alterations**
+- Fixed a bug where alterations line items could inflate an order's "% Picked," which could trigger the Order Ready phase too early — alterations items are now excluded from that calculation.
+
 **Recap**
 - Fixed a bug where the Wedding Date shown on the main list could be out of sync with (and older than) the correct date shown on the individual client's page — the list now always reads the same, current value.
 - The individual client page now shows Sales Associate and Appointment Time, which were missing.
