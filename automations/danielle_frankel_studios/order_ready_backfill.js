@@ -1,41 +1,41 @@
 /*
 ================================================================================
 SCRIPT       : Order Ready Backfill (one-time, manual run)
-BASE         : app6Q4xMZ1ngJxiV8 (sandbox) — publicar a appUC2NFAlURayLx9 luego
+BASE         : app6Q4xMZ1ngJxiV8 (sandbox) — publish to appUC2NFAlURayLx9 later
 TABLE SRC    : Orders - Shopify (tblHFGbijtvZcRPkE)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
-TRIGGER      : ninguno — se corre manualmente una sola vez (botón / "Run script"
-               ad hoc), NO es una automation recurrente.
+TRIGGER      : none — run manually once (button / ad hoc "Run script"),
+               NOT a recurring automation.
 VERSION      : 1.0.0
 
-OBJECTIVE (spec de Axel, 2026-07-21)
-  Recorre todos los orders existentes y adelanta a "Order Ready" a cualquier
-  cliente que ya cumpla la regla pero no la haya recibido (p.ej. porque el
-  automation en vivo "Order Ready Evaluation" no existía o no corrió cuando
-  el order alcanzó esas condiciones).
+OBJECTIVE (spec from Axel, 2026-07-21)
+  Walks every existing order and advances to "Order Ready" any client who
+  already meets the rule but never received it (e.g. because the live
+  "Order Ready Evaluation" automation didn't exist yet or didn't run when
+  the order hit those conditions).
 
-  Para cada order en Orders - Shopify:
-    1. client_stage (lookup del cliente vinculado) NO debe ser ninguno de:
+  For each order in Orders - Shopify:
+    1. client_stage (lookup of the linked client) must NOT be any of:
        In Alterations, In Fulfillment, Picked Up, Shipped, Did Not Convert
-       Y
-    2. picked_status_percentage >= 75%  O  gown_picked = TRUE
+       AND
+    2. picked_status_percentage >= 75%  OR  gown_picked = TRUE
 
-  Si el order califica:
-    - Resuelve el cliente vinculado en DF Clients.
-    - Actualiza DF Clients.stage a "Order Ready".
+  If the order qualifies:
+    - Resolves the linked client in DF Clients.
+    - Updates DF Clients.stage to "Order Ready".
 
-  DEDUPE: si varios orders califican para el MISMO cliente, solo se procesa
-  la primera vez que aparece ese cliente (orders subsecuentes del mismo
-  cliente se cuentan pero se saltan, sin re-escribir).
+  DEDUPE: if several orders qualify for the SAME client, only the first
+  occurrence of that client is processed (subsequent orders for the same
+  client are counted but skipped, without re-writing).
 
-  Nota: a diferencia del automation en vivo, este backfill usa >= 75% (no
-  estrictamente > 75%) y excluye por nombre de stage en vez de comparar
-  contra STAGE_ORDER — así lo especificó Axel para este run puntual.
+  Note: unlike the live automation, this backfill uses >= 75% (not
+  strictly > 75%) and excludes by stage name instead of comparing against
+  STAGE_ORDER — that's how Axel specified it for this one-off run.
 
 OUTPUT
-  Imprime en consola (via Logger) el resumen: orders escaneados, orders que
-  calificaron, clientes distintos actualizados, y el detalle de cada
-  actualización/omisión.
+  Prints a summary to the console (via Logger): orders scanned, orders that
+  qualified, distinct clients updated, and the detail of each
+  update/skip.
 ================================================================================
 */
 
@@ -61,7 +61,7 @@ const FIELDS_CLIENTS = {
 
 const CONFIG = {
   LOG_LEVEL: 'B',                  // A=minimal | B=audit (default) | C=debug
-  PICK_PERCENT_THRESHOLD: 0.75,    // >= 75%, por spec de este backfill
+  PICK_PERCENT_THRESHOLD: 0.75,    // >= 75%, per this backfill's spec
   TARGET_STAGE: 'Order Ready',
   EXCLUDED_CLIENT_STAGES: ['In Alterations', 'In Fulfillment', 'Picked Up', 'Shipped', 'Did Not Convert'],
 };
@@ -105,7 +105,7 @@ class ClientsRepository {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// QUALIFICATION LOGIC — lógica pura, sin llamadas a Airtable
+// QUALIFICATION LOGIC — pure logic, no Airtable calls
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getClientStageFromLookup(order) {
@@ -117,7 +117,7 @@ function getClientStageFromLookup(order) {
 function qualifies(order, logger) {
   const clientStage = getClientStageFromLookup(order);
   if (clientStage && CONFIG.EXCLUDED_CLIENT_STAGES.includes(clientStage)) {
-    logger.debug(`Order ${order.id} — client_stage="${clientStage}" está excluido. SKIP.`);
+    logger.debug(`Order ${order.id} — client_stage="${clientStage}" is excluded. SKIP.`);
     return false;
   }
 
@@ -161,10 +161,10 @@ try {
     }
     const clientId = linkedClients[0].id;
 
-    // DEDUPE — solo se procesa la primera vez que aparece este cliente.
+    // DEDUPE — only the first occurrence of this client is processed.
     if (processedClientIds.has(clientId)) {
       clientsSkippedAsDuplicate++;
-      logger.debug(`Client ${clientId} ya fue procesado por un order anterior — SKIP (duplicado).`);
+      logger.debug(`Client ${clientId} was already processed by an earlier order — SKIP (duplicate).`);
       continue;
     }
     processedClientIds.add(clientId);
