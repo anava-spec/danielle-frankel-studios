@@ -109,6 +109,7 @@ const FIELD_IDS = {
     FAVORITE_STYLES:  'fldCPhdJ885D7ytOf',
     STATUS:           'fldZTkJdTBhmcchTb',
     SA_NAME:          'fldAopgXS7Zw42ZgV', // multipleLookupValues → SA name string
+    TYPE:             'fldZO3rF3KOGxG0S5', // singleSelect — same field/table recap.tsx's isConsultation() reads
   },
   CLIENT: {
     FULL_NAME:        'fldB3Wyam01D3wR5Q',
@@ -624,7 +625,7 @@ function AddSampleModal({ base, sampleTable, onClose, tok }: AddSampleModalProps
 
   const handleSave = async () => {
     const errs: { parentStyle?: string; size?: string; type?: string } = {};
-    if (!parentStyleId) errs.parentStyle = 'Parent Style is required';
+    if (!parentStyleId) errs.parentStyle = 'Style is required';
     if (!size) errs.size = 'Size is required';
     if (!type) errs.type = 'Type is required';
     setFieldErrors(errs);
@@ -685,7 +686,7 @@ function AddSampleModal({ base, sampleTable, onClose, tok }: AddSampleModalProps
 
         <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div>
-            <div style={fieldLabelStyle}>Parent Style *</div>
+            <div style={fieldLabelStyle}>Style *</div>
             <RecordSelect
               value={parentStyleId}
               options={styleOptions}
@@ -879,6 +880,13 @@ function alertTypeLabel(alert: RiskAlert): string {
   if (alert.missingData === 'no-styles') return 'No styles on file';
   if (alert.missingData === 'no-size') return 'Client size missing';
   return 'Style not in studio';
+}
+// Substring match (case-insensitive), same convention as recap.tsx's own
+// isConsultation() reading the same Appointments field (fldZO3rF3KOGxG0S5) —
+// this page's risk alerts should only ever surface future Consultation
+// appointments, per request (2026-08-07), not fittings/pickups/etc.
+function isConsultation(label: string): boolean {
+  return label.toLowerCase().includes('consultation');
 }
 
 // ─── CHEVRON / CHECK ICONS ────────────────────────────────────────────────────
@@ -1722,7 +1730,7 @@ function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, stat
           {/* Parent Style — full-width row (record picker over DF Styles; the
               legacy free-text Style Name field is no longer shown/editable here) */}
           <div>
-            <FieldLabel>Parent Style</FieldLabel>
+            <FieldLabel>Style</FieldLabel>
             {canWrite ? (
               <RecordSelect
                 value={parentStyleId}
@@ -2058,6 +2066,10 @@ function SampleTracker() {
         if (!raw || raw.slice(0, 10) < today) return false;
         const status = appt.getCellValueAsString(FIELD_IDS.APPT.STATUS);
         if (status && (status.toLowerCase().includes('cancel') || status.toLowerCase().includes('no show'))) return false;
+        // Only Consultation appointments belong on this page (2026-08-07,
+        // per request) — a fitting/pickup/etc. shouldn't drive a risk alert.
+        const type = appt.getCellValueAsString(FIELD_IDS.APPT.TYPE);
+        if (!isConsultation(type)) return false;
         return true;
       })
       .sort((a, b) => {

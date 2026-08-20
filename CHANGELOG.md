@@ -11,6 +11,21 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Aug 17, 2026
+
+**Recap**
+- Fixed a bug where the Wedding Date shown on the main list could be out of sync with (and older than) the correct date shown on the individual client's page — the list now always reads the same, current value.
+- The individual client page now shows Sales Associate and Appointment Time, which were missing.
+- Fixed a bug where Appointment Time and Consultation Appointment could show the wrong hour (or even the wrong day) depending on the viewer's own timezone, instead of always showing studio time.
+- The individual client page's size fields are now "Ready-to-Wear Size" and "Size (Acuity Intake)," both editable — replacing an "Order Size" field that looked editable but wasn't actually saving.
+
+**Sample Tracker**
+- The risk-alerts panel now only considers Consultation appointments, not fittings/pickups/other appointment types.
+- Renamed the "Parent Style" field to "Style" throughout.
+
+**Customization Requests**
+- Renamed the "Workdesk" view to "Requests," to avoid reading as a near-duplicate of the "Approval" view next to it.
+
 ## Week of Aug 10, 2026
 
 **Sample Tracker**
