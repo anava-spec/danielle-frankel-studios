@@ -2068,16 +2068,49 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     } finally { setSaving(false); }
   };
 
-  const dot = (name: string) => colors?.[name]
-    ? <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors[name].bg }} />
-    : null;
+  const pillStyle = (name: string): { backgroundColor: string; color: string } | undefined =>
+    colors?.[name] ? { backgroundColor: colors[name].bg, color: colors[name].fg } : undefined;
+
+  // Colored-choice fields (e.g. Alterations Status) render as a compact pill
+  // matching the choice's real Airtable color, not the full-width bordered
+  // box used by plain-text selects.
+  if (colors) {
+    return (
+      <div ref={containerRef} className="relative inline-block">
+        <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium hover:opacity-80 transition-opacity"
+          style={pillStyle(localValue) ?? { backgroundColor: DEFAULT_STAGE_COLORS.bg, color: DEFAULT_STAGE_COLORS.fg }}>
+          {localValue || '—'}
+          <CaretDownIcon size={10} className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)}>
+            <div className="p-1.5 flex flex-col gap-1">
+              <button type="button" onClick={() => handleSelect('')}
+                className="w-full text-left px-2 py-1 text-xs rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                —
+              </button>
+              {options.map(o => (
+                <button key={o} type="button" onClick={() => handleSelect(o)}
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-opacity ${localValue === o ? '' : 'opacity-70 hover:opacity-100'}`}
+                  style={pillStyle(o) ?? { backgroundColor: DEFAULT_STAGE_COLORS.bg, color: DEFAULT_STAGE_COLORS.fg }}>
+                  {o}
+                </button>
+              ))}
+            </div>
+          </FixedPopup>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(o => !o)}
         className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-        <span className="truncate text-left flex items-center gap-1.5">{dot(localValue)}{localValue || '—'}</span>
+        <span className="truncate text-left">{localValue || '—'}</span>
         <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -2091,7 +2124,6 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
               className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
               {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
               {localValue !== o && <span className="w-3 flex-shrink-0" />}
-              {dot(o)}
               <span className="truncate">{o}</span>
             </button>
           ))}
