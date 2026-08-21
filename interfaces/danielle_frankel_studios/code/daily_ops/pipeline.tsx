@@ -1722,7 +1722,7 @@ function AlterationsInHouseToggle({ value, recordId, base }: { value: boolean; r
     <div>
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>Alterations In House</FieldLabel>
       <button type="button" onClick={handleToggle}
-        className={`w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
           localValue ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30' : 'bg-gray-50 dark:bg-white/10 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
         }`}>
         {localValue ? 'Alterations Needed' : 'No Alterations'}
