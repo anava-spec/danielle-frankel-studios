@@ -391,6 +391,7 @@ const CLIENT = {
   PHONE:              'fldZrxF4bR6QBUwVK',
   WEDDING:            'fldbgknumKGS5W5WU',
   WEDDING_IF_NOT_SET: 'fldqwfmMczvLhiqk1',
+  WEDDING_DISPLAY:    'fldfDHXcCEbFHEX4a', // wedding_date_display formula — Formatted with fallback to If Not Set; read-only display only, never the editable field
   WEDDING_CONFIRMED:  'fldOZTDVcR1qwU6U2',
   WEDDING_LOCATION:   'fldikRqj41XYiIDBk',
   WEDDING_PLANNER:    'fldISwHPviwGQBHFJ',
@@ -3870,6 +3871,19 @@ function PostAppointmentModal({
   const existingWeddingIso = clientRec ? (getVal<string>(clientRec, CLIENT.WEDDING)??'') : '';
   const [weddingDisplay, setWeddingDisplay] = useState(existingWeddingIso ? fmtFriendly(existingWeddingIso) : '');
   const [weddingIso, setWeddingIso]         = useState(existingWeddingIso);
+  // Read-only fallback (2026-08-21): CLIENT.WEDDING is unconditionally in
+  // FIELD_SOURCE (see below), so isFieldReadOnlyBySource(CLIENT.WEDDING) is
+  // always true and the editable input a few hundred lines down is never
+  // actually reached in production — this field is display-only here. The
+  // plain `weddingDisplay` above only reflects Wedding Date (Formatted), so
+  // a client with just a manual placeholder in Wedding Date (If Not Set)
+  // showed blank. This resolves the same Formatted/If-Not-Set fallback
+  // wedding_date_display already computes, for the read-only view and the
+  // printed Recap Doc only — it never overwrites weddingDisplay itself.
+  const weddingDisplayFallback = useMemo(() => {
+    const raw = clientRec ? getStr(clientRec, CLIENT.WEDDING_DISPLAY) : '';
+    return raw ? fmtFriendly(raw) : '';
+  }, [clientRec]);
   const [weddingConfirmed, setWeddingConfirmed] = useState(cBool(CLIENT.WEDDING_CONFIRMED));
   const [showCalendar, setShowCalendar]     = useState(false);
 
@@ -4209,14 +4223,14 @@ function PostAppointmentModal({
       clientName: clientName || 'Unknown Client',
       email: cStr(CLIENT.EMAIL),
       phone: cStr(CLIENT.PHONE),
-      weddingDateDisplay: weddingDisplay,
+      weddingDateDisplay: weddingDisplayFallback || weddingDisplay,
       appointmentDisplay,
       clientSpecialist: saName,
       entries: [...hybridEntries, ...regularEntries, ...favoriteEntries],
       photos: existingApptPhotos ?? [],
       logoUrl: recapLogoUrl,
     };
-  }, [clientName, cStr, weddingDisplay, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, stylesTable, customizationRows, existingApptPhotos, recapLogoUrl]);
+  }, [clientName, cStr, weddingDisplay, weddingDisplayFallback, appointmentDisplay, saName, favStyles, stylesRecords, stylesBasePriceField, stylesTable, customizationRows, existingApptPhotos, recapLogoUrl]);
 
   const openRecapDocUploadForm = () => {
     if (!clientId) return;
@@ -4386,7 +4400,7 @@ function PostAppointmentModal({
               <div>
                 <FieldLabel label="Wedding Date" fieldId={CLIENT.WEDDING} />
                 {isFieldReadOnlyBySource(CLIENT.WEDDING) ? (
-                  <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5">{weddingDisplay || '—'}</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5">{weddingDisplayFallback || weddingDisplay || '—'}</div>
                 ) : (
                   <div className="relative">
                     <input type="text" value={weddingDisplay} onChange={e=>setWeddingDisplay(e.target.value)}
@@ -5142,12 +5156,14 @@ function RecapApp(): React.ReactElement {
                     // CLIENT_LINK) — needs the unwrap helper above since this runtime
                     // returns lookup cells as a per-linked-record array, not a plain
                     // value. Wedding Date, however, is read straight off the linked
-                    // Clients record's own WEDDING field (see clientById above) — NOT
-                    // an Appointments-level lookup — so it always matches the detail
-                    // page exactly.
+                    // Clients record's own WEDDING_DISPLAY field (see clientById
+                    // above) — NOT an Appointments-level lookup, so it always matches
+                    // the detail page, and it's the wedding_date_display formula
+                    // (fixed 2026-08-21), not Formatted alone, so a client with only
+                    // a manual placeholder date still shows something instead of '—'.
                     const linkedClientIds = fClient ? (rec.getCellValue(fClient) as Array<{ id: string }> | null) : null;
                     const weddingClientRec = linkedClientIds?.[0] ? clientById.get(linkedClientIds[0].id) ?? null : null;
-                    const weddingDisplay   = weddingClientRec ? getStr(weddingClientRec, CLIENT.WEDDING) : '';
+                    const weddingDisplay   = weddingClientRec ? getStr(weddingClientRec, CLIENT.WEDDING_DISPLAY) : '';
                     const favAcuityNames = fFavAcuityLookup ? unwrapLinkedNames(rec.getCellValue(fFavAcuityLookup)) : [];
                     const favApptNames   = fFavApptLookup   ? unwrapLinkedNames(rec.getCellValue(fFavApptLookup))   : [];
                     return (

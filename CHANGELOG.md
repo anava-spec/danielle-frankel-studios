@@ -23,6 +23,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Alterations**
 - Fixed the Wedding Date column showing "Missing Date" for clients who have a manual placeholder wedding date on file but no confirmed date yet — it now shows that placeholder instead, matching the rest of the app. The two date filters (past-wedding exclusion and the calendar filter) are unaffected.
 
+**Recap**
+- Fixed the Wedding Date shown in the main list, the client detail page, and the printed Recap Doc so a manual placeholder date always displays instead of sometimes showing blank.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
