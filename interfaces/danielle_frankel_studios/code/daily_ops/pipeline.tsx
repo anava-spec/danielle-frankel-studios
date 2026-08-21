@@ -3953,7 +3953,13 @@ function Pipeline(): React.ReactElement {
     const amn = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.AM_ORDER_NUMBER); if (amn) f.push(amn);
     return f;
   }, [orderItemsTable]);
-  const orderItemsRecords = useRecords(orderItemsTable ?? null, orderItemsQueryFields.length > 0 ? { fields: orderItemsQueryFields } : undefined);
+  // Always pass a concrete `{ fields }` object here (never `undefined`) —
+  // unlike orderQueryFields/studioQueryFields/staffFields above, this table
+  // is two link-hops away from DF Clients (Clients -> shopify_order ->
+  // order_items) and may not resolve on first render; pairing a possibly-
+  // null table with an `undefined` opts arg is the one combination none of
+  // the other useRecords calls in this file have exercised.
+  const orderItemsRecords = useRecords(orderItemsTable ?? null, { fields: orderItemsQueryFields });
 
   const staffTable = base.getTableByIdIfExists(STAFF_TABLE_ID);
   const staffFullNameField = useMemo(() => staffTable?.getFieldIfExists(STAFF_FIELD_FULL_NAME) ?? null, [staffTable]);
