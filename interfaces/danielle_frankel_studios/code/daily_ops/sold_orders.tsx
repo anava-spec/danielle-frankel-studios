@@ -347,9 +347,18 @@ function formatDate(v: unknown): string {
   if (typeof v === 'string') raw = v;
   else if (Array.isArray(v) && typeof v[0] === 'string') raw = v[0] as string;
   if (!raw) return '—';
+  const mdy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthIdx = parseInt(mm, 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${months[monthIdx]} ${parseInt(dd, 10)}, ${yyyy}`;
+    }
+  }
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T12:00:00Z' : raw;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return '—';
+  if (isNaN(d.getTime())) return raw;
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(d);
 }
 
@@ -664,8 +673,11 @@ function SoldApp(): React.ReactElement {
   const [selectedSA, setSelectedSA]       = useState<Set<string>>(new Set());
   const [selectedStore, setSelectedStore] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery]     = useState('');
-  const [sortColumn, setSortColumn]       = useState<string | null>(null);
-  const [sortDir, setSortDir]             = useState<'asc' | 'desc' | null>(null);
+  // Default sort: most recent sale first (reverse-chronological on Date Sold).
+  // Still a normal sortColumn/sortDir pair, so clicking any header overrides it
+  // exactly like before — this only changes what shows before the user clicks.
+  const [sortColumn, setSortColumn]       = useState<string | null>('orderDateRaw');
+  const [sortDir, setSortDir]             = useState<'asc' | 'desc' | null>('desc');
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   const orderRecords  = useRecords(ordersTable);
@@ -784,7 +796,9 @@ function SoldApp(): React.ReactElement {
       const studioObj  = storeId ? activeStudios.find(s => s.id === storeId) : undefined;
       const studioName = studioObj?.shortName ?? '';
 
-      const weddingDate = fWedding ? order.getCellValue(fWedding) : null;
+      const weddingDate = fWedding
+        ? (order.getCellValueAsString(fWedding) || getLookupString(order.getCellValue(fWedding)) || null)
+        : null;
 
       const shopifyNumRaw = fShopifyNum ? order.getCellValue(fShopifyNum) as number | null : null;
       const shopifyNum    = shopifyNumRaw ? `#${shopifyNumRaw}` : '';
