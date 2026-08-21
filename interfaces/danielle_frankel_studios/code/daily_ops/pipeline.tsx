@@ -3139,20 +3139,36 @@ const FullProfileModal = React.memo(function FullProfileModal({
             <div>
               <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Orders</span>
               <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
-                <table className="w-full border-collapse text-sm">
+                <table className="w-full border-collapse text-sm table-fixed">
+                  <colgroup>
+                    <col className="w-24" />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                  </colgroup>
                   <thead>
                     <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-                      {['Order #', 'Fulfillment Method', 'Client Notified', 'Tracking #', '3PL'].map((h, i) => (
+                      {['Shopify Order', 'Fulfillment Method', 'Client Notified', 'Tracking #', '3PL', 'Fulfillment Progress'].map((h, i) => (
                         <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {linkedOrders.length === 0 ? (
-                      <tr><td colSpan={5} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                      <tr><td colSpan={6} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
                     ) : linkedOrders.map(r => {
                       const num = getOrderNum(r, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+                      // tracking_number is plain text, not a select — getOrderSel expects a {name} cell shape and would always fall back to '—' here.
+                      const trackingNumber = (() => {
+                        if (!orderTable) return '';
+                        const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.TRACKING_NUMBER);
+                        if (!f) return '';
+                        try { return r.getCellValueAsString(f) ?? ''; } catch { return ''; }
+                      })();
                       const threePL = getOrderSel(r, ORDER_FIELD_IDS.THIRD_PARTY_LOGISTICS);
+                      const progress = getOrderNum(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
                       return (
                         <tr key={r.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
                           <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{num ? `#${num}` : '—'}</td>
@@ -3162,10 +3178,9 @@ const FullProfileModal = React.memo(function FullProfileModal({
                           <td className="px-3 py-2.5">
                             <OrderEditableCheckbox record={r} orderTable={orderTable} fieldId={ORDER_FIELD_IDS.CLIENT_NOTIFIED} readOnly={readOnly} />
                           </td>
-                          <td className="px-3 py-2.5">
-                            <OrderEditableText record={r} orderTable={orderTable} fieldId={ORDER_FIELD_IDS.TRACKING_NUMBER} readOnly={readOnly} />
-                          </td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{trackingNumber || '—'}</td>
                           <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{threePL}</td>
+                          <td className="px-3 py-2.5"><ProgressBar percentage={progress} /></td>
                         </tr>
                       );
                     })}
