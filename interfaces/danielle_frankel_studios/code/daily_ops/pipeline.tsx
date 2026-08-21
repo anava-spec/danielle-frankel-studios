@@ -98,6 +98,18 @@ const FIELD_IDS = {
   // (0–1 fraction) — Issue 4, Order Ready section only. Sandbox
   // fldKSGxe3uMdjHWz5; Axel replicates the same config in Production.
   CLIENT_NOTIFIED_PERCENTAGE:          'fldKSGxe3uMdjHWz5',
+  // Issue 5 (In Alterations section): "Alterations In House" is a real
+  // backend checkbox (also read by order_close_out.js / the stage formula)
+  // — the frontend renders it as a toggle button, never a checkbox/dropdown.
+  CLIENT_ALTERATIONS_IN_HOUSE:         'fldNjcDXIaGPGY1E6',
+  // has_alterations_item / shopify_alteration_order — formula, TRUE if any
+  // linked order item's category is ALTERATIONS. Gates Alterations Status
+  // visibility alongside Alterations In House.
+  CLIENT_HAS_ALTERATIONS_ITEM:         'fldWaqPw2BO4XQIbX',
+  // New 2026-08-21, Sandbox only — Axel replicates in Production before
+  // this goes live there. Single select, "Pending" by default; shown only
+  // when Alterations In House or has_alterations_item is TRUE.
+  CLIENT_ALTERATIONS_STATUS:           'fldtQfxqmecuIMXKY',
   CLIENT_ADDRESS_CONFIRMED:            'fldksvLd6ZQabAoY1',
   CLIENT_ALTERATION_NOTES:             'fldBhpBTj0gGmV5mc',
   CLIENT_SALES_NOTES:                  'fldsVYhG5tZAccxdK',
@@ -925,14 +937,32 @@ function formatShortDate(date: string | Date | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function formatAppointmentDateTime(str: string | null | undefined): string {
+// Maps a client's `Studio` formula value (NY / LA / Virtual / Mixed / '') to
+// the IANA zone its appointments actually happen in. Appointments can be in
+// either studio, so this can't be hardcoded to one zone project-wide — Virtual
+// and Mixed/unknown fall back to America/New_York (studio-time convention
+// used elsewhere in this base, e.g. recap.tsx) since there's no single real
+// studio to anchor to.
+function getStudioTimeZone(studio: string | null | undefined): string {
+  if (studio === 'LA') return 'America/Los_Angeles';
+  return 'America/New_York';
+}
+
+// Fixed 2026-08-21 (Issue 5): this used to format with no explicit `timeZone`,
+// so `toLocaleDateString`/`toLocaleTimeString` silently fell back to the
+// *viewer's* browser/OS timezone — a 1:30pm EDT appointment could render as
+// 11:30am for someone viewing from Mountain time. Now always takes the
+// appointment's actual studio timezone (see getStudioTimeZone above) so every
+// viewer sees the same studio-local wall-clock time, regardless of where
+// they are.
+function formatAppointmentDateTime(str: string | null | undefined, timeZone: string = 'America/New_York'): string {
   if (!str) return '—';
   const d = parseDateFlexible(str);
   if (!d || isNaN(d.getTime())) return str;
   return (
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone }) +
     ' ' +
-    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone }).toLowerCase()
   );
 }
 
@@ -1137,6 +1167,9 @@ interface ClientData {
   acuityAddress: string;
   otherAddress: string;
   alterationsApptCount: number;
+  alterationsInHouse: boolean;
+  hasAlterationsItem: boolean;
+  alterationsStatus: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1656,6 +1689,43 @@ function EditableCheckbox({ label, value, fieldId, recordId, base, tableId = 'tb
         }`}>
         {localValue ? <CheckIcon size={12} weight="bold" /> : <XIcon size={12} />}
         {localValue ? 'Yes' : 'No'}
+      </button>
+    </div>
+  );
+}
+
+// "Alterations In House" (Issue 5) — backend is still a plain checkbox
+// (fldNjcDXIaGPGY1E6, also read by order_close_out.js / the stage formula),
+// but per Axel the frontend should never show it as a checkbox/dropdown: a
+// single button that on click flips the value AND changes what it displays —
+// "No Alterations" (false) / "Alterations Needed" (true).
+function AlterationsInHouseToggle({ value, recordId, base }: { value: boolean; recordId: string; base: Base }) {
+  const fieldId = FIELD_IDS.CLIENT_ALTERATIONS_IN_HOUSE;
+  const [localValue, setLocalValue] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setLocalValue(value); }, [value]);
+
+  const handleToggle = async () => {
+    const next = !localValue;
+    setLocalValue(next); setSaving(true); setError(null);
+    try {
+      const t = base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c');
+      if (!t) throw new Error('Table not found');
+      await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: next }));
+    } catch (e) {
+      setError('Save failed'); console.error(`AlterationsInHouseToggle [${fieldId}]:`, e); setLocalValue(localValue);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div>
+      <FieldLabel saving={saving} error={error} fieldId={fieldId}>Alterations In House</FieldLabel>
+      <button type="button" onClick={handleToggle}
+        className={`w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+          localValue ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30' : 'bg-gray-50 dark:bg-white/10 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+        }`}>
+        {localValue ? 'Alterations Needed' : 'No Alterations'}
       </button>
     </div>
   );
@@ -2295,8 +2365,8 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage, waitl
                 </span>
               </td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.weddingDisplay || '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment) : '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment) : '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment, getStudioTimeZone(client.studio)) : '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio)) : '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.studio || '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.salesAssociateName || '—'}</td>
               <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 font-mono text-xs">{client.amOrderStr || client.amOrderNumber || '—'}</td>
@@ -2454,6 +2524,13 @@ const ALTERATIONS_PAYMENT_OPTIONS = [
   'Unpaid',
 ];
 
+// Issue 5 — only "Pending" exists as a real Airtable choice today (added
+// 2026-08-21, Sandbox only). Add more strings here as Axel/Julia define
+// further statuses and adds the matching choices in Airtable.
+const ALTERATIONS_STATUS_OPTIONS = [
+  'Pending',
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // OVERRIDE DUE DATE CONFIRM MODAL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2596,7 +2673,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <DetailRow label="Country of Residence" value={client.countryOfResidence} />
-              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment)} />
+              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio))} />
             </div>
             {/* Wedding Location & Planner — always DetailRow per Step 5 */}
             <div className="grid grid-cols-2 gap-3">
@@ -2626,8 +2703,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
           <div className="space-y-3">
             <FieldRow>
               <DetailRow label="Country of Residence" value={client.countryOfResidence} />
-              <DetailRow label="Last Appointment" value={formatAppointmentDateTime(client.lastAppointment)} />
-              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment)} />
+              <DetailRow label="Last Appointment" value={formatAppointmentDateTime(client.lastAppointment, getStudioTimeZone(client.studio))} />
+              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio))} />
             </FieldRow>
             <FieldRow>
               <DetailRow label="Favorite Styles" value={client.favStylesInAppt.join(', ') || '—'} />
@@ -2788,17 +2865,34 @@ const FullProfileModal = React.memo(function FullProfileModal({
             </div>
           </div>
         );
-      case 'In Alterations':
+      case 'In Alterations': {
+        // Issue 5 — Alterations Status only applies once there's actually
+        // alterations work: In House (SA flagged it) or the order already
+        // has an ALTERATIONS line item.
+        const alterationsStatusApplies = client.alterationsInHouse || client.hasAlterationsItem;
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <DetailRow label="Last Alterations Appt" value={formatAppointmentDateTime(client.latestAlterationsAppt)} />
-              <DetailRow label="Alterations Appts Held" value={String(client.alterationsApptCount || '—')} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <DetailRow label="Next Appt" value={formatAppointmentDateTime(client.nextAppointment)} />
-              <DetailRow label="SA" value={client.salesAssociateName || '—'} />
-            </div>
+            <FieldRow>
+              <DetailRow label="Last Alterations Appointment" value={formatAppointmentDateTime(client.latestAlterationsAppt, getStudioTimeZone(client.studio))} />
+              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio))} />
+              <DetailRow label="Alterations Appointments Held" value={String(client.alterationsApptCount || '—')} />
+            </FieldRow>
+            <FieldRow4>
+              <DetailRow label="Sales Associate" value={client.salesAssociateName || '—'} />
+              {/* Alterations Lead (next_appointment_alterations_lead) — per
+                  Axel, always shown, even blank, rather than hidden. */}
+              <DetailRow label="Alterations Lead" value={client.nextAppointmentAltLead || '—'} />
+              {readOnly
+                ? <DetailRow label="Alterations In House" value={client.alterationsInHouse ? 'Alterations Needed' : 'No Alterations'} />
+                : <AlterationsInHouseToggle value={client.alterationsInHouse} recordId={client.id} base={base} />
+              }
+              {!alterationsStatusApplies
+                ? <DetailRow label="Alterations Status" value="—" />
+                : readOnly
+                  ? <DetailRow label="Alterations Status" value={client.alterationsStatus || 'Pending'} />
+                  : <EditableSelect label="Alterations Status" value={client.alterationsStatus || 'Pending'} options={ALTERATIONS_STATUS_OPTIONS} fieldId={FIELD_IDS.CLIENT_ALTERATIONS_STATUS} recordId={client.id} base={base} />
+              }
+            </FieldRow4>
             <div className="grid grid-cols-2 gap-3">
               <DetailRow label="Items Sold" value={client.itemsSold.join(', ') || '—'} />
               <DetailRow label="Total Spend" value={client.totalSpend ? `$${Number(client.totalSpend).toLocaleString()}` : '—'} />
@@ -2809,6 +2903,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
             }
           </div>
         );
+      }
       case 'In Fulfillment':
         return (
           <div className="space-y-3">
@@ -3614,6 +3709,9 @@ function Pipeline(): React.ReactElement {
       holdShipmentDate:           f(FIELD_IDS.CLIENT_HOLD_SHIPMENT_DATE),
       clientNotifiedFulfillment:  f(FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT),
       clientNotifiedPercentage:   f(FIELD_IDS.CLIENT_NOTIFIED_PERCENTAGE),
+      alterationsInHouse:         f(FIELD_IDS.CLIENT_ALTERATIONS_IN_HOUSE),
+      hasAlterationsItem:         f(FIELD_IDS.CLIENT_HAS_ALTERATIONS_ITEM),
+      alterationsStatus:          f(FIELD_IDS.CLIENT_ALTERATIONS_STATUS),
       addressConfirmed:           f(FIELD_IDS.CLIENT_ADDRESS_CONFIRMED),
       apptNotes:                  f(FIELD_IDS.CLIENT_APPT_NOTES),
       nextAppointment:            f(FIELD_IDS.CLIENT_NEXT_APPOINTMENT),
@@ -3700,6 +3798,9 @@ function Pipeline(): React.ReactElement {
       const holdShipmentDate      = getCellValueAsStringSafe(record, fields.holdShipmentDate) || null;
       const clientNotifiedFulfillment = !!getCellValueSafe<boolean>(record, fields.clientNotifiedFulfillment);
       const clientNotifiedPercentage = getCellValueSafe<number>(record, fields.clientNotifiedPercentage) ?? 0;
+      const alterationsInHouse    = !!getCellValueSafe<boolean>(record, fields.alterationsInHouse);
+      const hasAlterationsItem    = !!getCellValueSafe<boolean>(record, fields.hasAlterationsItem);
+      const alterationsStatus     = getCellValueAsStringSafe(record, fields.alterationsStatus);
       const addressConfirmed      = !!getCellValueSafe<boolean>(record, fields.addressConfirmed);
       const apptNotes             = getCellValueAsStringSafe(record, fields.apptNotes);
       const nextAppointment       = extractFirstLookupString(record, fields.nextAppointment);
@@ -3839,6 +3940,7 @@ function Pipeline(): React.ReactElement {
         salesNotes, dueDate, customizationNotes, firstAlterationsAppt,
         taxes, shippingCost, taxesFormatted, shippingCostFormatted,
         lastPhaseChange, studioName, acuityAddress, otherAddress, alterationsApptCount,
+        alterationsInHouse, hasAlterationsItem, alterationsStatus,
       };
     });
   }, [clientRecords, fields]);
