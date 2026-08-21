@@ -2015,9 +2015,15 @@ interface EditableSelectProps {
   base: Base;
   tableId?: string;
   readOnly?: boolean;
+  // Optional live choice colors, e.g. from a singleSelect field's own schema
+  // (see `useFieldChoiceColors` below) — when given, the current value and
+  // every option render as a colored pill/dot matching Airtable's own
+  // per-choice color, and automatically pick up any color/choice change
+  // made directly in Airtable (no redeploy needed).
+  colors?: Record<string, { bg: string; fg: string }>;
 }
 
-function EditableSelect({ label, value, options, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c', readOnly }: EditableSelectProps) {
+function EditableSelect({ label, value, options, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c', readOnly, colors }: EditableSelectProps) {
   const effectiveReadOnly = readOnly || isFieldReadOnlyBySource(fieldId);
   const [localValue, setLocalValue] = useState(value);
   const [open, setOpen] = useState(false);
@@ -2037,6 +2043,15 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
   }, [open]);
 
   if (effectiveReadOnly) {
+    if (colors && value) {
+      const c = colors[value] ?? DEFAULT_STAGE_COLORS;
+      return (
+        <div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide font-medium">{label}</div>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-0.5" style={{ backgroundColor: c.bg, color: c.fg }}>{value}</span>
+        </div>
+      );
+    }
     return <DetailRow label={label} value={value || '—'} fieldId={fieldId} />;
   }
 
@@ -2053,12 +2068,16 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     } finally { setSaving(false); }
   };
 
+  const dot = (name: string) => colors?.[name]
+    ? <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors[name].bg }} />
+    : null;
+
   return (
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(o => !o)}
         className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-        <span className="truncate text-left">{localValue || '—'}</span>
+        <span className="truncate text-left flex items-center gap-1.5">{dot(localValue)}{localValue || '—'}</span>
         <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -2072,6 +2091,7 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
               className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
               {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
               {localValue !== o && <span className="w-3 flex-shrink-0" />}
+              {dot(o)}
               <span className="truncate">{o}</span>
             </button>
           ))}
@@ -2524,12 +2544,6 @@ const ALTERATIONS_PAYMENT_OPTIONS = [
   'Unpaid',
 ];
 
-// Issue 5 — only "Pending" exists as a real Airtable choice today (added
-// 2026-08-21, Sandbox only). Add more strings here as Axel/Julia define
-// further statuses and adds the matching choices in Airtable.
-const ALTERATIONS_STATUS_OPTIONS = [
-  'Pending',
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OVERRIDE DUE DATE CONFIRM MODAL
@@ -2606,6 +2620,8 @@ interface FullProfileModalProps {
   client: ClientData;
   stageColors: { bg: string; fg: string };
   stageChoices: Array<{ name: string; color?: string }>;
+  alterationsStatusOptions: string[];
+  alterationsStatusColors: Record<string, { bg: string; fg: string }>;
   base: Base;
   vendorRecords: AirtableRecord[] | null;
   vendorNameField: Field | null;
@@ -2621,7 +2637,7 @@ const STAGE_STEPS: string[] = [
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({
-  client, stageColors, stageChoices, base, vendorRecords, vendorNameField, vendorTypeField, orderTable, orderRecords, matchedWaitlistEntry, onClose,
+  client, stageColors, stageChoices, alterationsStatusOptions, alterationsStatusColors, base, vendorRecords, vendorNameField, vendorTypeField, orderTable, orderRecords, matchedWaitlistEntry, onClose,
 }: FullProfileModalProps) {
   const currentStageIndex = STAGE_STEPS.indexOf(client.stage);
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
@@ -2888,9 +2904,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
               }
               {!alterationsStatusApplies
                 ? <DetailRow label="Alterations Status" value="—" />
-                : readOnly
-                  ? <DetailRow label="Alterations Status" value={client.alterationsStatus || 'Pending'} />
-                  : <EditableSelect label="Alterations Status" value={client.alterationsStatus || 'Pending'} options={ALTERATIONS_STATUS_OPTIONS} fieldId={FIELD_IDS.CLIENT_ALTERATIONS_STATUS} recordId={client.id} base={base} />
+                : <EditableSelect label="Alterations Status" value={client.alterationsStatus || 'Pending'} options={alterationsStatusOptions} colors={alterationsStatusColors} fieldId={FIELD_IDS.CLIENT_ALTERATIONS_STATUS} recordId={client.id} base={base} readOnly={readOnly} />
               }
             </FieldRow4>
             <div className="grid grid-cols-2 gap-3">
@@ -3664,6 +3678,26 @@ function Pipeline(): React.ReactElement {
     return map;
   }, [stageChoices]);
 
+  // Issue 5 — Alterations Status options + colors read live from the
+  // field's own Airtable schema (same pattern as stageChoices above), so
+  // adding/renaming/recoloring a choice directly in Airtable shows up here
+  // with no code change.
+  const alterationsStatusField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_ALTERATIONS_STATUS);
+  const alterationsStatusChoices = useMemo(() => {
+    if (!alterationsStatusField) return [];
+    const config = alterationsStatusField.config;
+    if (config?.type === 'singleSelect' && config.options?.choices) {
+      return config.options.choices as Array<{ name: string; color?: string }>;
+    }
+    return [];
+  }, [alterationsStatusField]);
+  const alterationsStatusOptions = useMemo(() => alterationsStatusChoices.map(c => c.name), [alterationsStatusChoices]);
+  const alterationsStatusColors = useMemo(() => {
+    const map: Record<string, { bg: string; fg: string }> = {};
+    for (const choice of alterationsStatusChoices) map[choice.name] = getStageColors(choice.color);
+    return map;
+  }, [alterationsStatusChoices]);
+
   const fields = useMemo(() => {
     if (!clientsTable) return null;
     const f = (id: string) => clientsTable.getFieldIfExists(id);
@@ -4189,6 +4223,8 @@ function Pipeline(): React.ReactElement {
           client={selectedClient}
           stageColors={selectedClientStageColors}
           stageChoices={stageChoices}
+          alterationsStatusOptions={alterationsStatusOptions}
+          alterationsStatusColors={alterationsStatusColors}
           base={base}
           vendorRecords={vendorRecords}
           vendorNameField={vendorNameField}
