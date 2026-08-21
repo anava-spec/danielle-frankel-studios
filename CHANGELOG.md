@@ -41,6 +41,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Customization Requests**
 - Renamed the "Workdesk" view to "Requests," to avoid reading as a near-duplicate of the "Approval" view next to it.
 
+**Sold Orders**
+- The order list now defaults to showing the most recently sold order first, instead of no particular order.
+
 ## Week of Aug 10, 2026
 
 **Sample Tracker**
