@@ -6,6 +6,15 @@ TABLE SRC    : Orders - Shopify (tblHFGbijtvZcRPkE)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
 TRIGGER      : Record updated — Orders - Shopify, watching: picked_status_percentage,
                gown_picked
+VERSION      : 1.2.0 — stage rework, step 6 (2026-08-20): now also writes
+               order_ready_achieved = TRUE (flds1WfGHitZqHrBm) whenever the
+               order qualifies, INDEPENDENTLY of the stage guard below — the
+               fact is monotonic (never regresses) even for a client who has
+               already advanced past "Order Ready", whereas the stage write
+               itself still only fires while the client hasn't advanced past
+               it yet. Stage write unchanged for now, kept in parallel so the
+               fact and the old direct write can be compared before stage is
+               converted to a formula.
 VERSION      : 1.1.0 — replaces the "partially picked gown" check
                (Category Lookup + picked_status_percentage > 0, at the whole-order
                level) with the new gown_picked rollup (fldn0e6E4NjTPWlw0),
@@ -73,7 +82,8 @@ const FIELDS_ORDERS = {
 
 // DF Clients fields
 const FIELDS_CLIENTS = {
-  stage: 'fldLcxVZvI1rigBlh', // confirmed in pipeline.tsx
+  stage:                 'fldLcxVZvI1rigBlh', // confirmed in pipeline.tsx
+  order_ready_achieved:  'flds1WfGHitZqHrBm', // checkbox, stage rework
 };
 
 // Kept in parallel with the interfaces' STAGE_ORDER (pipeline.tsx /
@@ -136,7 +146,7 @@ class ClientsRepository {
 
   async getById(clientId) {
     this.logger.step(3, `Loading client → ${clientId}`);
-    const result = await this.table.selectRecordsAsync({ fields: [FIELDS_CLIENTS.stage] });
+    const result = await this.table.selectRecordsAsync({ fields: [FIELDS_CLIENTS.stage, FIELDS_CLIENTS.order_ready_achieved] });
     const record = result.records.find(r => r.id === clientId);
     if (!record) throw new Error(`Client not found → clientId: ${clientId}`);
     this.logger.audit(`Client loaded → ${clientId}`);
@@ -147,6 +157,12 @@ class ClientsRepository {
     this.logger.step(5, `Writing stage="${stageName}" → client: ${clientId}`);
     await this.table.updateRecordAsync(clientId, { [FIELDS_CLIENTS.stage]: { name: stageName } });
     this.logger.audit(`Stage written → ${stageName}`);
+  }
+
+  async markOrderReadyAchieved(clientId) {
+    this.logger.step(6, `Writing order_ready_achieved = TRUE → client: ${clientId}`);
+    await this.table.updateRecordAsync(clientId, { [FIELDS_CLIENTS.order_ready_achieved]: true });
+    this.logger.audit('order_ready_achieved written.');
   }
 }
 
@@ -220,18 +236,7 @@ class OrderReadyService {
     const clientId = linkedClients[0].id;
     this.logger.step(2, `Client resolved → ${clientId}`);
 
-    // GUARD 3 — never move backward
     const clientRecord = await this.clientsRepo.getById(clientId);
-    const currentStage = clientRecord.getCellValueAsString(FIELDS_CLIENTS.stage);
-    const currentIdx = STAGE_ORDER.indexOf(currentStage);
-    const targetIdx = STAGE_ORDER.indexOf(CONFIG.TARGET_STAGE);
-    if (currentIdx !== -1 && currentIdx >= targetIdx) {
-      return {
-        status: 'SUCCESS', client_id: clientId, gown_ready: false, percent_picked: 0,
-        qualifies: false, stage_written: null,
-        result_message: MessageBuilder.skipped(`client is already at/past "${CONFIG.TARGET_STAGE}" (current stage: "${currentStage}"). Not moving backward.`),
-      };
-    }
 
     const { qualifies, gownReady, percentPicked, evaluable } = this.evaluator.evaluate(order);
 
@@ -240,6 +245,31 @@ class OrderReadyService {
         status: 'SUCCESS', client_id: clientId, gown_ready: false, percent_picked: 0,
         qualifies: false, stage_written: null,
         result_message: MessageBuilder.skipped('Insufficient data (gown_picked and picked_status_percentage both null).'),
+      };
+    }
+
+    // Fact write is monotonic and independent of the stage guard below — a
+    // client who has already advanced past "Order Ready" still, by
+    // definition, achieved it at some point, so the fact should be TRUE
+    // regardless of current stage.
+    if (qualifies) {
+      const alreadyTrue = clientRecord.getCellValue(FIELDS_CLIENTS.order_ready_achieved) === true;
+      if (!alreadyTrue) {
+        await this.clientsRepo.markOrderReadyAchieved(clientId);
+      } else {
+        this.logger.audit('order_ready_achieved already TRUE — no-op.');
+      }
+    }
+
+    // GUARD 3 — never move the STAGE backward (fact write above is unaffected)
+    const currentStage = clientRecord.getCellValueAsString(FIELDS_CLIENTS.stage);
+    const currentIdx = STAGE_ORDER.indexOf(currentStage);
+    const targetIdx = STAGE_ORDER.indexOf(CONFIG.TARGET_STAGE);
+    if (currentIdx !== -1 && currentIdx >= targetIdx) {
+      return {
+        status: 'SUCCESS', client_id: clientId, gown_ready: gownReady, percent_picked: percentPicked,
+        qualifies, stage_written: null,
+        result_message: MessageBuilder.skipped(`client is already at/past "${CONFIG.TARGET_STAGE}" (current stage: "${currentStage}"). Not moving backward.`),
       };
     }
 
