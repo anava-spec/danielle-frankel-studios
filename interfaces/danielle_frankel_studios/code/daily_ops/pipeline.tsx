@@ -2706,15 +2706,12 @@ const FullProfileModal = React.memo(function FullProfileModal({
       case 'Order Ready':
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <DetailRow label="Items Sold" value={client.itemsSold.join(', ') || '—'} />
+            <FieldRow>
               {readOnly
                 ? <DetailRow label="Order Ready" value={client.orderReady ? 'Yes' : 'No'} />
                 : <BooleanDropdown label="Order Ready" value={client.orderReady} fieldId={FIELD_IDS.CLIENT_ORDER_READY} recordId={client.id} base={base} />
               }
-              <DetailRow label="Items Sold" value={client.itemsSold.join(', ') || '—'} />
-            </div>
-            <DetailRow label="Customization Notes" value={client.customizationNotes || '—'} />
-            <FieldRow>
               {readOnly
                 ? <DetailRow label="Alterations" value={client.contactedForAlterations ? 'Yes' : 'No'} />
                 : <BooleanDropdown label="Alterations" value={client.contactedForAlterations} fieldId={FIELD_IDS.CLIENT_CONTACTED_FOR_ALTERATIONS} recordId={client.id} base={base} />
@@ -2727,8 +2724,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Client Notified</span>
                 <div className="py-1"><ProgressBar percentage={client.clientNotifiedPercentage} /></div>
               </div>
-              <div />
             </FieldRow>
+            <DetailRow label="Customization Notes" value={client.customizationNotes || '—'} />
             {/* Per-order fulfillment method + real pickup/ship completion —
                 replaces the old bride-level "Shipping"/"Pick Up" yes/no
                 flags, which couldn't represent more than one order or
