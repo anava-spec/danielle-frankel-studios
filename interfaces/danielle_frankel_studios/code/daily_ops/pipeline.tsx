@@ -927,8 +927,26 @@ function parseDateFlexible(str: string | null | undefined): Date | null {
   return isNaN(fallback.getTime()) ? null : fallback;
 }
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Fixed 2026-08-21: a plain "YYYY-MM-DD" (date-only, no time-of-day) string
+// has no real timezone of its own — it's a calendar date, not an instant.
+// Routing it through `new Date(str)` (UTC midnight) and then
+// `toLocaleDateString` with no explicit `timeZone` reintroduced the exact
+// bug this was meant to avoid: a Dec 5 wedding date could render as Dec 4
+// for anyone west of UTC, since UTC midnight Dec 5 is still Dec 4 evening
+// in, say, Mountain time. This field is read-only display text, so there's
+// no need to go through a Date/timezone conversion at all — read the
+// year/month/day digits straight out of the string.
 function formatFullDate(date: string | Date | null | undefined): string {
   if (!date) return '—';
+  if (typeof date === 'string') {
+    const dateOnly = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+      const [, year, month, day] = dateOnly;
+      return `${MONTH_ABBR[parseInt(month!, 10) - 1]} ${parseInt(day!, 10)}, ${year}`;
+    }
+  }
   const d = typeof date === 'string' ? parseDateFlexible(date) : date;
   if (!d || isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
