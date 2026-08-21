@@ -77,7 +77,13 @@ const FIELD_IDS = {
   CLIENT_TOTAL_SPEND:                  'fldasxslBOCb7GXnd',
   CLIENT_SHOPIFY_ADDRESS:              'fldxFbYURZvlZ0tA1',
   CLIENT_DISCOUNT:                     'fldRcaPZSWB7ve24D',
+  // Old manual field — kept for reference, no longer rendered (Sold Stage
+  // Cleanup batch, Issue 2). See CLIENT_ALTERATIONS_PAYMENT_STATUS_AUTO.
   CLIENT_ALTERATIONS_PAYMENT_STATUS:   'fldlEohtKV3LGF1tC',
+  // New formula field (Sandbox only as of 2026-08-21): "Paid" once an
+  // Alterations order item exists, "Unpaid" while Alterations In House is
+  // TRUE but no such item exists yet, blank otherwise. Always read-only.
+  CLIENT_ALTERATIONS_PAYMENT_STATUS_AUTO: 'flddfwnZwP43Uqhti',
   CLIENT_M2M:                          'fldJovDgD9pPRx7Yp',
   CLIENT_QTY_ITEMS_SOLD:               'flda47cFuR4yMHqpu',
   CLIENT_APPAREL_MAGIC_ORDER:          'fldwMsegG6ImCHWxM',
@@ -144,6 +150,21 @@ const ORDER_FIELD_IDS = {
   // as the old bride-level 3PL field.
   THIRD_PARTY_LOGISTICS:           'fld4jzdVnIQ7JzU7U', // UPS | FedEx | DHL | INTERJUMBO
   CLIENT_NOTIFIED:                 'fldve9YvP16XtrHN2',
+  AM_ORDER_NUMBER:                 'fldBvuNZDqzOx6azb',
+} as const;
+
+// ─── order_items (Sold stage line-item table — Issue 3, "Sold Stage
+// Cleanup" batch) — one row per style sold on any of the client's orders.
+// `order` and `style` are both multipleRecordLinks but capped to a single
+// linked record each (`prefersSingleRecordLink: true`), so every read below
+// takes just the first array element.
+const ORDER_ITEMS_TABLE_ID = 'tblWOBS5nX0GZokaU';
+const ORDER_ITEM_FIELD_IDS = {
+  ORDER:            'fldXrdBFm5SeGCTvq', // link -> Orders - Shopify
+  STYLE:            'fldL9rj7ZeDnjnXiY', // link -> DF Styles
+  UNIT_PRICE:       'fldLPnjHK9WWyJEEE',
+  AMOUNT:           'fldLT05tO5ep0WkyP', // line total
+  AM_ORDER_NUMBER:  'fldEvwqWb07Xbo1fW', // lookup (from order), already resolved server-side
 } as const;
 
 // Per-order Fulfillment Method choices — deliberately just Pick Up/Shipping,
@@ -1176,6 +1197,7 @@ interface ClientData {
   shopifyAddress: string;
   discount: number | null;
   alterationsPaymentStatus: string;
+  alterationsPaymentStatusAuto: string;
   m2m: boolean;
   qtyItemsSold: number | null;
   apparelMagicOrder: string;
@@ -2806,6 +2828,8 @@ interface FullProfileModalProps {
   vendorTypeField: Field | null;
   orderTable: Table | null;
   orderRecords: AirtableRecord[];
+  orderItemsTable: Table | null;
+  orderItemsRecords: AirtableRecord[];
   matchedWaitlistEntry?: WaitlistEntry | null;
   onClose: () => void;
 }
@@ -2815,7 +2839,7 @@ const STAGE_STEPS: string[] = [
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({
-  client, stageColors, stageChoices, alterationsStatusOptions, alterationsStatusColors, base, vendorRecords, vendorNameField, vendorTypeField, orderTable, orderRecords, matchedWaitlistEntry, onClose,
+  client, stageColors, stageChoices, alterationsStatusOptions, alterationsStatusColors, base, vendorRecords, vendorNameField, vendorTypeField, orderTable, orderRecords, orderItemsTable, orderItemsRecords, matchedWaitlistEntry, onClose,
 }: FullProfileModalProps) {
   const currentStageIndex = STAGE_STEPS.indexOf(client.stage);
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
@@ -2859,6 +2883,37 @@ const FullProfileModal = React.memo(function FullProfileModal({
     if (!orderTable) return '—';
     try { const f = orderTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
   }, [orderTable]);
+
+  // order_items for the Sold stage line-item table (Issue 3). An item's
+  // `order` link is capped to one record, so just check the first element.
+  const linkedOrderItems = useMemo(() => {
+    if (!orderItemsTable) return [];
+    const orderField = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.ORDER);
+    if (!orderField) return [];
+    return orderItemsRecords.filter(item => {
+      try {
+        const links = item.getCellValue(orderField) as Array<{ id: string }> | null;
+        return !!links?.[0] && client.shopifyOrderLinkIds.includes(links[0].id);
+      } catch { return false; }
+    });
+  }, [orderItemsRecords, orderItemsTable, client.shopifyOrderLinkIds]);
+  const getItemNum = useCallback((r: AirtableRecord, fid: string): number | null => {
+    if (!orderItemsTable) return null;
+    try { const f = orderItemsTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  }, [orderItemsTable]);
+  // `style` is a linked-record field, not a lookup/text field — the cell
+  // value is an array of {id, name} link objects (capped to one), so this
+  // reads the linked style's own display name directly rather than via
+  // getOrderSel (which expects a {name} *select*-shaped value, not a link).
+  const getItemStyleName = useCallback((r: AirtableRecord): string => {
+    if (!orderItemsTable) return '—';
+    try {
+      const f = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.STYLE);
+      if (!f) return '—';
+      const links = r.getCellValue(f) as Array<{ id: string; name?: string }> | null;
+      return links?.[0]?.name || '—';
+    } catch { return '—'; }
+  }, [orderItemsTable]);
 
   function renderStageSection(sectionStage: string, readOnly: boolean) {
     switch (sectionStage) {
@@ -2942,22 +2997,22 @@ const FullProfileModal = React.memo(function FullProfileModal({
               <DetailRow label="Total Spend" value={client.totalSpendFormatted} />
               <DetailRow label="Discount" value={client.discount != null ? `$${client.discount.toLocaleString()}` : '—'} />
             </FieldRow>
-            <FieldRow>
+            {/* M2M removed from Sold entirely (Sold Stage Cleanup, Issue 1)
+                — still fetched/derived, just unused, same convention as
+                other bride-level fields dropped in prior batches. */}
+            <div className="grid grid-cols-2 gap-3">
               <DetailRow label="Customizations" value={client.customizationCount > 0 ? String(client.customizationCount) : '—'} />
               <DetailRow label="Qty" value={client.qtyItemsSold != null ? String(client.qtyItemsSold) : '—'} />
-              {readOnly
-                ? <DetailRow label="M2M" value={client.m2m ? 'Yes' : 'No'} />
-                : <EditableCheckbox label="M2M" value={client.m2m} fieldId={FIELD_IDS.CLIENT_M2M} recordId={client.id} base={base} />
-              }
-            </FieldRow>
-            <FieldRow>
-              {readOnly
-                ? <DetailRow label="Alterations Payment" value={client.alterationsPaymentStatus || '—'} />
-                : <EditableSelect label="Alterations Payment" value={client.alterationsPaymentStatus} options={ALTERATIONS_PAYMENT_OPTIONS} fieldId={FIELD_IDS.CLIENT_ALTERATIONS_PAYMENT_STATUS} recordId={client.id} base={base} />
-              }
-              <DetailRow label="Shopify #" value={client.shopifyOrderNumber || '—'} />
-              <DetailRow label="AM #" value={client.apparelMagicOrder || '—'} />
-            </FieldRow>
+            </div>
+            {/* Alterations Payment — now driven entirely by
+                alterations_payment_status_auto (Issue 2): "Paid" once an
+                Alterations order item exists, "Unpaid" while Alterations In
+                House is TRUE but no such item exists yet, blank otherwise.
+                Always read-only — this is a formula now, not a manual
+                select. The old manual field (CLIENT_ALTERATIONS_PAYMENT_STATUS)
+                is left alone, unused, same convention as other deprecated
+                fields this batch. */}
+            <DetailRow label="Alterations Payment" value={client.alterationsPaymentStatusAuto || '—'} />
             <FieldRow>
               {readOnly
                 ? <DetailRow label="Order Ready" value={client.orderReady ? 'Yes' : 'No'} />
@@ -2965,6 +3020,50 @@ const FullProfileModal = React.memo(function FullProfileModal({
               }
               <div /><div />
             </FieldRow>
+            {/* Per-order-item table (Issue 3) — replaces the old raw
+                Shopify #/AM # display, which only showed one order's
+                numbers even when a bride had several. One row per style
+                sold across all of her orders. */}
+            <div>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Items Sold</span>
+              <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                      {['Shopify #', 'AM #', 'Style', 'Unit Price', 'Total'].map((h, i) => (
+                        <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linkedOrderItems.length === 0 ? (
+                      <tr><td colSpan={5} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                    ) : linkedOrderItems.map(item => {
+                      const shopifyOrderId = (() => {
+                        if (!orderItemsTable) return null;
+                        const f = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.ORDER);
+                        if (!f) return null;
+                        try { return (item.getCellValue(f) as Array<{ id: string }> | null)?.[0]?.id ?? null; } catch { return null; }
+                      })();
+                      const shopifyOrder = shopifyOrderId ? orderRecords.find(o => o.id === shopifyOrderId) : null;
+                      const shopifyNum = shopifyOrder ? getOrderNum(shopifyOrder, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER) : null;
+                      const amNum = getItemNum(item, ORDER_ITEM_FIELD_IDS.AM_ORDER_NUMBER);
+                      const unitPrice = getItemNum(item, ORDER_ITEM_FIELD_IDS.UNIT_PRICE);
+                      const total = getItemNum(item, ORDER_ITEM_FIELD_IDS.AMOUNT);
+                      return (
+                        <tr key={item.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{shopifyNum ? `#${shopifyNum}` : '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{amNum ? `#${amNum}` : '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{getItemStyleName(item)}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{unitPrice != null ? `$${unitPrice.toLocaleString()}` : '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{total != null ? `$${total.toLocaleString()}` : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
             {readOnly ? (
               <DetailRow
                 label="Due Date (3 mo. before wedding)"
@@ -2994,7 +3093,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 </button>
               </div>
             )}
-            {client.alterationsPaymentStatus?.toLowerCase() === 'paid' && (
+            {client.alterationsPaymentStatusAuto?.toLowerCase() === 'paid' && (
               <DetailRow label="Alterations" value="Yes — Paid" />
             )}
           </div>
@@ -3840,6 +3939,22 @@ function Pipeline(): React.ReactElement {
   }, [orderTable]);
   const orderRecords = useRecords(orderTable ?? null, orderQueryFields.length > 0 ? { fields: orderQueryFields } : undefined);
 
+  // order_items — Sold stage per-line-item table (Issue 3, "Sold Stage
+  // Cleanup" batch). Fetched base-wide (not per-client) same as orderRecords;
+  // FullProfileModal filters down to the current client's items by order id.
+  const orderItemsTable = base.getTableByIdIfExists(ORDER_ITEMS_TABLE_ID);
+  const orderItemsQueryFields = useMemo(() => {
+    if (!orderItemsTable) return [];
+    const f: Field[] = [];
+    const ord = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.ORDER);           if (ord) f.push(ord);
+    const sty = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.STYLE);           if (sty) f.push(sty);
+    const upr = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.UNIT_PRICE);      if (upr) f.push(upr);
+    const amt = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.AMOUNT);          if (amt) f.push(amt);
+    const amn = orderItemsTable.getFieldIfExists(ORDER_ITEM_FIELD_IDS.AM_ORDER_NUMBER); if (amn) f.push(amn);
+    return f;
+  }, [orderItemsTable]);
+  const orderItemsRecords = useRecords(orderItemsTable ?? null, orderItemsQueryFields.length > 0 ? { fields: orderItemsQueryFields } : undefined);
+
   const staffTable = base.getTableByIdIfExists(STAFF_TABLE_ID);
   const staffFullNameField = useMemo(() => staffTable?.getFieldIfExists(STAFF_FIELD_FULL_NAME) ?? null, [staffTable]);
   const staffIsActiveField = useMemo(() => staffTable?.getFieldIfExists(STAFF_FIELD_IS_ACTIVE) ?? null, [staffTable]);
@@ -3984,6 +4099,7 @@ function Pipeline(): React.ReactElement {
       shopifyAddress:             f(FIELD_IDS.CLIENT_SHOPIFY_ADDRESS),
       discount:                   f(FIELD_IDS.CLIENT_DISCOUNT),
       alterationsPaymentStatus:   f(FIELD_IDS.CLIENT_ALTERATIONS_PAYMENT_STATUS),
+      alterationsPaymentStatusAuto: f(FIELD_IDS.CLIENT_ALTERATIONS_PAYMENT_STATUS_AUTO),
       m2m:                        f(FIELD_IDS.CLIENT_M2M),
       qtyItemsSold:               f(FIELD_IDS.CLIENT_QTY_ITEMS_SOLD),
       apparelMagicOrder:          f(FIELD_IDS.CLIENT_APPAREL_MAGIC_ORDER),
@@ -4085,6 +4201,7 @@ function Pipeline(): React.ReactElement {
       const shopifyAddress        = getCellValueAsStringSafe(record, fields.shopifyAddress);
       const discount              = getCellValueSafe<number>(record, fields.discount);
       const alterationsPaymentStatus = getCellValueAsStringSafe(record, fields.alterationsPaymentStatus);
+      const alterationsPaymentStatusAuto = getCellValueAsStringSafe(record, fields.alterationsPaymentStatusAuto);
       const m2m                   = !!getCellValueSafe<boolean>(record, fields.m2m);
       const qtyItemsSold          = getCellValueSafe<number>(record, fields.qtyItemsSold);
       const apparelMagicOrder     = getCellValueAsStringSafe(record, fields.apparelMagicOrder);
@@ -4185,7 +4302,7 @@ function Pipeline(): React.ReactElement {
         personalStyleNotes, measBust, measWaist, measHips, measHeight, hasMeasurementPhotos,
         followUpSent: followUpSentRaw, interestCustom, interestAlts, interestM2M, apptNotes,
         customizationCount, isRush, itemsSold, favStylesInAppt, totalSpend, totalSpendFormatted,
-        shopifyAddress, discount, alterationsPaymentStatus, m2m, qtyItemsSold, apparelMagicOrder,
+        shopifyAddress, discount, alterationsPaymentStatus, alterationsPaymentStatusAuto, m2m, qtyItemsSold, apparelMagicOrder,
         shopifyOrderNumber, shopifyOrderLinkIds, amOrderStr, amOrderNumber,
         ship, pickUp, orderReady, pickedPercent, contactedForAlterations,
         fulfillmentMethod, fulfillmentLabel, fulfillmentNotes, trackingNumber, threePL,
@@ -4454,6 +4571,8 @@ function Pipeline(): React.ReactElement {
           vendorTypeField={vendorTypeField}
           orderTable={orderTable}
           orderRecords={orderRecords ?? []}
+          orderItemsTable={orderItemsTable}
+          orderItemsRecords={orderItemsRecords ?? []}
           matchedWaitlistEntry={resolvedWaitlistByClientId.get(selectedClient.id) ?? null}
           onClose={handleCloseFullProfile}
         />
