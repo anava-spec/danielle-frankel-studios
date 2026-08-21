@@ -1,57 +1,66 @@
 /*
 ================================================================================
 AUTOMATION   : Order Ready Evaluation — Record Updated (Orders - Shopify)
-BASE         : app6Q4xMZ1ngJxiV8 (sandbox) — publicar a appUC2NFAlURayLx9 luego
+BASE         : app6Q4xMZ1ngJxiV8 (sandbox) — publish to appUC2NFAlURayLx9 later
 TABLE SRC    : Orders - Shopify (tblHFGbijtvZcRPkE)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
 TRIGGER      : Record updated — Orders - Shopify, watching: picked_status_percentage,
                gown_picked
-VERSION      : 1.1.0 — reemplaza la verificación de "gown parcialmente picked"
-               (Category Lookup + picked_status_percentage > 0, a nivel de order
-               completo) por el nuevo rollup gown_picked (fldn0e6E4NjTPWlw0),
-               que ya resuelve correctamente "hay un item categoría GOWN en el
-               order Y ese item específico está picked" a nivel de order_items.
-               También renombra el stage destino de "In Production" a
-               "Order Ready" (rename de choice hecho en Sandbox — publicar antes
-               de desplegar este script).
-               Campo Category Lookup (fldSF1GXY5MgiAXdl) ya no se usa — puede
-               quedar en el trigger "watching" solo si Airtable lo requiere para
-               no romper el trigger existente; de lo contrario, reemplazarlo por
-               gown_picked ahí también.
+VERSION      : 1.2.0 — stage rework, step 6 (2026-08-20): now also writes
+               order_ready_achieved = TRUE (flds1WfGHitZqHrBm) whenever the
+               order qualifies, INDEPENDENTLY of the stage guard below — the
+               fact is monotonic (never regresses) even for a client who has
+               already advanced past "Order Ready", whereas the stage write
+               itself still only fires while the client hasn't advanced past
+               it yet. Stage write unchanged for now, kept in parallel so the
+               fact and the old direct write can be compared before stage is
+               converted to a formula.
+VERSION      : 1.1.0 — replaces the "partially picked gown" check
+               (Category Lookup + picked_status_percentage > 0, at the whole-order
+               level) with the new gown_picked rollup (fldn0e6E4NjTPWlw0),
+               which now correctly resolves "there is a GOWN-category item in the
+               order AND that specific item is picked" at the order_items level.
+               Also renames the target stage from "In Production" to
+               "Order Ready" (choice rename done in Sandbox — publish before
+               deploying this script).
+               The Category Lookup field (fldSF1GXY5MgiAXdl) is no longer used —
+               it can stay in the trigger's "watching" list only if Airtable
+               requires it to avoid breaking the existing trigger; otherwise
+               replace it with gown_picked there too.
 
 OBJECTIVE
-  Evalúa la regla de Julia para "Order Ready":
-    (a) gown_picked = TRUE (rollup: al menos un item categoría GOWN del order
-        está picked), O
-    (b) picked_status_percentage del order es > 75%
-  Si cualquiera se cumple Y el cliente NO está ya en o después de "Order Ready"
-  en STAGE_ORDER, actualiza DF Clients.stage a "Order Ready". Nunca retrocede
-  a un cliente que ya avanzó más allá.
+  Evaluates Julia's rule for "Order Ready":
+    (a) gown_picked = TRUE (rollup: at least one GOWN-category item on the
+        order is picked), OR
+    (b) picked_status_percentage on the order is > 75%
+  If either is true AND the client is NOT already at or past "Order Ready"
+  in STAGE_ORDER, updates DF Clients.stage to "Order Ready". Never moves a
+  client backward once they've already advanced further.
 
-  NOTA DE DISEÑO: la evaluación es POR ORDER (no agregada entre múltiples orders
-  del cliente), ya que picked_status_percentage y gown_picked son fields a nivel
-  de order, no un rollup a nivel de cliente. Si un cliente tiene varios orders,
-  basta con que UNO califique para marcar Order Ready.
+  DESIGN NOTE: the evaluation is PER ORDER (not aggregated across a client's
+  multiple orders), since picked_status_percentage and gown_picked are
+  order-level fields, not a client-level rollup. If a client has several
+  orders, it only takes ONE qualifying order to mark Order Ready.
 
 GUARD CLAUSE
-  1. sourceRecordId (order) debe venir del trigger.
-  2. El order debe tener un client vinculado. Si no, SKIP sin error.
-  3. Si el cliente ya está en una fase igual o posterior a "Order Ready" en
-     STAGE_ORDER, SKIP — esta automation solo AVANZA, nunca retrocede.
-  4. Edge case: si gown_picked es null/undefined Y picked_status_percentage es
-     null, SKIP — no hay datos suficientes para evaluar (evita false positive
-     por datos faltantes/atrasados de Cobalt).
+  1. sourceRecordId (order) must come from the trigger.
+  2. The order must have a linked client. If not, SKIP without error.
+  3. If the client is already at a stage equal to or past "Order Ready" in
+     STAGE_ORDER, SKIP — this automation only ADVANCES, never moves backward.
+  4. Edge case: if gown_picked is null/undefined AND picked_status_percentage
+     is null, SKIP — not enough data to evaluate (avoids a false positive
+     from missing/delayed data out of Cobalt).
 
 OUTPUTS (output.set)
   status            : "SUCCESS" | "ERROR"
-  client_id         : record ID del cliente evaluado, o null
-  gown_ready        : boolean — si califica por gown_picked
-  percent_picked    : número 0–1 — picked_status_percentage del order
-  qualifies         : boolean — resultado final de la regla Order Ready
-  stage_written     : "Order Ready" | null (null si no se escribió)
-  result_message    : resumen legible
-  error_message     : null en éxito
-  log_summary       : trace completo
+  client_id         : record ID of the evaluated client, or null
+  gown_ready        : boolean — whether it qualifies via gown_picked
+  percent_picked    : number 0–1 — picked_status_percentage on the order
+  qualifies         : boolean — final result of the Order Ready rule
+  stage_written     : "Order Ready" | null (null if nothing was written)
+  result_message    : human-readable summary
+  error_message     : null on success
+  log_summary       : full trace
 ================================================================================
 */
 
@@ -64,33 +73,35 @@ const TABLE_IDS = {
   CLIENTS: 'tblLLUlDgJ4ktzF7c', // DF Clients
 };
 
-// Orders - Shopify fields — verificados contra customer_journey DBML
+// Orders - Shopify fields — verified against customer_journey DBML
 const FIELDS_ORDERS = {
   client:                   'fldeVnAInz9d1jpY5', // multipleRecordLinks -> DF Clients
-  gown_picked:              'fldn0e6E4NjTPWlw0', // rollup (checkbox) — GOWN item picked, vía order_items
+  gown_picked:              'fldn0e6E4NjTPWlw0', // rollup (checkbox) — GOWN item picked, via order_items
   picked_status_percentage: 'fldjC8M11Pis7eMxF', // formula, 0-1 fraction
 };
 
 // DF Clients fields
 const FIELDS_CLIENTS = {
-  stage: 'fldLcxVZvI1rigBlh', // confirmado en pipeline.tsx
+  stage:                 'fldLcxVZvI1rigBlh', // confirmed in pipeline.tsx
+  order_ready_achieved:  'flds1WfGHitZqHrBm', // checkbox, stage rework
 };
 
-// Mantenido en paralelo al STAGE_ORDER de las interfaces (pipeline.tsx /
-// alterations.tsx) SOLO para no avanzar/retroceder incorrectamente. Ver
-// hallazgo de duplicación en la auditoría de phase logic.
+// Kept in parallel with the interfaces' STAGE_ORDER (pipeline.tsx /
+// alterations.tsx) ONLY so this doesn't advance/regress incorrectly. See
+// the duplication finding in the phase-logic audit.
 const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
   'Sold',
-  'Order Ready',   // antes "In Production"
+  'Order Ready',   // formerly "In Production"
   'In Alterations',
   'In Fulfillment',
+  'Fulfilled',      // unified terminal stage — client close-out (can have several orders, each picked up or shipped), see order_close_out.js
 ];
 
 const CONFIG = {
   LOG_LEVEL: 'B',                // A=minimal | B=audit (default) | C=debug
-  PICK_PERCENT_THRESHOLD: 0.75,  // > 75% (estrictamente mayor, por Julia)
+  PICK_PERCENT_THRESHOLD: 0.75,  // > 75% (strictly greater, per Julia)
   TARGET_STAGE: 'Order Ready',
 };
 
@@ -135,7 +146,7 @@ class ClientsRepository {
 
   async getById(clientId) {
     this.logger.step(3, `Loading client → ${clientId}`);
-    const result = await this.table.selectRecordsAsync({ fields: [FIELDS_CLIENTS.stage] });
+    const result = await this.table.selectRecordsAsync({ fields: [FIELDS_CLIENTS.stage, FIELDS_CLIENTS.order_ready_achieved] });
     const record = result.records.find(r => r.id === clientId);
     if (!record) throw new Error(`Client not found → clientId: ${clientId}`);
     this.logger.audit(`Client loaded → ${clientId}`);
@@ -147,24 +158,30 @@ class ClientsRepository {
     await this.table.updateRecordAsync(clientId, { [FIELDS_CLIENTS.stage]: { name: stageName } });
     this.logger.audit(`Stage written → ${stageName}`);
   }
+
+  async markOrderReadyAchieved(clientId) {
+    this.logger.step(6, `Writing order_ready_achieved = TRUE → client: ${clientId}`);
+    await this.table.updateRecordAsync(clientId, { [FIELDS_CLIENTS.order_ready_achieved]: true });
+    this.logger.audit('order_ready_achieved written.');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ORDER READY EVALUATOR — lógica pura, sin llamadas a Airtable
+// ORDER READY EVALUATOR — pure logic, no Airtable calls
 // ─────────────────────────────────────────────────────────────────────────────
 
 class OrderReadyEvaluator {
   constructor(logger) { this.logger = logger; }
 
   evaluate(order) {
-    this.logger.step(4, 'Evaluando gown_picked y % picked del order');
+    this.logger.step(4, 'Evaluating gown_picked and % picked on the order');
 
     const gownPicked    = order.getCellValue(FIELDS_ORDERS.gown_picked);            // boolean (rollup checkbox), or null
     const percentPicked = order.getCellValue(FIELDS_ORDERS.picked_status_percentage);
 
     const hasData = (gownPicked !== null && gownPicked !== undefined) || (percentPicked !== null && percentPicked !== undefined);
     if (!hasData) {
-      this.logger.audit('gown_picked y picked_status_percentage ambos null — datos insuficientes. SKIP.');
+      this.logger.audit('gown_picked and picked_status_percentage both null — insufficient data. SKIP.');
       return { qualifies: false, gownReady: false, percentPicked: 0, evaluable: false };
     }
 
@@ -184,15 +201,15 @@ class OrderReadyEvaluator {
 class MessageBuilder {
   static success(clientId, qualifies, stageWritten) {
     return qualifies
-      ? `✅ ORDER READY → client ${clientId} califica. Stage escrito: ${stageWritten ?? '(sin cambio — ya estaba más adelante)'}`
-      : `ℹ️ NO CALIFICA aún → client ${clientId} no cumple gown-picked ni >75%.`;
+      ? `✅ ORDER READY → client ${clientId} qualifies. Stage written: ${stageWritten ?? '(no change — already further along)'}`
+      : `ℹ️ NOT QUALIFIED yet → client ${clientId} doesn't meet gown-picked or >75%.`;
   }
   static skipped(reason) { return `⏭️ SKIPPED — ${reason}`; }
   static error(err) { return `❌ ORDER READY EVAL FAILED: ${err.message}`; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SERVICE — orquestador
+// SERVICE — orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
 
 class OrderReadyService {
@@ -213,24 +230,13 @@ class OrderReadyService {
       return {
         status: 'SUCCESS', client_id: null, gown_ready: false, percent_picked: 0,
         qualifies: false, stage_written: null,
-        result_message: MessageBuilder.skipped('Order sin client vinculado.'),
+        result_message: MessageBuilder.skipped('Order has no linked client.'),
       };
     }
     const clientId = linkedClients[0].id;
-    this.logger.step(2, `Client resuelto → ${clientId}`);
+    this.logger.step(2, `Client resolved → ${clientId}`);
 
-    // GUARD 3 — nunca retroceder
     const clientRecord = await this.clientsRepo.getById(clientId);
-    const currentStage = clientRecord.getCellValueAsString(FIELDS_CLIENTS.stage);
-    const currentIdx = STAGE_ORDER.indexOf(currentStage);
-    const targetIdx = STAGE_ORDER.indexOf(CONFIG.TARGET_STAGE);
-    if (currentIdx !== -1 && currentIdx >= targetIdx) {
-      return {
-        status: 'SUCCESS', client_id: clientId, gown_ready: false, percent_picked: 0,
-        qualifies: false, stage_written: null,
-        result_message: MessageBuilder.skipped(`client ya está en/después de "${CONFIG.TARGET_STAGE}" (stage actual: "${currentStage}"). No se retrocede.`),
-      };
-    }
 
     const { qualifies, gownReady, percentPicked, evaluable } = this.evaluator.evaluate(order);
 
@@ -238,7 +244,32 @@ class OrderReadyService {
       return {
         status: 'SUCCESS', client_id: clientId, gown_ready: false, percent_picked: 0,
         qualifies: false, stage_written: null,
-        result_message: MessageBuilder.skipped('Datos insuficientes (gown_picked y picked_status_percentage ambos null).'),
+        result_message: MessageBuilder.skipped('Insufficient data (gown_picked and picked_status_percentage both null).'),
+      };
+    }
+
+    // Fact write is monotonic and independent of the stage guard below — a
+    // client who has already advanced past "Order Ready" still, by
+    // definition, achieved it at some point, so the fact should be TRUE
+    // regardless of current stage.
+    if (qualifies) {
+      const alreadyTrue = clientRecord.getCellValue(FIELDS_CLIENTS.order_ready_achieved) === true;
+      if (!alreadyTrue) {
+        await this.clientsRepo.markOrderReadyAchieved(clientId);
+      } else {
+        this.logger.audit('order_ready_achieved already TRUE — no-op.');
+      }
+    }
+
+    // GUARD 3 — never move the STAGE backward (fact write above is unaffected)
+    const currentStage = clientRecord.getCellValueAsString(FIELDS_CLIENTS.stage);
+    const currentIdx = STAGE_ORDER.indexOf(currentStage);
+    const targetIdx = STAGE_ORDER.indexOf(CONFIG.TARGET_STAGE);
+    if (currentIdx !== -1 && currentIdx >= targetIdx) {
+      return {
+        status: 'SUCCESS', client_id: clientId, gown_ready: gownReady, percent_picked: percentPicked,
+        qualifies, stage_written: null,
+        result_message: MessageBuilder.skipped(`client is already at/past "${CONFIG.TARGET_STAGE}" (current stage: "${currentStage}"). Not moving backward.`),
       };
     }
 
@@ -258,7 +289,7 @@ class OrderReadyService {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN EXECUTION BLOCK
-// input.config() llamado UNA vez, scope global, antes del try.
+// input.config() called ONCE, global scope, before the try block.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const cfg = input.config();

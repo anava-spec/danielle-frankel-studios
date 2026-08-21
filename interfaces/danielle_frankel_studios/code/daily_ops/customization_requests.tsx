@@ -581,7 +581,10 @@ function FilterDropdown({ label, values, options, onChange, searchable = false }
 // value trigger, centered text, no placeholder state (a layout is always
 // selected).
 const LAYOUT_OPTIONS = ['ops', 'approval'] as const;
-const LAYOUT_LABELS: Record<typeof LAYOUT_OPTIONS[number], string> = { ops: 'Workdesk', approval: 'Approval' };
+// "Requests" (renamed 2026-08-07 from "Workdesk") — avoids reading like a
+// near-duplicate of the "Approval" layout right next to it in this same
+// dropdown. The underlying 'ops' key/variable names are unchanged.
+const LAYOUT_LABELS: Record<typeof LAYOUT_OPTIONS[number], string> = { ops: 'Requests', approval: 'Approval' };
 
 function LayoutDropdown({ value, onChange }: { value: typeof LAYOUT_OPTIONS[number]; onChange: (v: typeof LAYOUT_OPTIONS[number]) => void }) {
   const [isOpen, setIsOpen] = useState(false);

@@ -53,7 +53,9 @@ const FIELD_IDS = {
   CLIENT_LATEST_ALTERATIONS_APPT:      'fldoF7SPEjWNi5JQF',
   CLIENT_COUNTRY_OF_RESIDENCE:         'flduQb1j7LceNZuC8',
   CLIENT_PREFERRED_STYLIST:            'fld2jVE1qluvlhV7D',
-  CLIENT_RTW_SIZE:                     'fldvV2CiEx4RQN4mO',
+  CLIENT_RTW_SIZE:                     'fldvV2CiEx4RQN4mO', // "Size from Acuity Intake" — customer self-report, reference-only now, do NOT write here
+  CLIENT_RTW_SIZE_MANUAL:              'fldEEH4CK3Qqp0g0C', // "ready_to_wear_size_manual" — SA-confirmed size, the only field this modal writes
+  CLIENT_RTW_SIZE_DISPLAY:             'fldSwfR25uvynWKI5', // "ready_to_wear_size" formula — manual if set, else falls back to Acuity; read-only views show THIS, never the raw manual field alone
   CLIENT_FAV_STYLES_ACUITY:            'fldZzNR0g5VEJ5RmX',
   CLIENT_SAMPLES_NOT_WHERE_NEEDED:     'fldVPJWXThfyGuh6d',
   CLIENT_PERSONAL_STYLE_NOTES:         'fldQiGCx5hRQ0Am1Z',
@@ -92,6 +94,22 @@ const FIELD_IDS = {
   CLIENT_3PL:                          'fldSxZrcIbBlyJO6R',
   CLIENT_HOLD_SHIPMENT_DATE:           'fldVsDeVp6R6ytqlb',
   CLIENT_CLIENT_NOTIFIED_FULFILLMENT:  'fldxumxeRnrDQ3CIk',
+  // Rollup of Orders.client_notified across the bride's linked orders
+  // (0–1 fraction) — Issue 4, Order Ready section only. Sandbox
+  // fldKSGxe3uMdjHWz5; Axel replicates the same config in Production.
+  CLIENT_NOTIFIED_PERCENTAGE:          'fldKSGxe3uMdjHWz5',
+  // Issue 5 (In Alterations section): "Alterations In House" is a real
+  // backend checkbox (also read by order_close_out.js / the stage formula)
+  // — the frontend renders it as a toggle button, never a checkbox/dropdown.
+  CLIENT_ALTERATIONS_IN_HOUSE:         'fldNjcDXIaGPGY1E6',
+  // has_alterations_item / shopify_alteration_order — formula, TRUE if any
+  // linked order item's category is ALTERATIONS. Gates Alterations Status
+  // visibility alongside Alterations In House.
+  CLIENT_HAS_ALTERATIONS_ITEM:         'fldWaqPw2BO4XQIbX',
+  // New 2026-08-21, Sandbox only — Axel replicates in Production before
+  // this goes live there. Single select, "Pending" by default; shown only
+  // when Alterations In House or has_alterations_item is TRUE.
+  CLIENT_ALTERATIONS_STATUS:           'fldtQfxqmecuIMXKY',
   CLIENT_ADDRESS_CONFIRMED:            'fldksvLd6ZQabAoY1',
   CLIENT_ALTERATION_NOTES:             'fldBhpBTj0gGmV5mc',
   CLIENT_SALES_NOTES:                  'fldsVYhG5tZAccxdK',
@@ -106,6 +124,15 @@ const FIELD_IDS = {
   CLIENT_SHIPPING_COST:                'fldYcTq6s04xZiy2S',
   CLIENT_LAST_PHASE_CHANGE:            'fldRvvSBhl6vSEnCw',
   CLIENT_OTHER_ADDRESS:                'fld5uRLRmAXqAH0nu',
+} as const;
+
+// ─── Orders - Shopify (per-order fulfillment method/status for the Order
+// Ready inline table — Issue 3, same field IDs used by fulfillment.tsx) ──────
+const ORDER_TABLE_ID = 'tblHFGbijtvZcRPkE';
+const ORDER_FIELD_IDS = {
+  SHOPIFY_ORDER_NUMBER:            'fldWiKEXjId411DQc',
+  DELIVERY_METHOD:                 'fldFATO0oJUQjPEzr', // Pick Up in Store | Ship
+  FULFILLMENT_PROGRESS_PERCENTAGE: 'fldKDT2x7wmZ2Suui', // formula, 0–1 scale
 } as const;
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
@@ -354,6 +381,279 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST FORM MODAL — create a new Waitlist record.
+// Required: Bride Name + Earliest Date Requested (the only fields the two
+// Waitlist automations actually depend on). Everything else is optional
+// context for Julia's alert email. resolution_status/resolved_at/
+// resolved_by_df_clients_record/last_alert_sent are never shown — they're
+// automation-owned outputs, not staff input.
+// ─────────────────────────────────────────────────────────────────────────────
+// Standalone (non-record-bound) date field — same CalendarPopup trigger UI as
+// EditableDate, but holds local state instead of writing to Airtable. Used by
+// WaitlistFormModal, which has no record to persist against until Save.
+function FormDateField({ label, value, onChange }: { label: string; value: string; onChange: (iso: string) => void }) {
+  const toDate = (v: string): Date | null => {
+    if (!v) return null;
+    const d = parseDateFlexible(v);
+    return d && !isNaN(d.getTime()) ? d : null;
+  };
+  const toIso = (d: Date | null): string =>
+    d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+  const toDisplay = (d: Date | null): string =>
+    d ? d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+
+  const [selectedDate, setSelectedDate] = useState<Date | null>(toDate(value));
+  const [inputText, setInputText] = useState(toDisplay(toDate(value)));
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handleCalendarSelect = (d: Date | null) => {
+    setSelectedDate(d);
+    setInputText(toDisplay(d));
+    onChange(toIso(d));
+  };
+
+  const handleInputBlur = () => {
+    if (!inputText.trim()) { handleCalendarSelect(null); return; }
+    const parsed = parseDateFlexible(inputText);
+    if (parsed && !isNaN(parsed.getTime())) {
+      setSelectedDate(parsed);
+      setInputText(toDisplay(parsed));
+      onChange(toIso(parsed));
+    } else {
+      setInputText(toDisplay(selectedDate));
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+      <input type="text" value={inputText} placeholder="Select date…"
+        onChange={e => setInputText(e.target.value)}
+        onBlur={handleInputBlur}
+        onFocus={() => setOpen(true)}
+        className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 placeholder-gray-400 dark:placeholder-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
+      {open && (
+        <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)} width={270} noStyle>
+          <CalendarPopup selectedDate={selectedDate} onSelect={handleCalendarSelect} onClose={() => setOpen(false)} />
+        </FixedPopup>
+      )}
+    </div>
+  );
+}
+
+function WaitlistFormModal({ waitlistTable, activeStudioOptions, onClose, onSaved }: { waitlistTable: Table | null; activeStudioOptions: Array<{ id: string; name: string }>; onClose: () => void; onSaved: (newId: string) => void }) {
+  const [brideName, setBrideName] = useState('');
+  const [studioId, setStudioId] = useState<string | null>(null);
+  const [datesRequested, setDatesRequested] = useState('');
+  const [timeRequested, setTimeRequested] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [weddingDate, setWeddingDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  // earliest_date_requested is deliberately absent here — it's a formula
+  // field, populated from Dates Requested by the date_requested_parser AI
+  // field, never staff-entered.
+  const canSave = !!waitlistTable && brideName.trim() !== '' && !!studioId && datesRequested.trim() !== '' && timeRequested.trim() !== '' && !saving;
+
+  const handleSave = async () => {
+    if (!canSave || !waitlistTable) return;
+    setSaving(true); setError(null);
+    try {
+      const fields: Record<string, unknown> = {
+        [WAITLIST_FIELD_IDS.BRIDE_NAME]: brideName.trim(),
+        [WAITLIST_FIELD_IDS.STUDIO]: studioId ? [{ id: studioId }] : [],
+        [WAITLIST_FIELD_IDS.DATES_REQUESTED]: datesRequested.trim(),
+        [WAITLIST_FIELD_IDS.TIME_REQUESTED]: timeRequested.trim(),
+        [WAITLIST_FIELD_IDS.RESOLUTION_STATUS]: { name: 'Active' },
+      };
+      if (contactEmail.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_EMAIL] = contactEmail.trim();
+      if (contactPhone.trim()) fields[WAITLIST_FIELD_IDS.CONTACT_PHONE] = contactPhone.trim();
+      if (weddingDate) fields[WAITLIST_FIELD_IDS.WEDDING_DATE] = weddingDate;
+      if (notes.trim()) fields[WAITLIST_FIELD_IDS.NOTES] = notes.trim();
+      const newId = await waitlistTable.createRecordAsync(fields);
+      onSaved(newId);
+    } catch (e: unknown) {
+      console.error('Failed to create Waitlist record', e);
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally { setSaving(false); }
+  };
+
+  const inputClass = "w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors";
+  const labelClass = "block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1";
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)' }} onClick={onClose}>
+      <div className="bg-white dark:bg-[#242220] rounded-xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-gray-200 dark:border-[#34312C]"
+        style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-5 pb-4 border-b border-gray-200 dark:border-[#34312C] flex-shrink-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF]">Add Client to Waitlist</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Row 1: Bride Name, Studio */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Bride Name <span className="text-red-400">*</span></label>
+              <input type="text" value={brideName} onChange={e => setBrideName(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Studio <span className="text-red-400">*</span></label>
+              <LinkedRecordSelectBody options={activeStudioOptions} selectedId={studioId} onChange={setStudioId} />
+            </div>
+          </div>
+          {/* Row 2: Dates Requested, Time Requested */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Dates Requested <span className="text-red-400">*</span></label>
+              <input type="text" value={datesRequested} onChange={e => setDatesRequested(e.target.value)} placeholder='e.g. "August 5th to August 18th"' className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Time Requested <span className="text-red-400">*</span></label>
+              <input type="text" value={timeRequested} onChange={e => setTimeRequested(e.target.value)} className={inputClass} />
+            </div>
+          </div>
+          {/* Row 3: Email, Phone, Wedding Date */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={labelClass}>Email</label>
+              <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Phone</label>
+              <input type="tel" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className={inputClass} />
+            </div>
+            <FormDateField label="Wedding Date" value={weddingDate} onChange={setWeddingDate} />
+          </div>
+          {/* Row 4: Notes */}
+          <div>
+            <label className={labelClass}>Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={inputClass + ' resize-none'} />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-[#34312C] flex justify-end flex-shrink-0">
+          <button type="button" onClick={handleSave} disabled={!canSave}
+            className={[
+              'px-4 py-2 text-sm rounded-lg bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813] font-medium transition-colors disabled:cursor-not-allowed',
+              !canSave ? 'opacity-50' : 'hover:bg-[#B45309] dark:hover:bg-[#F59E0B]',
+            ].join(' ')}>
+            {saving ? 'Saving…' : 'Add to Waitlist'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST DETAIL MODAL — view/edit an existing Active Waitlist record.
+// Independent of FullProfileModal by design (see pipeline.README.md) — no
+// stage-stepper, no All-Stages toggle, no past/future read-only logic. Full
+// page, same slide-in shell/layout as FullProfileModal for visual
+// consistency, just with only the fields that apply to a Waitlist entry.
+// Editable via the same EditableText/EditableDate/EditableSelect components
+// used elsewhere in this file, pointed at the Waitlist table.
+// ─────────────────────────────────────────────────────────────────────────────
+function WaitlistDetailModal({ entry, base, waitlistTable, activeStudioOptions, onClose }: { entry: WaitlistEntry; base: Base; waitlistTable: Table | null; activeStudioOptions: Array<{ id: string; name: string }>; onClose: () => void }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const handleClose = useCallback(() => {
+    setVisible(false);
+    setTimeout(onClose, 220);
+  }, [onClose]);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [handleClose]);
+
+  if (!waitlistTable) return null;
+
+  return (
+    <div
+      className="bg-gray-50 dark:bg-[#1A1917]"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        overflowY: 'auto',
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'none' : 'translateX(32px)',
+        transition: 'opacity 0.22s ease, transform 0.22s ease',
+      }}
+    >
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-[#1A1917] border-b border-gray-200 dark:border-white/10 px-6 py-3">
+        <div className="max-w-[1200px] mx-auto flex items-center gap-3">
+          <button type="button" onClick={handleClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#242220] transition-colors">
+            <CaretLeftIcon size={16} />
+            Go back
+          </button>
+        </div>
+      </div>
+      <div className="max-w-[1200px] mx-auto p-6 space-y-4">
+
+        {/* Header card — same shape as FullProfileModal's, minus fields that don't apply */}
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5">
+          <div className="flex items-start gap-6 flex-wrap">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0">
+                <div className="text-2xl font-semibold text-gray-900 dark:text-[#F5F3EF]">{entry.brideName || '—'}</div>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-lg font-medium"
+                    style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
+                    {WAITLIST_STAGE_LABEL}
+                  </span>
+                  <span className="text-lg text-gray-500 dark:text-gray-400">{entry.studioName || '—'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Fields — same organization as the create form, plus Earliest Date
+            Requested (formula, read-only) at the end of row 2 */}
+        <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <EditableText label="Bride Name" value={entry.brideName} fieldId={WAITLIST_FIELD_IDS.BRIDE_NAME} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableLinkedRecordSelect label="Studio" value={entry.studioId} options={activeStudioOptions} fieldId={WAITLIST_FIELD_IDS.STUDIO} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <EditableText label="Dates Requested" value={entry.datesRequested} fieldId={WAITLIST_FIELD_IDS.DATES_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableText label="Time Requested" value={entry.timeRequested} fieldId={WAITLIST_FIELD_IDS.TIME_REQUESTED} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            {/* Formula field, populated by the date_requested_parser AI field from Dates Requested — always read-only */}
+            <DetailRow label="Earliest Date Requested" value={entry.earliestDateRequested ? formatFullDate(entry.earliestDateRequested) : '—'} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <EditableText label="Email" value={entry.contactEmail} fieldId={WAITLIST_FIELD_IDS.CONTACT_EMAIL} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableText label="Phone" value={entry.contactPhone} fieldId={WAITLIST_FIELD_IDS.CONTACT_PHONE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+            <EditableDate label="Wedding Date" value={entry.weddingDate} fieldId={WAITLIST_FIELD_IDS.WEDDING_DATE} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} />
+          </div>
+          <EditableText label="Notes" value={entry.notes} fieldId={WAITLIST_FIELD_IDS.NOTES} recordId={entry.id} base={base} tableId={WAITLIST_TABLE_ID} multiline />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VENDORS TABLE CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const VENDORS_TABLE_ID       = 'tblZzMdXOlBDJC0BS';
@@ -364,6 +664,40 @@ const VENDORS_FIELD_CLIENTS    = 'fldYiu4zItke9Qzun';
 const STAFF_TABLE_ID          = 'tblbYk88xJ8FQrLS4';
 const STAFF_FIELD_FULL_NAME   = 'fldc8INBZmwC3xeH7';
 const STAFF_FIELD_IS_ACTIVE   = 'fldB6rPTjxATp7uMf';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST TABLE CONSTANTS
+// Separate table (not a DF Clients stage). Rendered as a leftmost pseudo-column
+// in Kanban and as extra rows in List View. See waitlist_matching.js /
+// waitlist_alert_readiness.js (automations repo) for the field IDs shared here —
+// keep in sync if those scripts' FIELDS_WAITLIST map ever changes.
+// ─────────────────────────────────────────────────────────────────────────────
+const WAITLIST_TABLE_ID = 'tblbm3hKDShEPNpoq';
+const WAITLIST_FIELD_IDS = {
+  BRIDE_NAME:                 'fldI90ApFwjte8HBv',
+  CONTACT_EMAIL:              'fld2cI0r58UEiinvC',
+  CONTACT_PHONE:              'fldrMkTOA2Y6DT8mC',
+  DATES_REQUESTED:            'fldDjo0WRAKvHdgR4',
+  TIME_REQUESTED:             'fldLuKMVvuzadx630',
+  EARLIEST_DATE_REQUESTED:    'fld5s87GbT2G3C60e',
+  WEDDING_DATE:                'fldUS6OAwOhngc71o',
+  NOTES:                        'fldsn4PKhpwnOx5gu',
+  RESOLUTION_STATUS:            'fldiEQbjks80y5xTi',
+  RESOLVED_AT:                   'fldi1u7Otn5dX5web',
+  RESOLVED_BY_DF_CLIENTS_RECORD:  'fldXI88jaK0MepaLn',
+  LAST_ALERT_SENT:                 'flddV0or0cD3UHHbR',
+  STUDIO:                           'fldUrBNGSh5zRBe0i', // linked record -> STUDIO_TABLE_ID
+};
+// Master Studio/Location table — Waitlist's `studio` field links here.
+// Selection UI only offers is_active = true studios (see StudioRepository).
+const STUDIO_TABLE_ID = 'tblYM02GzeYdYk23v';
+const STUDIO_FIELD_NAME      = 'fldA1F8Hx7cOyI6lu';
+const STUDIO_FIELD_IS_ACTIVE = 'fldFyn3fKsxajrvsy';
+const WAITLIST_STAGE_LABEL = 'Waitlist';
+// Not a real Airtable single-select choice color — Waitlist isn't a Stage-field
+// value, so it never appears in stageColorsByStage. Bespoke neutral tone to
+// visually read as "not yet a client."
+const WAITLIST_COLUMN_COLORS = { bg: '#BFAEFC', fg: '#3F2E8C' };
 
 const THREE_PL_OPTIONS = ['UPS', 'FedEx', 'DHL', 'INTERJUMBO'];
 
@@ -407,6 +741,16 @@ function useTheme(): 'light' | 'dark' {
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
+// Canonical stage membership — feeds clientsData (which stages count as "in
+// the pipeline" at all), the List view's Stage filter options, and
+// clientsByStage. Includes "Fulfilled" — the unified close-out stage (a client
+// can have multiple orders, each individually picked up or shipped, so the
+// client-level stage closes to one combined "Fulfilled" rather than tracking
+// per-order picked/shipped). Live `stage` field (fldLcxVZvI1rigBlh) choice
+// "Picked Up" was renamed to "Fulfilled" in Airtable (702 clients already had
+// it); the separate "Shipped" choice (0 clients, never written by a prod run)
+// was deleted outright, and the one automation that wrote it ("Order is
+// Shipped") was repointed to the same "Fulfilled" choice instead.
 const STAGE_ORDER = [
   'Pre-Appointment',
   'Deliberating',
@@ -414,8 +758,14 @@ const STAGE_ORDER = [
   'Order Ready',
   'In Alterations',
   'In Fulfillment',
+  'Fulfilled',
 ] as const;
 type StageName = (typeof STAGE_ORDER)[number];
+
+// Kanban renders one column per entry here. "Fulfilled" is deliberately
+// excluded — once an order closes out it should disappear from the Kanban
+// board (it's still reachable via the List view's Stage filter).
+const KANBAN_STAGE_ORDER = STAGE_ORDER.filter(s => s !== 'Fulfilled');
 
 const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Pre-Appointment': 'Pre-Appointment',
@@ -424,6 +774,7 @@ const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Order Ready': 'Order Ready',
   'In Alterations': 'In Alterations',
   'In Fulfillment': 'In Fulfillment',
+  'Fulfilled': 'Fulfilled',
 };
 
 const TIMELINE_OPTIONS = [
@@ -586,14 +937,32 @@ function formatShortDate(date: string | Date | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function formatAppointmentDateTime(str: string | null | undefined): string {
+// Maps a client's `Studio` formula value (NY / LA / Virtual / Mixed / '') to
+// the IANA zone its appointments actually happen in. Appointments can be in
+// either studio, so this can't be hardcoded to one zone project-wide — Virtual
+// and Mixed/unknown fall back to America/New_York (studio-time convention
+// used elsewhere in this base, e.g. recap.tsx) since there's no single real
+// studio to anchor to.
+function getStudioTimeZone(studio: string | null | undefined): string {
+  if (studio === 'LA') return 'America/Los_Angeles';
+  return 'America/New_York';
+}
+
+// Fixed 2026-08-21 (Issue 5): this used to format with no explicit `timeZone`,
+// so `toLocaleDateString`/`toLocaleTimeString` silently fell back to the
+// *viewer's* browser/OS timezone — a 1:30pm EDT appointment could render as
+// 11:30am for someone viewing from Mountain time. Now always takes the
+// appointment's actual studio timezone (see getStudioTimeZone above) so every
+// viewer sees the same studio-local wall-clock time, regardless of where
+// they are.
+function formatAppointmentDateTime(str: string | null | undefined, timeZone: string = 'America/New_York'): string {
   if (!str) return '—';
   const d = parseDateFlexible(str);
   if (!d || isNaN(d.getTime())) return str;
   return (
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone }) +
     ' ' +
-    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone }).toLowerCase()
   );
 }
 
@@ -677,6 +1046,26 @@ function isFutureStage(currentStage: string, sectionStage: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST ENTRY INTERFACE
+// A Waitlist record, not a DF Client — separate table, separate schema.
+// ─────────────────────────────────────────────────────────────────────────────
+interface WaitlistEntry {
+  id: string;
+  brideName: string;
+  contactEmail: string;
+  contactPhone: string;
+  datesRequested: string;
+  timeRequested: string;
+  earliestDateRequested: string;
+  weddingDate: string;
+  notes: string;
+  resolutionStatus: string;
+  resolvedByClientId: string | null;
+  studioId: string | null;
+  studioName: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CLIENT DATA INTERFACE
 // ─────────────────────────────────────────────────────────────────────────────
 interface ClientData {
@@ -708,6 +1097,8 @@ interface ClientData {
   preferredStylist: string;
   preferredStylistIds: string[];
   rtwSize: number | null;
+  rtwSizeManual: number | null;
+  rtwSizeDisplay: string | null;
   favStylesAcuity: string;
   samplesNotWhereNeeded: string;
   personalStyleNotes: string;
@@ -734,6 +1125,7 @@ interface ClientData {
   qtyItemsSold: number | null;
   apparelMagicOrder: string;
   shopifyOrderNumber: string;
+  shopifyOrderLinkIds: string[];
   amOrderStr: string;
   amOrderNumber: string;
   ship: boolean;
@@ -748,6 +1140,7 @@ interface ClientData {
   threePL: string;
   holdShipmentDate: string | null;
   clientNotifiedFulfillment: boolean;
+  clientNotifiedPercentage: number;
   addressConfirmed: boolean;
   taxShippingDisplay: string;
   alterationNotes: string;
@@ -774,6 +1167,9 @@ interface ClientData {
   acuityAddress: string;
   otherAddress: string;
   alterationsApptCount: number;
+  alterationsInHouse: boolean;
+  hasAlterationsItem: boolean;
+  alterationsStatus: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -921,6 +1317,95 @@ const SingleSelectDropdown = React.memo(function SingleSelectDropdown({ label, o
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LINKED RECORD SELECT — full-width dropdown (trigger + panel only, no label)
+// for a single-link field. Distinct from EditableSelect (which writes a plain
+// string to a singleSelect field) — this writes `[{ id }]` to a
+// multipleRecordLinks field. Two thin wrappers below add the label:
+// LinkedRecordSelect (form — local state only) and EditableLinkedRecordSelect
+// (detail page — persists directly to the record, like EditableSelect).
+// ─────────────────────────────────────────────────────────────────────────────
+function LinkedRecordSelectBody({ options, selectedId, onChange }: { options: Array<{ id: string; name: string }>; selectedId: string | null; onChange: (id: string | null) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const selected = options.find(o => o.id === selectedId) ?? null;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setIsOpen(o => !o)}
+        className="flex items-center justify-between w-full bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+        <span className={`truncate ${selected ? 'text-gray-900 dark:text-[#F5F3EF]' : 'text-gray-400 dark:text-gray-500'}`}>{selected ? selected.name : 'Select…'}</span>
+        {selected ? (
+          <span role="button" tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onChange(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onChange(null); } }}
+            className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            <XIcon size={14} />
+          </span>
+        ) : (
+          <CaretDownIcon size={14} className={`flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+      {isOpen && (
+        <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg max-h-[260px] overflow-y-auto w-full py-1">
+          {options.map(o => (
+            <button key={o.id} type="button" onClick={() => { onChange(o.id); setIsOpen(false); }}
+              className={`flex items-center w-full px-3 py-1.5 text-sm text-left cursor-pointer transition-colors ${selectedId === o.id ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              <span className="truncate">{o.name}</span>
+            </button>
+          ))}
+          {options.length === 0 && <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">No options</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkedRecordSelect({ label, options, selectedId, onChange }: { label: string; options: Array<{ id: string; name: string }>; selectedId: string | null; onChange: (id: string | null) => void }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5">{label}</label>
+      <LinkedRecordSelectBody options={options} selectedId={selectedId} onChange={onChange} />
+    </div>
+  );
+}
+
+function EditableLinkedRecordSelect({ label, value, options, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c' }: { label: string; value: string | null; options: Array<{ id: string; name: string }>; fieldId: string; recordId: string; base: Base; tableId?: string }) {
+  const [localValue, setLocalValue] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setLocalValue(value); }, [value]);
+
+  const handleChange = async (id: string | null) => {
+    setLocalValue(id);
+    setSaving(true); setError(null);
+    try {
+      const t = base.getTableByIdIfExists(tableId);
+      if (!t) throw new Error('Table not found');
+      await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: id ? [{ id }] : [] }));
+    } catch (e: any) {
+      setError('Save failed'); console.error(`EditableLinkedRecordSelect [${fieldId}]:`, e); setLocalValue(value);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div>
+      <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
+      <LinkedRecordSelectBody options={options} selectedId={localValue} onChange={handleChange} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CLIENT CARD (kanban)
 // ─────────────────────────────────────────────────────────────────────────────
 interface ClientCardProps {
@@ -966,12 +1451,36 @@ const ClientCard = React.memo(function ClientCard({ client, stageColors, onCardC
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WAITLIST CARD (kanban) — visually distinct from ClientCard: it's a lead, not
+// yet a client. Opens WaitlistDetailModal, not FullProfileModal.
+// ─────────────────────────────────────────────────────────────────────────────
+const WaitlistCard = React.memo(function WaitlistCard({ entry, onClick }: { entry: WaitlistEntry; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; }}
+      className="relative bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-3 cursor-pointer transition-colors space-y-1"
+      style={{ borderLeftColor: WAITLIST_COLUMN_COLORS.bg, borderLeftWidth: '3px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+    >
+      <div className="text-sm font-semibold text-gray-900 dark:text-[#F5F3EF] truncate">{entry.brideName || '—'}</div>
+      {entry.earliestDateRequested && (
+        <div className="text-xs text-gray-400 dark:text-gray-500">Earliest date: {formatFullDate(entry.earliestDateRequested)}</div>
+      )}
+      {entry.studioName && (
+        <div className="text-xs text-gray-600 dark:text-gray-400">Studio: {entry.studioName}</div>
+      )}
+    </div>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DETAIL ROW — read-only display
 // ─────────────────────────────────────────────────────────────────────────────
 const SOURCE_COLORS = { acuity: '#7C3AED', shopify: '#059669', apparel_magic: '#D97706' } as const;
 const SOURCE_LABELS = { acuity: 'Acuity', shopify: 'Shopify', apparel_magic: 'Apparel Magic' } as const;
 
-function DetailRow({ label, value, fieldId }: { label: string; value: string | null | undefined; fieldId?: string }) {
+function DetailRow({ label, value, fieldId }: { label: React.ReactNode; value: string | null | undefined; fieldId?: string }) {
   const source = fieldId ? getFieldSource(fieldId) : null;
   return (
     <div>
@@ -987,6 +1496,27 @@ function DetailRow({ label, value, fieldId }: { label: string; value: string | n
       </div>
       <div className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{value || '—'}</div>
     </div>
+  );
+}
+
+// RTW Size only: builds "<label> | from Acuity: N ●" so the Acuity value reads as an
+// extension of the label itself, using the same dot styling as the source badges above.
+// Returns the plain label when there's no Acuity value to show.
+function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
+  if (acuityValue == null) return baseLabel;
+  return (
+    <>
+      {baseLabel}
+      <span className="text-gray-300 dark:text-gray-600">|</span>
+      <span className="text-gray-400 dark:text-gray-500 font-normal normal-case tracking-normal">
+        from Acuity: {acuityValue}
+      </span>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{ backgroundColor: SOURCE_COLORS.acuity }}
+        title={`Sourced from ${SOURCE_LABELS.acuity}`}
+      />
+    </>
   );
 }
 
@@ -1058,7 +1588,7 @@ function EditableText({ label, value, fieldId, recordId, base, tableId = 'tblLLU
 }
 
 interface EditableNumberProps {
-  label: string;
+  label: React.ReactNode;
   value: number | null;
   fieldId: string;
   recordId: string;
@@ -1159,6 +1689,43 @@ function EditableCheckbox({ label, value, fieldId, recordId, base, tableId = 'tb
         }`}>
         {localValue ? <CheckIcon size={12} weight="bold" /> : <XIcon size={12} />}
         {localValue ? 'Yes' : 'No'}
+      </button>
+    </div>
+  );
+}
+
+// "Alterations In House" (Issue 5) — backend is still a plain checkbox
+// (fldNjcDXIaGPGY1E6, also read by order_close_out.js / the stage formula),
+// but per Axel the frontend should never show it as a checkbox/dropdown: a
+// single button that on click flips the value AND changes what it displays —
+// "No Alterations" (false) / "Alterations Needed" (true).
+function AlterationsInHouseToggle({ value, recordId, base }: { value: boolean; recordId: string; base: Base }) {
+  const fieldId = FIELD_IDS.CLIENT_ALTERATIONS_IN_HOUSE;
+  const [localValue, setLocalValue] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setLocalValue(value); }, [value]);
+
+  const handleToggle = async () => {
+    const next = !localValue;
+    setLocalValue(next); setSaving(true); setError(null);
+    try {
+      const t = base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c');
+      if (!t) throw new Error('Table not found');
+      await queueWrite(() => t!.updateRecordAsync(recordId, { [fieldId]: next }));
+    } catch (e) {
+      setError('Save failed'); console.error(`AlterationsInHouseToggle [${fieldId}]:`, e); setLocalValue(localValue);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div>
+      <FieldLabel saving={saving} error={error} fieldId={fieldId}>Alterations In House</FieldLabel>
+      <button type="button" onClick={handleToggle}
+        className={`w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+          localValue ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30' : 'bg-gray-50 dark:bg-white/10 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+        }`}>
+        {localValue ? 'Alterations Needed' : 'No Alterations'}
       </button>
     </div>
   );
@@ -1448,9 +2015,15 @@ interface EditableSelectProps {
   base: Base;
   tableId?: string;
   readOnly?: boolean;
+  // Optional live choice colors, e.g. from a singleSelect field's own schema
+  // (see `useFieldChoiceColors` below) — when given, the current value and
+  // every option render as a colored pill/dot matching Airtable's own
+  // per-choice color, and automatically pick up any color/choice change
+  // made directly in Airtable (no redeploy needed).
+  colors?: Record<string, { bg: string; fg: string }>;
 }
 
-function EditableSelect({ label, value, options, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c', readOnly }: EditableSelectProps) {
+function EditableSelect({ label, value, options, fieldId, recordId, base, tableId = 'tblLLUlDgJ4ktzF7c', readOnly, colors }: EditableSelectProps) {
   const effectiveReadOnly = readOnly || isFieldReadOnlyBySource(fieldId);
   const [localValue, setLocalValue] = useState(value);
   const [open, setOpen] = useState(false);
@@ -1470,6 +2043,15 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
   }, [open]);
 
   if (effectiveReadOnly) {
+    if (colors && value) {
+      const c = colors[value] ?? DEFAULT_STAGE_COLORS;
+      return (
+        <div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide font-medium">{label}</div>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-0.5" style={{ backgroundColor: c.bg, color: c.fg }}>{value}</span>
+        </div>
+      );
+    }
     return <DetailRow label={label} value={value || '—'} fieldId={fieldId} />;
   }
 
@@ -1486,12 +2068,16 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     } finally { setSaving(false); }
   };
 
+  const dot = (name: string) => colors?.[name]
+    ? <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors[name].bg }} />
+    : null;
+
   return (
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(o => !o)}
         className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-        <span className="truncate text-left">{localValue || '—'}</span>
+        <span className="truncate text-left flex items-center gap-1.5">{dot(localValue)}{localValue || '—'}</span>
         <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -1505,6 +2091,7 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
               className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
               {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
               {localValue !== o && <span className="w-3 flex-shrink-0" />}
+              {dot(o)}
               <span className="truncate">{o}</span>
             </button>
           ))}
@@ -1667,6 +2254,21 @@ function MeasurementInputs({ measBust, measWaist, measHips, measHeight, recordId
   );
 }
 
+// Order Ready inline table — per-order fulfillment progress bar (0–1 scale
+// formula field, same rendering as fulfillment.tsx's own ProgressBar).
+function ProgressBar({ percentage }: { percentage: number }) {
+  const pct = Math.round(percentage * 100);
+  const barColor = pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-400' : 'bg-orange-400';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+        <div className={`h-full ${barColor} transition-[width]`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
+      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium tabular-nums">{pct}%</span>
+    </div>
+  );
+}
+
 function FieldRow({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-3 gap-3">{children}</div>;
 }
@@ -1696,7 +2298,7 @@ function getSortValue(col: SortCol, c: ClientData): string | number {
   }
 }
 
-function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void; suppressEmptyMessage?: boolean }) {
+function PipelineListView({ clients, onSelectClient, suppressEmptyMessage, waitlistRows, onSelectWaitlist }: { clients: ClientData[]; onSelectClient: (c: ClientData) => void; suppressEmptyMessage?: boolean; waitlistRows?: WaitlistEntry[]; onSelectWaitlist?: (w: WaitlistEntry) => void }) {
   const [sortEntries, setSortEntries] = useState<SortEntry[]>([{ col: 'weddingDate', dir: 'asc' }]);
   const [page, setPage] = useState(0);
 
@@ -1783,8 +2385,8 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
                 </span>
               </td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.weddingDisplay || '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment) : '—'}</td>
-              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment) : '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.lastAppointment ? formatAppointmentDateTime(client.lastAppointment, getStudioTimeZone(client.studio)) : '—'}</td>
+              <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.nextAppointment ? formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio)) : '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.studio || '—'}</td>
               <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{client.salesAssociateName || '—'}</td>
               <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 font-mono text-xs">{client.amOrderStr || client.amOrderNumber || '—'}</td>
@@ -1803,6 +2405,29 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage }: { c
             <tr><td colSpan={9} className="px-3 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">No clients match the current filters.</td></tr>
           )}
         </tbody>
+        {waitlistRows && waitlistRows.length > 0 && (
+          <tbody>
+            {waitlistRows.map(entry => (
+              <tr key={entry.id} onClick={() => onSelectWaitlist?.(entry)}
+                className="border-b border-gray-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer bg-[#FBFAF8] dark:bg-white/[0.02]">
+                <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-[#F5F3EF]">{entry.brideName || '—'}</td>
+                <td className="px-3 py-2.5">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                    style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
+                    {WAITLIST_STAGE_LABEL}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.weddingDate ? formatFullDate(entry.weddingDate) : '—'}</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{entry.studioName || '—'}</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+                <td className="px-3 py-2.5 text-gray-300 dark:text-gray-600 text-xs">—</td>
+              </tr>
+            ))}
+          </tbody>
+        )}
       </table>
     </div>
     {sorted.length > LIST_PAGE_SIZE && (
@@ -1919,6 +2544,7 @@ const ALTERATIONS_PAYMENT_OPTIONS = [
   'Unpaid',
 ];
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // OVERRIDE DUE DATE CONFIRM MODAL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1994,10 +2620,15 @@ interface FullProfileModalProps {
   client: ClientData;
   stageColors: { bg: string; fg: string };
   stageChoices: Array<{ name: string; color?: string }>;
+  alterationsStatusOptions: string[];
+  alterationsStatusColors: Record<string, { bg: string; fg: string }>;
   base: Base;
   vendorRecords: AirtableRecord[] | null;
   vendorNameField: Field | null;
   vendorTypeField: Field | null;
+  orderTable: Table | null;
+  orderRecords: AirtableRecord[];
+  matchedWaitlistEntry?: WaitlistEntry | null;
   onClose: () => void;
 }
 
@@ -2006,7 +2637,7 @@ const STAGE_STEPS: string[] = [
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({
-  client, stageColors, stageChoices, base, vendorRecords, vendorNameField, vendorTypeField, onClose,
+  client, stageColors, stageChoices, alterationsStatusOptions, alterationsStatusColors, base, vendorRecords, vendorNameField, vendorTypeField, orderTable, orderRecords, matchedWaitlistEntry, onClose,
 }: FullProfileModalProps) {
   const currentStageIndex = STAGE_STEPS.indexOf(client.stage);
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
@@ -2035,6 +2666,22 @@ const FullProfileModal = React.memo(function FullProfileModal({
     }
   }, [base, client.id]);
 
+  // Per-order fulfillment method/status for the Order Ready inline table
+  // (Issue 3 — bride-level "Shipping"/"Pick Up" yes/no flags couldn't
+  // represent more than one order, or reflect real completion).
+  const linkedOrders = useMemo(
+    () => orderRecords.filter(r => client.shopifyOrderLinkIds.includes(r.id)),
+    [orderRecords, client.shopifyOrderLinkIds],
+  );
+  const getOrderNum = useCallback((r: AirtableRecord, fid: string): number | null => {
+    if (!orderTable) return null;
+    try { const f = orderTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  }, [orderTable]);
+  const getOrderSel = useCallback((r: AirtableRecord, fid: string): string => {
+    if (!orderTable) return '—';
+    try { const f = orderTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
+  }, [orderTable]);
+
   function renderStageSection(sectionStage: string, readOnly: boolean) {
     switch (sectionStage) {
       case 'Pre-Appointment':
@@ -2042,7 +2689,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <DetailRow label="Country of Residence" value={client.countryOfResidence} />
-              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment)} />
+              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio))} />
             </div>
             {/* Wedding Location & Planner — always DetailRow per Step 5 */}
             <div className="grid grid-cols-2 gap-3">
@@ -2055,8 +2702,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 : <StylePicker label="Bridal Stylist" currentIds={client.preferredStylistIds} currentNames={client.preferredStylist} fieldId={FIELD_IDS.CLIENT_PREFERRED_STYLIST} recordId={client.id} base={base} vendorRecords={vendorRecords} vendorNameField={vendorNameField} vendorTypeField={vendorTypeField} />
               }
               {readOnly
-                ? <DetailRow label="RTW Size" value={client.rtwSize != null ? String(client.rtwSize) : '—'} />
-                : <EditableNumber label="RTW Size (0–20)" value={client.rtwSize} fieldId={FIELD_IDS.CLIENT_RTW_SIZE} recordId={client.id} base={base} min={0} max={20} step={0.5} />
+                ? <DetailRow label={rtwSizeLabelWithAcuity('RTW Size', client.rtwSize)} value={client.rtwSizeDisplay ?? '—'} />
+                : <EditableNumber label={rtwSizeLabelWithAcuity('RTW Size (0–20)', client.rtwSize)} value={client.rtwSizeManual} fieldId={FIELD_IDS.CLIENT_RTW_SIZE_MANUAL} recordId={client.id} base={base} min={0} max={20} step={0.5} />
               }
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -2072,8 +2719,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
           <div className="space-y-3">
             <FieldRow>
               <DetailRow label="Country of Residence" value={client.countryOfResidence} />
-              <DetailRow label="Last Appointment" value={formatAppointmentDateTime(client.lastAppointment)} />
-              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment)} />
+              <DetailRow label="Last Appointment" value={formatAppointmentDateTime(client.lastAppointment, getStudioTimeZone(client.studio))} />
+              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio))} />
             </FieldRow>
             <FieldRow>
               <DetailRow label="Favorite Styles" value={client.favStylesInAppt.join(', ') || '—'} />
@@ -2177,46 +2824,89 @@ const FullProfileModal = React.memo(function FullProfileModal({
       case 'Order Ready':
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <DetailRow label="Items Sold" value={client.itemsSold.join(', ') || '—'} />
+            <FieldRow>
               {readOnly
                 ? <DetailRow label="Order Ready" value={client.orderReady ? 'Yes' : 'No'} />
                 : <BooleanDropdown label="Order Ready" value={client.orderReady} fieldId={FIELD_IDS.CLIENT_ORDER_READY} recordId={client.id} base={base} />
               }
-              <DetailRow label="Items Sold" value={client.itemsSold.join(', ') || '—'} />
-            </div>
-            <DetailRow label="Customization Notes" value={client.customizationNotes || '—'} />
-            <FieldRow>
-              {readOnly ? (
-                <>
-                  <DetailRow label="Alterations" value={client.contactedForAlterations ? 'Yes' : 'No'} />
-                  <DetailRow label="Shipping" value={client.ship ? 'Yes' : 'No'} />
-                  <DetailRow label="Pick Up" value={client.pickUp ? 'Yes' : 'No'} />
-                </>
-              ) : (
-                <>
-                  <BooleanDropdown label="Alterations" value={client.contactedForAlterations} fieldId={FIELD_IDS.CLIENT_CONTACTED_FOR_ALTERATIONS} recordId={client.id} base={base} />
-                  <BooleanDropdown label="Shipping" value={client.ship} fieldId={FIELD_IDS.CLIENT_SHIP} recordId={client.id} base={base} />
-                  <BooleanDropdown label="Pick Up" value={client.pickUp} fieldId={FIELD_IDS.CLIENT_PICK_UP} recordId={client.id} base={base} />
-                </>
-              )}
+              {readOnly
+                ? <DetailRow label="Alterations" value={client.contactedForAlterations ? 'Yes' : 'No'} />
+                : <BooleanDropdown label="Alterations" value={client.contactedForAlterations} fieldId={FIELD_IDS.CLIENT_CONTACTED_FOR_ALTERATIONS} recordId={client.id} base={base} />
+              }
+              {/* Client Notified — rollup of Orders.client_notified across the
+                  bride's orders (Issue 4), always read-only regardless of
+                  the section's editable/readOnly mode: it's derived, not
+                  something anyone should set by hand anymore. */}
+              <div>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Client Notified</span>
+                <div className="py-1"><ProgressBar percentage={client.clientNotifiedPercentage} /></div>
+              </div>
             </FieldRow>
-            {readOnly
-              ? <DetailRow label="Client Notified" value={client.clientNotifiedFulfillment ? 'Yes' : 'No'} />
-              : <BooleanDropdown label="Client Notified" value={client.clientNotifiedFulfillment} fieldId={FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT} recordId={client.id} base={base} />
-            }
+            <DetailRow label="Customization Notes" value={client.customizationNotes || '—'} />
+            {/* Per-order fulfillment method + real pickup/ship completion —
+                replaces the old bride-level "Shipping"/"Pick Up" yes/no
+                flags, which couldn't represent more than one order or
+                reflect whether the order had actually been picked up or
+                shipped yet (Issue 3). */}
+            <div>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Orders</span>
+              <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                      {['Order #', 'Method', 'Fulfillment Progress'].map((h, i) => (
+                        <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linkedOrders.length === 0 ? (
+                      <tr><td colSpan={3} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                    ) : linkedOrders.map(r => {
+                      const num = getOrderNum(r, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+                      const method = getOrderSel(r, ORDER_FIELD_IDS.DELIVERY_METHOD);
+                      const progress = getOrderNum(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
+                      return (
+                        <tr key={r.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{num ? `#${num}` : '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{method}</td>
+                          <td className="px-3 py-2.5"><ProgressBar percentage={progress} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         );
-      case 'In Alterations':
+      case 'In Alterations': {
+        // Issue 5 — Alterations Status only applies once there's actually
+        // alterations work: In House (SA flagged it) or the order already
+        // has an ALTERATIONS line item.
+        const alterationsStatusApplies = client.alterationsInHouse || client.hasAlterationsItem;
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <DetailRow label="Last Alterations Appt" value={formatAppointmentDateTime(client.latestAlterationsAppt)} />
-              <DetailRow label="Alterations Appts Held" value={String(client.alterationsApptCount || '—')} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <DetailRow label="Next Appt" value={formatAppointmentDateTime(client.nextAppointment)} />
-              <DetailRow label="SA" value={client.salesAssociateName || '—'} />
-            </div>
+            <FieldRow>
+              <DetailRow label="Last Alterations Appointment" value={formatAppointmentDateTime(client.latestAlterationsAppt, getStudioTimeZone(client.studio))} />
+              <DetailRow label="Next Appointment" value={formatAppointmentDateTime(client.nextAppointment, getStudioTimeZone(client.studio))} />
+              <DetailRow label="Alterations Appointments Held" value={String(client.alterationsApptCount || '—')} />
+            </FieldRow>
+            <FieldRow4>
+              <DetailRow label="Sales Associate" value={client.salesAssociateName || '—'} />
+              {/* Alterations Lead (next_appointment_alterations_lead) — per
+                  Axel, always shown, even blank, rather than hidden. */}
+              <DetailRow label="Alterations Lead" value={client.nextAppointmentAltLead || '—'} />
+              {readOnly
+                ? <DetailRow label="Alterations In House" value={client.alterationsInHouse ? 'Alterations Needed' : 'No Alterations'} />
+                : <AlterationsInHouseToggle value={client.alterationsInHouse} recordId={client.id} base={base} />
+              }
+              {!alterationsStatusApplies
+                ? <DetailRow label="Alterations Status" value="—" />
+                : <EditableSelect label="Alterations Status" value={client.alterationsStatus || 'Pending'} options={alterationsStatusOptions} colors={alterationsStatusColors} fieldId={FIELD_IDS.CLIENT_ALTERATIONS_STATUS} recordId={client.id} base={base} readOnly={readOnly} />
+              }
+            </FieldRow4>
             <div className="grid grid-cols-2 gap-3">
               <DetailRow label="Items Sold" value={client.itemsSold.join(', ') || '—'} />
               <DetailRow label="Total Spend" value={client.totalSpend ? `$${Number(client.totalSpend).toLocaleString()}` : '—'} />
@@ -2227,6 +2917,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
             }
           </div>
         );
+      }
       case 'In Fulfillment':
         return (
           <div className="space-y-3">
@@ -2478,6 +3169,27 @@ const FullProfileModal = React.memo(function FullProfileModal({
         {/* Stage-specific section(s) */}
         {showAllFields ? (
           <div className="space-y-6">
+            {matchedWaitlistEntry && (
+              <div className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg p-5 opacity-60">
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-500 tracking-wider">{WAITLIST_STAGE_LABEL}</h3>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 italic">read only</span>
+                </div>
+                <div className="pointer-events-none space-y-3">
+                  <FieldRow>
+                    <DetailRow label="Dates Requested" value={matchedWaitlistEntry.datesRequested || '—'} />
+                    <DetailRow label="Time Requested" value={matchedWaitlistEntry.timeRequested || '—'} />
+                    <DetailRow label="Wedding Date" value={matchedWaitlistEntry.weddingDate || '—'} />
+                  </FieldRow>
+                  <FieldRow>
+                    <DetailRow label="Contact Email" value={matchedWaitlistEntry.contactEmail || '—'} />
+                    <DetailRow label="Contact Phone" value={matchedWaitlistEntry.contactPhone || '—'} />
+                    <DetailRow label="Studio" value={matchedWaitlistEntry.studioName || '—'} />
+                  </FieldRow>
+                  <DetailRow label="Notes" value={matchedWaitlistEntry.notes || '—'} />
+                </div>
+              </div>
+            )}
             {STAGE_STEPS.map(sectionStage => {
               // Step 6: if client.stage is not a known stage, force all sections read-only
               const forceReadOnly = !stageIsKnown;
@@ -2528,12 +3240,20 @@ const FullProfileModal = React.memo(function FullProfileModal({
 // CUSTOM PROPERTIES
 // ─────────────────────────────────────────────────────────────────────────────
 function getCustomProperties(base: ReturnType<typeof useBase>) {
-  return [{
-    key: 'clientsTable',
-    label: 'Clients',
-    type: 'table' as const,
-    defaultValue: base.tables.find(t => t.id === 'tblLLUlDgJ4ktzF7c'),
-  }];
+  return [
+    {
+      key: 'clientsTable',
+      label: 'Clients',
+      type: 'table' as const,
+      defaultValue: base.tables.find(t => t.id === 'tblLLUlDgJ4ktzF7c'),
+    },
+    {
+      key: 'waitlistTable',
+      label: 'Waitlist',
+      type: 'table' as const,
+      defaultValue: base.tables.find(t => t.id === WAITLIST_TABLE_ID),
+    },
+  ];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2727,6 +3447,7 @@ function Pipeline(): React.ReactElement {
   const base = useBase();
   const { customPropertyValueByKey, errorState } = useCustomProperties(getCustomProperties);
   const clientsTable = customPropertyValueByKey?.clientsTable as Table | undefined;
+  const waitlistTable = customPropertyValueByKey?.waitlistTable as Table | undefined;
 
   // Only subscribe to fields that drive kanban cards, filters, and search.
   // Detail-panel-only fields (orders, measurements, notes, etc.) are still read
@@ -2762,6 +3483,112 @@ function Pipeline(): React.ReactElement {
 
   const clientRecords = useRecords(clientsTable ?? null, { fields: usedFields });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // WAITLIST — second table, independent of clientsTable. See WAITLIST_TABLE_ID
+  // constants block above for field IDs (kept in sync with the automation
+  // scripts that also read/write this table).
+  // ─────────────────────────────────────────────────────────────────────────
+  const waitlistUsedFields = useMemo(
+    () => waitlistTable
+      ? Object.values(WAITLIST_FIELD_IDS).map(id => waitlistTable.getFieldIfExists(id)).filter((f): f is NonNullable<typeof f> => f !== null)
+      : [],
+    [waitlistTable],
+  );
+  const waitlistRecords = useRecords(waitlistTable ?? null, { fields: waitlistUsedFields });
+
+  const waitlistFieldObjs = useMemo(() => {
+    const wf = (id: string) => waitlistTable?.getFieldIfExists(id) ?? null;
+    return {
+      brideName:            wf(WAITLIST_FIELD_IDS.BRIDE_NAME),
+      contactEmail:         wf(WAITLIST_FIELD_IDS.CONTACT_EMAIL),
+      contactPhone:         wf(WAITLIST_FIELD_IDS.CONTACT_PHONE),
+      datesRequested:       wf(WAITLIST_FIELD_IDS.DATES_REQUESTED),
+      timeRequested:        wf(WAITLIST_FIELD_IDS.TIME_REQUESTED),
+      earliestDateRequested: wf(WAITLIST_FIELD_IDS.EARLIEST_DATE_REQUESTED),
+      weddingDate:          wf(WAITLIST_FIELD_IDS.WEDDING_DATE),
+      notes:                wf(WAITLIST_FIELD_IDS.NOTES),
+      resolutionStatus:     wf(WAITLIST_FIELD_IDS.RESOLUTION_STATUS),
+      resolvedByClient:     wf(WAITLIST_FIELD_IDS.RESOLVED_BY_DF_CLIENTS_RECORD),
+      studio:               wf(WAITLIST_FIELD_IDS.STUDIO),
+    };
+  }, [waitlistTable]);
+
+  const waitlistData = useMemo((): WaitlistEntry[] => {
+    if (!waitlistRecords) return [];
+    return waitlistRecords.map(record => ({
+      id: record.id,
+      brideName: getCellValueAsStringSafe(record, waitlistFieldObjs.brideName),
+      contactEmail: getCellValueAsStringSafe(record, waitlistFieldObjs.contactEmail),
+      contactPhone: getCellValueAsStringSafe(record, waitlistFieldObjs.contactPhone),
+      datesRequested: getCellValueAsStringSafe(record, waitlistFieldObjs.datesRequested),
+      timeRequested: getCellValueAsStringSafe(record, waitlistFieldObjs.timeRequested),
+      earliestDateRequested: getCellValueAsStringSafe(record, waitlistFieldObjs.earliestDateRequested),
+      weddingDate: getCellValueAsStringSafe(record, waitlistFieldObjs.weddingDate),
+      notes: getCellValueAsStringSafe(record, waitlistFieldObjs.notes),
+      resolutionStatus: getCellValueAsStringSafe(record, waitlistFieldObjs.resolutionStatus),
+      resolvedByClientId: (() => {
+        if (!waitlistFieldObjs.resolvedByClient) return null;
+        const linked = getCellValueSafe<Array<{ id: string }>>(record, waitlistFieldObjs.resolvedByClient);
+        return Array.isArray(linked) && linked.length > 0 ? linked[0].id : null;
+      })(),
+      studioId: (() => {
+        if (!waitlistFieldObjs.studio) return null;
+        const linked = getCellValueSafe<Array<{ id: string; name?: string }>>(record, waitlistFieldObjs.studio);
+        return Array.isArray(linked) && linked.length > 0 ? linked[0].id : null;
+      })(),
+      studioName: (() => {
+        if (!waitlistFieldObjs.studio) return '';
+        const linked = getCellValueSafe<Array<{ id: string; name?: string }>>(record, waitlistFieldObjs.studio);
+        return Array.isArray(linked) && linked.length > 0 ? (linked[0].name ?? '') : '';
+      })(),
+    }));
+  }, [waitlistRecords, waitlistFieldObjs]);
+
+  // Master Studio/Location table — active options for the Studio picker on
+  // the Waitlist create form and detail page.
+  const studioTable = base.getTableByIdIfExists(STUDIO_TABLE_ID);
+  const studioNameField     = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_NAME) ?? null, [studioTable]);
+  const studioIsActiveField = useMemo(() => studioTable?.getFieldIfExists(STUDIO_FIELD_IS_ACTIVE) ?? null, [studioTable]);
+  const studioQueryFields = useMemo(() => {
+    const f: Field[] = [];
+    if (studioNameField) f.push(studioNameField);
+    if (studioIsActiveField) f.push(studioIsActiveField);
+    return f;
+  }, [studioNameField, studioIsActiveField]);
+  const studioRecords = useRecords(studioTable ?? null, studioQueryFields.length > 0 ? { fields: studioQueryFields } : undefined);
+  const activeStudioOptions = useMemo(() => {
+    if (!studioRecords || !studioNameField || !studioIsActiveField) return [];
+    return studioRecords
+      .filter(r => getCellValueSafe<boolean>(r, studioIsActiveField) === true)
+      .map(r => ({ id: r.id, name: getCellValueAsStringSafe(r, studioNameField) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [studioRecords, studioNameField, studioIsActiveField]);
+
+  // Active + unmatched — same eligibility shape as the alert automation, kept
+  // intentionally consistent. These are the cards/rows staff see as "on the
+  // Waitlist right now."
+  const activeWaitlistEntries = useMemo(
+    () => waitlistData
+      .filter(w => w.resolutionStatus === 'Active' && !w.resolvedByClientId)
+      .sort((a, b) => {
+        const dateCompare = (a.earliestDateRequested || '9999-99-99').localeCompare(b.earliestDateRequested || '9999-99-99');
+        return dateCompare !== 0 ? dateCompare : a.brideName.localeCompare(b.brideName);
+      }),
+    [waitlistData],
+  );
+
+  // Resolved + matched — keyed by the DF Client they resolved into, so
+  // FullProfileModal can look up "was this client once on the Waitlist?"
+  const resolvedWaitlistByClientId = useMemo(() => {
+    const map = new Map<string, typeof waitlistData[number]>();
+    waitlistData.forEach(w => {
+      if (w.resolutionStatus === 'Resolved' && w.resolvedByClientId) {
+        map.set(w.resolvedByClientId, w);
+      }
+    });
+    return map;
+  }, [waitlistData]);
+
   const vendorsTable = base.getTableByIdIfExists(VENDORS_TABLE_ID);
   const vendorNameField = useMemo(
     () => vendorsTable?.getFieldIfExists(VENDORS_FIELD_FULL_NAME) ?? null,
@@ -2781,6 +3608,19 @@ function Pipeline(): React.ReactElement {
     vendorsTable ?? null,
     vendorFields.length > 0 ? { fields: vendorFields } : undefined,
   );
+
+  // Orders - Shopify — per-order fulfillment method/status for the Order
+  // Ready inline table (Issue 3).
+  const orderTable = base.getTableByIdIfExists(ORDER_TABLE_ID);
+  const orderQueryFields = useMemo(() => {
+    if (!orderTable) return [];
+    const f: Field[] = [];
+    const num = orderTable.getFieldIfExists(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);            if (num) f.push(num);
+    const dm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD);                 if (dm)  f.push(dm);
+    const pp  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE); if (pp)  f.push(pp);
+    return f;
+  }, [orderTable]);
+  const orderRecords = useRecords(orderTable ?? null, orderQueryFields.length > 0 ? { fields: orderQueryFields } : undefined);
 
   const staffTable = base.getTableByIdIfExists(STAFF_TABLE_ID);
   const staffFullNameField = useMemo(() => staffTable?.getFieldIfExists(STAFF_FIELD_FULL_NAME) ?? null, [staffTable]);
@@ -2815,6 +3655,9 @@ function Pipeline(): React.ReactElement {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [stagePage, setStagePage] = useState<Record<string, number>>({});
+  const [waitlistPage, setWaitlistPage] = useState(0);
+  const [selectedWaitlistId, setSelectedWaitlistId] = useState<string | null>(null);
+  const [showWaitlistFormModal, setShowWaitlistFormModal] = useState(false);
 
   const stageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE);
   const stageChoices = useMemo(() => {
@@ -2834,6 +3677,26 @@ function Pipeline(): React.ReactElement {
     }
     return map;
   }, [stageChoices]);
+
+  // Issue 5 — Alterations Status options + colors read live from the
+  // field's own Airtable schema (same pattern as stageChoices above), so
+  // adding/renaming/recoloring a choice directly in Airtable shows up here
+  // with no code change.
+  const alterationsStatusField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_ALTERATIONS_STATUS);
+  const alterationsStatusChoices = useMemo(() => {
+    if (!alterationsStatusField) return [];
+    const config = alterationsStatusField.config;
+    if (config?.type === 'singleSelect' && config.options?.choices) {
+      return config.options.choices as Array<{ name: string; color?: string }>;
+    }
+    return [];
+  }, [alterationsStatusField]);
+  const alterationsStatusOptions = useMemo(() => alterationsStatusChoices.map(c => c.name), [alterationsStatusChoices]);
+  const alterationsStatusColors = useMemo(() => {
+    const map: Record<string, { bg: string; fg: string }> = {};
+    for (const choice of alterationsStatusChoices) map[choice.name] = getStageColors(choice.color);
+    return map;
+  }, [alterationsStatusChoices]);
 
   const fields = useMemo(() => {
     if (!clientsTable) return null;
@@ -2879,6 +3742,10 @@ function Pipeline(): React.ReactElement {
       threePL:                    f(FIELD_IDS.CLIENT_3PL),
       holdShipmentDate:           f(FIELD_IDS.CLIENT_HOLD_SHIPMENT_DATE),
       clientNotifiedFulfillment:  f(FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT),
+      clientNotifiedPercentage:   f(FIELD_IDS.CLIENT_NOTIFIED_PERCENTAGE),
+      alterationsInHouse:         f(FIELD_IDS.CLIENT_ALTERATIONS_IN_HOUSE),
+      hasAlterationsItem:         f(FIELD_IDS.CLIENT_HAS_ALTERATIONS_ITEM),
+      alterationsStatus:          f(FIELD_IDS.CLIENT_ALTERATIONS_STATUS),
       addressConfirmed:           f(FIELD_IDS.CLIENT_ADDRESS_CONFIRMED),
       apptNotes:                  f(FIELD_IDS.CLIENT_APPT_NOTES),
       nextAppointment:            f(FIELD_IDS.CLIENT_NEXT_APPOINTMENT),
@@ -2889,6 +3756,8 @@ function Pipeline(): React.ReactElement {
       countryOfResidence:         f(FIELD_IDS.CLIENT_COUNTRY_OF_RESIDENCE),
       preferredStylist:           f(FIELD_IDS.CLIENT_PREFERRED_STYLIST),
       rtwSize:                    f(FIELD_IDS.CLIENT_RTW_SIZE),
+      rtwSizeManual:              f(FIELD_IDS.CLIENT_RTW_SIZE_MANUAL),
+      rtwSizeDisplay:             f(FIELD_IDS.CLIENT_RTW_SIZE_DISPLAY),
       favStylesAcuity:            f(FIELD_IDS.CLIENT_FAV_STYLES_ACUITY),
       samplesNotWhereNeeded:      f(FIELD_IDS.CLIENT_SAMPLES_NOT_WHERE_NEEDED),
       personalStyleNotes:         f(FIELD_IDS.CLIENT_PERSONAL_STYLE_NOTES),
@@ -2962,6 +3831,10 @@ function Pipeline(): React.ReactElement {
       const threePL               = getCellValueAsStringSafe(record, fields.threePL);
       const holdShipmentDate      = getCellValueAsStringSafe(record, fields.holdShipmentDate) || null;
       const clientNotifiedFulfillment = !!getCellValueSafe<boolean>(record, fields.clientNotifiedFulfillment);
+      const clientNotifiedPercentage = getCellValueSafe<number>(record, fields.clientNotifiedPercentage) ?? 0;
+      const alterationsInHouse    = !!getCellValueSafe<boolean>(record, fields.alterationsInHouse);
+      const hasAlterationsItem    = !!getCellValueSafe<boolean>(record, fields.hasAlterationsItem);
+      const alterationsStatus     = getCellValueAsStringSafe(record, fields.alterationsStatus);
       const addressConfirmed      = !!getCellValueSafe<boolean>(record, fields.addressConfirmed);
       const apptNotes             = getCellValueAsStringSafe(record, fields.apptNotes);
       const nextAppointment       = extractFirstLookupString(record, fields.nextAppointment);
@@ -2974,6 +3847,8 @@ function Pipeline(): React.ReactElement {
       const preferredStylistIds   = preferredStylistRaw?.map(s => s.id) ?? [];
       const preferredStylist      = preferredStylistRaw?.map(s => s.name).filter((n): n is string => !!n).join(', ') ?? '';
       const rtwSize               = getCellValueSafe<number>(record, fields.rtwSize) ?? null;
+      const rtwSizeManual         = getCellValueSafe<number>(record, fields.rtwSizeManual) ?? null;
+      const rtwSizeDisplay        = getCellValueAsStringSafe(record, fields.rtwSizeDisplay) || null;
       const favStylesAcuityRaw    = getCellValueSafe<Array<{ id: string; name?: string }>>(record, fields.favStylesAcuity);
       const favStylesAcuity       = favStylesAcuityRaw?.map(s => s.name).filter((n): n is string => !!n).join(', ') ?? '';
       const samplesNotWhereNeeded = getCellValueAsStringSafe(record, fields.samplesNotWhereNeeded);
@@ -2991,6 +3866,13 @@ function Pipeline(): React.ReactElement {
       const qtyItemsSold          = getCellValueSafe<number>(record, fields.qtyItemsSold);
       const apparelMagicOrder     = getCellValueAsStringSafe(record, fields.apparelMagicOrder);
       const shopifyOrderNumber    = getCellValueAsStringSafe(record, fields.shopifyOrderNumber);
+      const shopifyOrderLinkIds   = (() => {
+        if (!fields.shopifyOrderNumber) return [];
+        try {
+          const links = record.getCellValue(fields.shopifyOrderNumber) as Array<{ id: string }> | null;
+          return Array.isArray(links) ? links.map(l => l.id) : [];
+        } catch { return []; }
+      })();
       const alterationNotes       = getCellValueAsStringSafe(record, fields.alterationNotes);
       const salesNotes            = getCellValueAsStringSafe(record, fields.salesNotes);
       const dueDateRaw            = extractFirstLookupString(record, fields.dueDate);
@@ -3076,15 +3958,15 @@ function Pipeline(): React.ReactElement {
         studio, studioShortName, salesAssociateName, salesAssociatePhone, formattedSAPhone,
         salesAssociateEmail, appointmentCount, nextAppointment, lastAppointment,
         latestAlterationsAppt, nextAppointmentAltLead, nextAppointmentRoom,
-        countryOfResidence, preferredStylist, preferredStylistIds, rtwSize, favStylesAcuity, samplesNotWhereNeeded,
+        countryOfResidence, preferredStylist, preferredStylistIds, rtwSize, rtwSizeManual, rtwSizeDisplay, favStylesAcuity, samplesNotWhereNeeded,
         personalStyleNotes, measBust, measWaist, measHips, measHeight, hasMeasurementPhotos,
         followUpSent: followUpSentRaw, interestCustom, interestAlts, interestM2M, apptNotes,
         customizationCount, isRush, itemsSold, favStylesInAppt, totalSpend, totalSpendFormatted,
         shopifyAddress, discount, alterationsPaymentStatus, m2m, qtyItemsSold, apparelMagicOrder,
-        shopifyOrderNumber, amOrderStr, amOrderNumber,
+        shopifyOrderNumber, shopifyOrderLinkIds, amOrderStr, amOrderNumber,
         ship, pickUp, orderReady, pickedPercent, contactedForAlterations,
         fulfillmentMethod, fulfillmentLabel, fulfillmentNotes, trackingNumber, threePL,
-        holdShipmentDate, clientNotifiedFulfillment, addressConfirmed, taxShippingDisplay,
+        holdShipmentDate, clientNotifiedFulfillment, clientNotifiedPercentage, addressConfirmed, taxShippingDisplay,
         alterationNotes, flagFollowUp, flagNoMeasurements, flagNoPhotos,
         flagCount: effectiveFlagCount,
         activeFlagLabels: effectiveFlagLabels,
@@ -3092,11 +3974,12 @@ function Pipeline(): React.ReactElement {
         salesNotes, dueDate, customizationNotes, firstAlterationsAppt,
         taxes, shippingCost, taxesFormatted, shippingCostFormatted,
         lastPhaseChange, studioName, acuityAddress, otherAddress, alterationsApptCount,
+        alterationsInHouse, hasAlterationsItem, alterationsStatus,
       };
     });
   }, [clientRecords, fields]);
 
-  const stageOptions = useMemo(() => STAGE_ORDER.map(s => STAGE_DISPLAY_LABELS[s] ?? s), []);
+  const stageOptions = useMemo(() => [WAITLIST_STAGE_LABEL, ...STAGE_ORDER.map(s => STAGE_DISPLAY_LABELS[s] ?? s)], []);
 
   const studioOptions = useMemo(() => {
     const s = new Set<string>();
@@ -3134,6 +4017,13 @@ function Pipeline(): React.ReactElement {
     return filteredClients.filter(c => stageSet.has(STAGE_DISPLAY_LABELS[c.stage] ?? c.stage));
   }, [filteredClients, stageFilter]);
 
+  // Waitlist rows respect the same Stage filter — only shown when unfiltered
+  // or when "Waitlist" is explicitly selected.
+  const listFilteredWaitlistEntries = useMemo(() => {
+    if (stageFilter.length > 0 && !stageFilter.includes(WAITLIST_STAGE_LABEL)) return [];
+    return activeWaitlistEntries;
+  }, [activeWaitlistEntries, stageFilter]);
+
   const clientsByStage = useMemo(() => {
     const map: Record<string, ClientData[]> = {};
     STAGE_ORDER.forEach(s => { map[s] = []; });
@@ -3150,6 +4040,7 @@ function Pipeline(): React.ReactElement {
 
   const selectedClient = useMemo(() => clientsData.find(c => c.id === selectedClientId) ?? null, [clientsData, selectedClientId]);
   const selectedClientStageColors = useMemo(() => selectedClient ? (stageColorsByStage.get(selectedClient.stage) ?? DEFAULT_STAGE_COLORS) : DEFAULT_STAGE_COLORS, [selectedClient, stageColorsByStage]);
+  const selectedWaitlistEntry = useMemo(() => activeWaitlistEntries.find(w => w.id === selectedWaitlistId) ?? null, [activeWaitlistEntries, selectedWaitlistId]);
 
   useEffect(() => {
     if (selectedClientId && !selectedClient) { setSelectedClientId(null); setFullProfileOpen(false); }
@@ -3205,8 +4096,15 @@ function Pipeline(): React.ReactElement {
         )}
 
         {/* View mode toggle */}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <ViewDropdown value={viewMode} onChange={setViewMode} />
+          <button
+            type="button"
+            onClick={() => setShowWaitlistFormModal(true)}
+            className="flex items-center justify-center w-[110px] rounded-lg px-3 py-1.5 text-sm font-semibold bg-[#D97706] text-white hover:bg-[#B45F04] dark:bg-[#FBBF24] dark:text-[#1B1813] dark:hover:bg-[#F59E0B] transition-colors"
+          >
+            + Waitlist
+          </button>
         </div>
       </div>
 
@@ -3223,7 +4121,42 @@ function Pipeline(): React.ReactElement {
       {/* Main content — Kanban or List */}
       {viewMode === 'kanban' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
-          {STAGE_ORDER.map(stage => {
+          {/* Waitlist — leftmost pseudo-column, sourced from the Waitlist table, not clientsByStage */}
+          {(() => {
+            const wPage        = waitlistPage;
+            const wTotalPages  = Math.max(1, Math.ceil(activeWaitlistEntries.length / KANBAN_PAGE_SIZE));
+            const wPagedEntries = activeWaitlistEntries.slice(wPage * KANBAN_PAGE_SIZE, (wPage + 1) * KANBAN_PAGE_SIZE);
+            const wCanPrev     = wPage > 0;
+            const wCanNext     = wPage < wTotalPages - 1;
+            return (
+              <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
+                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{WAITLIST_STAGE_LABEL}</span>
+                  <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
+                    style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
+                    {formatStageCount(activeWaitlistEntries.length)}
+                  </span>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {activeWaitlistEntries.length === 0
+                    ? <div className="py-12 text-center text-xs text-gray-400 dark:text-gray-500">No one on the Waitlist</div>
+                    : wPagedEntries.map(entry => (
+                        <WaitlistCard key={entry.id} entry={entry} onClick={() => setSelectedWaitlistId(entry.id)} />
+                      ))}
+                </div>
+                {activeWaitlistEntries.length > KANBAN_PAGE_SIZE && (
+                  <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-gray-100 dark:border-white/10 bg-gray-50 dark:bg-[#1A1917]">
+                    <button type="button" onClick={() => setWaitlistPage(p => p - 1)} disabled={!wCanPrev}
+                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors">← Prev</button>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{wPage + 1} / {wTotalPages}</span>
+                    <button type="button" onClick={() => setWaitlistPage(p => p + 1)} disabled={!wCanNext}
+                      className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors">Next →</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {KANBAN_STAGE_ORDER.map(stage => {
             const clients     = clientsByStage[stage] ?? [];
             const stageColors = stageColorsByStage.get(stage) ?? DEFAULT_STAGE_COLORS;
             const stageLabel  = STAGE_DISPLAY_LABELS[stage] ?? stage;
@@ -3278,6 +4211,8 @@ function Pipeline(): React.ReactElement {
               setSelectedClientId(c.id);
               setFullProfileOpen(true);
             }}
+            waitlistRows={listFilteredWaitlistEntries}
+            onSelectWaitlist={(w) => setSelectedWaitlistId(w.id)}
           />
         </div>
       )}
@@ -3288,11 +4223,37 @@ function Pipeline(): React.ReactElement {
           client={selectedClient}
           stageColors={selectedClientStageColors}
           stageChoices={stageChoices}
+          alterationsStatusOptions={alterationsStatusOptions}
+          alterationsStatusColors={alterationsStatusColors}
           base={base}
           vendorRecords={vendorRecords}
           vendorNameField={vendorNameField}
           vendorTypeField={vendorTypeField}
+          orderTable={orderTable}
+          orderRecords={orderRecords ?? []}
+          matchedWaitlistEntry={resolvedWaitlistByClientId.get(selectedClient.id) ?? null}
           onClose={handleCloseFullProfile}
+        />
+      )}
+
+      {/* Waitlist detail modal (view/edit an existing active Waitlist card) */}
+      {selectedWaitlistEntry && (
+        <WaitlistDetailModal
+          entry={selectedWaitlistEntry}
+          base={base}
+          waitlistTable={waitlistTable ?? null}
+          activeStudioOptions={activeStudioOptions}
+          onClose={() => setSelectedWaitlistId(null)}
+        />
+      )}
+
+      {/* Waitlist create modal */}
+      {showWaitlistFormModal && (
+        <WaitlistFormModal
+          waitlistTable={waitlistTable ?? null}
+          activeStudioOptions={activeStudioOptions}
+          onClose={() => setShowWaitlistFormModal(false)}
+          onSaved={() => setShowWaitlistFormModal(false)}
         />
       )}
 

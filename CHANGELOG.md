@@ -11,13 +11,56 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
-## Week of Aug 17–21, 2026
+## Week of Aug 17, 2026
 
 **Pipeline**
+- Fixed the sync bug that kept recently-scheduled alterations appointments from showing up in the Alterations column.
+- Found and fixed a bigger underlying issue while investigating: because multiple automations could independently move a client's stage, one of them briefly moved a batch of already-further-along clients backward into "In Alterations." Corrected everyone affected, and started a deeper rework (in progress, not yet live) so a client's stage gets computed from a set of independent facts instead of being overwritten directly — so this class of bug becomes structurally impossible going forward. Julia will review the new logic before it replaces the current one.
+- Fixed a second, related sync bug: the Fulfillment column also wasn't reflecting some clients' recent pickup appointments, because the automation that reads them was pointed at an old, deprecated appointment-type field and was missing a few valid pickup appointment types. Corrected the automation and caught up everyone affected who was already stuck waiting.
+- In the Order Ready step, replaced the old manual "Shipping"/"Pick Up" yes/no flags (which could only reflect one order per bride) with a table showing every one of her orders, each with its fulfillment method and a progress bar for how much of it has actually been picked up or shipped.
+- Also in Order Ready, "Client Notified" is no longer a manual checkbox — it's now a progress bar showing what percentage of the bride's orders the client has actually been notified for.
 - Fixed the RTW Size field: Sales Associates now confirm the size in its own field instead of typing over the customer's original self-reported size from Acuity — that original value is preserved and still shown for reference right next to the confirmed size. If no size has been confirmed yet, the display now correctly falls back to showing the Acuity value instead of appearing blank.
+
+**Alterations**
+- Fixed a bug where alterations line items could inflate an order's "% Picked," which could trigger the Order Ready phase too early — alterations items are now excluded from that calculation.
+
+**Fulfillment**
+- Orders now automatically close out to "Fulfilled" once everything on them is picked/shipped, instead of sitting in "In Fulfillment" indefinitely with no defined end state.
+- Pending: still need to review with Julia whether the "Shipped" tracking fields (shipped status, shipped percentage) should be kept or removed — they aren't driving anything today.
+
+**Recap**
+- Fixed a bug where the Wedding Date shown on the main list could be out of sync with (and older than) the correct date shown on the individual client's page — the list now always reads the same, current value.
+- The individual client page now shows Sales Associate and Appointment Time, which were missing.
+- Fixed a bug where Appointment Time and Consultation Appointment could show the wrong hour (or even the wrong day) depending on the viewer's own timezone, instead of always showing studio time.
+- The individual client page's size fields are now "Ready-to-Wear Size" and "Size (Acuity Intake)," both editable — replacing an "Order Size" field that looked editable but wasn't actually saving.
+
+**Sample Tracker**
+- The risk-alerts panel now only considers Consultation appointments, not fittings/pickups/other appointment types.
+- Renamed the "Parent Style" field to "Style" throughout.
+
+**Customization Requests**
+- Renamed the "Workdesk" view to "Requests," to avoid reading as a near-duplicate of the "Approval" view next to it.
 
 **Sold Orders**
 - The order list now defaults to showing the most recently sold order first, instead of no particular order.
+
+## Week of Aug 10, 2026
+
+**Sample Tracker**
+- Close-size matching is live: when checking stock for a client's favorite style, the system now shows an exact-size match if one's in stock, close-size alternatives (one size up or down) if not, or a clear "no stock" state if nothing's close — instead of just a plain "in studio / missing" flag. Ties between equally-close options favor whichever sample is actually in-studio over one that's away or at a trunk show.
+- New "champion sample" automation: whenever a client's favorite styles change, the best-matching in-stock sample per style is automatically computed and saved to her record.
+- Sample-to-style linking is now required for new samples to show up correctly in matching — an initial cleanup pass relinked hundreds of existing samples to their correct style; a full pass across the remaining catalog is planned as a follow-up.
+- The Add Sample form's style picker now only shows actual parent styles, not customized variants, so staff can't accidentally attach a new sample to the wrong record.
+
+**Waitlist**
+- Milestone: the Waitlist is now a real, working part of the daily workflow instead of a spreadsheet-style list off to the side.
+- Active Waitlist leads now show up right inside Pipeline, alongside the regular sales stages — staff can see who's waiting without switching screens.
+- Staff can add a new bride to the Waitlist directly from Pipeline with a simple form, and open any Waitlist lead to view or update her details.
+- If a Waitlist lead's requested dates are typed in free text (e.g. "before July 27th" or "5/16 through 5/21"), the system now figures out her earliest available date automatically — no one has to manually enter it anymore.
+- New automatic email alert: if a Waitlist lead's requested date has already come and gone and she still hasn't been matched to a client, Julia gets notified right away with a direct link to review and act on it. This is in addition to the existing "coming up in the next 5 days" heads-up alert.
+- Waitlist leads who will never become clients can now be marked as an exception, which quietly removes them from Pipeline and from future alerts without deleting their history.
+- Once a Waitlist lead becomes an actual client, her original Waitlist details stay visible on her full profile, so that history isn't lost.
+- The full historical Waitlist (95 leads) is now live in the production system, with everyone who's already a known client automatically linked to their client record.
 
 ## Week of Aug 3, 2026
 

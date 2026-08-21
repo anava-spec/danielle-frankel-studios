@@ -1,51 +1,51 @@
 /*
 ================================================================================
 SCRIPT       : Fulfillment Backfill (one-time, manual run)
-BASE         : app6Q4xMZ1ngJxiV8 (sandbox) — publicar a appUC2NFAlURayLx9 luego
+BASE         : app6Q4xMZ1ngJxiV8 (sandbox) — publish to appUC2NFAlURayLx9 later
 TABLE SRC    : DF Clients (tblLLUlDgJ4ktzF7c)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
-TRIGGER      : ninguno — se corre manualmente una sola vez (botón / "Run script"
-               ad hoc), NO es una automation recurrente.
-VERSION      : 2.0.0 — reemplaza el join manual contra order_items (v1.0.0) por
-               la condición real de la automation en vivo "No Alts/Order Ready
-               - Update Phase to In Fulfillment" (wfl6hMhwI9gPuaNPX), confirmada
-               por Axel el 2026-07-22:
+TRIGGER      : none — run manually once (button / ad hoc "Run script"),
+               NOT a recurring automation.
+VERSION      : 2.0.0 — replaces the manual join against order_items (v1.0.0)
+               with the real condition from the live automation "No Alts/Order
+               Ready - Update Phase to In Fulfillment" (wfl6hMhwI9gPuaNPX),
+               confirmed by Axel on 2026-07-22:
                  stage = "Order Ready" AND "Alterations In House" = FALSE
-               más el nuevo campo booleano fldWaqPw2BO4XQIbX (formula en DF
-               Clients: TRUE si alguno de los Shopify Orders del cliente tiene
-               un order_item categoría ALTERATIONS, vía rollup encadenado
+               plus the new boolean field fldWaqPw2BO4XQIbX (formula on DF
+               Clients: TRUE if any of the client's Shopify Orders has an
+               order_item in category ALTERATIONS, via a chained rollup
                Shopify Order # -> Orders-Shopify -> order_items.style_category).
-               Ya no hace falta leer order_items directamente — este campo lo
-               resuelve a nivel de cliente. Axel validó con una filter view en
-               Airtable que estas 3 condiciones dan 308 clientes.
+               No longer necessary to read order_items directly — this field
+               resolves it at the client level. Axel validated with a filter
+               view in Airtable that these 3 conditions yield 308 clients.
 
 OBJECTIVE
-  Adelanta a "In Fulfillment" a cualquier cliente que ya cumpla la condición
-  real de la automation en vivo pero no la haya recibido (p.ej. porque la
-  automation no existía o no corrió cuando el cliente alcanzó esas
-  condiciones — mismo motivo que order_ready_backfill.js).
+  Advances to "In Fulfillment" any client who already meets the live
+  automation's real condition but never received it (e.g. because the
+  automation didn't exist yet or didn't run when the client hit those
+  conditions — same reason as order_ready_backfill.js).
 
-  Para cada cliente en DF Clients:
-    1. stage actual == "Order Ready" (exactamente — no se toca ningún otro
-       stage; nunca se retrocede ni se salta un stage).
-       Y
+  For each client in DF Clients:
+    1. current stage == "Order Ready" (exactly — no other stage is touched;
+       never moves backward or skips a stage).
+       AND
     2. "Alterations In House" (fldNjcDXIaGPGY1E6) == FALSE.
-       Y
-    3. fldWaqPw2BO4XQIbX (¿tiene un order item categoría ALTERATIONS?) == FALSE.
+       AND
+    3. fldWaqPw2BO4XQIbX (does it have an ALTERATIONS-category order item?) == FALSE.
 
-  Si el cliente califica:
-    - Actualiza DF Clients.stage a "In Fulfillment".
+  If the client qualifies:
+    - Updates DF Clients.stage to "In Fulfillment".
 
-  DRY_RUN: viene de input.config().dryRun (Input variable del script step, no
-  hardcodeado) — por defecto TRUE si no se pasa. Revisar el log_summary
-  (debería reportar ~308 clientes calificando, según la filter view de Axel),
-  y si el resultado se ve correcto, correr de nuevo pasando dryRun=false en el
-  panel de Input variables para aplicar los cambios.
+  DRY_RUN: comes from input.config().dryRun (a script-step Input variable,
+  not hardcoded) — defaults to TRUE if not passed. Review the log_summary
+  (should report ~308 qualifying clients, per Axel's filter view), and if
+  the result looks correct, run again passing dryRun=false in the Input
+  variables panel to apply the changes.
 
 OUTPUT
-  Imprime en consola (via Logger) el resumen: clientes en Order Ready
-  escaneados, cuántos calificaron, cuántos se actualizaron (o se hubieran
-  actualizado en dry run), y el detalle de cada actualización/omisión.
+  Prints a summary to the console (via Logger): clients in Order Ready
+  scanned, how many qualified, how many were updated (or would have been
+  updated in dry run), and the detail of each update/skip.
 ================================================================================
 */
 
@@ -60,22 +60,22 @@ const TABLE_IDS = {
 const FIELDS_CLIENTS = {
   stage:                  'fldLcxVZvI1rigBlh', // singleSelect
   alterations_in_house:   'fldNjcDXIaGPGY1E6', // checkbox
-  has_alterations_item:   'fldWaqPw2BO4XQIbX', // formula (checkbox result) — TRUE si algún order item es ALTERATIONS
+  has_alterations_item:   'fldWaqPw2BO4XQIbX', // formula (checkbox result) — TRUE if any order item is ALTERATIONS
 };
 
-// input.config() se llama una sola vez, scope global, antes del try —
-// dryRun es un Input variable opcional del "Run script" step. Airtable pasa
-// las Input variables como texto (string "false"/"true"), no boolean, así
-// que se compara como string — String(undefined) = "undefined", por lo que
-// si no se configura el input, cae en el default TRUE (nunca escribe por
-// accidente).
+// input.config() is called once, global scope, before the try block —
+// dryRun is an optional Input variable on the "Run script" step. Airtable
+// passes Input variables as text (string "false"/"true"), not boolean, so
+// it's compared as a string — String(undefined) = "undefined", so if the
+// input isn't configured it falls back to the TRUE default (never writes
+// by accident).
 const cfg = input.config();
 
 const CONFIG = {
   LOG_LEVEL:    'B',              // A=minimal | B=audit (default) | C=debug
   SOURCE_STAGE: 'Order Ready',
   TARGET_STAGE: 'In Fulfillment',
-  DRY_RUN:      String(cfg.dryRun) !== 'false',  // pasa dryRun=false explícitamente para escribir de verdad
+  DRY_RUN:      String(cfg.dryRun) !== 'false',  // pass dryRun=false explicitly to actually write
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ class ClientsRepository {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// QUALIFICATION LOGIC — lógica pura, sin llamadas a Airtable
+// QUALIFICATION LOGIC — pure logic, no Airtable calls
 // ─────────────────────────────────────────────────────────────────────────────
 
 function qualifies(client, logger) {

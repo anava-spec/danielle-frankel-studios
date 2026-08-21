@@ -13,6 +13,13 @@ import {
   X as XIcon,
   ChatCircleText as ChatCircleTextIcon,
   Paperclip as PaperclipIcon,
+  Plus as PlusIcon,
+  MagnifyingGlassPlus as MagnifyingGlassPlusIcon,
+  MagnifyingGlassMinus as MagnifyingGlassMinusIcon,
+  DownloadSimple as DownloadSimpleIcon,
+  CaretLeft as CaretLeftIcon,
+  CaretRight as CaretRightIcon,
+  ArrowsOut as ArrowsOutIcon,
 } from '@phosphor-icons/react';
 
 // ─── WRITE QUEUE (safe sequential writes) ────────────────────────────────────
@@ -83,14 +90,18 @@ function useTheme() {
 // ─── FIELD / TABLE IDS ────────────────────────────────────────────────────────
 const FIELD_IDS = {
   SAMPLE: {
-    LABEL:     'fldY8RGD6wRe673Lh', // formula: StyleName - S - Size (read-only)
-    STYLE_NAME:'fldey0Dj1iCDrk9iz', // singleLineText
+    LABEL:      'fldY8RGD6wRe673Lh', // formula: ParentStyleName||StyleNameLegacy - S - Size (read-only)
+    STYLE_NAME_LEGACY: 'fldey0Dj1iCDrk9iz', // singleLineText — renamed from "Style Name"; fallback/legacy-only, not used for new samples
+    PARENT_STYLE:      'fldFWWLHDvxG0gtkH', // multipleRecordLinks → DF Styles (tbl0hWIRBbcB4UkVC) — THE way new samples get their style
+    PARENT_STYLE_NAME: 'fldX5HLW1J4bRoZY0', // lookup (read-only) — linked DF Styles record's Style Name; use for display
     SIZE:      'fldWEXxkqlC7EHCpL', // singleSelect
     LOCATION:  'fldPHYcHjncDy3JTG', // singleSelect
     TYPE:      'fld00hfqAy5lUGote', // singleSelect: Garment, Shoes, Accessories
     NOTES:     'fldDOwmisGyOOKN7O', // multilineText
     LOCATION_BUCKET: 'fldjLf5XSWEwsmdYh', // formula: In Studio / Trunk Show / Away — displayed as the "Location" badge
-    STATUS:    'fldGUFM9bxpEGrwtj', // singleSelect — real Status field, editable
+    STATUS:    'fldGUFM9bxpEGrwtj', // singleSelect — real Status field, editable (also doubles as the Retire flag: Active/Retired)
+    PHOTO:     'fld6QCh4Mhb5ayf3H', // multipleAttachments
+    // NOTE: fldZ7FUzHZ6KwVeNF ("Condition (Legacy - Unused)") is DEAD — never read or written anymore.
   },
   APPT: {
     APPOINTMENT_TIME: 'fldL7kYvgkmyhGniX',
@@ -98,18 +109,53 @@ const FIELD_IDS = {
     FAVORITE_STYLES:  'fldCPhdJ885D7ytOf',
     STATUS:           'fldZTkJdTBhmcchTb',
     SA_NAME:          'fldAopgXS7Zw42ZgV', // multipleLookupValues → SA name string
+    TYPE:             'fldZO3rF3KOGxG0S5', // singleSelect — same field/table recap.tsx's isConsultation() reads
   },
   CLIENT: {
     FULL_NAME:        'fldB3Wyam01D3wR5Q',
-    READY_TO_WEAR_SIZE:'fldEEH4CK3Qqp0g0C',
+    // Source of truth for RTW size matching — formula: falls back to Size from
+    // Acuity Intake when ready_to_wear_size_manual is blank (manual entry is
+    // rare). Read this field for matching; never read READY_TO_WEAR_SIZE_MANUAL
+    // directly.
+    READY_TO_WEAR_SIZE: 'fldSwfR25uvynWKI5', // formula
+    READY_TO_WEAR_SIZE_MANUAL: 'fldEEH4CK3Qqp0g0C', // number — raw manual entry, superseded by READY_TO_WEAR_SIZE above
+    FAVORITE_STYLES:  'fldZzNR0g5VEJ5RmX', // multipleRecordLinks → DF Styles — same field the Champion Match automation watches
+    CHAMPION_SAMPLES: 'fldEDcL6wGGmUt6ni', // multipleRecordLinks → Sample Log — written by the Champion Match automation
+  },
+  DF_STYLES: {
+    STYLE_NAME: 'fldEs3chQAeplPc1w', // singleLineText
+    IS_PARENT_STYLE: 'fldahgBBH19TcIPzi', // checkbox — only parent styles are selectable in the parent_style picker
+  },
+  CONDITION_HISTORY: {
+    SAMPLE_LINK: 'fldg7B8fEq7qwWhGU', // multipleRecordLinks → Sample Log
+    CONDITION:   'fldfhYBhOYkx1vDno', // singleSelect: Good Condition / Damaged / Needing Repair
+    PHOTO:       'fldmMmH2plMFThEWk', // multipleAttachments
+    NOTES:       'fldtXZ0o9qVpSAkPG', // multilineText
+    LOGGED_AT:   'fldzrWV01dC1upKmu', // formula: CREATED_TIME() — sort by this, most recent first
   },
 } as const;
 
 const TABLE_IDS = {
-  SAMPLE_LOG:   'tbloFb2w2SANfkDQy',
-  APPOINTMENTS: 'tblvV7uKTCaFFekoR',
-  CLIENTS:      'tblLLUlDgJ4ktzF7c',
+  SAMPLE_LOG:        'tbloFb2w2SANfkDQy',
+  APPOINTMENTS:      'tblvV7uKTCaFFekoR',
+  CLIENTS:           'tblLLUlDgJ4ktzF7c',
+  DF_STYLES:         'tbl0hWIRBbcB4UkVC',
+  CONDITION_HISTORY: 'tblCeawyDvoWBj2hQ',
+  RESOURCES:         'tblFa56lQwVacMXto',
 } as const;
+
+// resources table (tblFa56lQwVacMXto) — small shared-asset table, read live via
+// the Blocks SDK rather than baked into source, because sandbox and production
+// are different Airtable bases with independently-editable resources records
+// holding different URLs for the same logical resource (same pattern as
+// recap.tsx's attachments_form_url).
+const RESOURCES_FIELD_IDS = {
+  URL: 'fldMDIAqAjpwUvtWF', // plain url field
+} as const;
+// The resources record holding the Sample Condition History Form's share URL —
+// resolved by NAME (not a hardcoded per-environment record ID), since this is
+// one shared record whose URL field gets edited directly per environment.
+const CONDITION_FORM_RESOURCE_NAME = 'sample_condition_entry_form';
 
 // ─── KNOWN SELECT OPTIONS (from DBML) ────────────────────────────────────────
 const LOCATION_OPTIONS = [
@@ -121,6 +167,7 @@ const SIZE_OPTIONS = [
   'XS', 'S', 'M', 'L', 'XXL', 'OS', 'OS 2', 'OS 8',
 ];
 const TYPE_OPTIONS = ['Garment', 'Shoes', 'Accessories'];
+const CONDITION_OPTIONS = ['Good Condition', 'Damaged', 'Needing Repair'];
 const ALERT_TYPE_OPTIONS = ['Style not in studio', 'Client size missing', 'No styles on file'];
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
@@ -414,15 +461,324 @@ function FeedbackModal({ base, onClose, tok }: { base: ReturnType<typeof useBase
   );
 }
 
+// ─── RECORD SELECT (InlineSelect variant for {id,label} options w/ typeahead) ──
+interface RecordOption { id: string; label: string; }
+interface RecordSelectProps {
+  value: string | null; // selected record id
+  options: RecordOption[];
+  onChange: (id: string) => void;
+  placeholder?: string;
+  tok: Tok;
+  escapeModal?: boolean;
+}
+function RecordSelect({ value, options, onChange, placeholder = 'Select…', tok, escapeModal = false }: RecordSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const ITEM_HEIGHT = 34;
+  const MAX_VISIBLE = 8;
+
+  const selected = options.find(o => o.id === value) ?? null;
+  const filtered = query.trim()
+    ? options.filter(o => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+
+  const handleOpen = () => {
+    if (escapeModal && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const idealHeight = Math.min(filtered.length || 1, MAX_VISIBLE) * ITEM_HEIGHT + 40;
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 3,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 60,
+        maxHeight: Math.min(idealHeight, spaceBelow),
+        overflowY: 'auto',
+      });
+    }
+    setQuery('');
+    setOpen(o => !o);
+  };
+
+  const baseListStyle = {
+    background: tok.surface, border: `1px solid ${tok.border}`,
+    borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '3px 0',
+  };
+  const listStyle: React.CSSProperties = escapeModal
+    ? { ...dropdownStyle, ...baseListStyle, display: 'flex', flexDirection: 'column' }
+    : {
+        position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 20,
+        maxHeight: `${MAX_VISIBLE * ITEM_HEIGHT + 46}px`, overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        ...baseListStyle,
+      };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={handleOpen}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
+          width: '100%', padding: '7px 10px', cursor: 'pointer',
+          background: tok.surface,
+          border: `1px solid ${open ? tok.input_focus : tok.input_border}`,
+          borderRadius: '8px', fontSize: '13px',
+          color: selected ? tok.text_primary : tok.text_muted,
+          transition: 'border-color 0.15s',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected?.label ?? placeholder}</span>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div style={listStyle}>
+          <input
+            type="text"
+            autoFocus
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            placeholder="Type to filter…"
+            style={{
+              margin: '4px 6px 4px', boxSizing: 'border-box',
+              padding: '6px 8px', borderRadius: '6px',
+              border: `1px solid ${tok.input_border}`, background: tok.surface,
+              color: tok.text_primary, fontSize: '12px', outline: 'none', fontFamily: 'inherit',
+              flexShrink: 0,
+            }}
+          />
+          <div style={{ overflowY: 'auto' }}>
+            {filtered.length === 0 && (
+              <div style={{ padding: '8px 10px', fontSize: '12px', color: tok.text_muted }}>No matches</div>
+            )}
+            {filtered.map(opt => {
+              const isSel = opt.id === value;
+              return (
+                <div
+                  key={opt.id}
+                  onClick={() => { onChange(opt.id); setOpen(false); }}
+                  style={{
+                    padding: '7px 10px', cursor: 'pointer', fontSize: '13px',
+                    background: isSel ? tok.accent_subtle : 'transparent',
+                    color: isSel ? tok.accent : tok.text_primary, fontWeight: isSel ? 600 : 400,
+                  }}
+                  onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isSel ? tok.accent_subtle : 'transparent'; }}
+                >
+                  {opt.label}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ADD SAMPLE MODAL ─────────────────────────────────────────────────────────
+interface AddSampleModalProps {
+  base: ReturnType<typeof useBase>;
+  sampleTable: Table;
+  onClose: () => void;
+  tok: Tok;
+}
+function AddSampleModal({ base, sampleTable, onClose, tok }: AddSampleModalProps) {
+  const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
+  const dfStylesRecords = useRecords(dfStylesTable ?? null);
+  // Parent-style constraint: only records with is_parent_style checked are
+  // selectable here — variants (e.g. "-customized") are excluded.
+  const styleOptions: RecordOption[] = useMemo(() => {
+    if (!dfStylesRecords) return [];
+    return dfStylesRecords
+      .filter(r => r.getCellValue(FIELD_IDS.DF_STYLES.IS_PARENT_STYLE) === true)
+      .map(r => ({ id: r.id, label: r.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)' }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [dfStylesRecords]);
+
+  const [parentStyleId, setParentStyleId] = useState<string | null>(null);
+  const [size, setSize] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
+  const [location, setLocation] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ parentStyle?: string; size?: string; type?: string }>({});
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const handleSave = async () => {
+    const errs: { parentStyle?: string; size?: string; type?: string } = {};
+    if (!parentStyleId) errs.parentStyle = 'Style is required';
+    if (!size) errs.size = 'Size is required';
+    if (!type) errs.type = 'Type is required';
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    setError(null);
+    setSubmitting(true);
+    const fields: Record<string, unknown> = {
+      [FIELD_IDS.SAMPLE.PARENT_STYLE]: [{ id: parentStyleId }],
+      [FIELD_IDS.SAMPLE.SIZE]: { name: size },
+      [FIELD_IDS.SAMPLE.TYPE]: { name: type },
+      [FIELD_IDS.SAMPLE.STATUS]: { name: 'Active' },
+    };
+    if (location) fields[FIELD_IDS.SAMPLE.LOCATION] = { name: location };
+    if (notes.trim()) fields[FIELD_IDS.SAMPLE.NOTES] = notes.trim();
+
+    try {
+      await queueWrite(() => sampleTable.createRecordAsync(fields));
+      onClose();
+    } catch (e: unknown) {
+      console.error('Failed to create sample', e);
+      setError(e instanceof Error ? e.message : 'Failed to save sample');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const fieldLabelStyle: React.CSSProperties = {
+    fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.07em', marginBottom: '5px',
+  };
+  const inputBoxStyle: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: '8px',
+    border: `1px solid ${tok.input_border}`, background: tok.surface, color: tok.text_primary,
+    fontSize: '13px', outline: 'none', fontFamily: 'inherit',
+  };
+  const errorTextStyle: React.CSSProperties = { fontSize: '11px', color: '#EF4444', marginTop: '4px' };
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9700,
+        background: tok.overlay, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: tok.surface, border: `1px solid ${tok.border}`, borderRadius: '14px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)', width: '460px', maxWidth: 'calc(100vw - 32px)',
+          maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${tok.border}`, flexShrink: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: tok.text_primary }}>Add Sample</div>
+          <div style={{ fontSize: '12px', color: tok.text_secondary, marginTop: '2px' }}>New samples are added as Active.</div>
+        </div>
+
+        <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <div style={fieldLabelStyle}>Style *</div>
+            <RecordSelect
+              value={parentStyleId}
+              options={styleOptions}
+              onChange={setParentStyleId}
+              placeholder="Select a style…"
+              tok={tok}
+              escapeModal
+            />
+            {fieldErrors.parentStyle && <div style={errorTextStyle}>{fieldErrors.parentStyle}</div>}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <div style={fieldLabelStyle}>Size *</div>
+              <InlineSelect value={size} options={SIZE_OPTIONS} onChange={setSize} tok={tok} escapeModal />
+              {fieldErrors.size && <div style={errorTextStyle}>{fieldErrors.size}</div>}
+            </div>
+            <div>
+              <div style={fieldLabelStyle}>Type *</div>
+              <InlineSelect value={type} options={TYPE_OPTIONS} onChange={setType} tok={tok} escapeModal />
+              {fieldErrors.type && <div style={errorTextStyle}>{fieldErrors.type}</div>}
+            </div>
+          </div>
+
+          <div>
+            <div style={fieldLabelStyle}>Location</div>
+            <InlineSelect value={location} options={LOCATION_OPTIONS} onChange={setLocation} tok={tok} escapeModal />
+          </div>
+
+          <div>
+            <div style={fieldLabelStyle}>Notes</div>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Add notes…"
+              style={{ ...inputBoxStyle, resize: 'vertical', lineHeight: 1.5 }}
+            />
+          </div>
+
+          {error && <div style={{ fontSize: '12px', color: '#EF4444' }}>{error}</div>}
+        </div>
+
+        <div style={{ padding: '14px 18px', borderTop: `1px solid ${tok.border}`, display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '8px 14px', fontSize: '13px', borderRadius: '8px', border: 'none',
+              background: 'transparent', color: tok.text_secondary, cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={submitting}
+            style={{
+              padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', border: 'none',
+              background: tok.accent, color: tok === DARK ? '#1B1813' : '#FFFFFF',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              opacity: submitting ? 0.5 : 1,
+            }}
+          >
+            {submitting ? 'Saving…' : 'Save sample'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type LocationStatus = 'in-studio' | 'at trunk show' | 'away';
 type TimePeriod = 'today' | '7' | '14' | '30' | 'all';
 
+// Close-size matching state per requested style — 'exact' and 'close' are not
+// mutually exclusive in what's collected (both arrays are always populated),
+// but matchState reflects the best available state for the summary badge.
+// An exact match, when present, must remain visible even if close alternatives
+// also exist — see StyleMatch rendering in RiskCard.
+type MatchState = 'exact' | 'close' | 'none';
 interface StyleMatch {
-  style: string;
-  inStudio: boolean;
-  bestSample: Record | null; // best in-studio match
-  anySample: Record | null;  // any sample of this style (for modal on missing rows)
-  distance: number | null;
+  styleId: string;
+  style: string; // DF Styles record's Style Name — display label
+  matchState: MatchState;
+  exactMatches: Record[];  // distance === 0, in-studio first
+  closeMatches: Record[];  // 0 < distance <= CLOSE_SIZE_THRESHOLD, in-studio first
+  bestSample: Record | null; // exactMatches[0] ?? closeMatches[0] — used to open the detail modal
+  anySample: Record | null;  // any linked sample (any status/distance) — modal fallback when there's no stock
+  inStudio: boolean; // true if bestSample is in-studio (kept for the existing "not in studio" summary line)
+  distance: number | null; // distance of bestSample, if any
 }
 interface RiskAlert {
   apptRecord: Record;
@@ -440,11 +796,27 @@ function deriveLocationStatus(loc: string | null): LocationStatus {
   if (loc === 'Trunk Show') return 'at trunk show';
   return 'away';
 }
-function sizeToNumber(s: string | null): number | null {
-  if (!s) return null;
-  const t = s.trim();
-  if (t === 'OS' || t === 'OS ') return 0;
-  const n = parseInt(t, 10);
+// Size → numeric position on the matching axis. European sizes are their own
+// axis (35–42) and never cross-match against the US/letter axis.
+const SIZE_ORDER: Record<string, number> = {
+  'OS': 0, 'XS': 0, '0': 0,
+  '2': 2,
+  '4': 4, 'S': 4,
+  '6': 6,
+  '8': 8, 'M': 8,
+  '10': 10,
+  '12': 12, 'L': 12,
+  '14': 14, 'XL': 14,
+  '16': 16, 'XXL': 16,
+  '35': 35, '36': 36, '37': 37, '38': 38, '38.5': 38.5,
+  '39': 39, '39.5': 39.5, '40': 40, '41': 41, '42': 42,
+};
+const CLOSE_SIZE_THRESHOLD = 1; // ±1 step on the numeric axis
+function sizeToNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  const t = raw.trim().toUpperCase();
+  if (t in SIZE_ORDER) return SIZE_ORDER[t];
+  const n = parseFloat(t);
   return isNaN(n) ? null : n;
 }
 function getLocationValue(r: Record): string | null {
@@ -453,6 +825,15 @@ function getLocationValue(r: Record): string | null {
   if (typeof v === 'string') return v;
   if (typeof v === 'object' && 'name' in (v as object)) return (v as any).name;
   return null;
+}
+// Effective style name for search/sort/display/alert-matching — mirrors the
+// LABEL formula's own precedence (Parent Style Name, falling back to Style
+// Name Legacy). Samples created via the Parent Style picker never populate
+// Style Name Legacy, so any code that read that field directly would treat
+// every new sample as nameless/unmatched. Use this everywhere instead of
+// reading FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY on its own.
+function getEffectiveStyleName(r: Record): string {
+  return r.getCellValueAsString(FIELD_IDS.SAMPLE.PARENT_STYLE_NAME) || r.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY);
 }
 // Status choice names/colors are read live from the field itself (not
 // hardcoded), so they stay correct if choices are added/recolored later.
@@ -499,6 +880,13 @@ function alertTypeLabel(alert: RiskAlert): string {
   if (alert.missingData === 'no-styles') return 'No styles on file';
   if (alert.missingData === 'no-size') return 'Client size missing';
   return 'Style not in studio';
+}
+// Substring match (case-insensitive), same convention as recap.tsx's own
+// isConsultation() reading the same Appointments field (fldZO3rF3KOGxG0S5) —
+// this page's risk alerts should only ever surface future Consultation
+// appointments, per request (2026-08-07), not fittings/pickups/etc.
+function isConsultation(label: string): boolean {
+  return label.toLowerCase().includes('consultation');
 }
 
 // ─── CHEVRON / CHECK ICONS ────────────────────────────────────────────────────
@@ -937,16 +1325,228 @@ function LocationBadge({ status, tok }: { status: LocationStatus; tok: Tok }) {
   );
 }
 
+// ─── CONDITION BADGE (Sample Condition History) ──────────────────────────────
+const CONDITION_BADGE_COLORS: Record<string, { bg: string; text: string }> = {
+  'Good Condition':  { bg: '#D1FAE5', text: '#065F46' },
+  'Damaged':         { bg: '#FEE2E2', text: '#991B1B' },
+  'Needing Repair':  { bg: '#FEF3C7', text: '#92400E' },
+};
+// ─── IMAGE LIGHTBOX (in-app full-size preview, zoom/download/cycle) ───────────
+// No delete action here, by design — Condition History is an append-only
+// audit log (staff shouldn't be able to remove condition-check evidence
+// from in-app), so this viewer only ever downloads/zooms/navigates.
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 6;
+interface ZoomableImageProps { src: string; alt?: string; }
+function ZoomableImage({ src, alt }: ZoomableImageProps) {
+  const [scale, setScale] = useState(1);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+
+  useEffect(() => { setScale(1); setTx(0); setTy(0); }, [src]);
+
+  // Pan with window-level listeners so movement stays 1:1 and never drops
+  // frames when the pointer leaves the image while dragging.
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e: PointerEvent) => {
+      setTx(start.current.tx + (e.clientX - start.current.x));
+      setTy(start.current.ty + (e.clientY - start.current.y));
+    };
+    const up = () => setDragging(false);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, [dragging]);
+
+  const clamp = (s: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s));
+  const setZoom = (next: number) => {
+    const ns = clamp(next);
+    setScale(ns);
+    if (ns === 1) { setTx(0); setTy(0); }
+  };
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // Only zoom with Ctrl/Cmd held (trackpad pinch also reports ctrlKey) —
+    // plain scroll should still scroll the page/modal, not hijack zoom.
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom(scale + (e.deltaY < 0 ? 0.35 : -0.35));
+  };
+  const onDoubleClick = () => setZoom(scale > 1 ? 1 : 2.5);
+  const onPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (scale <= 1) return;
+    e.preventDefault();
+    start.current = { x: e.clientX, y: e.clientY, tx, ty };
+    setDragging(true);
+  };
+
+  const ctrlBtnStyle: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: '6px', borderRadius: '6px', border: 'none', background: 'transparent',
+    color: 'rgba(255,255,255,0.9)', cursor: 'pointer',
+  };
+  const zoomed = scale > 1;
+  const SQUARE = 'min(90vw, 80vh)';
+
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      onWheel={onWheel}
+      style={{
+        position: 'relative', overflow: 'hidden', borderRadius: '10px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.4)', touchAction: 'none',
+        display: zoomed ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        ...(zoomed ? { width: SQUARE, height: SQUARE } : {}),
+      }}
+    >
+      <img
+        src={src}
+        alt={alt ?? ''}
+        draggable={false}
+        onDoubleClick={onDoubleClick}
+        onPointerDown={onPointerDown}
+        style={{
+          display: 'block', objectFit: 'contain', userSelect: 'none',
+          maxWidth: zoomed ? '100%' : 'min(90vw, 1200px)', maxHeight: zoomed ? '100%' : '80vh',
+          transform: `translate(${tx}px, ${ty}px) scale(${scale})`, transformOrigin: 'center center',
+          cursor: scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
+          transition: dragging ? 'none' : 'transform 0.12s ease-out',
+        }}
+      />
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)',
+          display: 'flex', alignItems: 'center', gap: '2px', padding: '2px',
+          background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', borderRadius: '9px',
+        }}
+      >
+        <button type="button" onClick={() => setZoom(scale - 0.5)} disabled={scale <= ZOOM_MIN} aria-label="Zoom out" style={{ ...ctrlBtnStyle, opacity: scale <= ZOOM_MIN ? 0.3 : 1 }}>
+          <MagnifyingGlassMinusIcon size={16} />
+        </button>
+        <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px', fontWeight: 600, width: '42px', textAlign: 'center' }}>
+          {Math.round(scale * 100)}%
+        </span>
+        <button type="button" onClick={() => setZoom(scale + 0.5)} disabled={scale >= ZOOM_MAX} aria-label="Zoom in" style={{ ...ctrlBtnStyle, opacity: scale >= ZOOM_MAX ? 0.3 : 1 }}>
+          <MagnifyingGlassPlusIcon size={16} />
+        </button>
+        <button type="button" onClick={() => setZoom(1)} disabled={scale === 1} aria-label="Reset zoom" style={{ ...ctrlBtnStyle, opacity: scale === 1 ? 0.3 : 1 }}>
+          <ArrowsOutIcon size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface ImageLightboxImage { url: string; filename?: string; }
+interface ImageLightboxProps {
+  images: ImageLightboxImage[];
+  startIndex: number;
+  onClose: () => void;
+  tok: Tok;
+}
+function ImageLightbox({ images, startIndex, onClose, tok }: ImageLightboxProps) {
+  const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(images.length - 1, 0)));
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && index > 0) setIndex(i => i - 1);
+      if (e.key === 'ArrowRight' && index < images.length - 1) setIndex(i => i + 1);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose, index, images.length]);
+
+  if (images.length === 0) return null;
+  const current = images[index];
+
+  const iconButtonStyle: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+    padding: '8px 12px', borderRadius: '8px', border: 'none',
+    background: 'rgba(255,255,255,0.12)', color: '#F5F0E8', fontSize: '12px', fontWeight: 600,
+    cursor: 'pointer', textDecoration: 'none',
+  };
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9800, padding: '16px',
+        background: tok.overlay, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: '16px',
+      }}
+    >
+      <button type="button" onClick={onClose} aria-label="Close" style={{ ...iconButtonStyle, position: 'absolute', top: '16px', right: '16px', padding: '8px' }}>
+        <XIcon size={18} />
+      </button>
+
+      {index > 0 && (
+        <button
+          type="button"
+          onClick={() => setIndex(i => i - 1)}
+          aria-label="Previous"
+          style={{ ...iconButtonStyle, position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', padding: '10px', borderRadius: '999px' }}
+        >
+          <CaretLeftIcon size={18} />
+        </button>
+      )}
+      {index < images.length - 1 && (
+        <button
+          type="button"
+          onClick={() => setIndex(i => i + 1)}
+          aria-label="Next"
+          style={{ ...iconButtonStyle, position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', padding: '10px', borderRadius: '999px' }}
+        >
+          <CaretRightIcon size={18} />
+        </button>
+      )}
+
+      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', maxWidth: '100%', maxHeight: '100%' }}>
+        <p style={{ fontSize: '13px', fontWeight: 600, color: '#F5F0E8', opacity: 0.9, maxWidth: '80vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>
+          {current.filename ?? 'Photo'}{images.length > 1 ? <span style={{ opacity: 0.6 }}> · {index + 1}/{images.length}</span> : null}
+        </p>
+        <ZoomableImage src={current.url} alt={current.filename ?? ''} />
+        <a href={current.url} download={current.filename ?? 'photo'} style={{ ...iconButtonStyle, background: 'rgba(255,255,255,0.15)' }}>
+          <DownloadSimpleIcon size={16} /> Download
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function ConditionBadge({ value, tok }: { value: string | null; tok: Tok }) {
+  const c = value ? (CONDITION_BADGE_COLORS[value] ?? { bg: tok.badge_away, text: tok.badge_away_text }) : null;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: '999px',
+      background: c ? c.bg : tok.badge_away, color: c ? c.text : tok.badge_away_text,
+      fontSize: '11px', fontWeight: 600,
+    }}>
+      {value || '—'}
+    </span>
+  );
+}
+
 // ─── SAMPLE DETAIL MODAL (editable per AC) ────────────────────────────────────
 interface SampleDetailModalProps {
+  base: ReturnType<typeof useBase>;
   record: Record;
   sampleTable: Table;
   statusFieldOptions: string[];
   statusColorMap: Record<string, string>;
+  conditionFormUrl: string | null;
   onClose: () => void;
   tok: Tok;
 }
-function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColorMap, onClose, tok }: SampleDetailModalProps) {
+function SampleDetailModal({ base, record, sampleTable, statusFieldOptions, statusColorMap, conditionFormUrl, onClose, tok }: SampleDetailModalProps) {
   // ── Read initial values ──
   const getStr = (fid: string) => record.getCellValueAsString(fid) || '';
   const getSingleSelectName = (fid: string): string | null => {
@@ -957,8 +1557,12 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColo
     return null;
   };
 
-  const label      = getStr(FIELD_IDS.SAMPLE.LABEL) || getStr(FIELD_IDS.SAMPLE.STYLE_NAME);
-  const [styleName, setStyleName] = useState(getStr(FIELD_IDS.SAMPLE.STYLE_NAME));
+  const label      = getStr(FIELD_IDS.SAMPLE.LABEL) || getStr(FIELD_IDS.SAMPLE.PARENT_STYLE_NAME) || getStr(FIELD_IDS.SAMPLE.STYLE_NAME_LEGACY);
+  const getRecordLinkId = (fid: string): string | null => {
+    const v = record.getCellValue(fid) as Array<{ id: string }> | null;
+    return v && v.length > 0 ? v[0].id : null;
+  };
+  const [parentStyleId, setParentStyleId] = useState<string | null>(getRecordLinkId(FIELD_IDS.SAMPLE.PARENT_STYLE));
   const [size,      setSize]      = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.SIZE));
   const [type,      setType]      = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.TYPE));
   const [locVal,    setLocVal]    = useState<string | null>(getLocationValue(record));
@@ -966,6 +1570,52 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColo
   const [statusVal, setStatusVal] = useState<string | null>(getSingleSelectName(FIELD_IDS.SAMPLE.STATUS));
 
   const canWrite = sampleTable.hasPermissionToUpdateRecords?.() ?? true;
+
+  // ── Parent Style options (DF Styles) — same source/pattern as AddSampleModal.
+  // Constrained to is_parent_style records, except the sample's own currently-linked
+  // style is always kept in the list (even if not a parent) so an existing link
+  // never renders blank/unlabeled when reopening this modal. ──
+  const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
+  const dfStylesRecords = useRecords(dfStylesTable ?? null);
+  const styleOptions: RecordOption[] = useMemo(() => {
+    if (!dfStylesRecords) return [];
+    return dfStylesRecords
+      .filter(r => r.getCellValue(FIELD_IDS.DF_STYLES.IS_PARENT_STYLE) === true || r.id === parentStyleId)
+      .map(r => ({ id: r.id, label: r.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)' }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [dfStylesRecords, parentStyleId]);
+
+  // ── Condition History (authoritative "current condition" — computed here
+  // from Sample Condition History sorted by Logged At, NOT from the rollup) ──
+  const conditionHistoryTable = base.getTableByIdIfExists(TABLE_IDS.CONDITION_HISTORY);
+  const conditionHistoryRecords = useRecords(conditionHistoryTable ?? null);
+  const conditionHistory = useMemo(() => {
+    if (!conditionHistoryRecords) return [];
+    return conditionHistoryRecords
+      .filter(r => {
+        const links = r.getCellValue(FIELD_IDS.CONDITION_HISTORY.SAMPLE_LINK) as Array<{ id: string }> | null;
+        return !!links?.some(l => l.id === record.id);
+      })
+      .sort((a, b) => {
+        const aT = (a.getCellValue(FIELD_IDS.CONDITION_HISTORY.LOGGED_AT) as string) ?? '';
+        const bT = (b.getCellValue(FIELD_IDS.CONDITION_HISTORY.LOGGED_AT) as string) ?? '';
+        return bT.localeCompare(aT); // most recent first
+      });
+  }, [conditionHistoryRecords, record.id]);
+
+  // ── Lightbox state — clicking a Condition History attachment thumbnail
+  // opens the in-app preview instead of a new browser tab ──
+  const [lightboxImages, setLightboxImages] = useState<{ images: Array<{ url: string; filename?: string }>; startIndex: number } | null>(null);
+
+  // Airtable Form prefill query params are keyed by the field's live display
+  // name (e.g. `prefill_sample`), not its field ID — read it from the field
+  // itself rather than hardcoding "Sample"/"sample", so a future rename of
+  // this field doesn't silently break the prefill link.
+  const conditionHistorySampleField = conditionHistoryTable?.getFieldIfExists(FIELD_IDS.CONDITION_HISTORY.SAMPLE_LINK) ?? null;
+  const conditionHistorySampleFieldName = conditionHistorySampleField?.name ?? 'sample';
+  const conditionFormFullUrl = conditionFormUrl
+    ? `${conditionFormUrl}?prefill_${encodeURIComponent(conditionHistorySampleFieldName)}=${record.id}&hide_${encodeURIComponent(conditionHistorySampleFieldName)}=true`
+    : null;
 
   const save = useCallback((patch: Record<string, unknown>) => {
     queueWrite(() => sampleTable.updateRecordAsync(record.id, patch))
@@ -988,8 +1638,9 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColo
     setStatusVal(val);
     save({ [FIELD_IDS.SAMPLE.STATUS]: { name: val } });
   };
-  const handleStyleName = () => {
-    save({ [FIELD_IDS.SAMPLE.STYLE_NAME]: styleName || null });
+  const handleParentStyle = (id: string) => {
+    setParentStyleId(id);
+    save({ [FIELD_IDS.SAMPLE.PARENT_STYLE]: [{ id }] });
   };
   const handleNotes = () => {
     save({ [FIELD_IDS.SAMPLE.NOTES]: notes || null });
@@ -1052,36 +1703,47 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColo
               {label}
             </div>
             <LocationBadge status={status} tok={tok} />
+            <button
+              type="button"
+              onClick={() => { if (conditionFormFullUrl) window.open(conditionFormFullUrl, '_blank'); }}
+              disabled={!conditionFormFullUrl}
+              style={{
+                marginLeft: 'auto', padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                borderRadius: '999px', cursor: conditionFormFullUrl ? 'pointer' : 'not-allowed',
+                border: `1px solid ${tok.border}`, background: 'transparent', color: tok.text_secondary,
+                opacity: conditionFormFullUrl ? 1 : 0.5,
+              }}
+            >
+              Register Condition
+            </button>
           </div>
+          {!conditionFormFullUrl && (
+            <div style={{ fontSize: '11px', color: tok.text_muted, marginTop: '6px' }}>
+              Condition form link not configured yet.
+            </div>
+          )}
         </div>
 
         {/* Body */}
         <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          {/* Style Name — full-width row */}
+          {/* Parent Style — full-width row (record picker over DF Styles; the
+              legacy free-text Style Name field is no longer shown/editable here) */}
           <div>
-            <FieldLabel>Style Name</FieldLabel>
+            <FieldLabel>Style</FieldLabel>
             {canWrite ? (
-              <input
-                type="text"
-                value={styleName}
-                onChange={e => setStyleName(e.target.value)}
-                onBlur={e => {
-                  (e.target as HTMLInputElement).style.borderColor = tok.input_border;
-                  handleStyleName();
-                }}
-                onFocus={e => { (e.target as HTMLInputElement).style.borderColor = tok.input_focus; }}
-                placeholder="Style name…"
-                style={{
-                  width: '100%', boxSizing: 'border-box',
-                  padding: '7px 10px', borderRadius: '8px',
-                  border: `1px solid ${tok.input_border}`,
-                  background: tok.surface, color: tok.text_primary,
-                  fontSize: '13px', outline: 'none', fontFamily: 'inherit',
-                }}
+              <RecordSelect
+                value={parentStyleId}
+                options={styleOptions}
+                onChange={handleParentStyle}
+                placeholder="Select a style…"
+                tok={tok}
+                escapeModal
               />
             ) : (
-              <div style={{ fontSize: '13px', color: tok.text_primary }}>{styleName || '—'}</div>
+              <div style={{ fontSize: '13px', color: tok.text_primary }}>
+                {styleOptions.find(o => o.id === parentStyleId)?.label ?? '—'}
+              </div>
             )}
           </div>
 
@@ -1156,6 +1818,74 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColo
             )}
           </div>
 
+          {/* Condition History — computed from Sample Condition History, sorted
+              by Logged At; the rollup on Sample Log is best-effort only and
+              NOT used here as the source of truth ── */}
+          <div>
+            <FieldLabel>Condition History</FieldLabel>
+            {conditionHistory.length === 0 ? (
+              <div style={{ fontSize: '12px', color: tok.text_muted, fontStyle: 'italic' }}>
+                No condition history yet.
+              </div>
+            ) : (
+              <div style={{ border: `1px solid ${tok.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '92px 1fr 1.4fr 48px',
+                  padding: '6px 10px', background: tok.surface_alt,
+                  fontSize: '10px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.06em',
+                }}>
+                  <div>DATE</div>
+                  <div>CONDITION</div>
+                  <div>NOTES</div>
+                  <div>PHOTO</div>
+                </div>
+                {conditionHistory.map((h, idx) => {
+                  const photos = (h.getCellValue(FIELD_IDS.CONDITION_HISTORY.PHOTO) as Array<{ id?: string; url: string; filename: string }> | null) ?? [];
+                  const noteStr = h.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.NOTES);
+                  return (
+                    <div
+                      key={h.id}
+                      style={{
+                        display: 'grid', gridTemplateColumns: '92px 1fr 1.4fr 48px',
+                        alignItems: 'center', gap: '4px', padding: '8px 10px',
+                        borderTop: idx === 0 ? 'none' : `1px solid ${tok.border}`,
+                        background: idx === 0 ? tok.row_hover : 'transparent',
+                      }}
+                    >
+                      <div style={{ fontSize: '11px', color: tok.text_secondary }}>
+                        {fmtDate((h.getCellValue(FIELD_IDS.CONDITION_HISTORY.LOGGED_AT) as string) ?? '')}
+                      </div>
+                      <div>
+                        <ConditionBadge value={h.getCellValueAsString(FIELD_IDS.CONDITION_HISTORY.CONDITION) || null} tok={tok} />
+                      </div>
+                      <div style={{ fontSize: '11px', color: noteStr ? tok.text_secondary : tok.text_muted }}>
+                        {noteStr ? truncate(noteStr, 60) : '—'}
+                      </div>
+                      <div>
+                        {photos.length > 0 ? (
+                          <img
+                            src={photos[0].url}
+                            alt={photos[0].filename}
+                            onClick={() => setLightboxImages({
+                              images: photos.map(p => ({ url: p.url, filename: p.filename })),
+                              startIndex: 0,
+                            })}
+                            style={{
+                              width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover',
+                              border: `1px solid ${tok.border}`, cursor: 'pointer',
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '13px', color: tok.text_muted }}>—</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {!canWrite && (
             <div style={{ fontSize: '11px', color: tok.text_muted, fontStyle: 'italic' }}>
               Read-only — interface needs write permissions to Sample Log.
@@ -1163,6 +1893,14 @@ function SampleDetailModal({ record, sampleTable, statusFieldOptions, statusColo
           )}
         </div>
       </div>
+      {lightboxImages && (
+        <ImageLightbox
+          images={lightboxImages.images}
+          startIndex={lightboxImages.startIndex}
+          onClose={() => setLightboxImages(null)}
+          tok={tok}
+        />
+      )}
     </div>
   );
 }
@@ -1175,10 +1913,27 @@ function SampleTracker() {
   const sampleTable = base.getTableByIdIfExists(TABLE_IDS.SAMPLE_LOG);
   const apptTable   = base.getTableByIdIfExists(TABLE_IDS.APPOINTMENTS);
   const clientTable = base.getTableByIdIfExists(TABLE_IDS.CLIENTS);
+  const dfStylesTable = base.getTableByIdIfExists(TABLE_IDS.DF_STYLES);
+  const resourcesTable = base.getTableByIdIfExists(TABLE_IDS.RESOURCES);
 
   const sampleRecords = useRecords(sampleTable ?? null);
   const apptRecords   = useRecords(apptTable ?? null);
   const clientRecords = useRecords(clientTable ?? null);
+  const dfStylesRecords = useRecords(dfStylesTable ?? null);
+  // useRecords — fall back to sampleTable to keep hook count stable
+  const _resourcesRaw    = useRecords(resourcesTable ?? sampleTable ?? null);
+  const resourcesRecords = resourcesTable ? _resourcesRaw : null;
+
+  // Condition Form URL (Sample Condition History) — resolved by resource
+  // record NAME, live, since sandbox/production hold different URL values
+  // on the same-named record. No hardcoded fallback: if the record isn't
+  // found yet, or its URL field is blank, this is null and the "Register
+  // Condition" button disables itself rather than opening a broken link.
+  const conditionFormResource = resourcesRecords?.find(r => r.name === CONDITION_FORM_RESOURCE_NAME) ?? null;
+  const fResourcesUrl = resourcesTable?.getFieldIfExists(RESOURCES_FIELD_IDS.URL) ?? null;
+  const conditionFormUrl = (conditionFormResource && fResourcesUrl)
+    ? (conditionFormResource.getCellValueAsString(fResourcesUrl) || null)
+    : null;
 
   // ── Status field (real singleSelect) — options/colors read live so the
   // selected chip stays correct if choices are added/recolored later ──
@@ -1202,6 +1957,7 @@ function SampleTracker() {
   const [alertTypeFilter, setAlertTypeFilter] = useState<string[]>([]);
   const [selectedSample, setSelectedSample] = useState<Record | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showAddSampleModal, setShowAddSampleModal] = useState(false);
 
   // ── Inventory filter options — "Location" filters the derived
   // In Studio / Trunk Show / Away bucket (same field the badge reads) ──
@@ -1250,7 +2006,7 @@ function SampleTracker() {
         const locVal      = getLocationValue(r);
         const locationVal = r.getCellValueAsString(FIELD_IDS.SAMPLE.LOCATION_BUCKET);
         const typeVal     = r.getCellValueAsString(FIELD_IDS.SAMPLE.TYPE);
-        const styleName   = r.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME);
+        const styleName   = getEffectiveStyleName(r);
 
         if (locationFilter.length > 0 && !locationFilter.includes(locationVal)) return false;
         if (typeFilter.length > 0 && !typeFilter.includes(typeVal)) return false;
@@ -1269,31 +2025,40 @@ function SampleTracker() {
         const la = deriveLocationStatus(getLocationValue(a));
         const lb = deriveLocationStatus(getLocationValue(b));
         if (ord[la] !== ord[lb]) return ord[la] - ord[lb];
-        return a.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME)
-          .localeCompare(b.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME));
+        return getEffectiveStyleName(a).localeCompare(getEffectiveStyleName(b));
       });
   }, [sampleRecords, locationFilter, typeFilter, sampleStatusFilter, search]);
 
-  // ── Pre-index in-studio samples by normalized style name (avoids O(N²) scan) ──
-  const inStudioByStyle = useMemo(() => {
-    if (!sampleRecords) return new Map<string, Record[]>();
-    const map = new Map<string, Record[]>();
+  // ── Pre-index samples by their linked parent_style (DF Styles) record id —
+  // avoids O(N²) scans and is the same link the Champion Match automation
+  // reads. A sample with no parent_style link is excluded from both maps
+  // (never a valid match candidate). ──
+  const { activeSamplesByStyleId, anySamplesByStyleId } = useMemo(() => {
+    const active = new Map<string, Record[]>();
+    const any = new Map<string, Record[]>();
+    if (!sampleRecords) return { activeSamplesByStyleId: active, anySamplesByStyleId: any };
     for (const sample of sampleRecords) {
-      const locVal = getLocationValue(sample);
-      if (deriveLocationStatus(locVal) !== 'in-studio') continue;
-      const name = sample.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME).toLowerCase().trim();
-      if (!map.has(name)) map.set(name, []);
-      map.get(name)!.push(sample);
+      const links = sample.getCellValue(FIELD_IDS.SAMPLE.PARENT_STYLE) as Array<{ id: string }> | null;
+      if (!links || links.length === 0) continue; // rule 6 — no parent-style link, not a candidate
+      const styleId = links[0].id;
+      if (!any.has(styleId)) any.set(styleId, []);
+      any.get(styleId)!.push(sample);
+      if (sample.getCellValueAsString(FIELD_IDS.SAMPLE.STATUS) === 'Active') {
+        if (!active.has(styleId)) active.set(styleId, []);
+        active.get(styleId)!.push(sample);
+      }
     }
-    return map;
+    return { activeSamplesByStyleId: active, anySamplesByStyleId: any };
   }, [sampleRecords]);
 
   // ── Risk alerts (future appointments, one per client) ──
   const { allAlerts, unevaluatedCount } = useMemo((): { allAlerts: RiskAlert[]; unevaluatedCount: number } => {
-    if (!apptRecords || !clientRecords || !sampleRecords) return { allAlerts: [], unevaluatedCount: 0 };
+    if (!apptRecords || !clientRecords || !sampleRecords || !dfStylesRecords) return { allAlerts: [], unevaluatedCount: 0 };
     const today = todayStr();
     const clientMap = new Map<string, Record>();
     for (const c of clientRecords) clientMap.set(c.id, c);
+    const styleNameById = new Map<string, string>();
+    for (const s of dfStylesRecords) styleNameById.set(s.id, s.getCellValueAsString(FIELD_IDS.DF_STYLES.STYLE_NAME) || '(untitled)');
 
     const futureAppts = apptRecords
       .filter(appt => {
@@ -1301,6 +2066,10 @@ function SampleTracker() {
         if (!raw || raw.slice(0, 10) < today) return false;
         const status = appt.getCellValueAsString(FIELD_IDS.APPT.STATUS);
         if (status && (status.toLowerCase().includes('cancel') || status.toLowerCase().includes('no show'))) return false;
+        // Only Consultation appointments belong on this page (2026-08-07,
+        // per request) — a fitting/pickup/etc. shouldn't drive a risk alert.
+        const type = appt.getCellValueAsString(FIELD_IDS.APPT.TYPE);
+        if (!isConsultation(type)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -1333,13 +2102,16 @@ function SampleTracker() {
       const clientSizeRaw = clientRec ? clientRec.getCellValueAsString(FIELD_IDS.CLIENT.READY_TO_WEAR_SIZE) : null;
       const clientSize = clientSizeRaw ? sizeToNumber(clientSizeRaw) : null;
 
-      const favStylesStr = appt.getCellValueAsString(FIELD_IDS.APPT.FAVORITE_STYLES);
-      const favStyles = favStylesStr
-        ? favStylesStr.split(',').map(s => s.toLowerCase().trim()).filter(Boolean)
-        : [];
+      // Favorite styles come from the client's real DF Styles link (same field
+      // the Champion Match automation watches), not the appointment's text
+      // lookup — so matching below is by record id, never by name substring.
+      const favStyleLinks = clientRec
+        ? (clientRec.getCellValue(FIELD_IDS.CLIENT.FAVORITE_STYLES) as Array<{ id: string }> | null)
+        : null;
+      const favStyleIds = favStyleLinks ? favStyleLinks.map(l => l.id) : [];
 
       // #3 — No styles on file: surface as incomplete-data alert
-      if (favStyles.length === 0) {
+      if (favStyleIds.length === 0) {
         unevaluated++;
         alerts.push({
           apptRecord: appt,
@@ -1355,39 +2127,50 @@ function SampleTracker() {
       // #4 — Client size missing: flag but still evaluate style presence
       const sizeIsMissing = clientSize === null;
 
-      // Use pre-indexed map — O(unique style names) instead of O(all samples)
-      const styleMatches: StyleMatch[] = favStyles.map(fs => {
-        const candidates: Record[] = [];
-        for (const [name, samples] of inStudioByStyle) {
-          if (name === fs || name.includes(fs) || fs.includes(name)) {
-            candidates.push(...samples);
-          }
-        }
+      // Close-size matching per style: exact match (distance 0) always shown
+      // when present; close alternatives (0 < distance <= CLOSE_SIZE_THRESHOLD)
+      // shown alongside/instead; otherwise no-stock. Tiebreak: in-studio first.
+      const styleMatches: StyleMatch[] = favStyleIds.map(styleId => {
+        const styleName = styleNameById.get(styleId) ?? '(untitled)';
+        const candidates = activeSamplesByStyleId.get(styleId) ?? [];
+        const anySample = (anySamplesByStyleId.get(styleId) ?? [])[0] ?? null;
 
-        // Find any sample of this style (even if not in-studio) for modal on missing rows
-        let anySample: Record | null = null;
-        for (const sample of sampleRecords) {
-          const sName = sample.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME).toLowerCase().trim();
-          if (sName === fs || sName.includes(fs) || fs.includes(sName)) { anySample = sample; break; }
-        }
+        const scored = candidates
+          .map(sample => {
+            const sSize = sizeToNumber(sample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE));
+            const dist = (!sizeIsMissing && clientSize !== null && sSize !== null) ? Math.abs(clientSize - sSize) : null;
+            const inStudioSample = deriveLocationStatus(getLocationValue(sample)) === 'in-studio';
+            return { sample, dist, inStudioSample };
+          })
+          .sort((a, b) => {
+            if (a.inStudioSample !== b.inStudioSample) return a.inStudioSample ? -1 : 1; // rule 8 tiebreak
+            return 0;
+          });
 
-        if (candidates.length === 0) return { style: fs, inStudio: false, bestSample: null, anySample, distance: null };
+        const exactMatches = scored.filter(s => s.dist === 0).map(s => s.sample);
+        const closeMatches = scored.filter(s => s.dist !== null && s.dist > 0 && s.dist <= CLOSE_SIZE_THRESHOLD).map(s => s.sample);
 
-        let bestSample: Record | null = null;
-        let bestDist: number | null = null;
-        for (const sample of candidates) {
-          const sSize = sizeToNumber(sample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE));
-          // If client size is missing, distance is null — don't default to 0
-          const dist = (!sizeIsMissing && clientSize !== null && sSize !== null) ? Math.abs(clientSize - sSize) : null;
-          if (bestSample === null || (dist !== null && (bestDist === null || dist < bestDist))) { bestDist = dist; bestSample = sample; }
-        }
-        return { style: fs, inStudio: true, bestSample, anySample: bestSample, distance: bestDist };
+        const bestSample = exactMatches[0] ?? closeMatches[0] ?? null;
+        const matchState: MatchState = exactMatches.length > 0 ? 'exact' : closeMatches.length > 0 ? 'close' : 'none';
+        const bestScored = scored.find(s => s.sample === bestSample);
+
+        return {
+          styleId,
+          style: styleName,
+          matchState,
+          exactMatches,
+          closeMatches,
+          bestSample,
+          anySample: bestSample ?? anySample,
+          inStudio: bestScored?.inStudioSample ?? false,
+          distance: bestScored?.dist ?? null,
+        };
       });
 
-      if (!styleMatches.some(m => !m.inStudio) && !sizeIsMissing) continue;
+      if (!styleMatches.some(m => m.matchState === 'none') && !sizeIsMissing) continue;
 
-      // If all styles are in-studio but size is missing, still surface as incomplete
-      if (!styleMatches.some(m => !m.inStudio) && sizeIsMissing) {
+      // If every style has stock (exact or close) but size is missing, still surface as incomplete
+      if (!styleMatches.some(m => m.matchState === 'none') && sizeIsMissing) {
         unevaluated++;
         alerts.push({
           apptRecord: appt,
@@ -1411,7 +2194,7 @@ function SampleTracker() {
     }
 
     return { allAlerts: alerts.sort((a, b) => a.daysUntil - b.daysUntil), unevaluatedCount: unevaluated };
-  }, [apptRecords, clientRecords, inStudioByStyle]);
+  }, [apptRecords, clientRecords, sampleRecords, dfStylesRecords, activeSamplesByStyleId, anySamplesByStyleId]);
 
   // ── Apply time period + SA filter ──
   const visibleAlerts = useMemo(() => {
@@ -1489,6 +2272,21 @@ function SampleTracker() {
           <FilterDropdown label="Location" values={locationFilter}     options={locationOptions}     onChange={setLocationFilter}     tok={tok} />
           <FilterDropdown label="Status"   values={sampleStatusFilter} options={statusFieldOptions}  onChange={setSampleStatusFilter} tok={tok} />
           <FilterDropdown label="Type"     values={typeFilter}         options={typeOptions}         onChange={setTypeFilter}         tok={tok} />
+
+          {canWriteTable && sampleTable && (
+            <button
+              type="button"
+              onClick={() => setShowAddSampleModal(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '8px',
+                border: 'none', cursor: 'pointer',
+                background: tok.accent, color: tok === DARK ? '#1B1813' : '#FFFFFF',
+              }}
+            >
+              <PlusIcon size={13} weight="bold" /> Add Sample
+            </button>
+          )}
         </div>
 
         {/* Right 30%: alert filters — aligned with Sample Alerts panel */}
@@ -1551,7 +2349,7 @@ function SampleTracker() {
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = tok.surface; }}
                     >
                       <td style={{ padding: '7px 12px', fontWeight: 600, color: tok.text_primary, maxWidth: '160px' }}>
-                        {truncate(record.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME), 28)}
+                        {truncate(getEffectiveStyleName(record), 28)}
                       </td>
                       <td style={{ padding: '7px 12px' }}>
                         <LocationBadge status={deriveLocationStatus(locVal)} tok={tok} />
@@ -1633,13 +2431,19 @@ function SampleTracker() {
       {/* ── SAMPLE DETAIL MODAL ── */}
       {selectedSample && sampleTable && (
         <SampleDetailModal
+          base={base}
           record={selectedSample}
           sampleTable={sampleTable}
           statusFieldOptions={statusFieldOptions}
           statusColorMap={statusColorMap}
+          conditionFormUrl={conditionFormUrl}
           onClose={() => setSelectedSample(null)}
           tok={tok}
         />
+      )}
+
+      {showAddSampleModal && sampleTable && (
+        <AddSampleModal base={base} sampleTable={sampleTable} onClose={() => setShowAddSampleModal(false)} tok={tok} />
       )}
 
       <FeedbackButton onClick={() => setShowFeedbackModal(true)} tok={tok} />
@@ -1685,7 +2489,7 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
             </div>
           ) : (
             <div style={{ fontSize: '11px', color: tok.risk_text, marginTop: '2px' }}>
-              {alert.styleMatches.filter(m => !m.inStudio).length} style(s) not in studio
+              {alert.styleMatches.filter(m => m.matchState === 'none').length} style(s) with no suitable sample in stock
             </div>
           )}
         </div>
@@ -1710,37 +2514,58 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
             </div>
           ) : null}
           {alert.styleMatches.map(m => {
-            const sampleToOpen = m.bestSample ?? m.anySample;
-            const rowLabel = sampleToOpen
-              ? (sampleToOpen.getCellValueAsString(FIELD_IDS.SAMPLE.LABEL) || sampleToOpen.getCellValueAsString(FIELD_IDS.SAMPLE.STYLE_NAME))
-              : m.style;
-            const isClickable = !!sampleToOpen;
+            // Exact match must remain visible even when close alternatives also
+            // exist (rule 3). Alternates never claim the exact requested size
+            // is available (rule 7) — labeled "Close size", not "In Studio".
+            const alternates = m.matchState === 'exact' ? m.closeMatches : (m.matchState === 'close' ? m.closeMatches.slice(1) : []);
+            const rowSample = m.bestSample ?? m.anySample;
+            const isClickable = !!rowSample;
+            const badge = m.matchState === 'exact'
+              ? { text: 'Exact match', color: tok.badge_in_studio_text, bg: tok.badge_in_studio, border: 'transparent' }
+              : m.matchState === 'close'
+                ? { text: 'Close size', color: tok.badge_trunk_text, bg: tok.badge_trunk, border: 'transparent' }
+                : { text: 'No stock', color: tok.risk_text, bg: tok.risk_bg, border: tok.risk_border };
             return (
-              <div
-                key={m.style}
-                onClick={() => { if (sampleToOpen) onSelectSample(sampleToOpen); }}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '5px 0', borderBottom: `1px solid ${tok.border}`,
-                  cursor: isClickable ? 'pointer' : 'default',
-                }}
-                onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-              >
-                <span style={{ fontSize: '12px', color: tok.text_primary, flex: 1, marginRight: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {rowLabel}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                  {m.inStudio ? (
-                    <span style={{ color: tok.badge_in_studio_text, background: tok.badge_in_studio, padding: '1px 7px', borderRadius: '999px', fontSize: '11px', fontWeight: 600 }}>
-                      In Studio
-                    </span>
-                  ) : (
-                    <span style={{ color: tok.risk_text, background: tok.risk_bg, padding: '1px 7px', borderRadius: '999px', fontSize: '11px', fontWeight: 600, border: `1px solid ${tok.risk_border}` }}>
-                      Missing
-                    </span>
-                  )}
-                </span>
+              <div key={m.styleId} style={{ padding: '5px 0', borderBottom: `1px solid ${tok.border}` }}>
+                <div
+                  onClick={() => { if (rowSample) onSelectSample(rowSample); }}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isClickable ? 'pointer' : 'default' }}
+                  onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                >
+                  <span style={{ fontSize: '12px', color: tok.text_primary, flex: 1, marginRight: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.style}{rowSample ? ` — ${rowSample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}` : ''}
+                  </span>
+                  <span
+                    style={{
+                      color: badge.color, background: badge.bg, padding: '1px 7px', borderRadius: '999px',
+                      fontSize: '11px', fontWeight: 600, flexShrink: 0,
+                      border: badge.border !== 'transparent' ? `1px solid ${badge.border}` : 'none',
+                    }}
+                  >
+                    {badge.text}
+                  </span>
+                </div>
+                {alternates.length > 0 && (
+                  <div style={{ marginTop: '3px', paddingLeft: '10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {alternates.map(alt => (
+                      <div
+                        key={alt.id}
+                        onClick={() => onSelectSample(alt)}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                      >
+                        <span style={{ fontSize: '11px', color: tok.text_secondary }}>
+                          Alt size {alt.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}
+                        </span>
+                        <span style={{ color: tok.badge_trunk_text, background: tok.badge_trunk, padding: '1px 6px', borderRadius: '999px', fontSize: '10px', fontWeight: 600 }}>
+                          Close size
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
