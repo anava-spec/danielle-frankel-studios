@@ -2068,37 +2068,37 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     } finally { setSaving(false); }
   };
 
-  const pillStyle = (name: string): { backgroundColor: string; color: string } | undefined =>
-    colors?.[name] ? { backgroundColor: colors[name].bg, color: colors[name].fg } : undefined;
+  const pillStyle = (name: string): { backgroundColor: string; color: string } =>
+    colors?.[name] ? { backgroundColor: colors[name].bg, color: colors[name].fg } : { backgroundColor: DEFAULT_STAGE_COLORS.bg, color: DEFAULT_STAGE_COLORS.fg };
 
-  // Colored-choice fields (e.g. Alterations Status) render as a compact pill
-  // matching the choice's real Airtable color, not the full-width bordered
-  // box used by plain-text selects.
+  // Colored-choice fields (e.g. Alterations Status) use the exact same box
+  // shape as every other dropdown here (Interest in Custom/Alts/M2M, etc.)
+  // — just tinted with the choice's real Airtable color instead of plain text.
   if (colors) {
     return (
-      <div ref={containerRef} className="relative inline-block">
+      <div ref={containerRef} className="relative">
         <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
         <button type="button" onClick={() => setOpen(o => !o)}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium hover:opacity-80 transition-opacity"
-          style={pillStyle(localValue) ?? { backgroundColor: DEFAULT_STAGE_COLORS.bg, color: DEFAULT_STAGE_COLORS.fg }}>
-          {localValue || '—'}
-          <CaretDownIcon size={10} className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          className="w-full inline-flex items-center justify-between gap-2 border border-transparent rounded-lg px-2.5 py-1.5 text-sm font-medium hover:opacity-90 focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-opacity"
+          style={localValue ? pillStyle(localValue) : { backgroundColor: 'transparent' }}>
+          <span className={`truncate text-left ${localValue ? '' : 'text-gray-400 dark:text-gray-500 font-normal'}`}>{localValue || '—'}</span>
+          <CaretDownIcon size={12} className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${localValue ? '' : 'text-gray-400 dark:text-gray-500'}`} />
         </button>
         {open && (
           <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)}>
-            <div className="p-1.5 flex flex-col gap-1">
-              <button type="button" onClick={() => handleSelect('')}
-                className="w-full text-left px-2 py-1 text-xs rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                —
+            <button type="button" onClick={() => handleSelect('')}
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${!localValue ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              —
+            </button>
+            {options.map(o => (
+              <button key={o} type="button" onClick={() => handleSelect(o)}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left font-medium transition-opacity hover:opacity-90"
+                style={pillStyle(o)}>
+                {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
+                {localValue !== o && <span className="w-3 flex-shrink-0" />}
+                <span className="truncate">{o}</span>
               </button>
-              {options.map(o => (
-                <button key={o} type="button" onClick={() => handleSelect(o)}
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium transition-opacity ${localValue === o ? '' : 'opacity-70 hover:opacity-100'}`}
-                  style={pillStyle(o) ?? { backgroundColor: DEFAULT_STAGE_COLORS.bg, color: DEFAULT_STAGE_COLORS.fg }}>
-                  {o}
-                </button>
-              ))}
-            </div>
+            ))}
           </FixedPopup>
         )}
       </div>
