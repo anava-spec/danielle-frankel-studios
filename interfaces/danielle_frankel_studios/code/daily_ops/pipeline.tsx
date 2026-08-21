@@ -112,10 +112,9 @@ const FIELD_IDS = {
 // Ready inline table — Issue 3, same field IDs used by fulfillment.tsx) ──────
 const ORDER_TABLE_ID = 'tblHFGbijtvZcRPkE';
 const ORDER_FIELD_IDS = {
-  SHOPIFY_ORDER_NUMBER: 'fldWiKEXjId411DQc',
-  DELIVERY_METHOD:      'fldFATO0oJUQjPEzr', // Pick Up in Store | Ship
-  DELIVERY_STATUS:      'fldoL5pdUvlz76mkZ', // Unfulfilled/Partial/Fulfilled/Shipped/...
-  PICKED_STATUS:        'fldqhI6Aq9zIhFsFW', // None/Partial/Full
+  SHOPIFY_ORDER_NUMBER:            'fldWiKEXjId411DQc',
+  DELIVERY_METHOD:                 'fldFATO0oJUQjPEzr', // Pick Up in Store | Ship
+  FULFILLMENT_PROGRESS_PERCENTAGE: 'fldKDT2x7wmZ2Suui', // formula, 0–1 scale
 } as const;
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
@@ -2135,6 +2134,21 @@ function MeasurementInputs({ measBust, measWaist, measHips, measHeight, recordId
   );
 }
 
+// Order Ready inline table — per-order fulfillment progress bar (0–1 scale
+// formula field, same rendering as fulfillment.tsx's own ProgressBar).
+function ProgressBar({ percentage }: { percentage: number }) {
+  const pct = Math.round(percentage * 100);
+  const barColor = pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-400' : 'bg-orange-400';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+        <div className={`h-full ${barColor} transition-[width]`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
+      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium tabular-nums">{pct}%</span>
+    </div>
+  );
+}
+
 function FieldRow({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-3 gap-3">{children}</div>;
 }
@@ -2720,25 +2734,23 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
-                      {['Order #', 'Method', 'Picked/Shipped', 'Delivery Status'].map((h, i) => (
+                      {['Order #', 'Method', 'Fulfillment Progress'].map((h, i) => (
                         <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {linkedOrders.length === 0 ? (
-                      <tr><td colSpan={4} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                      <tr><td colSpan={3} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
                     ) : linkedOrders.map(r => {
                       const num = getOrderNum(r, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
                       const method = getOrderSel(r, ORDER_FIELD_IDS.DELIVERY_METHOD);
-                      const picked = getOrderSel(r, ORDER_FIELD_IDS.PICKED_STATUS);
-                      const delivery = getOrderSel(r, ORDER_FIELD_IDS.DELIVERY_STATUS);
+                      const progress = getOrderNum(r, ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE) ?? 0;
                       return (
                         <tr key={r.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
                           <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{num ? `#${num}` : '—'}</td>
                           <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{method}</td>
-                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{picked}</td>
-                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{delivery}</td>
+                          <td className="px-3 py-2.5"><ProgressBar percentage={progress} /></td>
                         </tr>
                       );
                     })}
@@ -3466,10 +3478,9 @@ function Pipeline(): React.ReactElement {
   const orderQueryFields = useMemo(() => {
     if (!orderTable) return [];
     const f: Field[] = [];
-    const num = orderTable.getFieldIfExists(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER); if (num) f.push(num);
-    const dm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD);      if (dm)  f.push(dm);
-    const ds  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_STATUS);      if (ds)  f.push(ds);
-    const ps  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.PICKED_STATUS);        if (ps)  f.push(ps);
+    const num = orderTable.getFieldIfExists(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);            if (num) f.push(num);
+    const dm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD);                 if (dm)  f.push(dm);
+    const pp  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE); if (pp)  f.push(pp);
     return f;
   }, [orderTable]);
   const orderRecords = useRecords(orderTable ?? null, orderQueryFields.length > 0 ? { fields: orderQueryFields } : undefined);
