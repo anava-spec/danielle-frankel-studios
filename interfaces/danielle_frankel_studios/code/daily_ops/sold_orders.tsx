@@ -796,7 +796,9 @@ function SoldApp(): React.ReactElement {
       const studioObj  = storeId ? activeStudios.find(s => s.id === storeId) : undefined;
       const studioName = studioObj?.shortName ?? '';
 
-      const weddingDate = fWedding ? order.getCellValue(fWedding) : null;
+      const weddingDate = fWedding
+        ? (order.getCellValueAsString(fWedding) || getLookupString(order.getCellValue(fWedding)) || null)
+        : null;
 
       const shopifyNumRaw = fShopifyNum ? order.getCellValue(fShopifyNum) as number | null : null;
       const shopifyNum    = shopifyNumRaw ? `#${shopifyNumRaw}` : '';
