@@ -11,6 +11,11 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Aug 21, 2026
+
+**Fulfillment**
+- Fixed the Wedding Date column in the main table showing a day earlier than the real date (e.g. a wedding on Oct 10 was showing Oct 9), and made it fall back to the manual placeholder date when no confirmed date is set yet, matching the rest of the app.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**

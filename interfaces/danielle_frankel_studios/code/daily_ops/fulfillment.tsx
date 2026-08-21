@@ -64,6 +64,7 @@ const FIELD_IDS = {
   THREE_PL:             'fldSxZrcIbBlyJO6R',
   HOLD_SHIPMENT_DATE:   'fldVsDeVp6R6ytqlb',
   WEDDING_DATE:         'fldbgknumKGS5W5WU',
+  WEDDING_DATE_DISPLAY: 'fldfDHXcCEbFHEX4a', // formula — Formatted with fallback to (If Not Set); read-only display only
   ITEMS_SOLD:           'fldEStULoGtNIjxPO',
   SHOPIFY_ORDERS:       'fldWSGqQW9czYdams',
   DELIVERY_STATUS:      'fldElapbI1R2uyF5p', // rollup delivery status from orders
@@ -451,6 +452,17 @@ function formatDateTime(val: string | null): string {
   if (!val) return '—';
   try { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(val)); }
   catch { return '—'; }
+}
+function formatWeddingDateDisplay(val: string | null): string {
+  if (!val) return '—';
+  const isoMatch = val.match(/^\d{4}-\d{2}-\d{2}/);
+  if (isoMatch) {
+    const d = new Date(`${val.slice(0, 10)}T12:00:00Z`);
+    if (!isNaN(d.getTime())) {
+      return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(d);
+    }
+  }
+  return val;
 }
 
 // ─── Calendar utilities ───────────────────────────────────────────────────────
@@ -2293,8 +2305,8 @@ function FulfillmentApp(): React.ReactElement {
               <tbody>
                 {filteredRecords.map(rec => {
                   const name         = getStr(rec, FIELD_IDS.FULL_NAME);
-                  const wdVal        = fields[FIELD_IDS.WEDDING_DATE] ? (rec.getCellValue(fields[FIELD_IDS.WEDDING_DATE]!) as string | null) : null;
-                  const wdDisplay    = wdVal ? new Date(wdVal).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+                  const wdVal        = fields[FIELD_IDS.WEDDING_DATE_DISPLAY] ? (rec.getCellValueAsString(fields[FIELD_IDS.WEDDING_DATE_DISPLAY]!) || null) : null;
+                  const wdDisplay    = formatWeddingDateDisplay(wdVal);
                   const pickedShipped = getNum(rec, FIELD_IDS.CLIENT_FULFILLMENT_PROGRESS);
                   const delivStatus  = getSel(rec, FIELD_IDS.DELIVERY_STATUS);
                   const holdDate     = fields[FIELD_IDS.HOLD_SHIPMENT_DATE] ? rec.getCellValue(fields[FIELD_IDS.HOLD_SHIPMENT_DATE]!) as string | null : null;
