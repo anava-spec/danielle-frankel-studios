@@ -6,6 +6,15 @@ TABLE SRC    : DF Clients (tblLLUlDgJ4ktzF7c)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
 TRIGGER      : none — run manually once (ad hoc "Run script" button), NOT a
                recurring automation.
+VERSION      : 1.1.0 — added alterations_scheduled_achieved to the backfill
+               (2026-08-21), found via a live stage vs. stage_formula_test
+               diff after the first backfill run: clients whose
+               "Latest Alterations Appointment" (fldoF7SPEjWNi5JQF) was
+               already non-empty before the live "Alterations Scheduled →
+               In Alterations" automation started tracking this fact never
+               got it backfilled — same root cause as the other three
+               facts, just missed in v1.0.0 because it isn't purely derived
+               from STAGE_ORDER position.
 VERSION      : 1.0.0
 
 OBJECTIVE
@@ -59,10 +68,12 @@ const TABLE_IDS = {
 };
 
 const FIELDS_CLIENTS = {
-  stage:                    'fldLcxVZvI1rigBlh', // singleSelect
-  order_ready_achieved:     'flds1WfGHitZqHrBm', // checkbox
-  deliberating_achieved:    'fldDsGeUzik9Nw9YP', // checkbox
-  did_not_convert_achieved: 'fldWRzB7hU8SIf09I', // checkbox
+  stage:                          'fldLcxVZvI1rigBlh', // singleSelect
+  order_ready_achieved:           'flds1WfGHitZqHrBm', // checkbox
+  deliberating_achieved:          'fldDsGeUzik9Nw9YP', // checkbox
+  did_not_convert_achieved:       'fldWRzB7hU8SIf09I', // checkbox
+  alterations_scheduled_achieved: 'fldS2jgLMfDzOz1bj', // checkbox
+  latest_alterations_appointment: 'fldoF7SPEjWNi5JQF', // lookup, dateTime — same field the live automation's trigger watches
 };
 
 // Progression order for the "at or past" comparisons. "Did Not Convert" is
@@ -156,6 +167,14 @@ class BackfillEvaluator {
       fieldsToWrite[FIELDS_CLIENTS.deliberating_achieved] = true;
     }
 
+    // Not STAGE_ORDER-derived — mirrors the live automation's own trigger
+    // condition (Latest Alterations Appointment is not empty), for clients
+    // who already had that lookup populated before the automation existed.
+    const hasAlterationsAppt = client.getCellValue(FIELDS_CLIENTS.latest_alterations_appointment) != null;
+    if (hasAlterationsAppt && client.getCellValue(FIELDS_CLIENTS.alterations_scheduled_achieved) !== true) {
+      fieldsToWrite[FIELDS_CLIENTS.alterations_scheduled_achieved] = true;
+    }
+
     return Object.keys(fieldsToWrite).length ? fieldsToWrite : null;
   }
 }
@@ -165,13 +184,14 @@ class BackfillEvaluator {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MessageBuilder {
-  static summary({ scanned, orderReadyCount, deliberatingCount, didNotConvertCount, totalToUpdate, dryRun }) {
+  static summary({ scanned, orderReadyCount, deliberatingCount, didNotConvertCount, alterationsScheduledCount, totalToUpdate, dryRun }) {
     return [
       `Scanned ${scanned} clients.`,
-      `order_ready_achieved to set:     ${orderReadyCount}`,
-      `deliberating_achieved to set:    ${deliberatingCount}`,
-      `did_not_convert_achieved to set: ${didNotConvertCount}`,
-      `Total records touched:           ${totalToUpdate}`,
+      `order_ready_achieved to set:           ${orderReadyCount}`,
+      `deliberating_achieved to set:          ${deliberatingCount}`,
+      `did_not_convert_achieved to set:       ${didNotConvertCount}`,
+      `alterations_scheduled_achieved to set: ${alterationsScheduledCount}`,
+      `Total records touched:                ${totalToUpdate}`,
       dryRun
         ? 'DRY RUN — nothing written. Re-run with dryRun=false to apply.'
         : 'LIVE RUN — all of the above was written.',
@@ -201,6 +221,7 @@ class BackfillService {
     let orderReadyCount = 0;
     let deliberatingCount = 0;
     let didNotConvertCount = 0;
+    let alterationsScheduledCount = 0;
 
     for (const client of clients) {
       const fieldsToWrite = this.evaluator.evaluate(client);
@@ -209,6 +230,7 @@ class BackfillService {
       if (fieldsToWrite[FIELDS_CLIENTS.order_ready_achieved]) orderReadyCount++;
       if (fieldsToWrite[FIELDS_CLIENTS.deliberating_achieved]) deliberatingCount++;
       if (fieldsToWrite[FIELDS_CLIENTS.did_not_convert_achieved]) didNotConvertCount++;
+      if (fieldsToWrite[FIELDS_CLIENTS.alterations_scheduled_achieved]) alterationsScheduledCount++;
 
       updates.push({ id: client.id, fields: fieldsToWrite });
     }
@@ -228,6 +250,7 @@ class BackfillService {
       orderReadyCount,
       deliberatingCount,
       didNotConvertCount,
+      alterationsScheduledCount,
       totalToUpdate: updates.length,
       dryRun,
     };
@@ -249,7 +272,7 @@ const logger = new Logger(CONFIG.LOG_LEVEL);
 
 let result = {
   status: 'ERROR', scanned: 0, order_ready_count: 0, deliberating_count: 0,
-  did_not_convert_count: 0, total_to_update: 0, dry_run: dryRun,
+  did_not_convert_count: 0, alterations_scheduled_count: 0, total_to_update: 0, dry_run: dryRun,
   result_message: null, error_message: null,
 };
 
@@ -270,6 +293,7 @@ try {
     order_ready_count: summary.orderReadyCount,
     deliberating_count: summary.deliberatingCount,
     did_not_convert_count: summary.didNotConvertCount,
+    alterations_scheduled_count: summary.alterationsScheduledCount,
     total_to_update: summary.totalToUpdate,
     dry_run: dryRun,
     result_message: MessageBuilder.summary(summary),
@@ -292,6 +316,7 @@ output.set('scanned',                result.scanned);
 output.set('order_ready_count',      result.order_ready_count);
 output.set('deliberating_count',     result.deliberating_count);
 output.set('did_not_convert_count',  result.did_not_convert_count);
+output.set('alterations_scheduled_count', result.alterations_scheduled_count);
 output.set('total_to_update',        result.total_to_update);
 output.set('dry_run',                result.dry_run);
 output.set('result_message',         result.result_message);
