@@ -53,7 +53,9 @@ const FIELD_IDS = {
   CLIENT_LATEST_ALTERATIONS_APPT:      'fldoF7SPEjWNi5JQF',
   CLIENT_COUNTRY_OF_RESIDENCE:         'flduQb1j7LceNZuC8',
   CLIENT_PREFERRED_STYLIST:            'fld2jVE1qluvlhV7D',
-  CLIENT_RTW_SIZE:                     'fldvV2CiEx4RQN4mO',
+  CLIENT_RTW_SIZE:                     'fldvV2CiEx4RQN4mO', // "Size from Acuity Intake" — customer self-report, reference-only now, do NOT write here
+  CLIENT_RTW_SIZE_MANUAL:              'fldEEH4CK3Qqp0g0C', // "ready_to_wear_size_manual" — SA-confirmed size, the only field this modal writes
+  CLIENT_RTW_SIZE_DISPLAY:             'fldSwfR25uvynWKI5', // "ready_to_wear_size" formula — manual if set, else falls back to Acuity; read-only views show THIS, never the raw manual field alone
   CLIENT_FAV_STYLES_ACUITY:            'fldZzNR0g5VEJ5RmX',
   CLIENT_SAMPLES_NOT_WHERE_NEEDED:     'fldVPJWXThfyGuh6d',
   CLIENT_PERSONAL_STYLE_NOTES:         'fldQiGCx5hRQ0Am1Z',
@@ -1065,6 +1067,8 @@ interface ClientData {
   preferredStylist: string;
   preferredStylistIds: string[];
   rtwSize: number | null;
+  rtwSizeManual: number | null;
+  rtwSizeDisplay: string | null;
   favStylesAcuity: string;
   samplesNotWhereNeeded: string;
   personalStyleNotes: string;
@@ -1443,7 +1447,7 @@ const WaitlistCard = React.memo(function WaitlistCard({ entry, onClick }: { entr
 const SOURCE_COLORS = { acuity: '#7C3AED', shopify: '#059669', apparel_magic: '#D97706' } as const;
 const SOURCE_LABELS = { acuity: 'Acuity', shopify: 'Shopify', apparel_magic: 'Apparel Magic' } as const;
 
-function DetailRow({ label, value, fieldId }: { label: string; value: string | null | undefined; fieldId?: string }) {
+function DetailRow({ label, value, fieldId }: { label: React.ReactNode; value: string | null | undefined; fieldId?: string }) {
   const source = fieldId ? getFieldSource(fieldId) : null;
   return (
     <div>
@@ -1459,6 +1463,27 @@ function DetailRow({ label, value, fieldId }: { label: string; value: string | n
       </div>
       <div className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{value || '—'}</div>
     </div>
+  );
+}
+
+// RTW Size only: builds "<label> | from Acuity: N ●" so the Acuity value reads as an
+// extension of the label itself, using the same dot styling as the source badges above.
+// Returns the plain label when there's no Acuity value to show.
+function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
+  if (acuityValue == null) return baseLabel;
+  return (
+    <>
+      {baseLabel}
+      <span className="text-gray-300 dark:text-gray-600">|</span>
+      <span className="text-gray-400 dark:text-gray-500 font-normal normal-case tracking-normal">
+        from Acuity: {acuityValue}
+      </span>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{ backgroundColor: SOURCE_COLORS.acuity }}
+        title={`Sourced from ${SOURCE_LABELS.acuity}`}
+      />
+    </>
   );
 }
 
@@ -1530,7 +1555,7 @@ function EditableText({ label, value, fieldId, recordId, base, tableId = 'tblLLU
 }
 
 interface EditableNumberProps {
-  label: string;
+  label: React.ReactNode;
   value: number | null;
   fieldId: string;
   recordId: string;
@@ -2584,8 +2609,8 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 : <StylePicker label="Bridal Stylist" currentIds={client.preferredStylistIds} currentNames={client.preferredStylist} fieldId={FIELD_IDS.CLIENT_PREFERRED_STYLIST} recordId={client.id} base={base} vendorRecords={vendorRecords} vendorNameField={vendorNameField} vendorTypeField={vendorTypeField} />
               }
               {readOnly
-                ? <DetailRow label="RTW Size" value={client.rtwSize != null ? String(client.rtwSize) : '—'} />
-                : <EditableNumber label="RTW Size (0–20)" value={client.rtwSize} fieldId={FIELD_IDS.CLIENT_RTW_SIZE} recordId={client.id} base={base} min={0} max={20} step={0.5} />
+                ? <DetailRow label={rtwSizeLabelWithAcuity('RTW Size', client.rtwSize)} value={client.rtwSizeDisplay ?? '—'} />
+                : <EditableNumber label={rtwSizeLabelWithAcuity('RTW Size (0–20)', client.rtwSize)} value={client.rtwSizeManual} fieldId={FIELD_IDS.CLIENT_RTW_SIZE_MANUAL} recordId={client.id} base={base} min={0} max={20} step={0.5} />
               }
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -3599,6 +3624,8 @@ function Pipeline(): React.ReactElement {
       countryOfResidence:         f(FIELD_IDS.CLIENT_COUNTRY_OF_RESIDENCE),
       preferredStylist:           f(FIELD_IDS.CLIENT_PREFERRED_STYLIST),
       rtwSize:                    f(FIELD_IDS.CLIENT_RTW_SIZE),
+      rtwSizeManual:              f(FIELD_IDS.CLIENT_RTW_SIZE_MANUAL),
+      rtwSizeDisplay:             f(FIELD_IDS.CLIENT_RTW_SIZE_DISPLAY),
       favStylesAcuity:            f(FIELD_IDS.CLIENT_FAV_STYLES_ACUITY),
       samplesNotWhereNeeded:      f(FIELD_IDS.CLIENT_SAMPLES_NOT_WHERE_NEEDED),
       personalStyleNotes:         f(FIELD_IDS.CLIENT_PERSONAL_STYLE_NOTES),
@@ -3685,6 +3712,8 @@ function Pipeline(): React.ReactElement {
       const preferredStylistIds   = preferredStylistRaw?.map(s => s.id) ?? [];
       const preferredStylist      = preferredStylistRaw?.map(s => s.name).filter((n): n is string => !!n).join(', ') ?? '';
       const rtwSize               = getCellValueSafe<number>(record, fields.rtwSize) ?? null;
+      const rtwSizeManual         = getCellValueSafe<number>(record, fields.rtwSizeManual) ?? null;
+      const rtwSizeDisplay        = getCellValueAsStringSafe(record, fields.rtwSizeDisplay) || null;
       const favStylesAcuityRaw    = getCellValueSafe<Array<{ id: string; name?: string }>>(record, fields.favStylesAcuity);
       const favStylesAcuity       = favStylesAcuityRaw?.map(s => s.name).filter((n): n is string => !!n).join(', ') ?? '';
       const samplesNotWhereNeeded = getCellValueAsStringSafe(record, fields.samplesNotWhereNeeded);
@@ -3794,7 +3823,7 @@ function Pipeline(): React.ReactElement {
         studio, studioShortName, salesAssociateName, salesAssociatePhone, formattedSAPhone,
         salesAssociateEmail, appointmentCount, nextAppointment, lastAppointment,
         latestAlterationsAppt, nextAppointmentAltLead, nextAppointmentRoom,
-        countryOfResidence, preferredStylist, preferredStylistIds, rtwSize, favStylesAcuity, samplesNotWhereNeeded,
+        countryOfResidence, preferredStylist, preferredStylistIds, rtwSize, rtwSizeManual, rtwSizeDisplay, favStylesAcuity, samplesNotWhereNeeded,
         personalStyleNotes, measBust, measWaist, measHips, measHeight, hasMeasurementPhotos,
         followUpSent: followUpSentRaw, interestCustom, interestAlts, interestM2M, apptNotes,
         customizationCount, isRush, itemsSold, favStylesInAppt, totalSpend, totalSpendFormatted,
