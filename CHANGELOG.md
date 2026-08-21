@@ -20,6 +20,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - The order list now opens sorted with the most recent sale first, instead of no particular order. Clicking any column header still works exactly as before.
 - Fixed the Wedding Date shown in an order's detail popup so a manual placeholder date (used before a real wedding date is confirmed) always displays instead of sometimes showing blank.
 
+**Alterations**
+- Fixed the Wedding Date column showing "Missing Date" for clients who have a manual placeholder wedding date on file but no confirmed date yet — it now shows that placeholder instead, matching the rest of the app. The two date filters (past-wedding exclusion and the calendar filter) are unaffected.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
