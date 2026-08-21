@@ -459,7 +459,7 @@ function formatWeddingDateDisplay(val: string | null): string {
   if (isoMatch) {
     const d = new Date(`${val.slice(0, 10)}T12:00:00Z`);
     if (!isNaN(d.getTime())) {
-      return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(d);
+      return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(d);
     }
   }
   return val;
