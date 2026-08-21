@@ -16,6 +16,10 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Fulfillment**
 - Fixed the Wedding Date column in the main table showing a day earlier than the real date (e.g. a wedding on Oct 10 was showing Oct 9), and made it fall back to the manual placeholder date when no confirmed date is set yet, matching the rest of the app.
 
+**Sold Orders**
+- The order list now opens sorted with the most recent sale first, instead of no particular order. Clicking any column header still works exactly as before.
+- Fixed the Wedding Date shown in an order's detail popup so a manual placeholder date (used before a real wedding date is confirmed) always displays instead of sometimes showing blank.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
