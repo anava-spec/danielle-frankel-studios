@@ -133,7 +133,20 @@ const ORDER_FIELD_IDS = {
   SHOPIFY_ORDER_NUMBER:            'fldWiKEXjId411DQc',
   DELIVERY_METHOD:                 'fldFATO0oJUQjPEzr', // Pick Up in Store | Ship
   FULFILLMENT_PROGRESS_PERCENTAGE: 'fldKDT2x7wmZ2Suui', // formula, 0–1 scale
+  // Issue 6 (In Fulfillment section) — per-order fields that used to be
+  // shown, edited, and stored at the bride level as if they applied to
+  // every one of her orders at once.
+  FULFILLMENT_METHOD:              'fldNX1vEzvndF6ozO', // Pick Up | Shipping — per Axel, used as-is, no added choices for now
+  TRACKING_NUMBER:                 'fldCfwwMFNkVKJApj',
+  CARRIER:                         'fld3JafhFWzW6Knuw', // UPS | FedEx | DHL | INTERJUMBO — read-only here, same as the old bride-level 3PL field
+  CLIENT_NOTIFIED:                 'fldve9YvP16XtrHN2',
 } as const;
+
+// Per-order Fulfillment Method choices — deliberately just Pick Up/Shipping,
+// not the bride-level field's 5 location-specific choices (NY/Melrose/
+// Shopify Address/Acuity Address/Other Address). Per Axel, keep it this way
+// for now rather than adding matching choices to the Orders field.
+const ORDER_FULFILLMENT_METHOD_OPTIONS = ['Pick Up', 'Shipping'];
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
 const FEEDBACK_TABLE_ID = 'tbluy7JS31NwCoeIi';
@@ -2172,6 +2185,97 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PER-ORDER INLINE EDITORS (Issue 6 — In Fulfillment's Orders table)
+// Compact variants of EditableText/EditableCheckbox/EditableSelect that
+// write against a specific Orders - Shopify record instead of the client
+// record — no FieldLabel/saving-indicator chrome, since these live inside a
+// table cell where the column header already names the field.
+// ─────────────────────────────────────────────────────────────────────────────
+function OrderEditableText({ record, orderTable, fieldId, readOnly }: { record: AirtableRecord; orderTable: Table | null; fieldId: string; readOnly?: boolean }) {
+  const getVal = useCallback(() => {
+    if (!orderTable) return '';
+    const f = orderTable.getFieldIfExists(fieldId); if (!f) return '';
+    try { return record.getCellValueAsString(f) ?? ''; } catch { return ''; }
+  }, [record, orderTable, fieldId]);
+  const [localValue, setLocalValue] = useState(getVal);
+  useEffect(() => { setLocalValue(getVal()); }, [getVal]);
+
+  if (readOnly) return <span className="text-gray-700 dark:text-gray-300">{localValue || '—'}</span>;
+
+  const handleBlur = async () => {
+    if (!orderTable) return;
+    const initial = getVal();
+    if (localValue === initial) return;
+    try { await queueWrite(() => orderTable.updateRecordAsync(record.id, { [fieldId]: localValue || null })); }
+    catch (e) { console.error(`OrderEditableText [${fieldId}]:`, e); setLocalValue(initial); }
+  };
+
+  return (
+    <input type="text" value={localValue} onChange={e => setLocalValue(e.target.value)} onBlur={handleBlur}
+      className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-md px-2 py-1 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors" />
+  );
+}
+
+function OrderEditableCheckbox({ record, orderTable, fieldId, readOnly }: { record: AirtableRecord; orderTable: Table | null; fieldId: string; readOnly?: boolean }) {
+  const getVal = useCallback(() => {
+    if (!orderTable) return false;
+    const f = orderTable.getFieldIfExists(fieldId); if (!f) return false;
+    try { return !!(record.getCellValue(f) as boolean | null); } catch { return false; }
+  }, [record, orderTable, fieldId]);
+  const [localValue, setLocalValue] = useState(getVal);
+  useEffect(() => { setLocalValue(getVal()); }, [getVal]);
+
+  if (readOnly) return <span className="text-gray-700 dark:text-gray-300">{localValue ? 'Yes' : 'No'}</span>;
+
+  const handleToggle = async () => {
+    const next = !localValue;
+    setLocalValue(next);
+    if (!orderTable) return;
+    try { await queueWrite(() => orderTable.updateRecordAsync(record.id, { [fieldId]: next })); }
+    catch (e) { console.error(`OrderEditableCheckbox [${fieldId}]:`, e); setLocalValue(!next); }
+  };
+
+  return (
+    <button type="button" onClick={handleToggle}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+        localValue ? 'bg-emerald-50 dark:bg-green-500/15 text-emerald-700 dark:text-green-300 border-emerald-200 dark:border-green-500/30' : 'bg-gray-50 dark:bg-white/10 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+      }`}>
+      {localValue ? <CheckIcon size={12} weight="bold" /> : <XIcon size={12} />}
+      {localValue ? 'Yes' : 'No'}
+    </button>
+  );
+}
+
+function OrderEditableSelect({ record, orderTable, fieldId, options, readOnly }: { record: AirtableRecord; orderTable: Table | null; fieldId: string; options: string[]; readOnly?: boolean }) {
+  const getVal = useCallback(() => {
+    if (!orderTable) return '';
+    const f = orderTable.getFieldIfExists(fieldId); if (!f) return '';
+    try { return ((record.getCellValue(f) as { name: string } | null)?.name) ?? ''; } catch { return ''; }
+  }, [record, orderTable, fieldId]);
+  const [localValue, setLocalValue] = useState(getVal);
+  useEffect(() => { setLocalValue(getVal()); }, [getVal]);
+
+  if (readOnly) return <span className="text-gray-700 dark:text-gray-300">{localValue || '—'}</span>;
+
+  const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value;
+    const initial = getVal();
+    setLocalValue(next);
+    if (!orderTable) return;
+    try { await queueWrite(() => orderTable.updateRecordAsync(record.id, { [fieldId]: next ? { name: next } : null })); }
+    catch (e) { console.error(`OrderEditableSelect [${fieldId}]:`, e); setLocalValue(initial); }
+  };
+
+  return (
+    <select value={localValue} onChange={handleChange}
+      className="w-full text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-md px-2 py-1 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
+      <option value="">—</option>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LINKED RECORD PICKER — Preferred Stylist
 // ─────────────────────────────────────────────────────────────────────────────
 interface StylePickerProps {
@@ -2998,40 +3102,9 @@ const FullProfileModal = React.memo(function FullProfileModal({
             <FieldRow>
               <DetailRow label="% Picked" value={client.pickedPercent != null ? `${Math.round(client.pickedPercent * 100)}%` : '—'} />
               {readOnly
-                ? <DetailRow label="Fulfillment Method" value={client.fulfillmentMethod || '—'} />
-                : <EditableSelect label="Fulfillment Method" value={client.fulfillmentMethod} options={FULFILLMENT_METHOD_OPTIONS} fieldId={FIELD_IDS.CLIENT_FULFILLMENT_METHOD} recordId={client.id} base={base} />
+                ? <DetailRow label="Address Confirmed" value={client.addressConfirmed ? 'Yes' : 'No'} />
+                : <EditableCheckbox label="Address Confirmed" value={client.addressConfirmed} fieldId={FIELD_IDS.CLIENT_ADDRESS_CONFIRMED} recordId={client.id} base={base} />
               }
-              <DetailRow label="Tax + Shipping" value={client.taxShippingDisplay} />
-            </FieldRow>
-            {/* Shopify Address — always DetailRow per Step 5 */}
-            <DetailRow label="Shopify Address" value={client.shopifyAddress || '—'} fieldId={FIELD_IDS.CLIENT_SHOPIFY_ADDRESS} />
-            <DetailRow label="Acuity Address" value={client.acuityAddress || '—'} fieldId="fldkpfulLIk0jq34d" />
-            {readOnly
-              ? <DetailRow label="Other Address" value={client.otherAddress || '—'} />
-              : <EditableText label="Other Address" value={client.otherAddress} fieldId={FIELD_IDS.CLIENT_OTHER_ADDRESS} recordId={client.id} base={base} />
-            }
-            <FieldRow>
-              {readOnly ? (
-                <>
-                  <DetailRow label="Client Notified" value={client.clientNotifiedFulfillment ? 'Yes' : 'No'} />
-                  <DetailRow label="Address Confirmed" value={client.addressConfirmed ? 'Yes' : 'No'} />
-                  <div />
-                </>
-              ) : (
-                <>
-                  <EditableCheckbox label="Client Notified" value={client.clientNotifiedFulfillment} fieldId={FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT} recordId={client.id} base={base} />
-                  <EditableCheckbox label="Address Confirmed" value={client.addressConfirmed} fieldId={FIELD_IDS.CLIENT_ADDRESS_CONFIRMED} recordId={client.id} base={base} />
-                  <div />
-                </>
-              )}
-            </FieldRow>
-            <FieldRow>
-              {readOnly
-                ? <DetailRow label="Tracking #" value={client.trackingNumber || '—'} />
-                : <EditableText label="Tracking #" value={client.trackingNumber} fieldId={FIELD_IDS.CLIENT_TRACKING_NUMBER} recordId={client.id} base={base} />
-              }
-              {/* 3PL — always DetailRow per Step 5 */}
-              <DetailRow label="3PL" value={client.threePL || '—'} fieldId={FIELD_IDS.CLIENT_3PL} />
               {readOnly
                 ? <DetailRow label="Do Not Ship Until" value={client.holdShipmentDate ? formatFullDate(client.holdShipmentDate) : '—'} />
                 : <EditableDate label="Do Not Ship Until" value={client.holdShipmentDate} fieldId={FIELD_IDS.CLIENT_HOLD_SHIPMENT_DATE} recordId={client.id} base={base} />
@@ -3044,6 +3117,58 @@ const FullProfileModal = React.memo(function FullProfileModal({
                 </span>
               </div>
             )}
+            {/* Shopify Address — always DetailRow per Step 5 */}
+            <DetailRow label="Shopify Address" value={client.shopifyAddress || '—'} fieldId={FIELD_IDS.CLIENT_SHOPIFY_ADDRESS} />
+            <DetailRow label="Acuity Address" value={client.acuityAddress || '—'} fieldId="fldkpfulLIk0jq34d" />
+            {readOnly
+              ? <DetailRow label="Other Address" value={client.otherAddress || '—'} />
+              : <EditableText label="Other Address" value={client.otherAddress} fieldId={FIELD_IDS.CLIENT_OTHER_ADDRESS} recordId={client.id} base={base} />
+            }
+            {/* Per-order Fulfillment Method / Client Notified / Tracking # /
+                3PL — replaces the old bride-level fields, which were really
+                per-order attributes shown as if they applied to the whole
+                bride (Issue 6). 3PL (carrier) is read-only here, same as it
+                always was — everything else is editable inline. The old
+                hardcoded "Tax + Shipping" text is dropped along with
+                Fulfillment Method since neither applied once this is
+                per-order. */}
+            <div>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Orders</span>
+              <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                      {['Order #', 'Fulfillment Method', 'Client Notified', 'Tracking #', '3PL'].map((h, i) => (
+                        <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linkedOrders.length === 0 ? (
+                      <tr><td colSpan={5} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                    ) : linkedOrders.map(r => {
+                      const num = getOrderNum(r, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+                      const carrier = getOrderSel(r, ORDER_FIELD_IDS.CARRIER);
+                      return (
+                        <tr key={r.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{num ? `#${num}` : '—'}</td>
+                          <td className="px-3 py-2.5">
+                            <OrderEditableSelect record={r} orderTable={orderTable} fieldId={ORDER_FIELD_IDS.FULFILLMENT_METHOD} options={ORDER_FULFILLMENT_METHOD_OPTIONS} readOnly={readOnly} />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <OrderEditableCheckbox record={r} orderTable={orderTable} fieldId={ORDER_FIELD_IDS.CLIENT_NOTIFIED} readOnly={readOnly} />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <OrderEditableText record={r} orderTable={orderTable} fieldId={ORDER_FIELD_IDS.TRACKING_NUMBER} readOnly={readOnly} />
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{carrier}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
             <FieldRow>
               <DetailRow label="Total Spend" value={client.totalSpendFormatted || '—'} />
               <DetailRow label="Taxes" value={client.taxesFormatted} />
@@ -3688,6 +3813,10 @@ function Pipeline(): React.ReactElement {
     const num = orderTable.getFieldIfExists(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);            if (num) f.push(num);
     const dm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD);                 if (dm)  f.push(dm);
     const pp  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE); if (pp)  f.push(pp);
+    const fm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.FULFILLMENT_METHOD);              if (fm)  f.push(fm);
+    const tn  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.TRACKING_NUMBER);                 if (tn)  f.push(tn);
+    const ca  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.CARRIER);                         if (ca)  f.push(ca);
+    const cn  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.CLIENT_NOTIFIED);                 if (cn)  f.push(cn);
     return f;
   }, [orderTable]);
   const orderRecords = useRecords(orderTable ?? null, orderQueryFields.length > 0 ? { fields: orderQueryFields } : undefined);
