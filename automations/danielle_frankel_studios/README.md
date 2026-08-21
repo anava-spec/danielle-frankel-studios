@@ -109,6 +109,28 @@ the API can't build a `recordMatchesConditions` trigger with nested OR-of-AND
 logic (the view-based trigger above is the workaround, built by hand in the
 Airtable UI).
 
+### `deliberating_achieved.js`
+**Automation:** `Deliberating Achieved - Consolidated` (`wflfSURIS1zTby6Zo`)
+**Trigger:** Record enters view `stage_auto_advance` (`viwYWqT6ETnH5qkdP`) on
+`DF Appointments - Acuity` (filter: `Cleared = TRUE` OR the 1hr-after-
+appointment-end backup condition)
+Part of the stage rework (`stage_rework_handoff.md`) — writes
+`DF Clients.deliberating_achieved = TRUE` for the linked client, replacing two
+separate live automations that each wrote `stage = Deliberating` directly:
+`"NY Client Clears - Slack Message"` (kept — only its stage-writing script
+node was removed, the Slack notification step is untouched) and
+`"Auto-Advance to Deliberating Backup"` (deactivated, not deleted).
+
+### `stage_rework_facts_backfill.js`
+**Source/Dest:** `DF Clients` (one-time manual run, not a live automation)
+Backfills `order_ready_achieved`, `deliberating_achieved`, and
+`did_not_convert_achieved` for clients who reached that milestone before
+these checkboxes existed — inferred from their current `stage` value against
+`STAGE_ORDER`. Confirmed via a live `stage` vs. `stage_formula_test` diff
+(2026-08-20, ~2,100 mismatches) that this backfill gap — not a formula bug —
+accounts for the large majority of them. `DRY_RUN` defaults to `TRUE`; never
+writes `FALSE`.
+
 ---
 
 ## Waitlist project (JuliMigLui37091) — base `appMmEE4zyHMGhkkd` (shared with production `appUC2NFAlURayLx9`)
