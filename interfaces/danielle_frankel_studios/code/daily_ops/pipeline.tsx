@@ -108,6 +108,16 @@ const FIELD_IDS = {
   CLIENT_OTHER_ADDRESS:                'fld5uRLRmAXqAH0nu',
 } as const;
 
+// ─── Orders - Shopify (per-order fulfillment method/status for the Order
+// Ready inline table — Issue 3, same field IDs used by fulfillment.tsx) ──────
+const ORDER_TABLE_ID = 'tblHFGbijtvZcRPkE';
+const ORDER_FIELD_IDS = {
+  SHOPIFY_ORDER_NUMBER: 'fldWiKEXjId411DQc',
+  DELIVERY_METHOD:      'fldFATO0oJUQjPEzr', // Pick Up in Store | Ship
+  DELIVERY_STATUS:      'fldoL5pdUvlz76mkZ', // Unfulfilled/Partial/Fulfilled/Shipped/...
+  PICKED_STATUS:        'fldqhI6Aq9zIhFsFW', // None/Partial/Full
+} as const;
+
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
 const FEEDBACK_TABLE_ID = 'tbluy7JS31NwCoeIi';
 const FEEDBACK_FIELD_IDS = {
@@ -1078,6 +1088,7 @@ interface ClientData {
   qtyItemsSold: number | null;
   apparelMagicOrder: string;
   shopifyOrderNumber: string;
+  shopifyOrderLinkIds: string[];
   amOrderStr: string;
   amOrderNumber: string;
   ship: boolean;
@@ -2478,6 +2489,8 @@ interface FullProfileModalProps {
   vendorRecords: AirtableRecord[] | null;
   vendorNameField: Field | null;
   vendorTypeField: Field | null;
+  orderTable: Table | null;
+  orderRecords: AirtableRecord[];
   matchedWaitlistEntry?: WaitlistEntry | null;
   onClose: () => void;
 }
@@ -2487,7 +2500,7 @@ const STAGE_STEPS: string[] = [
 ];
 
 const FullProfileModal = React.memo(function FullProfileModal({
-  client, stageColors, stageChoices, base, vendorRecords, vendorNameField, vendorTypeField, matchedWaitlistEntry, onClose,
+  client, stageColors, stageChoices, base, vendorRecords, vendorNameField, vendorTypeField, orderTable, orderRecords, matchedWaitlistEntry, onClose,
 }: FullProfileModalProps) {
   const currentStageIndex = STAGE_STEPS.indexOf(client.stage);
   const stageIsKnown = STAGE_ORDER.includes(client.stage as StageName);
@@ -2515,6 +2528,22 @@ const FullProfileModal = React.memo(function FullProfileModal({
       console.error('Failed to clear manual due date:', err);
     }
   }, [base, client.id]);
+
+  // Per-order fulfillment method/status for the Order Ready inline table
+  // (Issue 3 — bride-level "Shipping"/"Pick Up" yes/no flags couldn't
+  // represent more than one order, or reflect real completion).
+  const linkedOrders = useMemo(
+    () => orderRecords.filter(r => client.shopifyOrderLinkIds.includes(r.id)),
+    [orderRecords, client.shopifyOrderLinkIds],
+  );
+  const getOrderNum = useCallback((r: AirtableRecord, fid: string): number | null => {
+    if (!orderTable) return null;
+    try { const f = orderTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  }, [orderTable]);
+  const getOrderSel = useCallback((r: AirtableRecord, fid: string): string => {
+    if (!orderTable) return '—';
+    try { const f = orderTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
+  }, [orderTable]);
 
   function renderStageSection(sectionStage: string, readOnly: boolean) {
     switch (sectionStage) {
@@ -2670,21 +2699,53 @@ const FullProfileModal = React.memo(function FullProfileModal({
               {readOnly ? (
                 <>
                   <DetailRow label="Alterations" value={client.contactedForAlterations ? 'Yes' : 'No'} />
-                  <DetailRow label="Shipping" value={client.ship ? 'Yes' : 'No'} />
-                  <DetailRow label="Pick Up" value={client.pickUp ? 'Yes' : 'No'} />
+                  <DetailRow label="Client Notified" value={client.clientNotifiedFulfillment ? 'Yes' : 'No'} />
                 </>
               ) : (
                 <>
                   <BooleanDropdown label="Alterations" value={client.contactedForAlterations} fieldId={FIELD_IDS.CLIENT_CONTACTED_FOR_ALTERATIONS} recordId={client.id} base={base} />
-                  <BooleanDropdown label="Shipping" value={client.ship} fieldId={FIELD_IDS.CLIENT_SHIP} recordId={client.id} base={base} />
-                  <BooleanDropdown label="Pick Up" value={client.pickUp} fieldId={FIELD_IDS.CLIENT_PICK_UP} recordId={client.id} base={base} />
+                  <BooleanDropdown label="Client Notified" value={client.clientNotifiedFulfillment} fieldId={FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT} recordId={client.id} base={base} />
                 </>
               )}
+              <div />
             </FieldRow>
-            {readOnly
-              ? <DetailRow label="Client Notified" value={client.clientNotifiedFulfillment ? 'Yes' : 'No'} />
-              : <BooleanDropdown label="Client Notified" value={client.clientNotifiedFulfillment} fieldId={FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT} recordId={client.id} base={base} />
-            }
+            {/* Per-order fulfillment method + real pickup/ship completion —
+                replaces the old bride-level "Shipping"/"Pick Up" yes/no
+                flags, which couldn't represent more than one order or
+                reflect whether the order had actually been picked up or
+                shipped yet (Issue 3). */}
+            <div>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Orders</span>
+              <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+                      {['Order #', 'Method', 'Picked/Shipped', 'Delivery Status'].map((h, i) => (
+                        <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linkedOrders.length === 0 ? (
+                      <tr><td colSpan={4} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+                    ) : linkedOrders.map(r => {
+                      const num = getOrderNum(r, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+                      const method = getOrderSel(r, ORDER_FIELD_IDS.DELIVERY_METHOD);
+                      const picked = getOrderSel(r, ORDER_FIELD_IDS.PICKED_STATUS);
+                      const delivery = getOrderSel(r, ORDER_FIELD_IDS.DELIVERY_STATUS);
+                      return (
+                        <tr key={r.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{num ? `#${num}` : '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{method}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{picked}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{delivery}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         );
       case 'In Alterations':
@@ -3399,6 +3460,20 @@ function Pipeline(): React.ReactElement {
     vendorFields.length > 0 ? { fields: vendorFields } : undefined,
   );
 
+  // Orders - Shopify — per-order fulfillment method/status for the Order
+  // Ready inline table (Issue 3).
+  const orderTable = base.getTableByIdIfExists(ORDER_TABLE_ID);
+  const orderQueryFields = useMemo(() => {
+    if (!orderTable) return [];
+    const f: Field[] = [];
+    const num = orderTable.getFieldIfExists(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER); if (num) f.push(num);
+    const dm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_METHOD);      if (dm)  f.push(dm);
+    const ds  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.DELIVERY_STATUS);      if (ds)  f.push(ds);
+    const ps  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.PICKED_STATUS);        if (ps)  f.push(ps);
+    return f;
+  }, [orderTable]);
+  const orderRecords = useRecords(orderTable ?? null, orderQueryFields.length > 0 ? { fields: orderQueryFields } : undefined);
+
   const staffTable = base.getTableByIdIfExists(STAFF_TABLE_ID);
   const staffFullNameField = useMemo(() => staffTable?.getFieldIfExists(STAFF_FIELD_FULL_NAME) ?? null, [staffTable]);
   const staffIsActiveField = useMemo(() => staffTable?.getFieldIfExists(STAFF_FIELD_IS_ACTIVE) ?? null, [staffTable]);
@@ -3611,6 +3686,13 @@ function Pipeline(): React.ReactElement {
       const qtyItemsSold          = getCellValueSafe<number>(record, fields.qtyItemsSold);
       const apparelMagicOrder     = getCellValueAsStringSafe(record, fields.apparelMagicOrder);
       const shopifyOrderNumber    = getCellValueAsStringSafe(record, fields.shopifyOrderNumber);
+      const shopifyOrderLinkIds   = (() => {
+        if (!fields.shopifyOrderNumber) return [];
+        try {
+          const links = record.getCellValue(fields.shopifyOrderNumber) as Array<{ id: string }> | null;
+          return Array.isArray(links) ? links.map(l => l.id) : [];
+        } catch { return []; }
+      })();
       const alterationNotes       = getCellValueAsStringSafe(record, fields.alterationNotes);
       const salesNotes            = getCellValueAsStringSafe(record, fields.salesNotes);
       const dueDateRaw            = extractFirstLookupString(record, fields.dueDate);
@@ -3701,7 +3783,7 @@ function Pipeline(): React.ReactElement {
         followUpSent: followUpSentRaw, interestCustom, interestAlts, interestM2M, apptNotes,
         customizationCount, isRush, itemsSold, favStylesInAppt, totalSpend, totalSpendFormatted,
         shopifyAddress, discount, alterationsPaymentStatus, m2m, qtyItemsSold, apparelMagicOrder,
-        shopifyOrderNumber, amOrderStr, amOrderNumber,
+        shopifyOrderNumber, shopifyOrderLinkIds, amOrderStr, amOrderNumber,
         ship, pickUp, orderReady, pickedPercent, contactedForAlterations,
         fulfillmentMethod, fulfillmentLabel, fulfillmentNotes, trackingNumber, threePL,
         holdShipmentDate, clientNotifiedFulfillment, addressConfirmed, taxShippingDisplay,
@@ -3964,6 +4046,8 @@ function Pipeline(): React.ReactElement {
           vendorRecords={vendorRecords}
           vendorNameField={vendorNameField}
           vendorTypeField={vendorTypeField}
+          orderTable={orderTable}
+          orderRecords={orderRecords ?? []}
           matchedWaitlistEntry={resolvedWaitlistByClientId.get(selectedClient.id) ?? null}
           onClose={handleCloseFullProfile}
         />
