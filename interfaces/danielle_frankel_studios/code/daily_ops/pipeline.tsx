@@ -92,6 +92,10 @@ const FIELD_IDS = {
   CLIENT_3PL:                          'fldSxZrcIbBlyJO6R',
   CLIENT_HOLD_SHIPMENT_DATE:           'fldVsDeVp6R6ytqlb',
   CLIENT_CLIENT_NOTIFIED_FULFILLMENT:  'fldxumxeRnrDQ3CIk',
+  // Rollup of Orders.client_notified across the bride's linked orders
+  // (0–1 fraction) — Issue 4, Order Ready section only. Sandbox
+  // fldKSGxe3uMdjHWz5; Axel replicates the same config in Production.
+  CLIENT_NOTIFIED_PERCENTAGE:          'fldKSGxe3uMdjHWz5',
   CLIENT_ADDRESS_CONFIRMED:            'fldksvLd6ZQabAoY1',
   CLIENT_ALTERATION_NOTES:             'fldBhpBTj0gGmV5mc',
   CLIENT_SALES_NOTES:                  'fldsVYhG5tZAccxdK',
@@ -1102,6 +1106,7 @@ interface ClientData {
   threePL: string;
   holdShipmentDate: string | null;
   clientNotifiedFulfillment: boolean;
+  clientNotifiedPercentage: number;
   addressConfirmed: boolean;
   taxShippingDisplay: string;
   alterationNotes: string;
@@ -2710,17 +2715,18 @@ const FullProfileModal = React.memo(function FullProfileModal({
             </div>
             <DetailRow label="Customization Notes" value={client.customizationNotes || '—'} />
             <FieldRow>
-              {readOnly ? (
-                <>
-                  <DetailRow label="Alterations" value={client.contactedForAlterations ? 'Yes' : 'No'} />
-                  <DetailRow label="Client Notified" value={client.clientNotifiedFulfillment ? 'Yes' : 'No'} />
-                </>
-              ) : (
-                <>
-                  <BooleanDropdown label="Alterations" value={client.contactedForAlterations} fieldId={FIELD_IDS.CLIENT_CONTACTED_FOR_ALTERATIONS} recordId={client.id} base={base} />
-                  <BooleanDropdown label="Client Notified" value={client.clientNotifiedFulfillment} fieldId={FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT} recordId={client.id} base={base} />
-                </>
-              )}
+              {readOnly
+                ? <DetailRow label="Alterations" value={client.contactedForAlterations ? 'Yes' : 'No'} />
+                : <BooleanDropdown label="Alterations" value={client.contactedForAlterations} fieldId={FIELD_IDS.CLIENT_CONTACTED_FOR_ALTERATIONS} recordId={client.id} base={base} />
+              }
+              {/* Client Notified — rollup of Orders.client_notified across the
+                  bride's orders (Issue 4), always read-only regardless of
+                  the section's editable/readOnly mode: it's derived, not
+                  something anyone should set by hand anymore. */}
+              <div>
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1">Client Notified</span>
+                <div className="py-1"><ProgressBar percentage={client.clientNotifiedPercentage} /></div>
+              </div>
               <div />
             </FieldRow>
             {/* Per-order fulfillment method + real pickup/ship completion —
@@ -3585,6 +3591,7 @@ function Pipeline(): React.ReactElement {
       threePL:                    f(FIELD_IDS.CLIENT_3PL),
       holdShipmentDate:           f(FIELD_IDS.CLIENT_HOLD_SHIPMENT_DATE),
       clientNotifiedFulfillment:  f(FIELD_IDS.CLIENT_CLIENT_NOTIFIED_FULFILLMENT),
+      clientNotifiedPercentage:   f(FIELD_IDS.CLIENT_NOTIFIED_PERCENTAGE),
       addressConfirmed:           f(FIELD_IDS.CLIENT_ADDRESS_CONFIRMED),
       apptNotes:                  f(FIELD_IDS.CLIENT_APPT_NOTES),
       nextAppointment:            f(FIELD_IDS.CLIENT_NEXT_APPOINTMENT),
@@ -3668,6 +3675,7 @@ function Pipeline(): React.ReactElement {
       const threePL               = getCellValueAsStringSafe(record, fields.threePL);
       const holdShipmentDate      = getCellValueAsStringSafe(record, fields.holdShipmentDate) || null;
       const clientNotifiedFulfillment = !!getCellValueSafe<boolean>(record, fields.clientNotifiedFulfillment);
+      const clientNotifiedPercentage = getCellValueSafe<number>(record, fields.clientNotifiedPercentage) ?? 0;
       const addressConfirmed      = !!getCellValueSafe<boolean>(record, fields.addressConfirmed);
       const apptNotes             = getCellValueAsStringSafe(record, fields.apptNotes);
       const nextAppointment       = extractFirstLookupString(record, fields.nextAppointment);
@@ -3797,7 +3805,7 @@ function Pipeline(): React.ReactElement {
         shopifyOrderNumber, shopifyOrderLinkIds, amOrderStr, amOrderNumber,
         ship, pickUp, orderReady, pickedPercent, contactedForAlterations,
         fulfillmentMethod, fulfillmentLabel, fulfillmentNotes, trackingNumber, threePL,
-        holdShipmentDate, clientNotifiedFulfillment, addressConfirmed, taxShippingDisplay,
+        holdShipmentDate, clientNotifiedFulfillment, clientNotifiedPercentage, addressConfirmed, taxShippingDisplay,
         alterationNotes, flagFollowUp, flagNoMeasurements, flagNoPhotos,
         flagCount: effectiveFlagCount,
         activeFlagLabels: effectiveFlagLabels,
