@@ -123,20 +123,26 @@ node was removed, the Slack notification step is untouched) and
 
 ### `stage_rework_facts_backfill.js`
 **Source/Dest:** `DF Clients` (one-time manual run, not a live automation)
-Two phases. **Phase 1** backfills `order_ready_achieved`,
-`deliberating_achieved`, `did_not_convert_achieved`, and
-`alterations_scheduled_achieved` for clients who reached that milestone
-before these checkboxes existed — inferred from their current `stage` value
-against `STAGE_ORDER` (plus, for alterations, whether `Latest Alterations
-Appointment` was already non-empty). **Phase 2** (v1.2.0, per Axel — he wants
-to show Julia `stage` reconciled with `stage_formula_test` before converting
-`stage` to a formula) directly corrects `stage` for exactly two confirmed-safe
-mismatch classes: FROM `"In Alterations"` to whatever `stage_formula_test`
-says (the Aug 20 incident's residue), and FROM `"In Fulfillment"` to
-`"Fulfilled"` only (`Order Close Out v2`'s `recordEntersView` trigger never
-re-fires for pre-existing matches). Every other mismatch class is deliberately
-left alone for manual review. `DRY_RUN` defaults to `TRUE`; Phase 1 never
-writes `FALSE`.
+Three phases. **Phase 1** backfills `order_ready_achieved`,
+`deliberating_achieved`, `did_not_convert_achieved`,
+`alterations_scheduled_achieved`, and (v1.3.0) `pickup_appointment_completed_achieved`
+for clients who reached that milestone before these checkboxes existed —
+inferred from their current `stage` value against `STAGE_ORDER` (plus,
+for alterations, whether `Latest Alterations Appointment` was already
+non-empty; for pickup, whether `last_appointment` and `Latest Pick Up
+Appointments` were both already in the past). **Phase 2** (v1.2.0, per Axel —
+he wants to show Julia `stage` reconciled with `stage_formula_test` before
+converting `stage` to a formula) directly corrects `stage` for confirmed-safe
+mismatch classes only: FROM `"In Alterations"` to whatever `stage_formula_test`
+says (the Aug 20 incident's residue), FROM `"In Fulfillment"` to `"Fulfilled"`
+(`Order Close Out v2`'s `recordEntersView` trigger never re-fires for
+pre-existing matches), and (v1.3.0) FROM `"Sold"`/`"Order Ready"` to
+`"Fulfilled"` (the two stacked bugs in "Update phase to pick up..." — see
+`fulfillment.README.md` for the full diagnosis, including the deprecated
+appointment-type field and the incomplete pickup-type choice list, both fixed
+by Axel on 2026-08-21). Every other mismatch class is deliberately left alone
+for manual review. `DRY_RUN` defaults to `TRUE`; Phase 1 never writes
+`FALSE`.
 
 ---
 

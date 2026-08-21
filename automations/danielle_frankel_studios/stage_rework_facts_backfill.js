@@ -6,6 +6,33 @@ TABLE SRC    : DF Clients (tblLLUlDgJ4ktzF7c)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
 TRIGGER      : none — run manually once (ad hoc "Run script" button), NOT a
                recurring automation.
+VERSION      : 1.3.0 — added Phase 3: backfill pickup_appointment_completed_achieved
+               (2026-08-21). Root cause: the live automation "Update phase to
+               pick up when clients pick up appointment is before today..."
+               had TWO stacked bugs in its trigger, both just fixed by Axel:
+               (1) "Latest Pick Up Appointments" (fldPkOm7IaxjYPQ1i) was
+               filtered against the deprecated appointment-type field, so it
+               came back blank for anyone whose appointment was only tagged
+               via the live field; (2) even after pointing it at the live
+               field, its type filter (and the automation's own
+               "appointment_types has any of" condition, fld91Zl5Ia2AO5rPV)
+               only covered a subset of the real pickup-type values — e.g.
+               "LA - Fit Assessment & Pick Up" was missing entirely, which is
+               exactly the type on the concrete case that surfaced this
+               (Joy Herwick, pickup appointment May 2025, still stuck at
+               "Sold" as of 2026-08-21). Both are now fixed going forward,
+               but `recordMatchesConditions` never re-fires for clients who
+               already matched before the fix — so, same as Phases 1/2, this
+               needs a one-time backfill for the backlog. Mirrors the live
+               (now-corrected) trigger condition directly: stage is one of
+               Sold/Order Ready/In Alterations/In Fulfillment, AND
+               last_appointment (fldrK9nCjaQJcuH3w) is in the past, AND
+               Latest Pick Up Appointments (fldPkOm7IaxjYPQ1i) is not empty
+               AND in the past. Also extends SAFE_STAGE_CORRECTIONS with
+               (Sold → Fulfilled) and (Order Ready → Fulfilled), since this
+               fact newly applies to clients further back than "In
+               Fulfillment" (the other two phases never needed to reach that
+               far back).
 VERSION      : 1.2.0 — added a second phase: safe direct `stage` correction,
                per Axel (2026-08-21). Rationale: Axel wants to show Julia
                `stage` vs. `stage_formula_test` already reconciled BEFORE
@@ -106,8 +133,15 @@ const FIELDS_CLIENTS = {
   did_not_convert_achieved:       'fldWRzB7hU8SIf09I', // checkbox
   alterations_scheduled_achieved: 'fldS2jgLMfDzOz1bj', // checkbox
   latest_alterations_appointment: 'fldoF7SPEjWNi5JQF', // lookup, dateTime — same field the live automation's trigger watches
+  pickup_appointment_completed_achieved: 'fldP1yadf8MlknnhK', // checkbox
+  last_appointment:               'fldrK9nCjaQJcuH3w', // lookup, dateTime — mirrors "Update phase to pick up..."'s trigger
+  latest_pick_up_appointment:     'fldPkOm7IaxjYPQ1i', // lookup, dateTime — same field, now fixed to the live appointment_type field (2026-08-21)
   stage_formula_test:             'fldReZU5QzRXXETgM', // formula (text) — validated draft of the new stage logic, not yet live
 };
+
+// Stages the "Update phase to pick up..." automation's trigger allows as a
+// starting point (its own `stage isAnyOf` condition) — reused by Phase 3.
+const PICKUP_ELIGIBLE_STAGES = ['Sold', 'Order Ready', 'In Alterations', 'In Fulfillment'];
 
 // Phase 2 — see VERSION 1.2.0 note above. Each entry: a FROM stage, and a
 // predicate on the TO value (what stage_formula_test says it should be).
@@ -116,6 +150,8 @@ const FIELDS_CLIENTS = {
 const SAFE_STAGE_CORRECTIONS = [
   { from: 'In Alterations', toMatches: () => true },              // the Aug 20 incident — any destination the formula names is trusted
   { from: 'In Fulfillment', toMatches: (to) => to === 'Fulfilled' }, // Order Close Out v2's stale recordEntersView trigger — forward-only
+  { from: 'Sold',           toMatches: (to) => to === 'Fulfilled' }, // Phase 3 (VERSION 1.3.0) — pickup_appointment_completed_achieved backlog
+  { from: 'Order Ready',    toMatches: (to) => to === 'Fulfilled' }, // same
 ];
 
 // Progression order for the "at or past" comparisons. "Did Not Convert" is
@@ -217,6 +253,20 @@ class BackfillEvaluator {
       fieldsToWrite[FIELDS_CLIENTS.alterations_scheduled_achieved] = true;
     }
 
+    // Phase 3 (VERSION 1.3.0) — mirrors "Update phase to pick up..."'s own
+    // (now-corrected) trigger condition, for clients whose pickup appointment
+    // already happened before the fix landed.
+    if (PICKUP_ELIGIBLE_STAGES.includes(currentStage) && client.getCellValue(FIELDS_CLIENTS.pickup_appointment_completed_achieved) !== true) {
+      const now = new Date();
+      const lastAppt = client.getCellValue(FIELDS_CLIENTS.last_appointment);
+      const latestPickUp = client.getCellValue(FIELDS_CLIENTS.latest_pick_up_appointment);
+      const lastApptPast = lastAppt != null && new Date(lastAppt) < now;
+      const pickUpPast = latestPickUp != null && new Date(latestPickUp) < now;
+      if (lastApptPast && pickUpPast) {
+        fieldsToWrite[FIELDS_CLIENTS.pickup_appointment_completed_achieved] = true;
+      }
+    }
+
     return Object.keys(fieldsToWrite).length ? fieldsToWrite : null;
   }
 }
@@ -249,16 +299,17 @@ class StageCorrectionEvaluator {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MessageBuilder {
-  static summary({ scanned, orderReadyCount, deliberatingCount, didNotConvertCount, alterationsScheduledCount, totalToUpdate, stageCorrectionsCount, stageCorrectionCounts, dryRun }) {
+  static summary({ scanned, orderReadyCount, deliberatingCount, didNotConvertCount, alterationsScheduledCount, pickupCompletedCount, totalToUpdate, stageCorrectionsCount, stageCorrectionCounts, dryRun }) {
     const stageLines = Object.entries(stageCorrectionCounts || {}).map(([k, v]) => `    ${k}: ${v}`).join('\n');
     return [
       `Scanned ${scanned} clients.`,
       `-- Phase 1: facts --`,
-      `order_ready_achieved to set:           ${orderReadyCount}`,
-      `deliberating_achieved to set:          ${deliberatingCount}`,
-      `did_not_convert_achieved to set:       ${didNotConvertCount}`,
-      `alterations_scheduled_achieved to set: ${alterationsScheduledCount}`,
-      `Total records touched (facts):         ${totalToUpdate}`,
+      `order_ready_achieved to set:                  ${orderReadyCount}`,
+      `deliberating_achieved to set:                 ${deliberatingCount}`,
+      `did_not_convert_achieved to set:              ${didNotConvertCount}`,
+      `alterations_scheduled_achieved to set:        ${alterationsScheduledCount}`,
+      `pickup_appointment_completed_achieved to set: ${pickupCompletedCount}`,
+      `Total records touched (facts):                ${totalToUpdate}`,
       `-- Phase 2: safe stage corrections --`,
       `Total records touched (stage):         ${stageCorrectionsCount}`,
       stageLines || '    (none)',
@@ -294,6 +345,7 @@ class BackfillService {
     let deliberatingCount = 0;
     let didNotConvertCount = 0;
     let alterationsScheduledCount = 0;
+    let pickupCompletedCount = 0;
 
     for (const client of clients) {
       const fieldsToWrite = this.factEvaluator.evaluate(client);
@@ -303,6 +355,7 @@ class BackfillService {
       if (fieldsToWrite[FIELDS_CLIENTS.deliberating_achieved]) deliberatingCount++;
       if (fieldsToWrite[FIELDS_CLIENTS.did_not_convert_achieved]) didNotConvertCount++;
       if (fieldsToWrite[FIELDS_CLIENTS.alterations_scheduled_achieved]) alterationsScheduledCount++;
+      if (fieldsToWrite[FIELDS_CLIENTS.pickup_appointment_completed_achieved]) pickupCompletedCount++;
 
       factUpdates.push({ id: client.id, fields: fieldsToWrite });
     }
@@ -349,6 +402,7 @@ class BackfillService {
       deliberatingCount,
       didNotConvertCount,
       alterationsScheduledCount,
+      pickupCompletedCount,
       totalToUpdate: factUpdates.length,
       stageCorrectionsCount: stageUpdates.length,
       stageCorrectionCounts,
@@ -372,8 +426,8 @@ const logger = new Logger(CONFIG.LOG_LEVEL);
 
 let result = {
   status: 'ERROR', scanned: 0, order_ready_count: 0, deliberating_count: 0,
-  did_not_convert_count: 0, alterations_scheduled_count: 0, total_to_update: 0,
-  stage_corrections_count: 0, dry_run: dryRun,
+  did_not_convert_count: 0, alterations_scheduled_count: 0, pickup_completed_count: 0,
+  total_to_update: 0, stage_corrections_count: 0, dry_run: dryRun,
   result_message: null, error_message: null,
 };
 
@@ -396,6 +450,7 @@ try {
     deliberating_count: summary.deliberatingCount,
     did_not_convert_count: summary.didNotConvertCount,
     alterations_scheduled_count: summary.alterationsScheduledCount,
+    pickup_completed_count: summary.pickupCompletedCount,
     total_to_update: summary.totalToUpdate,
     stage_corrections_count: summary.stageCorrectionsCount,
     dry_run: dryRun,
@@ -420,6 +475,7 @@ output.set('order_ready_count',      result.order_ready_count);
 output.set('deliberating_count',     result.deliberating_count);
 output.set('did_not_convert_count',  result.did_not_convert_count);
 output.set('alterations_scheduled_count', result.alterations_scheduled_count);
+output.set('pickup_completed_count', result.pickup_completed_count);
 output.set('total_to_update',        result.total_to_update);
 output.set('stage_corrections_count', result.stage_corrections_count);
 output.set('dry_run',                result.dry_run);
