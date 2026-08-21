@@ -123,12 +123,19 @@ node was removed, the Slack notification step is untouched) and
 
 ### `stage_rework_facts_backfill.js`
 **Source/Dest:** `DF Clients` (one-time manual run, not a live automation)
-Backfills `order_ready_achieved`, `deliberating_achieved`, and
-`did_not_convert_achieved` for clients who reached that milestone before
-these checkboxes existed — inferred from their current `stage` value against
-`STAGE_ORDER`. Confirmed via a live `stage` vs. `stage_formula_test` diff
-(2026-08-20, ~2,100 mismatches) that this backfill gap — not a formula bug —
-accounts for the large majority of them. `DRY_RUN` defaults to `TRUE`; never
+Two phases. **Phase 1** backfills `order_ready_achieved`,
+`deliberating_achieved`, `did_not_convert_achieved`, and
+`alterations_scheduled_achieved` for clients who reached that milestone
+before these checkboxes existed — inferred from their current `stage` value
+against `STAGE_ORDER` (plus, for alterations, whether `Latest Alterations
+Appointment` was already non-empty). **Phase 2** (v1.2.0, per Axel — he wants
+to show Julia `stage` reconciled with `stage_formula_test` before converting
+`stage` to a formula) directly corrects `stage` for exactly two confirmed-safe
+mismatch classes: FROM `"In Alterations"` to whatever `stage_formula_test`
+says (the Aug 20 incident's residue), and FROM `"In Fulfillment"` to
+`"Fulfilled"` only (`Order Close Out v2`'s `recordEntersView` trigger never
+re-fires for pre-existing matches). Every other mismatch class is deliberately
+left alone for manual review. `DRY_RUN` defaults to `TRUE`; Phase 1 never
 writes `FALSE`.
 
 ---

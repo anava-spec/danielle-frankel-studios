@@ -6,6 +6,30 @@ TABLE SRC    : DF Clients (tblLLUlDgJ4ktzF7c)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
 TRIGGER      : none — run manually once (ad hoc "Run script" button), NOT a
                recurring automation.
+VERSION      : 1.2.0 — added a second phase: safe direct `stage` correction,
+               per Axel (2026-08-21). Rationale: Axel wants to show Julia
+               `stage` vs. `stage_formula_test` already reconciled BEFORE
+               converting `stage` to a formula, not after — so some of the
+               known-safe mismatches need fixing directly, ahead of the
+               conversion itself.
+               Only two mismatch classes are auto-corrected, both diagnosed
+               via a live stage vs. stage_formula_test diff (2026-08-21) as
+               stale-trigger bugs, not business-logic ambiguity:
+                 - FROM "In Alterations" TO whatever stage_formula_test says
+                   — these are the Aug 20 incident's residue (a trigger with
+                   no stage guard wrongly moved clients into "In Alterations"
+                   regardless of where they actually were).
+                 - FROM "In Fulfillment" TO "Fulfilled" — the
+                   "Order Close Out v2" automation is deployed and correct,
+                   but its `recordEntersView` trigger never re-fires for
+                   clients who already matched the view's filter before the
+                   automation existed; the formula catches these anyway.
+               Every OTHER mismatch class found in the same diff (Fulfilled →
+               In Fulfillment, Sold ↔ Deliberating, etc.) is deliberately left
+               untouched — those involve a real backward move or a data
+               contradiction (e.g. a "Sold" client missing a linked Shopify
+               order) that needs a human to look at, not a script to guess.
+               See SAFE_STAGE_CORRECTIONS below for the exact rule.
 VERSION      : 1.1.0 — added alterations_scheduled_achieved to the backfill
                (2026-08-21), found via a live stage vs. stage_formula_test
                diff after the first backfill run: clients whose
@@ -53,9 +77,17 @@ DRY_RUN
   hardcoded) — defaults to TRUE if not passed. Review log_summary (counts per
   fact), then re-run with dryRun=false in the Input variables panel to apply.
 
+PREREQUISITE (Phase 2 only)
+  `stage_formula_test` (fldReZU5QzRXXETgM) must already exist on DF Clients —
+  a formula field implementing the new stage logic, used here purely as a
+  read-only reference. If it doesn't exist yet in this base, Phase 2 finds
+  nothing to correct (formulaStage comes back blank) and silently no-ops —
+  it does not error.
+
 OUTPUT
-  Prints via Logger: clients scanned, and per-fact counts of how many would
-  be (or were) updated, plus a sample of the first 20 updates for spot-check.
+  Prints via Logger: clients scanned, per-fact counts for Phase 1, and
+  per-transition counts for Phase 2's stage corrections, plus samples of
+  each for spot-check.
 ================================================================================
 */
 
@@ -74,7 +106,17 @@ const FIELDS_CLIENTS = {
   did_not_convert_achieved:       'fldWRzB7hU8SIf09I', // checkbox
   alterations_scheduled_achieved: 'fldS2jgLMfDzOz1bj', // checkbox
   latest_alterations_appointment: 'fldoF7SPEjWNi5JQF', // lookup, dateTime — same field the live automation's trigger watches
+  stage_formula_test:             'fldReZU5QzRXXETgM', // formula (text) — validated draft of the new stage logic, not yet live
 };
+
+// Phase 2 — see VERSION 1.2.0 note above. Each entry: a FROM stage, and a
+// predicate on the TO value (what stage_formula_test says it should be).
+// Only pairs listed here get their `stage` corrected directly; everything
+// else is left for manual review.
+const SAFE_STAGE_CORRECTIONS = [
+  { from: 'In Alterations', toMatches: () => true },              // the Aug 20 incident — any destination the formula names is trusted
+  { from: 'In Fulfillment', toMatches: (to) => to === 'Fulfilled' }, // Order Close Out v2's stale recordEntersView trigger — forward-only
+];
 
 // Progression order for the "at or past" comparisons. "Did Not Convert" is
 // deliberately excluded — it's a side branch, not a point on this line.
@@ -124,8 +166,8 @@ class ClientsRepository {
     return result.records;
   }
 
-  async applyUpdates(updates) {
-    this.logger.step(4, `Writing ${updates.length} record(s) in batches of ${CONFIG.BATCH_SIZE}`);
+  async applyUpdates(updates, stepNumber = 4) {
+    this.logger.step(stepNumber, `Writing ${updates.length} record(s) in batches of ${CONFIG.BATCH_SIZE}`);
     for (let i = 0; i < updates.length; i += CONFIG.BATCH_SIZE) {
       const batch = updates.slice(i, i + CONFIG.BATCH_SIZE);
       await this.table.updateRecordsAsync(batch);
@@ -180,18 +222,46 @@ class BackfillEvaluator {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// STAGE CORRECTION EVALUATOR — pure logic, no Airtable calls
+// ─────────────────────────────────────────────────────────────────────────────
+
+class StageCorrectionEvaluator {
+  constructor(logger) { this.logger = logger; }
+
+  // Returns { newStage } if this client's `stage` should be corrected
+  // directly (matches one of SAFE_STAGE_CORRECTIONS and actually differs
+  // from stage_formula_test), or null otherwise.
+  evaluate(client) {
+    const currentStage = client.getCellValueAsString(FIELDS_CLIENTS.stage);
+    const formulaStage = client.getCellValueAsString(FIELDS_CLIENTS.stage_formula_test);
+
+    if (!formulaStage || currentStage === formulaStage) return null;
+
+    const rule = SAFE_STAGE_CORRECTIONS.find(r => r.from === currentStage);
+    if (!rule || !rule.toMatches(formulaStage)) return null;
+
+    return { newStage: formulaStage };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MESSAGE BUILDER
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MessageBuilder {
-  static summary({ scanned, orderReadyCount, deliberatingCount, didNotConvertCount, alterationsScheduledCount, totalToUpdate, dryRun }) {
+  static summary({ scanned, orderReadyCount, deliberatingCount, didNotConvertCount, alterationsScheduledCount, totalToUpdate, stageCorrectionsCount, stageCorrectionCounts, dryRun }) {
+    const stageLines = Object.entries(stageCorrectionCounts || {}).map(([k, v]) => `    ${k}: ${v}`).join('\n');
     return [
       `Scanned ${scanned} clients.`,
+      `-- Phase 1: facts --`,
       `order_ready_achieved to set:           ${orderReadyCount}`,
       `deliberating_achieved to set:          ${deliberatingCount}`,
       `did_not_convert_achieved to set:       ${didNotConvertCount}`,
       `alterations_scheduled_achieved to set: ${alterationsScheduledCount}`,
-      `Total records touched:                ${totalToUpdate}`,
+      `Total records touched (facts):         ${totalToUpdate}`,
+      `-- Phase 2: safe stage corrections --`,
+      `Total records touched (stage):         ${stageCorrectionsCount}`,
+      stageLines || '    (none)',
       dryRun
         ? 'DRY RUN — nothing written. Re-run with dryRun=false to apply.'
         : 'LIVE RUN — all of the above was written.',
@@ -205,9 +275,10 @@ class MessageBuilder {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class BackfillService {
-  constructor(clientsRepo, evaluator, logger) {
+  constructor(clientsRepo, factEvaluator, stageCorrectionEvaluator, logger) {
     this.clientsRepo = clientsRepo;
-    this.evaluator = evaluator;
+    this.factEvaluator = factEvaluator;
+    this.stageCorrectionEvaluator = stageCorrectionEvaluator;
     this.logger = logger;
   }
 
@@ -216,15 +287,16 @@ class BackfillService {
 
     const clients = await this.clientsRepo.getAll();
 
-    this.logger.step(2, 'Evaluating each client against STAGE_ORDER');
-    const updates = [];
+    // ── Phase 1: fact checkboxes ────────────────────────────────────────────
+    this.logger.step(2, 'Phase 1 — evaluating each client against STAGE_ORDER (facts)');
+    const factUpdates = [];
     let orderReadyCount = 0;
     let deliberatingCount = 0;
     let didNotConvertCount = 0;
     let alterationsScheduledCount = 0;
 
     for (const client of clients) {
-      const fieldsToWrite = this.evaluator.evaluate(client);
+      const fieldsToWrite = this.factEvaluator.evaluate(client);
       if (!fieldsToWrite) continue;
 
       if (fieldsToWrite[FIELDS_CLIENTS.order_ready_achieved]) orderReadyCount++;
@@ -232,17 +304,43 @@ class BackfillService {
       if (fieldsToWrite[FIELDS_CLIENTS.did_not_convert_achieved]) didNotConvertCount++;
       if (fieldsToWrite[FIELDS_CLIENTS.alterations_scheduled_achieved]) alterationsScheduledCount++;
 
-      updates.push({ id: client.id, fields: fieldsToWrite });
+      factUpdates.push({ id: client.id, fields: fieldsToWrite });
     }
 
-    this.logger.step(3, `${updates.length} client(s) need at least one fact written`);
-    const sample = updates.slice(0, CONFIG.SAMPLE_SIZE).map(u => `  ${u.id}: ${JSON.stringify(u.fields)}`).join('\n');
-    this.logger.audit(`Sample of updates (first ${CONFIG.SAMPLE_SIZE}):\n${sample}`);
+    this.logger.step(3, `Phase 1 — ${factUpdates.length} client(s) need at least one fact written`);
+    const factSample = factUpdates.slice(0, CONFIG.SAMPLE_SIZE).map(u => `  ${u.id}: ${JSON.stringify(u.fields)}`).join('\n');
+    this.logger.audit(`Sample of fact updates (first ${CONFIG.SAMPLE_SIZE}):\n${factSample}`);
 
-    if (!dryRun && updates.length) {
-      await this.clientsRepo.applyUpdates(updates);
+    if (!dryRun && factUpdates.length) {
+      await this.clientsRepo.applyUpdates(factUpdates, 4);
     } else if (dryRun) {
-      this.logger.audit('DRY RUN — skipping writes.');
+      this.logger.audit('DRY RUN — skipping fact writes.');
+    }
+
+    // ── Phase 2: safe direct stage correction (VERSION 1.2.0) ───────────────
+    this.logger.step(5, 'Phase 2 — checking stage vs. stage_formula_test for the two known-safe mismatch classes');
+    const stageUpdates = [];
+    const stageCorrectionCounts = {};
+
+    for (const client of clients) {
+      const correction = this.stageCorrectionEvaluator.evaluate(client);
+      if (!correction) continue;
+
+      const fromStage = client.getCellValueAsString(FIELDS_CLIENTS.stage);
+      const key = `${fromStage} → ${correction.newStage}`;
+      stageCorrectionCounts[key] = (stageCorrectionCounts[key] || 0) + 1;
+
+      stageUpdates.push({ id: client.id, fields: { [FIELDS_CLIENTS.stage]: { name: correction.newStage } } });
+    }
+
+    this.logger.step(6, `Phase 2 — ${stageUpdates.length} client(s) qualify for direct stage correction`);
+    const stageSample = Object.entries(stageCorrectionCounts).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+    this.logger.audit(`Stage corrections by transition:\n${stageSample}`);
+
+    if (!dryRun && stageUpdates.length) {
+      await this.clientsRepo.applyUpdates(stageUpdates, 7);
+    } else if (dryRun) {
+      this.logger.audit('DRY RUN — skipping stage corrections.');
     }
 
     return {
@@ -251,7 +349,9 @@ class BackfillService {
       deliberatingCount,
       didNotConvertCount,
       alterationsScheduledCount,
-      totalToUpdate: updates.length,
+      totalToUpdate: factUpdates.length,
+      stageCorrectionsCount: stageUpdates.length,
+      stageCorrectionCounts,
       dryRun,
     };
   }
@@ -272,7 +372,8 @@ const logger = new Logger(CONFIG.LOG_LEVEL);
 
 let result = {
   status: 'ERROR', scanned: 0, order_ready_count: 0, deliberating_count: 0,
-  did_not_convert_count: 0, alterations_scheduled_count: 0, total_to_update: 0, dry_run: dryRun,
+  did_not_convert_count: 0, alterations_scheduled_count: 0, total_to_update: 0,
+  stage_corrections_count: 0, dry_run: dryRun,
   result_message: null, error_message: null,
 };
 
@@ -282,6 +383,7 @@ try {
   const service = new BackfillService(
     new ClientsRepository(logger),
     new BackfillEvaluator(logger),
+    new StageCorrectionEvaluator(logger),
     logger
   );
 
@@ -295,6 +397,7 @@ try {
     did_not_convert_count: summary.didNotConvertCount,
     alterations_scheduled_count: summary.alterationsScheduledCount,
     total_to_update: summary.totalToUpdate,
+    stage_corrections_count: summary.stageCorrectionsCount,
     dry_run: dryRun,
     result_message: MessageBuilder.summary(summary),
     error_message: null,
@@ -318,6 +421,7 @@ output.set('deliberating_count',     result.deliberating_count);
 output.set('did_not_convert_count',  result.did_not_convert_count);
 output.set('alterations_scheduled_count', result.alterations_scheduled_count);
 output.set('total_to_update',        result.total_to_update);
+output.set('stage_corrections_count', result.stage_corrections_count);
 output.set('dry_run',                result.dry_run);
 output.set('result_message',         result.result_message);
 output.set('error_message',          result.error_message);
