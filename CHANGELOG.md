@@ -33,6 +33,8 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Fulfillment**
 - Orders now automatically close out to "Fulfilled" once everything on them is picked/shipped, instead of sitting in "In Fulfillment" indefinitely with no defined end state.
 - Pending: still need to review with Julia whether the "Shipped" tracking fields (shipped status, shipped percentage) should be kept or removed — they aren't driving anything today.
+- In the In Fulfillment step, replaced the bride-level Fulfillment Method, Client Notified, Tracking #, and 3PL fields (which could only reflect one order per bride) with a table showing every one of her orders, each with its own method, client-notified status, tracking number, 3PL, and a fulfillment progress bar.
+- Fixed the fulfillment progress calculation, which was adding together two numbers that didn't actually belong together ("ready to hand off" and "already handed off") — it now reflects real progress.
 
 **Recap**
 - Fixed a bug where the Wedding Date shown on the main list could be out of sync with (and older than) the correct date shown on the individual client's page — the list now always reads the same, current value.
