@@ -455,6 +455,15 @@ function formatDateTime(val: string | null): string {
 }
 function formatWeddingDateDisplay(val: string | null): string {
   if (!val) return '—';
+  const mdy = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthIdx = parseInt(mm, 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${months[monthIdx]} ${parseInt(dd, 10)}, ${yyyy}`;
+    }
+  }
   const isoMatch = val.match(/^\d{4}-\d{2}-\d{2}/);
   if (isoMatch) {
     const d = new Date(`${val.slice(0, 10)}T12:00:00Z`);
