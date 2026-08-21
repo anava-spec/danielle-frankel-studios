@@ -20,6 +20,8 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - In the Order Ready step, replaced the old manual "Shipping"/"Pick Up" yes/no flags (which could only reflect one order per bride) with a table showing every one of her orders, each with its fulfillment method and a progress bar for how much of it has actually been picked up or shipped.
 - Also in Order Ready, "Client Notified" is no longer a manual checkbox — it's now a progress bar showing what percentage of the bride's orders the client has actually been notified for.
 - Fixed the RTW Size field: Sales Associates now confirm the size in its own field instead of typing over the customer's original self-reported size from Acuity — that original value is preserved and still shown for reference right next to the confirmed size. If no size has been confirmed yet, the display now correctly falls back to showing the Acuity value instead of appearing blank.
+- Fixed a bug where Wedding Date could show the day and month swapped (e.g. a December 5th wedding showing as May 12th).
+- Fixed "Room" and "Alterations Lead" sometimes showing the literal text "[object Object]" instead of the actual name.
 
 **Alterations**
 - Fixed a bug where alterations line items could inflate an order's "% Picked," which could trigger the Order Ready phase too early — alterations items are now excluded from that calculation.
