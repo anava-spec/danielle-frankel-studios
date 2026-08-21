@@ -910,7 +910,11 @@ function parseDateFlexible(str: string | null | undefined): Date | null {
     let day: number, month: number;
     if (first > 12) { day = first; month = second - 1; }
     else if (second > 12) { day = second; month = first - 1; }
-    else { day = first; month = second - 1; }
+    // Fixed 2026-08-21: an ambiguous "N/N/YYYY" (both parts <= 12) used to
+    // default to day/month order, which is backwards for this US-based
+    // system — every other date on this base is entered/displayed M/D/Y, so
+    // "12/5/2026" is December 5th, not May 12th.
+    else { month = first - 1; day = second; }
     let hour = dmyMatch[4] ? parseInt(dmyMatch[4]!, 10) : 0;
     const minute = dmyMatch[5] ? parseInt(dmyMatch[5]!, 10) : 0;
     const ampm = dmyMatch[7]?.toLowerCase();
@@ -982,6 +986,40 @@ function formatStageCount(count: number): string {
   return String(count);
 }
 
+// Unwraps a single lookup cell value down to a plain string. Handles the
+// case (fixed 2026-08-21) where the lookup points at a linked-record field
+// (e.g. Room, Alterations Lead on DF Appointments - Acuity) rather than a
+// plain text field — the raw value is then an array of {id, name} link
+// objects, sometimes nested one level deeper (an array *of* arrays) when the
+// lookup itself passes through another link. Before this fix, an unhandled
+// nested array fell through to `String(first)`, which for an array of plain
+// objects stringifies to the literal text "[object Object]" (JS's default
+// Array.prototype.join calling Object.prototype.toString on each element) —
+// that's what showed up in the UI instead of the actual room/lead name.
+function unwrapLookupValue(value: unknown, depth = 0): string | null {
+  if (value === null || value === undefined || depth > 4) return null;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const resolved = unwrapLookupValue(item, depth + 1);
+      if (resolved) return resolved;
+    }
+    return null;
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.value === 'string') return obj.value;
+    if (obj.value instanceof Date) return (obj.value as Date).toISOString();
+    if (typeof obj.name === 'string') return obj.name;
+    // Linked-record cell values only ever carry {id, name}, {id, value}, or
+    // (rarely) neither — never fall back to String(obj) here, which is what
+    // produced "[object Object]" before this fix.
+    return null;
+  }
+  return String(value);
+}
+
 function extractFirstLookupString(record: AirtableRecord, field: Field | null | undefined): string | null {
   if (!field) return null;
   try {
@@ -992,26 +1030,8 @@ function extractFirstLookupString(record: AirtableRecord, field: Field | null | 
     // month depending on whose browser renders it. Raw ISO values sidestep
     // that ambiguity entirely.
     const raw = record.getCellValue(field);
-    if (raw !== null && raw !== undefined) {
-      if (Array.isArray(raw)) {
-        if (raw.length > 0) {
-          const first = raw[0];
-          if (first !== null && first !== undefined) {
-            if (typeof first === 'string') return first;
-            if (first instanceof Date) return first.toISOString();
-            if (typeof first === 'object') {
-              const obj = first as Record<string, unknown>;
-              if (typeof obj.value === 'string') return obj.value;
-              if (obj.value instanceof Date) return (obj.value as Date).toISOString();
-              if (typeof obj.name === 'string') return obj.name;
-            }
-            return String(first);
-          }
-        }
-      } else if (typeof raw === 'string') return raw;
-      else if (raw instanceof Date) return raw.toISOString();
-      else return String(raw);
-    }
+    const unwrapped = unwrapLookupValue(raw);
+    if (unwrapped !== null) return unwrapped;
     const str = record.getCellValueAsString(field);
     return str && str.trim() ? str.trim() : null;
   } catch { return null; }
@@ -2068,16 +2088,49 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
     } finally { setSaving(false); }
   };
 
-  const dot = (name: string) => colors?.[name]
-    ? <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors[name].bg }} />
-    : null;
+  const pillStyle = (name: string): { backgroundColor: string; color: string } =>
+    colors?.[name] ? { backgroundColor: colors[name].bg, color: colors[name].fg } : { backgroundColor: DEFAULT_STAGE_COLORS.bg, color: DEFAULT_STAGE_COLORS.fg };
+
+  // Colored-choice fields (e.g. Alterations Status) use the exact same box
+  // shape as every other dropdown here (Interest in Custom/Alts/M2M, etc.)
+  // — just tinted with the choice's real Airtable color instead of plain text.
+  if (colors) {
+    return (
+      <div ref={containerRef} className="relative">
+        <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="w-full inline-flex items-center justify-between gap-2 border border-transparent rounded-lg px-2.5 py-1.5 text-sm font-medium hover:opacity-90 focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-opacity"
+          style={localValue ? pillStyle(localValue) : { backgroundColor: 'transparent' }}>
+          <span className={`truncate text-left ${localValue ? '' : 'text-gray-400 dark:text-gray-500 font-normal'}`}>{localValue || '—'}</span>
+          <CaretDownIcon size={12} className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${localValue ? '' : 'text-gray-400 dark:text-gray-500'}`} />
+        </button>
+        {open && (
+          <FixedPopup anchorRef={containerRef} onClose={() => setOpen(false)}>
+            <button type="button" onClick={() => handleSelect('')}
+              className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${!localValue ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+              —
+            </button>
+            {options.map(o => (
+              <button key={o} type="button" onClick={() => handleSelect(o)}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left font-medium transition-opacity hover:opacity-90"
+                style={pillStyle(o)}>
+                {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
+                {localValue !== o && <span className="w-3 flex-shrink-0" />}
+                <span className="truncate">{o}</span>
+              </button>
+            ))}
+          </FixedPopup>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative">
       <FieldLabel saving={saving} error={error} fieldId={fieldId}>{label}</FieldLabel>
       <button type="button" onClick={() => setOpen(o => !o)}
         className="w-full inline-flex items-center justify-between gap-2 bg-white dark:bg-[#1e1d1b] border border-gray-300 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-white/20 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors">
-        <span className="truncate text-left flex items-center gap-1.5">{dot(localValue)}{localValue || '—'}</span>
+        <span className="truncate text-left">{localValue || '—'}</span>
         <CaretDownIcon size={12} className={`text-gray-400 dark:text-gray-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -2091,7 +2144,6 @@ function EditableSelect({ label, value, options, fieldId, recordId, base, tableI
               className={`flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left transition-colors ${localValue === o ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] text-[#D97706] dark:text-[#FBBF24] font-medium' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
               {localValue === o && <CheckIcon size={12} weight="bold" className="flex-shrink-0" />}
               {localValue !== o && <span className="w-3 flex-shrink-0" />}
-              {dot(o)}
               <span className="truncate">{o}</span>
             </button>
           ))}
@@ -3798,7 +3850,12 @@ function Pipeline(): React.ReactElement {
       const lastName              = getCellValueAsStringSafe(record, fields.lastName);
       const email                 = getCellValueAsStringSafe(record, fields.email);
       const phone                 = getCellValueAsStringSafe(record, fields.phone);
-      const weddingDate           = getCellValueAsStringSafe(record, fields.wedding) || null;
+      // Fixed 2026-08-21: this used to read getCellValueAsStringSafe, which
+      // formats using the field's "local" display format — ambiguous for
+      // day/month (a 12/5 wedding date rendered/parsed back as May 12
+      // instead of Dec 5). Read the raw ISO cell value instead, same fix
+      // pattern as extractFirstLookupString above.
+      const weddingDate           = getCellValueSafe<string>(record, fields.wedding) || null;
       const weddingDateIfNotSet   = getCellValueAsStringSafe(record, fields.weddingIfNotSet);
       const weddingLocation       = getCellValueAsStringSafe(record, fields.weddingLocation);
       const weddingPlanner        = getCellValueAsStringSafe(record, fields.weddingPlanner);
