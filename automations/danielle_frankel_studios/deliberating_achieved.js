@@ -4,10 +4,12 @@ AUTOMATION   : Deliberating Achieved - Consolidated
 BASE         : appMmEE4zyHMGhkkd (sandbox) — publish to production after review
 TABLE SRC    : DF Appointments - Acuity (tblvV7uKTCaFFekoR)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
-TRIGGER      : Record enters view <consolidated Deliberating view — Axel to
-               create in DF Appointments - Acuity, filter: Cleared = TRUE, OR
-               (Appointment Time + duration is more than 1 hour in the past
-               AND Cleared = FALSE AND status != Cancelled)>
+TRIGGER      : Record enters view "stage_auto_advance" (viwYWqT6ETnH5qkdP) on
+               DF Appointments - Acuity — filter: Cleared = TRUE, OR
+               (stage_auto_advance_ready = TRUE AND Status != Cancelled AND
+               DF Clients.stage = Pre-Appointment). Automation:
+               "Deliberating Achieved - Consolidated" (wflfSURIS1zTby6Zo,
+               draft — script not yet pasted in).
 VERSION      : 1.0.0 — consolidates two previously separate automations into
                one, per Axel's request (2026-08-20) to keep one automation per
                fact for maintainability, so a stage-formula failure only ever
