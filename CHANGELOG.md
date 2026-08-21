@@ -16,6 +16,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Pipeline**
 - Fixed the sync bug that kept recently-scheduled alterations appointments from showing up in the Alterations column.
 - Found and fixed a bigger underlying issue while investigating: because multiple automations could independently move a client's stage, one of them briefly moved a batch of already-further-along clients backward into "In Alterations." Corrected everyone affected, and started a deeper rework (in progress, not yet live) so a client's stage gets computed from a set of independent facts instead of being overwritten directly — so this class of bug becomes structurally impossible going forward. Julia will review the new logic before it replaces the current one.
+- Fixed a second, related sync bug: the Fulfillment column also wasn't reflecting some clients' recent pickup appointments, because the automation that reads them was pointed at an old, deprecated appointment-type field and was missing a few valid pickup appointment types. Corrected the automation and caught up everyone affected who was already stuck waiting.
 
 **Alterations**
 - Fixed a bug where alterations line items could inflate an order's "% Picked," which could trigger the Order Ready phase too early — alterations items are now excluded from that calculation.
