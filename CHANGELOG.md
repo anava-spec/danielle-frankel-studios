@@ -11,6 +11,14 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+## Week of Aug 17–21, 2026
+
+**Pipeline**
+- Fixed the RTW Size field: Sales Associates now confirm the size in its own field instead of typing over the customer's original self-reported size from Acuity — that original value is preserved and still shown for reference right next to the confirmed size. If no size has been confirmed yet, the display now correctly falls back to showing the Acuity value instead of appearing blank.
+
+**Sold Orders**
+- The order list now defaults to showing the most recently sold order first, instead of no particular order.
+
 ## Week of Aug 3, 2026
 
 **Recap Doc**
