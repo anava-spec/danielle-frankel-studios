@@ -4,54 +4,54 @@ AUTOMATION   : Order Close Out - In Fulfillment to Fulfilled
 BASE         : appMmEE4zyHMGhkkd (sandbox) — publish to production after review
 TABLE SRC    : DF Clients (tblLLUlDgJ4ktzF7c)
 TABLE DEST   : DF Clients (tblLLUlDgJ4ktzF7c)
-TRIGGER      : Record updated — DF Clients, watching: stage, sa_override_fulfilled,
+TRIGGER      : Record enters view "fulfillment_ready_to_close_out" — DF Clients
+               (stage = "In Fulfillment" AND (quantity_open_total = 0 OR
+               sa_override_fulfilled)). See VERSION 3.0.0 note for why the
+               view-based trigger replaced watching fields directly.
+VERSION      : 3.0.0 — dropped Path B (appointment-confirmed pickup) and
+               Path C (tracking + % shipped) entirely, per Axel (2026-08-20).
+               Both were absorbed from automations with zero production runs
+               ever (see v1.0.0 note), and on reflection neither is worth
+               keeping active close-out logic on:
+                 - Path B's fields (full_order_fulfilled_from_appt,
+                   picked_up_from_appt) have no other meaningful dependents.
+                 - Path C's percent_shipped rollup source-chains through a
+                   field literally named "Shipped (num, 0-1) (deprecated)"
+                   on Orders - Shopify, which itself derives from a
+                   manually-editable single select ("Shipped status") that
+                   any staff member can change by hand. Shipped quantity
+                   should come from order_items (Apparel-Magic-synced data),
+                   not a hand-set select field — using it to auto-close an
+                   order would be trusting the wrong source of truth.
+               Axel is following up with Julia on whether to delete
                full_order_fulfilled_from_appt, picked_up_from_appt,
-               tracking_number, percent_shipped, quantity_open_total
-VERSION      : 2.0.0 — replaces the direct order_items query from v1.0.0 with
-               the new DF Clients.quantity_open_total rollup field
+               percent_shipped, and the two Orders - Shopify fields behind
+               it (deprecated formula + "Shipped status" select) outright.
+               Until that's decided, this script and the
+               "fulfillment_ready_to_close_out" view simply don't reference
+               them — no schema changes made here.
+               Close-out is now just Path A (quantity_open_total == 0) OR
+               Path D (sa_override_fulfilled), matching the view's filter
+               1:1 — see TRIGGER note above. Manually tested against the
+               sandbox test clients for A and D (Bryn Valaika, Elizabeth
+               Lites); Path C's test client (Josephine D'Ippolito) is now
+               moot since that path no longer exists.
+VERSION      : 2.0.0 — replaced the direct order_items query from v1.0.0 with
+               the DF Clients.quantity_open_total rollup field
                (fldVfOcvePRxXkVHT), added 2026-08-20 specifically so this
-               automation's trigger can watch it directly (chained rollup:
-               order_items.quantity_open -> Orders - Shopify.quantity_open_total
-               -> DF Clients.quantity_open_total). The ALTERATIONS exclusion
-               (Issue 2 fix) lives on the Orders - Shopify rollup itself, via
-               its "only include linked records that meet conditions" filter
-               (style_category has none of ALTERATIONS) — Axel reconfigured
-               it this way instead of the intermediate order_items formula
-               field this script originally assumed, so there is one fewer
-               field in the chain than the VERSION note above implies; the
-               script itself is unaffected either way since it only reads
-               the final DF Clients.quantity_open_total value. This is a
-               separate automation from the original consolidation draft
-               (Order Close Out - In Fulfillment to Fulfilled, wflndcP1aaQD2ORhK)
-               because that one already had a script node pasted in, which
-               locks it from further API edits — Axel is updating that node
-               to this v2.0.0 script by hand and will delete the 3 legacy
-               automations below once verified.
-               Trigger note: recordMatchesConditions (which would only fire
-               when a client actually starts matching "stage=In Fulfillment
-               AND (A OR B OR C OR D)") was attempted first, per Axel's
-               feedback that recordUpdated fires too often — but the Airtable
-               MCP's recordMatchesConditions schema only accepts a flat list
-               of leaf conditions under one and/or, not a nested OR-of-ANDs
-               tree (confirmed via two rejected attempts). recordUpdated is
-               what's actually wired on this automation's trigger; switching
-               to recordMatchesConditions or recordEntersView is possible but
-               has to be built by hand in the Airtable UI (its condition
-               builder does support nested groups) — the API can't do it.
-VERSION      : 1.0.0 — consolidates three previously separate automations into
-               one, per Axel's request (2026-08-20) to stop fragmenting the
-               base into one automation per stage transition:
-                 1. "Picked Up & Full Order Fulfilled - Update Phase to
-                    Fulfilled" (appointment-confirmed pickup) — absorbed as
-                    Path B below.
-                 2. "Order is Shipped - Update Phase to Fulfilled"
-                    (tracking + 100% shipped) — absorbed as Path C below.
-                 3. This automation's own placeholder — replaced with the
-                    real script below (Path A + Path D + the manual override).
-               Both automations above had zero production runs (confirmed via
-               Run History) before being absorbed, so no in-flight behavior
-               was lost by consolidating. They should be deleted once this
-               script is verified in Airtable.
+               could be a live trigger field (chained rollup: order_items
+               .quantity_open -> Orders - Shopify.quantity_open_total ->
+               DF Clients.quantity_open_total; the ALTERATIONS exclusion —
+               Issue 2 fix — lives on the Orders - Shopify rollup's "only
+               include linked records that meet conditions" filter, style
+               _category has none of ALTERATIONS).
+VERSION      : 1.0.0 — consolidated three previously separate automations
+               into one, per Axel's request (2026-08-20) to stop fragmenting
+               the base into one automation per stage transition: "Picked Up
+               & Full Order Fulfilled - Update Phase to Fulfilled" (Path B),
+               "Order is Shipped - Update Phase to Fulfilled" (Path C), and
+               this automation's own placeholder. All three legacy
+               automations have since been deleted by Axel.
 
 OBJECTIVE
   Close out a client's order once fulfillment is actually done, and write
@@ -60,31 +60,31 @@ OBJECTIVE
   have multiple orders, each individually picked up or shipped, so close-out
   is one unified client-level stage rather than a per-method value).
 
-  Qualifies if the client is currently in "In Fulfillment" AND any ONE of:
+  Qualifies if the client is currently in "In Fulfillment" AND either:
     A. quantity_open_total == 0 (DF Clients rollup, chained from order_items
-       through Orders - Shopify — see VERSION note above; ALTERATIONS items
-       are excluded at the order_items formula level so they never block or
-       misroute this close-out, per the Issue 2 fix).
-    B. full_order_fulfilled_from_appt AND picked_up_from_appt are both true
-       (staff confirmed pickup in an appointment).
-    C. tracking_number is not empty AND percent_shipped == 1 (100% shipped).
+       through Orders - Shopify; ALTERATIONS items are excluded upstream so
+       they never block or misroute this close-out, per the Issue 2 fix).
     D. sa_override_fulfilled is checked — a manual exception for staff, used
        when AM/Cobalt data is stale or incomplete. This is a true override:
-       it does NOT require any of A/B/C, by design (per Axel, 2026-08-20) so
-       staff never have extra manual work in the normal flow.
+       it does NOT require Path A, by design, so staff never have extra
+       manual work in the normal flow.
 
 GUARD CLAUSE
   1. sourceRecordId (client) must come from the trigger.
   2. If the client's stage is not exactly "In Fulfillment", SKIP — this
      automation only closes that specific stage; it never regresses or skips
-     a stage.
-  3. If none of A/B/C/D hold, SKIP without writing anything.
+     a stage. (Belt-and-suspenders: the "fulfillment_ready_to_close_out" view
+     already filters to this stage, so a real trigger firing on a non-
+     matching record shouldn't happen — but this guard costs nothing and
+     protects against a manual test run or a future view-filter edit.)
+  3. If neither A nor D hold, SKIP without writing anything. (Same
+     belt-and-suspenders rationale as guard 2.)
 
 OUTPUTS (output.set)
   status          : "SUCCESS" | "ERROR"
   client_id       : record ID of the evaluated client
   qualifies       : boolean — final result
-  qualifying_path : "quantity_open" | "appointment_pickup" | "tracking_shipped" | "sa_override" | null
+  qualifying_path : "quantity_open" | "sa_override" | null
   stage_written   : "Fulfilled" | null (null if nothing was written)
   result_message  : human-readable summary
   error_message   : null on success
@@ -97,23 +97,19 @@ OUTPUTS (output.set)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TABLE_IDS = {
-  CLIENTS: 'tblLLUlDgJ4ktzF7c', // DF Clients — order_items/Orders - Shopify no longer queried directly, see quantity_open_total rollup below
+  CLIENTS: 'tblLLUlDgJ4ktzF7c', // DF Clients
 };
 
 const FIELDS_CLIENTS = {
-  stage:                           'fldLcxVZvI1rigBlh', // singleSelect
-  sa_override_fulfilled:           'fldqHU9ryVXgpZOGe', // checkbox — manual exception
-  full_order_fulfilled_from_appt:  'fldx299G71hQCdd2o', // checkbox (lookup from Appointment Records)
-  picked_up_from_appt:             'fldKPRPO8GeASRimg', // checkbox (lookup from Appointment Records)
-  tracking_number:                 'fldY0SvbuYeHUZa15', // singleLineText (client-level)
-  percent_shipped:                 'fldigqrFBZwceLCT7', // formula/percent, 0-1 fraction
-  quantity_open_total:             'fldVfOcvePRxXkVHT', // rollup — chained order_items -> Orders - Shopify -> DF Clients, ALTERATIONS already excluded
+  stage:                'fldLcxVZvI1rigBlh', // singleSelect
+  sa_override_fulfilled: 'fldqHU9ryVXgpZOGe', // checkbox — manual exception
+  quantity_open_total:  'fldVfOcvePRxXkVHT', // rollup — chained order_items -> Orders - Shopify -> DF Clients, ALTERATIONS already excluded upstream
 };
 
 const CONFIG = {
-  LOG_LEVEL:       'B',                // A=minimal | B=audit (default) | C=debug
-  REQUIRED_STAGE:  'In Fulfillment',
-  TARGET_STAGE:    'Fulfilled',
+  LOG_LEVEL:      'B',                // A=minimal | B=audit (default) | C=debug
+  REQUIRED_STAGE: 'In Fulfillment',
+  TARGET_STAGE:   'Fulfilled',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,17 +157,11 @@ class ClientsRepository {
 class CloseOutEvaluator {
   constructor(logger) { this.logger = logger; }
 
-  evaluate({ saOverride, fullOrderFulfilledFromAppt, pickedUpFromAppt, trackingNumber, percentShipped, quantityOpenTotal }) {
-    this.logger.step(3, 'Evaluating the four close-out paths');
+  evaluate({ saOverride, quantityOpenTotal }) {
+    this.logger.step(3, 'Evaluating the two close-out paths');
 
     if (saOverride === true) {
       return { qualifies: true, path: 'sa_override' };
-    }
-    if (fullOrderFulfilledFromAppt === true && pickedUpFromAppt === true) {
-      return { qualifies: true, path: 'appointment_pickup' };
-    }
-    if (trackingNumber && percentShipped === 1) {
-      return { qualifies: true, path: 'tracking_shipped' };
     }
     // quantityOpenTotal is null/undefined when the client has no linked
     // orders yet — that must never read as "fully closed".
@@ -179,7 +169,7 @@ class CloseOutEvaluator {
       return { qualifies: true, path: 'quantity_open' };
     }
 
-    this.logger.audit('No close-out path qualifies yet.');
+    this.logger.audit('Neither close-out path qualifies yet.');
     return { qualifies: false, path: null };
   }
 }
@@ -223,20 +213,14 @@ class OrderCloseOutService {
 
     this.logger.step(2, 'Reading client-level close-out signals');
     const saOverride = client.getCellValue(FIELDS_CLIENTS.sa_override_fulfilled) === true;
-    const fullOrderFulfilledFromAppt = client.getCellValue(FIELDS_CLIENTS.full_order_fulfilled_from_appt) === true;
-    const pickedUpFromAppt = client.getCellValue(FIELDS_CLIENTS.picked_up_from_appt) === true;
-    const trackingNumber = client.getCellValueAsString(FIELDS_CLIENTS.tracking_number);
-    const percentShipped = client.getCellValue(FIELDS_CLIENTS.percent_shipped);
     const quantityOpenTotal = client.getCellValue(FIELDS_CLIENTS.quantity_open_total);
 
-    const { qualifies, path } = this.evaluator.evaluate({
-      saOverride, fullOrderFulfilledFromAppt, pickedUpFromAppt, trackingNumber, percentShipped, quantityOpenTotal,
-    });
+    const { qualifies, path } = this.evaluator.evaluate({ saOverride, quantityOpenTotal });
 
     if (!qualifies) {
       return {
         status: 'SUCCESS', client_id: clientId, qualifies: false, qualifying_path: null, stage_written: null,
-        result_message: MessageBuilder.skipped('none of the four close-out paths qualify yet.'),
+        result_message: MessageBuilder.skipped('neither close-out path qualifies yet.'),
       };
     }
 
