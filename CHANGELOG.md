@@ -11,6 +11,8 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ---
 
+alo estuvo aquí
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
