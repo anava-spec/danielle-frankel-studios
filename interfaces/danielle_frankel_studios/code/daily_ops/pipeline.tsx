@@ -138,7 +138,11 @@ const ORDER_FIELD_IDS = {
   // every one of her orders at once.
   FULFILLMENT_METHOD:              'fldNX1vEzvndF6ozO', // Pick Up | Shipping — per Axel, used as-is, no added choices for now
   TRACKING_NUMBER:                 'fldCfwwMFNkVKJApj',
-  CARRIER:                         'fld3JafhFWzW6Knuw', // UPS | FedEx | DHL | INTERJUMBO — read-only here, same as the old bride-level 3PL field
+  // 3PL — per Axel, the real field is third_party_logistics, not the
+  // similarly-shaped `carrier` field (fld3JafhFWzW6Knuw, also UPS/FedEx/DHL/
+  // INTERJUMBO but not the one actually used for 3PL). Read-only here, same
+  // as the old bride-level 3PL field.
+  THIRD_PARTY_LOGISTICS:           'fld4jzdVnIQ7JzU7U', // UPS | FedEx | DHL | INTERJUMBO
   CLIENT_NOTIFIED:                 'fldve9YvP16XtrHN2',
 } as const;
 
@@ -3148,7 +3152,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
                       <tr><td colSpan={5} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
                     ) : linkedOrders.map(r => {
                       const num = getOrderNum(r, ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
-                      const carrier = getOrderSel(r, ORDER_FIELD_IDS.CARRIER);
+                      const threePL = getOrderSel(r, ORDER_FIELD_IDS.THIRD_PARTY_LOGISTICS);
                       return (
                         <tr key={r.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
                           <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 font-medium">{num ? `#${num}` : '—'}</td>
@@ -3161,7 +3165,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
                           <td className="px-3 py-2.5">
                             <OrderEditableText record={r} orderTable={orderTable} fieldId={ORDER_FIELD_IDS.TRACKING_NUMBER} readOnly={readOnly} />
                           </td>
-                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{carrier}</td>
+                          <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{threePL}</td>
                         </tr>
                       );
                     })}
@@ -3815,7 +3819,7 @@ function Pipeline(): React.ReactElement {
     const pp  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE); if (pp)  f.push(pp);
     const fm  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.FULFILLMENT_METHOD);              if (fm)  f.push(fm);
     const tn  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.TRACKING_NUMBER);                 if (tn)  f.push(tn);
-    const ca  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.CARRIER);                         if (ca)  f.push(ca);
+    const tpl = orderTable.getFieldIfExists(ORDER_FIELD_IDS.THIRD_PARTY_LOGISTICS);           if (tpl) f.push(tpl);
     const cn  = orderTable.getFieldIfExists(ORDER_FIELD_IDS.CLIENT_NOTIFIED);                 if (cn)  f.push(cn);
     return f;
   }, [orderTable]);
