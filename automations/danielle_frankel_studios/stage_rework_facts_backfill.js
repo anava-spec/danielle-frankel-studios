@@ -240,7 +240,10 @@ class BackfillService {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const cfg = input.config();
-const dryRun = cfg.dryRun !== false; // defaults to TRUE unless explicitly passed false
+// Input variables can arrive as a real boolean or as the string "false"/"true"
+// depending on how the variable was typed in the script step's UI — treat
+// both the same way. Defaults to TRUE (safe) unless explicitly falsy.
+const dryRun = !(cfg.dryRun === false || String(cfg.dryRun).toLowerCase() === 'false');
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
