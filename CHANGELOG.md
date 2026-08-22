@@ -29,6 +29,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Appointments**
 - Simplified how Wedding Date is shown in the appointment detail view (opened by clicking an appointment) to read from the same single, already-correct source the rest of the app uses, so it reliably shows the manual placeholder date when no confirmed wedding date is on file yet — same fix pattern as Fulfillment, Sold Orders, and Alterations.
 
+**Draft Orders**
+- Fixed the Wedding Date shown in the "Client Details" popup (View Client, from a draft order) — it was always showing blank, even for clients with a confirmed wedding date on file, and now shows correctly, falling back to the manual placeholder date when no confirmed date is set yet.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
