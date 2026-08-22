@@ -32,6 +32,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Draft Orders**
 - Fixed the Wedding Date shown in the "Client Details" popup (View Client, from a draft order) — it was always showing blank, even for clients with a confirmed wedding date on file, and now shows correctly, falling back to the manual placeholder date when no confirmed date is set yet.
 
+**Calligraphy Cards**
+- Fixed Wedding Date (and Due Date) showing a day earlier than the real date, for anyone viewing from a timezone behind UTC — both the main list and the client detail popup now show the correct day.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
