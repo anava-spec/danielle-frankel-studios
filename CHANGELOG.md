@@ -35,6 +35,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Calligraphy Cards**
 - Fixed Wedding Date (and Due Date) showing a day earlier than the real date, for anyone viewing from a timezone behind UTC — both the main list and the client detail popup now show the correct day.
 
+**Did Not Convert**
+- Fixed Wedding Date on the client detail page showing a day earlier than the real date, for anyone viewing from a timezone behind UTC.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**

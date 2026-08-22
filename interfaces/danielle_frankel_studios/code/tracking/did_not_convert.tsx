@@ -382,10 +382,25 @@ function unwrapLookupString(value: unknown): string | null {
   return null;
 }
 
+// Fixed 2026-08-22: a date-only cell value (e.g. "2027-03-27", no time
+// component) was going straight into `new Date(s)`, which JS parses as UTC
+// midnight — Intl.DateTimeFormat then renders that in the viewer's LOCAL
+// timezone, showing the day before for anyone west of UTC (Wedding Date
+// "2027-03-27" was rendering as "March 26, 2027" on the detail page).
+// Matching the ISO year-month-day prefix first and building the Date from
+// those components directly (new Date(y, m, d), all local) avoids crossing
+// a timezone boundary — same fix pattern used for Wedding Date elsewhere in
+// this codebase. Falls back to `new Date(s)` for anything that isn't a bare
+// date-only string, unchanged. The main list's month/year-only format
+// (opts without `day`) never showed the wrong day to begin with, but the
+// underlying Date this builds is now correct there too.
 function formatDate(value: unknown, opts: Intl.DateTimeFormatOptions): string {
   const s = unwrapLookupString(value);
   if (!s) return '—';
-  const d = new Date(s);
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const d = isoMatch
+    ? new Date(parseInt(isoMatch[1]!, 10), parseInt(isoMatch[2]!, 10) - 1, parseInt(isoMatch[3]!, 10))
+    : new Date(s);
   if (isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('en-US', opts).format(d);
 }
