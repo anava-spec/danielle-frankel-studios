@@ -3243,7 +3243,8 @@ function Layer4({
         <StatusPill label={isLocked ? 'Locked' : 'Unlocked'} variant={isLocked ? 'locked' : 'unlocked'} />
         {shopifyStatus && <ShopifyStatusPill status={shopifyStatus} />}
         <div className="flex-1" />
-        {canUpdate && !shopifyButtonHidden && (
+        {/* TEMP: hidden until this ships to Prod — flip back to `canUpdate && !shopifyButtonHidden` to re-enable. */}
+        {false && canUpdate && !shopifyButtonHidden && (
           <button
             onClick={handleCreateShopifyDraftOrderClick}
             disabled={creatingShopifyDraftOrder}
