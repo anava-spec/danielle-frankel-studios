@@ -26,6 +26,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Recap**
 - Restored to the version from Friday, Aug 21, keeping the four improvements already delivered that day: the redesigned Feedback form dropdowns, the "Size (Acuity Intake)" field on the client detail page, the Sales Associate / Appointment Time fields now shown on that same page, and the Appointment Time display correctly using the studio's own timezone. Wedding Date on the main list resolved itself once this version was back in place — it reads through a lookup field that was already correctly connected to the manual-placeholder fallback, no script change needed.
 
+**Appointments**
+- Simplified how Wedding Date is shown in the appointment detail view (opened by clicking an appointment) to read from the same single, already-correct source the rest of the app uses, so it reliably shows the manual placeholder date when no confirmed wedding date is on file yet — same fix pattern as Fulfillment, Sold Orders, and Alterations.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**
