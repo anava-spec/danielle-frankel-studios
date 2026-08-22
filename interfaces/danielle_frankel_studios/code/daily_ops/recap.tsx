@@ -741,12 +741,6 @@ function fmtUSDateTime12h(s: string|null|undefined): string {
 // "July 4th, 2026 11:55pm" — ordinal date (same suffix logic as fmtFriendly)
 // + 12-hour time, no "at", lowercase am/pm, no space before it. Used only by
 // the Recap Doc's Appointment field per the Figma spec.
-// Formats a dateTime cell in the studio's own America/New_York timezone
-// (matching fmtNYTime elsewhere in this file and the underlying Airtable
-// field's own timeZone config), NOT the viewer's browser/OS timezone — the
-// previous version omitted `timeZone` entirely, so this could show the wrong
-// hour, or even the wrong day for an appointment near midnight, to anyone
-// viewing the page from outside America/New_York (2026-08-07 fix).
 function fmtRecapAppointmentDisplay(s: string|null|undefined): string {
   if (!s) return '—';
   const d = new Date(s);
@@ -3875,9 +3869,6 @@ function PostAppointmentModal({
 
   // measurement_notes is richText — read via fromRichText
   const [measNotes,  setMeasNotes]  = useState(fromRichText(getVal<unknown>(clientRec!, CLIENT.MEAS_NOTES)));
-  // Size from Acuity Intake — editable per request (2026-08-07); not added to
-  // FIELD_SOURCE, unlike other Acuity-sourced fields, since this one is meant
-  // to be correctable here rather than mirrored strictly from Acuity.
   const [sizeAcuityIntake, setSizeAcuityIntake] = useState(cStr(CLIENT.SIZE_ACUITY_INTAKE));
   const [rtwSize,    setRtwSize]    = useState(cNum(CLIENT.RTW_SIZE)?.toString()??'');
 
@@ -4381,7 +4372,7 @@ function PostAppointmentModal({
               <StylesDropdown selected={favStyles} available={availableStyleNames} onToggle={handleStyleToggle}/>
             </div>
 
-            {/* Wedding Date / Date Confirmation / RTW Size / Size (Acuity Intake) — one row, 1/4 each */}
+            {/* Wedding Date / Date Confirmation / RTW Size / Order Size — one row, 1/4 each */}
             <div className="grid grid-cols-4 gap-4">
               <div>
                 <FieldLabel label="Wedding Date" fieldId={CLIENT.WEDDING} />
@@ -4922,23 +4913,9 @@ function RecapApp(): React.ReactElement {
   const fSA         = appointmentsTable?.getFieldIfExists(APPT.SA_NAME)     ?? null;
   const fStudio     = appointmentsTable?.getFieldIfExists(APPT.STUDIO_NAME) ?? null;
   const fStatus     = appointmentsTable?.getFieldIfExists(APPT.STATUS)      ?? null;
+  const fWeddingLookup    = appointmentsTable?.getFieldIfExists(APPT.WEDDING_DATE_LOOKUP)      ?? null;
   const fFavAcuityLookup  = appointmentsTable?.getFieldIfExists(APPT.FAV_STYLES_ACUITY_LOOKUP) ?? null;
   const fFavApptLookup    = appointmentsTable?.getFieldIfExists(APPT.FAV_STYLES_APPT_LOOKUP)   ?? null;
-
-  // Client id -> record map, so the main list can read Wedding Date straight
-  // off the live Clients.WEDDING field (fldbgknumKGS5W5WU) — the exact same
-  // field PostAppointmentModal's detail page reads/edits. Replaces the old
-  // Appointments-level WEDDING_DATE_LOOKUP (a lookup of Clients.WEDDING_IF_NOT_SET,
-  // fldqwfmMczvLhiqk1 — a plain singleLineText field an automation writes a
-  // fallback into, NOT a live formula) which could silently drift out of sync
-  // with the real WEDDING date once it's set/corrected on the client record,
-  // making the summary list show a stale date the individual/detail page had
-  // already moved past (2026-08-07 fix).
-  const clientById = useMemo(() => {
-    const m = new Map<string, AirtableRecord>();
-    (clientRecords ?? []).forEach(c => m.set(c.id, c));
-    return m;
-  }, [clientRecords]);
 
   useEffect(()=>{
     if (!clientSearch.trim()||!appointmentRecords||!fClient) { setSearchResults([]); setShowSearchDrop(false); return; }
@@ -5138,16 +5115,12 @@ function RecapApp(): React.ReactElement {
                     const name   = fClient ? rec.getCellValueAsString(fClient!) : '';
                     const studio = fStudio ? rec.getCellValueAsString(fStudio!) : '';
                     const sa     = fSA     ? rec.getCellValueAsString(fSA!)    : '';
-                    // Favorite Styles still come from Appointments-level lookups (via
-                    // CLIENT_LINK) — needs the unwrap helper above since this runtime
-                    // returns lookup cells as a per-linked-record array, not a plain
-                    // value. Wedding Date, however, is read straight off the linked
-                    // Clients record's own WEDDING field (see clientById above) — NOT
-                    // an Appointments-level lookup — so it always matches the detail
-                    // page exactly.
-                    const linkedClientIds = fClient ? (rec.getCellValue(fClient) as Array<{ id: string }> | null) : null;
-                    const weddingClientRec = linkedClientIds?.[0] ? clientById.get(linkedClientIds[0].id) ?? null : null;
-                    const weddingDisplay   = weddingClientRec ? getStr(weddingClientRec, CLIENT.WEDDING) : '';
+                    // Wedding Date / Favorite Styles now come from Appointments-level
+                    // lookups (via CLIENT_LINK), not the Clients record — each needs
+                    // the unwrap helpers above since this runtime returns lookup
+                    // cells as a per-linked-record array, not a plain value.
+                    const weddingLookupRaw = fWeddingLookup ? rec.getCellValue(fWeddingLookup) : null;
+                    const weddingDisplay   = unwrapLookupString(weddingLookupRaw);
                     const favAcuityNames = fFavAcuityLookup ? unwrapLinkedNames(rec.getCellValue(fFavAcuityLookup)) : [];
                     const favApptNames   = fFavApptLookup   ? unwrapLinkedNames(rec.getCellValue(fFavApptLookup))   : [];
                     return (
