@@ -20,6 +20,15 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - The order list now opens sorted with the most recent sale first, instead of no particular order. Clicking any column header still works exactly as before.
 - Fixed the Wedding Date shown in an order's detail popup so a manual placeholder date (used before a real wedding date is confirmed) always displays instead of sometimes showing blank.
 
+**Alterations**
+- Fixed the Wedding Date column showing "Missing Date" for clients who have a manual placeholder wedding date on file but no confirmed date yet — it now shows that placeholder instead, matching the rest of the app. The two date filters (past-wedding exclusion and the calendar filter) are unaffected.
+
+**Recap**
+- Restored to the version from Friday, Aug 21, keeping the four improvements already delivered that day: the redesigned Feedback form dropdowns, the "Size (Acuity Intake)" field on the client detail page, the Sales Associate / Appointment Time fields now shown on that same page, and the Appointment Time display correctly using the studio's own timezone. Wedding Date on the main list resolved itself once this version was back in place — it reads through a lookup field that was already correctly connected to the manual-placeholder fallback, no script change needed.
+
+**Appointments**
+- Simplified how Wedding Date is shown in the appointment detail view (opened by clicking an appointment) to read from the same single, already-correct source the rest of the app uses, so it reliably shows the manual placeholder date when no confirmed wedding date is on file yet — same fix pattern as Fulfillment, Sold Orders, and Alterations.
+
 ## Week of Aug 17, 2026
 
 **Pipeline**

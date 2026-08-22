@@ -39,7 +39,8 @@ const FIELD_IDS = {
   CLIENT_ALTERATIONS_LEAD:          'fldWxPkO98xA8OF8y',  // most_recent_alterations_lead — lookup of linked record names
   CLIENT_FIRST_ALTERATIONS_APPT:    'fldRS6ctrPGlEPqlR',  // first_alterations_appointment — lookup, dateTime
   CLIENT_NEXT_ALTERATIONS_APPT:     'fldGiXSJ9p6dGFhLY',  // next_alterations_appointment — lookup, dateTime
-  CLIENT_WEDDING_DATE:              'fldbgknumKGS5W5WU',  // Wedding Date (Formatted)
+  CLIENT_WEDDING_DATE:              'fldbgknumKGS5W5WU',  // Wedding Date (Formatted) — used only for the two date filters, which need a real comparable date
+  CLIENT_WEDDING_DATE_DISPLAY:      'fldfDHXcCEbFHEX4a',  // wedding_date_display formula — Formatted with fallback to If Not Set; read-only column display only
 } as const;
 
 // Duplicated from pipeline.tsx — every interface file here is a fully
@@ -109,9 +110,19 @@ function extractFirstLookupDate(record: AirtableRecord, field: Field | null | un
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '—';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
+  const mdy = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthIdx = parseInt(mm, 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${months[monthIdx]} ${parseInt(dd, 10)}, ${yyyy}`;
+    }
+  }
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value + 'T12:00:00Z' : value;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(d);
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -754,14 +765,14 @@ function AlterationsApp(): React.ReactElement {
                   const fLead = fields[FIELD_IDS.CLIENT_ALTERATIONS_LEAD];
                   const fFirstAppt = fields[FIELD_IDS.CLIENT_FIRST_ALTERATIONS_APPT];
                   const fNextAppt = fields[FIELD_IDS.CLIENT_NEXT_ALTERATIONS_APPT];
-                  const fWedding = fields[FIELD_IDS.CLIENT_WEDDING_DATE];
+                  const fWeddingDisplay = fields[FIELD_IDS.CLIENT_WEDDING_DATE_DISPLAY];
 
                   const name = fName ? (rec.getCellValueAsString(fName) ?? '') : '';
                   const itemsStr = fItems ? (rec.getCellValueAsString(fItems) ?? '') : '';
                   const leadStr = fLead ? (rec.getCellValueAsString(fLead) ?? '') : '';
                   const firstApptStr = extractFirstLookupDate(rec, fFirstAppt);
                   const nextApptStr = extractFirstLookupDate(rec, fNextAppt);
-                  const weddingStr = fWedding ? (rec.getCellValue(fWedding) as string | null) : null;
+                  const weddingStr = fWeddingDisplay ? (rec.getCellValueAsString(fWeddingDisplay) || null) : null;
                   const isPaid = isPaidForAlterations(itemsStr);
 
                   return (

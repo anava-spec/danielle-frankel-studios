@@ -100,6 +100,7 @@ const FIELD_IDS = {
   CLIENT_PHONE: 'fldZrxF4bR6QBUwVK',
   CLIENT_WEDDING: 'fldbgknumKGS5W5WU',
   CLIENT_WEDDING_IF_NOT_SET: 'fldqwfmMczvLhiqk1',
+  CLIENT_WEDDING_DISPLAY: 'fldfDHXcCEbFHEX4a', // wedding_date_display formula — Formatted, falling back to If Not Set; read-only, informational
   CLIENT_STUDIO: 'fldIenJoxseeHmfIv',
   CLIENT_SA_LINK: 'fldBTKBaw8YvNAlwK',
   CLIENT_STYLISTS: 'fld2jVE1qluvlhV7D',
@@ -877,6 +878,29 @@ function formatFriendlyDate(dateStr: string | null | undefined): string {
   const ordinal = s[(v - 20) % 10] || s[v] || s[0];
 
   return `${month} ${day}${ordinal}, ${year}`;
+}
+
+// wedding_date_display (Formatted, falling back to If Not Set) always returns
+// either a real MM/DD/YYYY date or free placeholder text (e.g. "Spring 2027",
+// "TBD") — never ISO. Parses the real-date case first and formats it exactly
+// like formatFriendlyDate above; any other non-empty text is returned as-is
+// (never handed to `new Date()`, which would silently misparse a stray
+// month/year token inside placeholder text into a fabricated date).
+function formatWeddingDateDisplay(val: string | null): { text: string; isRealDate: boolean } {
+  if (!val) return { text: '', isRealDate: false };
+  const mdy = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    const monthIdx = parseInt(mm!, 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      const d = new Date(parseInt(yyyy!, 10), monthIdx, parseInt(dd!, 10));
+      return { text: formatFriendlyDate(fmtDateKeyLocal(d)), isRealDate: true };
+    }
+  }
+  return { text: val, isRealDate: false };
+}
+function fmtDateKeyLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 interface MiniCalendarProps {
@@ -2208,8 +2232,7 @@ function DetailDrawer({
   const clientFullNameField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_FULL_NAME);
   const clientEmailField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_EMAIL);
   const clientPhoneField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_PHONE);
-  const clientWeddingField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_WEDDING);
-  const clientWeddingIfNotSetField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_WEDDING_IF_NOT_SET);
+  const clientWeddingDisplayField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_WEDDING_DISPLAY);
 
   const typeLabel = apptTypeField ? record.getCellValueAsString(apptTypeField) : '';
   const pillClasses = getAppointmentTypePillClasses(typeLabel, 'md');
@@ -2240,15 +2263,13 @@ function DetailDrawer({
     email = clientEmailField ? linkedClientRecord.getCellValueAsString(clientEmailField) : null;
     phone = clientPhoneField ? linkedClientRecord.getCellValueAsString(clientPhoneField) : null;
 
-    const formattedDate = clientWeddingField ? linkedClientRecord.getCellValueAsString(clientWeddingField) : null;
-    const ifNotSet = clientWeddingIfNotSetField
-      ? linkedClientRecord.getCellValueAsString(clientWeddingIfNotSetField)
+    const weddingDisplayRaw = clientWeddingDisplayField
+      ? linkedClientRecord.getCellValueAsString(clientWeddingDisplayField)
       : null;
+    const { text: weddingText, isRealDate } = formatWeddingDateDisplay(weddingDisplayRaw);
 
-    if (formattedDate) {
-      weddingDisplay = `Wedding: ${formatFriendlyDate(formattedDate)}`;
-    } else if (ifNotSet) {
-      weddingDisplay = `Wedding: ${ifNotSet} (approx.)`;
+    if (weddingText) {
+      weddingDisplay = isRealDate ? `Wedding: ${weddingText}` : `Wedding: ${weddingText} (approx.)`;
     }
   } else if (fullNameAcuity) {
     displayName = fullNameAcuity;
