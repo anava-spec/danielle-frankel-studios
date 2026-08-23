@@ -13,6 +13,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ## Week of Aug 21, 2026
 
+**Sold Orders**
+- Fixed a wedding date showing as a made-up specific date (e.g. "Jan 1, 2027") for clients who only have a rough placeholder like "Fall 2027" on file — it now shows that placeholder text as entered instead of guessing a date from it.
+
 **Fulfillment**
 - Fixed the Wedding Date column in the main table showing a day earlier than the real date (e.g. a wedding on Oct 10 was showing Oct 9), and made it fall back to the manual placeholder date when no confirmed date is set yet, matching the rest of the app.
 

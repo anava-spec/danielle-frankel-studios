@@ -356,8 +356,16 @@ function formatDate(v: unknown): string {
       return `${months[monthIdx]} ${parseInt(dd, 10)}, ${yyyy}`;
     }
   }
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T12:00:00Z' : raw;
-  const d = new Date(iso);
+  // Fixed 2026-08-23: anything that isn't a real MM/DD/YYYY or plain
+  // YYYY-MM-DD date (e.g. a free placeholder like "Fall 2027") used to fall
+  // through to `new Date(raw)` here, which JS parses loosely and can
+  // fabricate a fake concrete date out of a stray year token (a "Fall 2027"
+  // wedding date was rendering as "Jan 1, 2027") — same bug class already
+  // fixed for Wedding Date elsewhere in this codebase (Recap's main list).
+  // Only ever hand a matched YYYY-MM-DD to `new Date()`; anything else is
+  // returned exactly as stored.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw + 'T12:00:00Z');
   if (isNaN(d.getTime())) return raw;
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(d);
 }
