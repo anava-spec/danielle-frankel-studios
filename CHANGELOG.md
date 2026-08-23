@@ -13,6 +13,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ## Week of Aug 21, 2026
 
+**Pipeline**
+- Added a Wedding Date filter (icon button next to the Timeline filter) to both the Board and List views, matching the one already on Alterations — pick a date and the board/list narrows to clients with that exact wedding date.
+
 **Sold Orders**
 - Fixed a wedding date showing as a made-up specific date (e.g. "Jan 1, 2027") for clients who only have a rough placeholder like "Fall 2027" on file — it now shows that placeholder text as entered instead of guessing a date from it.
 
