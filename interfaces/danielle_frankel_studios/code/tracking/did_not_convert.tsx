@@ -56,7 +56,8 @@ const FIELD_IDS = {
   DETAIL_WEDDING_LOCATION:          'fldikRqj41XYiIDBk',
   DETAIL_WEDDING_PLANNER:           'fldISwHPviwGQBHFJ',
   DETAIL_PREFERRED_STYLIST:         'fld2jVE1qluvlhV7D',
-  DETAIL_RTW_SIZE:                  'fldvV2CiEx4RQN4mO',
+  DETAIL_RTW_SIZE:                  'fldvV2CiEx4RQN4mO', // Size from Acuity Intake, singleLineText — reference-only (see rtwSizeLabelWithAcuity), never the row's own displayed value
+  DETAIL_RTW_SIZE_MANUAL:           'fldEEH4CK3Qqp0g0C', // ready_to_wear_size_manual, number — the row's own displayed value (SA-confirmed, read-only here)
   DETAIL_SAMPLES_NOT_WHERE_NEEDED:  'fldVPJWXThfyGuh6d',
 
   // Deliberating
@@ -466,12 +467,36 @@ function yesNo(v: boolean): string {
   return v ? 'Yes' : 'No';
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div>
       <div className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">{label}</div>
       <div className="text-sm text-gray-800 dark:text-gray-200 font-medium mt-0.5 whitespace-pre-wrap">{value}</div>
     </div>
+  );
+}
+
+// RTW Size only: builds "<label> | from Acuity: N ●" so the Acuity
+// self-reported value reads as a reference extension of the label itself
+// when present — same convention already shipped in pipeline.tsx's client
+// detail modal (and recap.tsx's PostAppointmentModal). The base row value
+// stays the SA-confirmed field (ready_to_wear_size_manual), read-only here,
+// never the fallback formula — per Julia, whether the SA actually confirmed
+// a size or not is meaningful information on this page and shouldn't be
+// silently merged away by a fallback. Returns the plain label when there's
+// no Acuity value to show.
+function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
+  if (acuityValue == null) return baseLabel;
+  return (
+    <>
+      {baseLabel}
+      <span className="text-gray-300 dark:text-gray-600"> | </span>
+      <span className="text-gray-400 dark:text-gray-500 normal-case">from Acuity: {acuityValue}</span>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500 ml-1.5"
+        title="Sourced from Acuity"
+      />
+    </>
   );
 }
 
@@ -758,7 +783,15 @@ function ClientDetailPage({ record, getStyleNames, onBack }: {
           </FieldRow>
           <FieldRow>
             <DetailRow label="Bridal Stylist" value={str(record, FIELD_IDS.DETAIL_PREFERRED_STYLIST) || '—'} />
-            <DetailRow label="RTW Size" value={getNumber(record, FIELD_IDS.DETAIL_RTW_SIZE) ?? '—'} />
+            <DetailRow
+              label={rtwSizeLabelWithAcuity('RTW Size', (() => {
+                const raw = str(record, FIELD_IDS.DETAIL_RTW_SIZE);
+                if (!raw) return null;
+                const n = parseFloat(raw);
+                return Number.isFinite(n) ? n : null;
+              })())}
+              value={getNumber(record, FIELD_IDS.DETAIL_RTW_SIZE_MANUAL) ?? '—'}
+            />
             <DetailRow label="Samples Not Where Needed" value={str(record, FIELD_IDS.DETAIL_SAMPLES_NOT_WHERE_NEEDED) || '—'} />
           </FieldRow>
         </DetailSection>

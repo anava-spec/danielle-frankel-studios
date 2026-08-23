@@ -40,6 +40,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Did Not Convert**
 - Fixed Wedding Date on the client detail page showing a day earlier than the real date, for anyone viewing from a timezone behind UTC.
+- Fixed RTW Size always showing blank on the client detail page regardless of what was on file. It now shows the Sales Associate's confirmed size (blank when the SA never confirmed one — meaningful on this page, since it shows who didn't convert), with the customer's self-reported Acuity size shown for reference next to it when available.
 
 ## Week of Aug 17, 2026
 
