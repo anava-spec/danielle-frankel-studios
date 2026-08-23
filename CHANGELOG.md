@@ -25,6 +25,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Recap**
 - Restored to the version from Friday, Aug 21, keeping the four improvements already delivered that day: the redesigned Feedback form dropdowns, the "Size (Acuity Intake)" field on the client detail page, the Sales Associate / Appointment Time fields now shown on that same page, and the Appointment Time display correctly using the studio's own timezone. Wedding Date on the main list resolved itself once this version was back in place — it reads through a lookup field that was already correctly connected to the manual-placeholder fallback, no script change needed.
+- Fixed the Wedding Date on a client's detail page always showing blank when no confirmed Acuity date was on file — it now falls back to the manual placeholder date, matching the main list.
+- Fixed the main list's Wedding Date column occasionally showing a made-up date (e.g. "January 1st, 2027") for clients with only a rough placeholder like "2027" on file — it now shows that placeholder text as entered instead of guessing a date from it.
+- Ready-to-Wear Size: only the Sales Associate's own confirmed size is now editable on the client detail page. The customer's self-reported size from Acuity intake is shown for reference next to it when available, but is no longer directly editable there — so a size typed into Recap can no longer be mistaken for something the customer entered themselves.
 
 **Appointments**
 - Simplified how Wedding Date is shown in the appointment detail view (opened by clicking an appointment) to read from the same single, already-correct source the rest of the app uses, so it reliably shows the manual placeholder date when no confirmed wedding date is on file yet — same fix pattern as Fulfillment, Sold Orders, and Alterations.
