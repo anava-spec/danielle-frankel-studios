@@ -53,11 +53,14 @@ const FIELD_IDS = {
   // alterations appointments are all in the past relative to "next" (e.g.
   // Zoia Kozakov, whose appointments were real but never matched "next") —
   // not a code bug, the lookup's own hidden filter. Fall back to
-  // CLIENT_LAST_APPT_ALT_LEAD below when this is blank.
+  // CLIENT_MOST_RECENT_ALT_LEAD below when this is blank.
   CLIENT_NEXT_APPT_ALT_LEAD:           'flddN7YHMuymJKbv9',
-  // Same lookup/field, filtered to next_last_appointment = "last" instead —
-  // added 2026-08-24 specifically as the fallback for the gap above.
-  CLIENT_LAST_APPT_ALT_LEAD:           'fldkds8L7ZAESx9ZU',
+  // Fallback for the gap above — same underlying alterations_lead field,
+  // but via most_recent_alterations_lead, the lookup alterations.tsx
+  // already uses successfully (no "next"-only filter gap there). Reused
+  // instead of the separate "last" lookup field originally added for this
+  // fix (Axel deleted that one in favor of reusing this existing field).
+  CLIENT_MOST_RECENT_ALT_LEAD:         'fldWxPkO98xA8OF8y',
   CLIENT_NEXT_APPT_ROOM:               'fldfQUSkQRooZi8sr',
   CLIENT_LATEST_ALTERATIONS_APPT:      'fldoF7SPEjWNi5JQF',
   CLIENT_COUNTRY_OF_RESIDENCE:         'flduQb1j7LceNZuC8',
@@ -1177,8 +1180,8 @@ interface ClientData {
   lastAppointment: string | null;
   latestAlterationsAppt: string | null;
   nextAppointmentAltLead: string;
-  lastAppointmentAltLead: string;
-  // nextAppointmentAltLead, falling back to lastAppointmentAltLead when the
+  mostRecentAltLead: string;
+  // nextAppointmentAltLead, falling back to mostRecentAltLead when the
   // "next" lookup's own hidden filter excludes every one of the client's
   // linked appointments (see FIELD_IDS.CLIENT_NEXT_APPT_ALT_LEAD). Always
   // use this for display — never nextAppointmentAltLead alone.
@@ -4196,7 +4199,7 @@ function Pipeline(): React.ReactElement {
       lastAppointment:            f(FIELD_IDS.CLIENT_LAST_APPOINTMENT),
       latestAlterationsAppt:      f(FIELD_IDS.CLIENT_LATEST_ALTERATIONS_APPT),
       nextAppointmentAltLead:     f(FIELD_IDS.CLIENT_NEXT_APPT_ALT_LEAD),
-      lastAppointmentAltLead:     f(FIELD_IDS.CLIENT_LAST_APPT_ALT_LEAD),
+      mostRecentAltLead:          f(FIELD_IDS.CLIENT_MOST_RECENT_ALT_LEAD),
       nextAppointmentRoom:        f(FIELD_IDS.CLIENT_NEXT_APPT_ROOM),
       countryOfResidence:         f(FIELD_IDS.CLIENT_COUNTRY_OF_RESIDENCE),
       preferredStylist:           f(FIELD_IDS.CLIENT_PREFERRED_STYLIST),
@@ -4292,8 +4295,8 @@ function Pipeline(): React.ReactElement {
       const lastAppointment       = extractFirstLookupString(record, fields.lastAppointment);
       const latestAlterationsAppt = extractFirstLookupString(record, fields.latestAlterationsAppt);
       const nextAppointmentAltLead = extractFirstLookupString(record, fields.nextAppointmentAltLead) ?? '';
-      const lastAppointmentAltLead = extractFirstLookupString(record, fields.lastAppointmentAltLead) ?? '';
-      const alterationsLeadDisplay = nextAppointmentAltLead || lastAppointmentAltLead;
+      const mostRecentAltLead     = extractFirstLookupString(record, fields.mostRecentAltLead) ?? '';
+      const alterationsLeadDisplay = nextAppointmentAltLead || mostRecentAltLead;
       const nextAppointmentRoom   = extractFirstLookupString(record, fields.nextAppointmentRoom) ?? '';
       const countryOfResidence    = getCellValueAsStringSafe(record, fields.countryOfResidence);
       const preferredStylistRaw   = getCellValueSafe<Array<{ id: string; name?: string }>>(record, fields.preferredStylist);
@@ -4411,7 +4414,7 @@ function Pipeline(): React.ReactElement {
         formattedPhone, weddingDate, weddingDateIfNotSet, weddingLocation, weddingPlanner,
         studio, studioShortName, salesAssociateName, salesAssociatePhone, formattedSAPhone,
         salesAssociateEmail, appointmentCount, nextAppointment, lastAppointment,
-        latestAlterationsAppt, nextAppointmentAltLead, lastAppointmentAltLead, alterationsLeadDisplay, nextAppointmentRoom,
+        latestAlterationsAppt, nextAppointmentAltLead, mostRecentAltLead, alterationsLeadDisplay, nextAppointmentRoom,
         countryOfResidence, preferredStylist, preferredStylistIds, rtwSize, rtwSizeManual, rtwSizeDisplay, favStylesAcuity, samplesNotWhereNeeded,
         personalStyleNotes, measBust, measWaist, measHips, measHeight, hasMeasurementPhotos,
         followUpSent: followUpSentRaw, interestCustom, interestAlts, interestM2M, apptNotes,
