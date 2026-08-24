@@ -21,7 +21,10 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Fixed a bug where a client's Alterations Lead could show blank in the In Alterations view even though it was correctly on file in Acuity — it now falls back to her most recent alterations appointment when her next one doesn't have a lead assigned yet.
 
 **Appointments**
-- Missing Room, Sales Associate, or Alterations Lead no longer blocks Check In — those now show as informational amber flags instead. Only a missing Client (nothing to check in) still blocks it, shown in red. Applies to both the list and calendar card views.
+- Missing Room, Sales Associate, or Alterations Lead no longer blocks Check In — those now show as an informational amber "Missing ___" note instead (plain text, no colored chip, spelled out in full rather than abbreviated). Only a missing Client (nothing to check in) still blocks it, shown in red. Applies to both the list and calendar card views.
+- Fixed the Alterations Lead flag showing up on appointments that aren't actually Alterations appointments (e.g. a Final Fitting & Pick Up) — it was checking a broader internal category bucket instead of the appointment's own type.
+- Renamed the "Pick Up Pending" status to "Pending Pick Up".
+- Sized up the Check In/Clear/Pick Up buttons and status labels for readability, with every button now the same width.
 
 ## Week of Aug 21, 2026
 
