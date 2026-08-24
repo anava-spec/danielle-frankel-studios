@@ -784,17 +784,17 @@ function extractSelectValue(rawValue: unknown): { name: string; color: string | 
 // everywhere, regardless of which field was missing or whether the missing
 // field actually blocks anything. Two severities now: `hard` (red) is
 // reserved for Client — the one case that's genuinely impossible to check in
-// without; `soft` (amber) is everything else (Room/SA/AL) — informational,
-// doesn't block Check In. `label` names the specific field ("Client",
-// "Room", "SA", "AL") instead of the generic word "Data".
+// without; `soft` (amber) is everything else (Room/Sales Associate/
+// Alterations Lead) — informational, doesn't block Check In. `label` names
+// the specific field instead of the generic word "Data". Plain colored text,
+// no chip/pill background — so it doesn't compete visually with the actual
+// Stage/Type pills in the same row.
 function MissingDataPill({ label = 'Data', severity = 'hard', reason }: { label?: string; severity?: 'hard' | 'soft'; reason?: string | null } = {}): React.ReactElement {
-  const colorClasses = severity === 'hard'
-    ? 'bg-red-50 text-red-600 border-red-200'
-    : 'bg-orange-50 text-orange-600 border-orange-200';
+  const colorClasses = severity === 'hard' ? 'text-red-600' : 'text-orange-600';
   return (
     <span
       title={reason ?? undefined}
-      className={`inline-flex items-center justify-center w-[108px] text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
+      className={`text-xs font-medium whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
     >
       Missing {label}
     </span>
@@ -1351,7 +1351,7 @@ function ActionButtons({
           ) : (
             <span className={pillRed}>Missing Client</span>
           )}
-          <span className={pillYellow}>Pick Up Pending</span>
+          <span className={pillYellow}>Pending Pick Up</span>
         </div>
       </div>
     );
@@ -1448,7 +1448,7 @@ function ActionButtons({
         {showCleared ? (
           <button onClick={handlePickUpClick} className={btnDefault}>Pick Up</button>
         ) : (
-          <span className={pillYellow}>Pick Up Pending</span>
+          <span className={pillYellow}>Pending Pick Up</span>
         )}
       </div>
       {errorMsg && <span className="text-xs text-red-600 text-center">{errorMsg}</span>}
@@ -1618,7 +1618,7 @@ function CalendarActionButtons({
         <button key="pu" onClick={handlePickUpClick} className={btnDefault}>Pick Up</button>
       );
     } else {
-      items.push(<span key="pu" className={pillYellow}>Pick Up Pending</span>);
+      items.push(<span key="pu" className={pillYellow}>Pending Pick Up</span>);
     }
   }
 
@@ -1992,15 +1992,15 @@ function CalendarCardCompact({
       {/* Fields */}
       <div className="space-y-0.5">
         {saValue ? (
-          <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">Sales Associate: {saValue}</div>
         ) : (
-          <div className="text-xs text-orange-600 dark:text-orange-400">Missing SA</div>
+          <div className="text-xs text-orange-600 dark:text-orange-400">Missing Sales Associate</div>
         )}
         {showAltLead && (
           altLeadValue ? (
-            <div className="text-xs text-gray-600 dark:text-gray-400">Alt Lead: {altLeadValue}</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400">Alterations Lead: {altLeadValue}</div>
           ) : (
-            <div className="text-xs text-orange-600 dark:text-orange-400">Missing AL</div>
+            <div className="text-xs text-orange-600 dark:text-orange-400">Missing Alterations Lead</div>
           )
         )}
         {roomValue ? (
@@ -3517,12 +3517,12 @@ function AppointmentsApp(): React.ReactElement {
                           {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill label="Room" severity="soft" />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap text-center">
-                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : <MissingDataPill label="SA" severity="soft" />}
+                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : <MissingDataPill label="Sales Associate" severity="soft" />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap text-center">
                           {altLeadValue
                             ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
-                            : isAlterationsAppt ? <MissingDataPill label="AL" severity="soft" /> : '—'}
+                            : isAlterationsAppt ? <MissingDataPill label="Alterations Lead" severity="soft" /> : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <ActionButtons
