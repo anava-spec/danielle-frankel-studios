@@ -794,7 +794,7 @@ function MissingDataPill({ label = 'Data', severity = 'hard', reason }: { label?
   return (
     <span
       title={reason ?? undefined}
-      className={`text-xs font-medium whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
+      className={`text-[13px] font-medium whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
     >
       Missing {label}
     </span>
@@ -1285,13 +1285,13 @@ function ActionButtons({
     onPickUp(record);
   };
 
-  const btn = 'text-xs font-medium border rounded-lg transition-colors whitespace-nowrap min-w-[84px] px-3 py-1 text-center';
+  const btn = 'text-sm font-medium border rounded-lg transition-colors whitespace-nowrap w-[132px] px-3 py-1 text-center';
   const btnDefault = `${btn} border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer`;
   const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300`;
   const btnGreen = `${btn} border-green-200 bg-green-100 text-green-700 cursor-default`;
 
-  const pillRed = 'inline-flex items-center justify-center w-[108px] px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
-  const pillYellow = 'inline-flex items-center justify-center w-[108px] px-2 py-0.5 rounded-full text-xs font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
+  const pillRed = 'inline-flex items-center justify-center w-[132px] px-2 py-1 rounded-full text-sm font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
+  const pillYellow = 'inline-flex items-center justify-center w-[132px] px-2 py-1 rounded-full text-sm font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
 
   const wrapper = 'flex flex-col items-center gap-1 w-full';
   const row = 'flex items-center justify-center gap-2 flex-wrap';
@@ -1994,19 +1994,19 @@ function CalendarCardCompact({
         {saValue ? (
           <div className="text-xs text-gray-600 dark:text-gray-400">Sales Associate: {saValue}</div>
         ) : (
-          <div className="text-xs text-orange-600 dark:text-orange-400">Missing Sales Associate</div>
+          <div className="text-[13px] text-orange-600 dark:text-orange-400">Missing Sales Associate</div>
         )}
         {showAltLead && (
           altLeadValue ? (
             <div className="text-xs text-gray-600 dark:text-gray-400">Alterations Lead: {altLeadValue}</div>
           ) : (
-            <div className="text-xs text-orange-600 dark:text-orange-400">Missing Alterations Lead</div>
+            <div className="text-[13px] text-orange-600 dark:text-orange-400">Missing Alterations Lead</div>
           )
         )}
         {roomValue ? (
           <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>
         ) : (
-          <div className="text-xs text-orange-600 dark:text-orange-400">Missing Room</div>
+          <div className="text-[13px] text-orange-600 dark:text-orange-400">Missing Room</div>
         )}
       </div>
 
