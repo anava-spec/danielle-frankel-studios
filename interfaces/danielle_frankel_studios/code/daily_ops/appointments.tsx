@@ -794,7 +794,7 @@ function MissingDataPill({ label = 'Data', severity = 'hard', reason }: { label?
   return (
     <span
       title={reason ?? undefined}
-      className={`inline-flex items-center justify-center w-[130px] text-[13px] px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
+      className={`inline-flex items-center justify-center w-[108px] text-xs px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
     >
       Missing {label}
     </span>
@@ -1285,13 +1285,13 @@ function ActionButtons({
     onPickUp(record);
   };
 
-  const btn = 'text-sm font-medium border rounded-lg transition-colors whitespace-nowrap min-w-[100px] px-4 py-1.5 text-center';
+  const btn = 'text-xs font-medium border rounded-lg transition-colors whitespace-nowrap min-w-[84px] px-3 py-1 text-center';
   const btnDefault = `${btn} border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer`;
   const btnDisabled = `${btn} opacity-50 cursor-not-allowed border-gray-200 dark:border-[#38322A] bg-white dark:bg-[#25211A] text-gray-700 dark:text-gray-300`;
   const btnGreen = `${btn} border-green-200 bg-green-100 text-green-700 cursor-default`;
 
-  const pillRed = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-[13px] font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
-  const pillYellow = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-[13px] font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
+  const pillRed = 'inline-flex items-center justify-center w-[108px] px-2 py-0.5 rounded-full text-xs font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap';
+  const pillYellow = 'inline-flex items-center justify-center w-[108px] px-2 py-0.5 rounded-full text-xs font-medium border bg-orange-50 text-orange-600 border-orange-200 whitespace-nowrap';
 
   const wrapper = 'flex flex-col items-center gap-1 w-full';
   const row = 'flex items-center justify-center gap-2 flex-wrap';
@@ -1919,8 +1919,11 @@ function CalendarCardCompact({
   const apptNameEntry = extractSelectValue(apptNameRaw);
 
   const shortType = getShortTypeLabel(typeValue);
-  const isAlterationsAppt = shortType.toLowerCase().includes('alterations');
-  // #27 — Alterations Lead shown only when appointment type is Alterations
+  // #27 — Alterations Lead shown only when the appointment_type Type
+  // (fldZO3rF3KOGxG0S5) is literally "Alterations" — not a substring match
+  // on the compound type label, which would also match e.g. a category
+  // bucket grouping "Final Fitting & Pick Up" under Alterations.
+  const isAlterationsAppt = apptNameEntry?.name === 'Alterations';
   const showAltLead = isAlterationsAppt;
 
   // Pill colors resolved from the actual Airtable field options — no hardcoded per-value maps.
@@ -3261,9 +3264,12 @@ function AppointmentsApp(): React.ReactElement {
 
   const columnHeader = (label: string, column?: string) => {
     const clickable = column && ['client', 'stage', 'type', 'room', 'sa', 'altlead'].includes(column);
+    // Time stays left-aligned (matches its left-aligned body cells); every
+    // other column's body content is now centered, so its header centers too.
+    const align = label === 'Time' ? 'text-left' : 'text-center';
     return (
-      <th 
-        className={`px-3 py-2 text-[11px] font-medium tracking-wide capitalize text-gray-500 dark:text-gray-400 whitespace-nowrap text-left ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10' : ''}`}
+      <th
+        className={`px-3 py-2 text-[11px] font-medium tracking-wide capitalize text-gray-500 dark:text-gray-400 whitespace-nowrap ${align} ${clickable ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10' : ''}`}
         onClick={() => column && clickable && handleSort(column)}
       >
         {label}
@@ -3415,8 +3421,6 @@ function AppointmentsApp(): React.ReactElement {
                     const studioShortValue = apptStudioShortField ? record.getCellValueAsString(apptStudioShortField) : null;
                     const apptTimeZone = getTimeZoneForStudioShort(studioShortValue);
                     const typeValue = apptTypeField ? record.getCellValueAsString(apptTypeField) : '';
-                    const apptCategory = apptCategoryField ? record.getCellValueAsString(apptCategoryField) : '';
-                    const isAlterationsAppt = apptCategory.toLowerCase() === 'alterations';
                     // Type must reflect the appointment_type field
                     // (fldZO3rF3KOGxG0S5) only — no silent fallback to the
                     // separate compound Appointment Type field (typeValue),
@@ -3428,6 +3432,12 @@ function AppointmentsApp(): React.ReactElement {
                       : !apptNameField ? 'appointment_type field not found on this table.'
                       : (apptNameRaw === null || apptNameRaw === undefined) ? 'appointment_type is empty for this appointment.'
                       : `appointment_type has a value but could not be parsed — raw: ${JSON.stringify(apptNameRaw).slice(0, 200)}`;
+                    // AL only applies when the Type shown in this row is
+                    // literally "Alterations" — the broader apptCategory
+                    // bucket (fldZ45u0N2GzukwO4) also groups things like
+                    // "Final Fitting & Pick Up" under "Alterations", which
+                    // isn't what this flag means.
+                    const isAlterationsAppt = apptNameEntry?.name === 'Alterations';
                     
                     const linkedClients = clientLinkField
                       ? (record.getCellValue(clientLinkField) as Array<{ id: string }> | null)
@@ -3514,7 +3524,7 @@ function AppointmentsApp(): React.ReactElement {
                             ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
                             : isAlterationsAppt ? <MissingDataPill label="AL" severity="soft" /> : '—'}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 text-center">
                           <ActionButtons
                             record={record}
                             appointmentsTable={appointmentsTable}
