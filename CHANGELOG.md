@@ -18,6 +18,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Alterations Payment on Sold now updates itself automatically instead of being checked by hand — it shows "Paid" once an Alterations item exists on the order, "Unpaid" if alterations are needed but haven't been added to the order yet.
 - Replaced the plain Shopify #/AM # numbers on Sold with a table listing every style sold, each with its own order numbers, unit price, and total — instead of only showing one order's numbers even when a bride had several.
 - Fixed the Due Date calculation so a manually-overridden rush due date actually gets used instead of being ignored, and fixed a date-parsing bug that could show the wrong day.
+- Fixed a bug where a client's Alterations Lead could show blank in the In Alterations view even though it was correctly on file in Acuity — it now falls back to her most recent alterations appointment when her next one doesn't have a lead assigned yet.
 
 ## Week of Aug 21, 2026
 
