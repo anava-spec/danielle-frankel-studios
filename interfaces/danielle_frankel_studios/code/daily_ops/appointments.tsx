@@ -104,7 +104,9 @@ const FIELD_IDS = {
   CLIENT_STUDIO: 'fldIenJoxseeHmfIv',
   CLIENT_SA_LINK: 'fldBTKBaw8YvNAlwK',
   CLIENT_STYLISTS: 'fld2jVE1qluvlhV7D',
-  CLIENT_RTW_SIZE: 'fldvV2CiEx4RQN4mO',
+  CLIENT_RTW_SIZE: 'fldvV2CiEx4RQN4mO', // "Size from Acuity Intake" — customer self-report, reference-only, never written here
+  CLIENT_RTW_SIZE_MANUAL: 'fldEEH4CK3Qqp0g0C', // "ready_to_wear_size_manual" — SA-confirmed size, the only field this page writes
+  CLIENT_RTW_SIZE_DISPLAY: 'fldSwfR25uvynWKI5', // "ready_to_wear_size" formula — manual if set, else falls back to Acuity; read-only view shows THIS
   CLIENT_NEXT_APPT: 'fldTe2cyBmicx9Ple',
   CLIENT_LAST_APPT: 'fldd01OccObkG9sGe',
   CLIENT_APPT_RECORDS: 'fldYb8G67izm3qelZ',
@@ -850,7 +852,7 @@ const SOURCE_DOT_COLOR: Record<FieldSource, string> = {
 };
 
 interface DetailRowProps {
-  label: string;
+  label: React.ReactNode;
   fieldId?: string;
   children: React.ReactNode;
 }
@@ -859,7 +861,10 @@ function DetailRow({ label, fieldId, children }: DetailRowProps): React.ReactEle
   const source = fieldId !== undefined ? FIELD_SOURCE[fieldId] : undefined;
   return (
     <div>
-      <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+      {/* Capitalized, not uppercase, per Axel 2026-08-24 — applies to every
+          field label in this detail drawer, since they all render through
+          this one shared component. */}
+      <div className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-1 flex items-center gap-1">
         <span>{label}</span>
         {source && (
           <span
@@ -870,6 +875,105 @@ function DetailRow({ label, fieldId, children }: DetailRowProps): React.ReactEle
       </div>
       {children}
     </div>
+  );
+}
+
+// Part of the base-wide RTW Size convention — see docs/CROSS_CUTTING.md
+// ("RTW Size convention"). Editable view writes only to
+// ready_to_wear_size_manual; the Acuity self-report is shown only as a
+// non-editable reference on the label, never as its own editable field —
+// "Acuity Size: N" in the value gray when present, "Acuity Size: Missing
+// Value" in the label's muted gray when absent. Same helper (adapted to
+// this file's DetailRow-based layout) as pipeline.tsx/recap.tsx.
+function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
+  const hasValue = acuityValue != null;
+  return (
+    <>
+      {baseLabel}
+      <span className="text-gray-300 dark:text-gray-600 normal-case"> | </span>
+      <span className={`normal-case tracking-normal font-normal ${hasValue ? 'text-gray-800 dark:text-[#F3EFE6]' : 'text-gray-400 dark:text-gray-500'}`}>
+        {hasValue ? `Acuity Size: ${acuityValue}` : 'Acuity Size: Missing Value'}
+      </span>
+      {hasValue && (
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500 ml-1"
+          title="Sourced from Acuity"
+        />
+      )}
+    </>
+  );
+}
+
+// Editable Ready to Wear Size — writes to CLIENT_RTW_SIZE_MANUAL, falls back
+// to a read-only display of CLIENT_RTW_SIZE_DISPLAY (the manual/Acuity
+// fallback formula) when the viewer can't edit DF Clients. Mirrors the
+// editable/read-only split used in pipeline.tsx's client modal, adapted to
+// this file's local blur-to-save convention (see handleSaveRoom/handleSaveSA
+// above) rather than a shared EditableNumber component.
+function RtwSizeField({
+  manualValue, formulaDisplay, acuityValue, fieldRef, recordId, clientsTable, canEdit,
+}: {
+  manualValue: number | null;
+  formulaDisplay: string | null;
+  acuityValue: number | null;
+  fieldRef: Field | null | undefined;
+  recordId: string;
+  clientsTable: Table;
+  canEdit: boolean;
+}) {
+  const label = rtwSizeLabelWithAcuity('Ready to wear size', acuityValue);
+  const [localValue, setLocalValue] = useState(manualValue !== null ? String(manualValue) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setLocalValue(manualValue !== null ? String(manualValue) : ''); }, [manualValue]);
+
+  if (!canEdit || !fieldRef) {
+    return (
+      <DetailRow label={label}>
+        <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{formulaDisplay || '—'}</div>
+      </DetailRow>
+    );
+  }
+
+  const handleBlur = async () => {
+    const trimmed = localValue.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+    if (trimmed !== '' && isNaN(parsed as number)) {
+      setError('Must be a number');
+      setLocalValue(manualValue !== null ? String(manualValue) : '');
+      return;
+    }
+    if (parsed === manualValue) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await clientsTable.updateRecordAsync(recordId, { [fieldRef.id]: parsed });
+    } catch (e) {
+      console.error('Failed to update ready_to_wear_size_manual:', e);
+      setError('Save failed');
+      setLocalValue(manualValue !== null ? String(manualValue) : '');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <DetailRow label={label}>
+      <input
+        type="number"
+        value={localValue}
+        onChange={e => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        disabled={saving}
+        min={0}
+        max={20}
+        step={0.5}
+        placeholder="e.g. 8"
+        className="w-full text-sm text-gray-800 dark:text-[#F3EFE6] bg-white dark:bg-[#25211A] border border-gray-200 dark:border-[#38322A] rounded-md px-3 py-2 focus:outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] transition-colors [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        style={{ MozAppearance: 'textfield' } as React.CSSProperties}
+      />
+      {error && <span className="text-xs text-red-500 dark:text-red-400 mt-1 block">{error}</span>}
+    </DetailRow>
   );
 }
 
@@ -2366,6 +2470,8 @@ function DetailDrawer({
 
   const clientStylistsField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STYLISTS);
   const clientRtwSizeField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_RTW_SIZE);
+  const clientRtwSizeManualField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_RTW_SIZE_MANUAL) ?? null;
+  const clientRtwSizeDisplayField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_RTW_SIZE_DISPLAY) ?? null;
   const clientNextApptField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_NEXT_APPT);
   const clientLastApptField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_LAST_APPT);
   const clientApptRecordsField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_APPT_RECORDS);
@@ -2589,7 +2695,7 @@ function DetailDrawer({
 
         {/* #29 — Appointment Notes (editable, all types) */}
         <div className="mt-5">
-          <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1"><span>Appointment notes</span></div>
+          <div className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-1 flex items-center gap-1"><span>Appointment notes</span></div>
           <textarea
             value={apptNotesValue}
             onChange={(e) => setApptNotesValue(e.target.value)}
@@ -2607,17 +2713,23 @@ function DetailDrawer({
             <DetailRow label="Preferred stylist">
               <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientStylistsField ? linkedClientRecord.getCellValueAsString(clientStylistsField) : '—'}</div>
             </DetailRow>
-            {/* PENDING — part of the base-wide RTW Size convention, see
-                docs/CROSS_CUTTING.md ("RTW Size convention"). This still
-                reads the raw Acuity field (CLIENT_RTW_SIZE) directly, with
-                no manual/formula split and no Acuity-as-reference label —
-                needs to match Pipeline/Recap's pattern (read-only view
-                shows the fallback formula field, editable view writes only
-                to ready_to_wear_size_manual, Acuity shown via
-                rtwSizeLabelWithAcuity). */}
-            <DetailRow label="Ready to wear size" fieldId={FIELD_IDS.CLIENT_RTW_SIZE}>
-              <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '—'}</div>
-            </DetailRow>
+            {/* Part of the base-wide RTW Size convention — see
+                docs/CROSS_CUTTING.md ("RTW Size convention"). Editable,
+                2026-08-24 (per Axel: Ready to Wear Size must be editable
+                here too, same as Pipeline/Recap/Customization). */}
+            <RtwSizeField
+              manualValue={clientRtwSizeManualField ? (linkedClientRecord.getCellValue(clientRtwSizeManualField) as number | null) : null}
+              formulaDisplay={clientRtwSizeDisplayField ? linkedClientRecord.getCellValueAsString(clientRtwSizeDisplayField) : null}
+              acuityValue={(() => {
+                const raw = clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '';
+                const n = parseFloat(raw);
+                return Number.isFinite(n) ? n : null;
+              })()}
+              fieldRef={clientRtwSizeManualField}
+              recordId={linkedClientRecord.id}
+              clientsTable={clientsTable!}
+              canEdit={!!clientsTable?.hasPermissionToUpdateRecords()}
+            />
             <DetailRow label="Next appointment">
               <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientNextApptField ? linkedClientRecord.getCellValueAsString(clientNextApptField) : '—'}</div>
             </DetailRow>

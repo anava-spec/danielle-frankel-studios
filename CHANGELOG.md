@@ -28,6 +28,8 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Fixed the Alterations Lead flag showing up on appointments that aren't actually Alterations appointments (e.g. a Final Fitting & Pick Up) — it was checking a broader internal category bucket instead of the appointment's own type.
 - Renamed the "Pick Up Pending" status to "Pending Pick Up".
 - Sized up the Check In/Clear/Pick Up buttons and status labels for readability, with every button now the same width.
+- Ready to Wear Size is now editable from an appointment's detail view (First Visit/Consultation), same as Pipeline and Recap — only the Sales Associate's confirmed size can be edited there, with the client's self-reported Acuity size shown for reference next to it.
+- Field labels in the appointment detail view now show as "Sentence case" instead of "ALL CAPS" (e.g. "Ready to wear size" instead of "READY TO WEAR SIZE").
 
 ## Week of Aug 21, 2026
 
