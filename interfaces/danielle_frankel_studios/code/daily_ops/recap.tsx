@@ -1052,32 +1052,35 @@ function FieldLabel({ label, fieldId, className }: { label: React.ReactNode; fie
 }
 
 // Part of the base-wide RTW Size convention — see docs/CROSS_CUTTING.md
-// ("RTW Size convention"). OUT OF SYNC as of 2026-08-24: pipeline.tsx's
-// version of this helper was updated (label text "Acuity Size: N", value-
-// colored when present, muted "Acuity Size: Missing Value" when absent) —
-// this copy still uses the older "from Acuity: N" text with no missing-
-// value state. Apply the same update here when this file is next touched.
+// ("RTW Size convention"). Brought back in sync with pipeline.tsx 2026-08-24:
+// always renders the Acuity reference instead of hiding it when absent —
+// "Acuity Size: N" in the same gray as this file's field values
+// (text-gray-700/300, matching EditableNumber/DetailRow above) when present,
+// "Acuity Size: Missing Value" in this file's own label gray
+// (text-gray-400/500, matching FieldLabel above) when absent. The dot only
+// shows alongside a real value — showing it next to "Missing Value" would
+// visually imply the value came from Acuity when it didn't.
 //
-// Ready-to-Wear Size only: builds "<label> | from Acuity: N ●" so the
-// Acuity self-reported value reads as a reference extension of the label
-// itself when present — same convention pipeline.tsx already uses for the
-// same field pair. Returns the plain label when there's no Acuity value to
-// show (2026-08 — Julia: sizing that reaches Recap should always be the
-// Sales-Associate-confirmed value; the Acuity value is reference-only here,
-// never a second editable field).
+// Ready-to-Wear Size only: the Acuity self-reported value reads as a
+// reference extension of the label itself — same convention pipeline.tsx
+// uses for the same field pair (2026-08 — Julia: sizing that reaches Recap
+// should always be the Sales-Associate-confirmed value; the Acuity value is
+// reference-only here, never a second editable field).
 function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
-  if (acuityValue == null) return baseLabel;
+  const hasValue = acuityValue != null;
   return (
     <>
       {baseLabel}
       <span className="text-gray-300 dark:text-gray-600"> | </span>
-      <span className="text-gray-400 dark:text-gray-500 font-normal normal-case tracking-normal">
-        from Acuity: {acuityValue}
+      <span className={`font-normal normal-case tracking-normal ${hasValue ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
+        {hasValue ? `Acuity Size: ${acuityValue}` : 'Acuity Size: Missing Value'}
       </span>
-      <span
-        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500 ml-1.5"
-        title="Sourced from Acuity"
-      />
+      {hasValue && (
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500 ml-1.5"
+          title="Sourced from Acuity"
+        />
+      )}
     </>
   );
 }

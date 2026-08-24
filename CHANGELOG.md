@@ -20,6 +20,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Fixed the Due Date calculation so a manually-overridden rush due date actually gets used instead of being ignored, and fixed a date-parsing bug that could show the wrong day.
 - Fixed a bug where a client's Alterations Lead could show blank in the In Alterations view even though it was correctly on file in Acuity — it now falls back to her most recent alterations appointment when her next one doesn't have a lead assigned yet.
 
+**Recap**
+- Cleaned up the RTW Size reference text next to the Ready-to-Wear Size field, matching the same fix already made on Pipeline: now always shows the client's self-reported Acuity size (or "Missing Value" if they never entered one) instead of hiding it, and colors it to match the rest of the field values.
+
 **Appointments**
 - Missing Room, Sales Associate, or Alterations Lead no longer blocks Check In — those now show as an informational amber "Missing ___" note instead (plain text, no colored chip, spelled out in full rather than abbreviated). Only a missing Client (nothing to check in) still blocks it, shown in red. Applies to both the list and calendar card views.
 - Fixed the Alterations Lead flag showing up on appointments that aren't actually Alterations appointments (e.g. a Final Fitting & Pick Up) — it was checking a broader internal category bucket instead of the appointment's own type.
