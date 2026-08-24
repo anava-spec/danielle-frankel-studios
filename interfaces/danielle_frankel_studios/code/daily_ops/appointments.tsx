@@ -794,7 +794,7 @@ function MissingDataPill({ label = 'Data', severity = 'hard', reason }: { label?
   return (
     <span
       title={reason ?? undefined}
-      className={`inline-flex items-center text-[13px] px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
+      className={`inline-flex items-center justify-center w-[130px] text-[13px] px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
     >
       Missing {label}
     </span>
@@ -3482,12 +3482,12 @@ function AppointmentsApp(): React.ReactElement {
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
                           {timeValue ? renderTimeCell(timeValue, apptTimeZone) : '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-[13px] font-semibold whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
+                        <td className="px-3 py-2.5 text-[13px] font-semibold whitespace-nowrap text-center text-[#1A1612] dark:text-[#F3EFE6]">
                           {clientLinkField && record.getCellValueAsString(clientLinkField)
                             ? record.getCellValueAsString(clientLinkField)
                             : <MissingDataPill label="Client" severity="hard" />}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 text-center">
                           {clientStage
                             ? <span
                                 className={getListPillClassesForColor(stageColorByName.get(clientStage))}
@@ -3495,7 +3495,7 @@ function AppointmentsApp(): React.ReactElement {
                               >{clientStage}</span>
                             : <span className="text-gray-400 dark:text-gray-500">—</span>}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-2.5 text-center">
                           {apptNameEntry
                             ? <span
                                 className={getListPillClassesForColor(apptTypeColorByName.get(apptNameEntry.name))}
@@ -3503,13 +3503,13 @@ function AppointmentsApp(): React.ReactElement {
                               >{apptNameEntry.name}</span>
                             : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
-                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap text-center">
                           {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill label="Room" severity="soft" />}
                         </td>
-                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap text-center">
                           {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : <MissingDataPill label="SA" severity="soft" />}
                         </td>
-                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-[13px] whitespace-nowrap text-center">
                           {altLeadValue
                             ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
                             : isAlterationsAppt ? <MissingDataPill label="AL" severity="soft" /> : '—'}
