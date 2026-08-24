@@ -28,6 +28,7 @@ Let Sales Associates build, save, and revisit itemized draft order pricing for a
 
 ## Rules
 
+- **RTW Size Acuity reference added to `ClientMiniPanel` (2026-08-24, part of the base-wide RTW Size convention, see `docs/CROSS_CUTTING.md`):** the "Ready to Wear Size" field already wrote to the correct manual field (`ready_to_wear_size_manual`, `fldEEH4CK3Qqp0g0C`) — it just showed no reference to the customer's self-reported Acuity size. Added a local `rtwSizeLabelWithAcuity()` helper (styled via this file's `theme.text`/`theme.textMuted` inline-color convention, not the Tailwind `dark:` classes used in `pipeline.tsx`/`recap.tsx`) so the label now reads "Ready to Wear Size | Acuity Size: N" (or "Acuity Size: Missing Value" when the client never entered one in Acuity). No change to what the input writes to.
 - Editability rule: a draft is editable only if it is the **most recent draft for its client** (by `created_at`) AND `locked = false` AND the user has write permission. Otherwise every section renders read-only with a banner stating the specific reason.
 - Alterations and M2M (Made-to-Measure) are **intentionally not fields** on this page — those pricing components live on the linked Customization record itself (`alterations_options` / `m2m_options`) and would duplicate data if repeated here. This was confirmed as an intentional decision during code review, not a gap.
 - A "Tentative" status label for unapproved customization pricing was removed from this page by explicit decision — do not re-add without confirming with Julia.

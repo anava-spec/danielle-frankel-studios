@@ -80,7 +80,8 @@ const FIELD_IDS = {
   CLIENT_SALES_ASSOCIATE_NAME: 'fldH8lJJHPUjPnyHZ', // lookup
   CLIENT_EMAIL: 'fld5f3IVZoX0QZZ8R',
   CLIENT_PHONE: 'fldZrxF4bR6QBUwVK',
-  CLIENT_READY_TO_WEAR_SIZE: 'fldEEH4CK3Qqp0g0C',
+  CLIENT_READY_TO_WEAR_SIZE: 'fldEEH4CK3Qqp0g0C', // "ready_to_wear_size_manual" — SA-confirmed size, the only field this panel writes
+  CLIENT_RTW_SIZE_ACUITY: 'fldvV2CiEx4RQN4mO', // "Size from Acuity Intake" — customer self-report, reference-only, never written here
 
   STAFF_FULL_NAME: 'fldc8INBZmwC3xeH7',
   STAFF_IS_ACTIVE: 'fldB6rPTjxATp7uMf',
@@ -794,17 +795,39 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
   );
 }
 
+// Ready-to-Wear Size only: builds "<label> | Acuity Size: N ●" so the Acuity
+// self-reported value reads as a reference extension of the label itself —
+// part of the base-wide RTW Size convention, see docs/CROSS_CUTTING.md
+// ("RTW Size convention"). This file styles via inline `theme` colors
+// rather than Tailwind dark: classes (unlike pipeline.tsx/recap.tsx), so
+// the color logic below uses theme.text (present) / theme.textMuted
+// (absent) instead of hardcoded gray utility classes.
+function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null, theme: typeof COLORS.LIGHT): React.ReactNode {
+  const hasValue = acuityValue != null;
+  return (
+    <>
+      {baseLabel}
+      <span style={{ color: theme.textMuted }}> | </span>
+      <span style={{ color: hasValue ? theme.text : theme.textMuted, fontWeight: hasValue ? 500 : 400 }}>
+        {hasValue ? `Acuity Size: ${acuityValue}` : 'Acuity Size: Missing Value'}
+      </span>
+      {hasValue && (
+        <span
+          style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: '#A855F7', marginLeft: 4 }}
+          title="Sourced from Acuity"
+        />
+      )}
+    </>
+  );
+}
+
 // Client mini detail panel — opens from the draft order header's "View
 // Client" action. Read-only fields per the locked AC (stage, wedding date,
 // email, phone, sales associate name); ready_to_wear_size is the one
 // editable field, written directly to DF Clients via queueWrite() to avoid
-// a concurrent-write race if the user edits it from two tabs.
-//
-// PENDING — part of the base-wide RTW Size convention, see
-// docs/CROSS_CUTTING.md ("RTW Size convention"). CLIENT_READY_TO_WEAR_SIZE
-// already correctly points at ready_to_wear_size_manual (the write target
-// is right), but this panel shows no Acuity reference at all — needs the
-// same rtwSizeLabelWithAcuity treatment Pipeline/Recap use.
+// a concurrent-write race if the user edits it from two tabs. The Acuity
+// self-report is shown only as a non-editable reference next to the label
+// (rtwSizeLabelWithAcuity above), never as its own editable field.
 function ClientMiniPanel({
   theme,
   clientRecord,
@@ -824,8 +847,15 @@ function ClientMiniPanel({
   const phoneField = getField(clientsTable, FIELD_IDS.CLIENT_PHONE);
   const salesAssociateNameField = getField(clientsTable, FIELD_IDS.CLIENT_SALES_ASSOCIATE_NAME);
   const readyToWearSizeField = getField(clientsTable, FIELD_IDS.CLIENT_READY_TO_WEAR_SIZE);
+  const rtwSizeAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_RTW_SIZE_ACUITY);
 
   const currentSize = readyToWearSizeField ? (clientRecord.getCellValue(readyToWearSizeField) as number | null) : null;
+  const rtwSizeAcuityValue = (() => {
+    if (!rtwSizeAcuityField) return null;
+    const raw = clientRecord.getCellValueAsString(rtwSizeAcuityField);
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : null;
+  })();
   const [sizeInput, setSizeInput] = useState(currentSize !== null && currentSize !== undefined ? String(currentSize) : '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -881,7 +911,7 @@ function ClientMiniPanel({
           {row('Phone', phoneField ? clientRecord.getCellValueAsString(phoneField) : '')}
           {row('Sales Associate', salesAssociateNameField ? clientRecord.getCellValueAsString(salesAssociateNameField) : '')}
           <div className="flex items-center justify-between py-2">
-            <span className="text-sm" style={{ color: theme.textSecondary }}>Ready to Wear Size</span>
+            <span className="text-sm" style={{ color: theme.textSecondary }}>{rtwSizeLabelWithAcuity('Ready to Wear Size', rtwSizeAcuityValue, theme)}</span>
             <input
               type="text"
               inputMode="numeric"

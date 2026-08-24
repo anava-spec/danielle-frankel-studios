@@ -31,6 +31,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Ready to Wear Size is now editable from an appointment's detail view (First Visit/Consultation), same as Pipeline and Recap — only the Sales Associate's confirmed size can be edited there, with the client's self-reported Acuity size shown for reference next to it.
 - Field labels in the appointment detail view now show as "Sentence case" instead of "ALL CAPS" (e.g. "Ready to wear size" instead of "READY TO WEAR SIZE").
 
+**Draft Orders**
+- The Ready to Wear Size field in the Client Details popup now shows the client's self-reported Acuity size for reference next to it (or "Missing Value" if they never entered one) — matching Pipeline, Recap, and Appointments. What the field writes to didn't change.
+
 ## Week of Aug 21, 2026
 
 **Pipeline**
