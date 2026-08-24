@@ -48,7 +48,16 @@ const FIELD_IDS = {
   CLIENT_APPOINTMENT_COUNT:            'fldrnDWDgDx5IF5gz',
   CLIENT_NEXT_APPOINTMENT:             'fldTe2cyBmicx9Ple',
   CLIENT_LAST_APPOINTMENT:             'fldd01OccObkG9sGe',
+  // Lookup of Appointment Records -> alterations_lead, filtered to
+  // next_last_appointment = "next". Comes back empty for a client whose
+  // alterations appointments are all in the past relative to "next" (e.g.
+  // Zoia Kozakov, whose appointments were real but never matched "next") —
+  // not a code bug, the lookup's own hidden filter. Fall back to
+  // CLIENT_LAST_APPT_ALT_LEAD below when this is blank.
   CLIENT_NEXT_APPT_ALT_LEAD:           'flddN7YHMuymJKbv9',
+  // Same lookup/field, filtered to next_last_appointment = "last" instead —
+  // added 2026-08-24 specifically as the fallback for the gap above.
+  CLIENT_LAST_APPT_ALT_LEAD:           'fldkds8L7ZAESx9ZU',
   CLIENT_NEXT_APPT_ROOM:               'fldfQUSkQRooZi8sr',
   CLIENT_LATEST_ALTERATIONS_APPT:      'fldoF7SPEjWNi5JQF',
   CLIENT_COUNTRY_OF_RESIDENCE:         'flduQb1j7LceNZuC8',
@@ -1168,6 +1177,12 @@ interface ClientData {
   lastAppointment: string | null;
   latestAlterationsAppt: string | null;
   nextAppointmentAltLead: string;
+  lastAppointmentAltLead: string;
+  // nextAppointmentAltLead, falling back to lastAppointmentAltLead when the
+  // "next" lookup's own hidden filter excludes every one of the client's
+  // linked appointments (see FIELD_IDS.CLIENT_NEXT_APPT_ALT_LEAD). Always
+  // use this for display — never nextAppointmentAltLead alone.
+  alterationsLeadDisplay: string;
   nextAppointmentRoom: string;
   countryOfResidence: string;
   preferredStylist: string;
@@ -1520,8 +1535,8 @@ const ClientCard = React.memo(function ClientCard({ client, stageColors, onCardC
       {client.salesAssociateName && (
         <div className="text-xs text-gray-600 dark:text-gray-400">SA: {client.salesAssociateName}</div>
       )}
-      {client.nextAppointmentAltLead && (
-        <div className="text-xs text-gray-600 dark:text-gray-400">AL: {client.nextAppointmentAltLead}</div>
+      {client.alterationsLeadDisplay && (
+        <div className="text-xs text-gray-600 dark:text-gray-400">AL: {client.alterationsLeadDisplay}</div>
       )}
     </div>
   );
@@ -3260,7 +3275,7 @@ const FullProfileModal = React.memo(function FullProfileModal({
               <DetailRow label="Sales Associate" value={client.salesAssociateName || '—'} />
               {/* Alterations Lead (next_appointment_alterations_lead) — per
                   Axel, always shown, even blank, rather than hidden. */}
-              <DetailRow label="Alterations Lead" value={client.nextAppointmentAltLead || '—'} />
+              <DetailRow label="Alterations Lead" value={client.alterationsLeadDisplay || '—'} />
               {readOnly
                 ? <DetailRow label="Alterations In House" value={client.alterationsInHouse ? 'Alterations Needed' : 'No Alterations'} />
                 : <AlterationsInHouseToggle value={client.alterationsInHouse} recordId={client.id} base={base} />
@@ -4181,6 +4196,7 @@ function Pipeline(): React.ReactElement {
       lastAppointment:            f(FIELD_IDS.CLIENT_LAST_APPOINTMENT),
       latestAlterationsAppt:      f(FIELD_IDS.CLIENT_LATEST_ALTERATIONS_APPT),
       nextAppointmentAltLead:     f(FIELD_IDS.CLIENT_NEXT_APPT_ALT_LEAD),
+      lastAppointmentAltLead:     f(FIELD_IDS.CLIENT_LAST_APPT_ALT_LEAD),
       nextAppointmentRoom:        f(FIELD_IDS.CLIENT_NEXT_APPT_ROOM),
       countryOfResidence:         f(FIELD_IDS.CLIENT_COUNTRY_OF_RESIDENCE),
       preferredStylist:           f(FIELD_IDS.CLIENT_PREFERRED_STYLIST),
@@ -4276,6 +4292,8 @@ function Pipeline(): React.ReactElement {
       const lastAppointment       = extractFirstLookupString(record, fields.lastAppointment);
       const latestAlterationsAppt = extractFirstLookupString(record, fields.latestAlterationsAppt);
       const nextAppointmentAltLead = extractFirstLookupString(record, fields.nextAppointmentAltLead) ?? '';
+      const lastAppointmentAltLead = extractFirstLookupString(record, fields.lastAppointmentAltLead) ?? '';
+      const alterationsLeadDisplay = nextAppointmentAltLead || lastAppointmentAltLead;
       const nextAppointmentRoom   = extractFirstLookupString(record, fields.nextAppointmentRoom) ?? '';
       const countryOfResidence    = getCellValueAsStringSafe(record, fields.countryOfResidence);
       const preferredStylistRaw   = getCellValueSafe<Array<{ id: string; name?: string }>>(record, fields.preferredStylist);
@@ -4393,7 +4411,7 @@ function Pipeline(): React.ReactElement {
         formattedPhone, weddingDate, weddingDateIfNotSet, weddingLocation, weddingPlanner,
         studio, studioShortName, salesAssociateName, salesAssociatePhone, formattedSAPhone,
         salesAssociateEmail, appointmentCount, nextAppointment, lastAppointment,
-        latestAlterationsAppt, nextAppointmentAltLead, nextAppointmentRoom,
+        latestAlterationsAppt, nextAppointmentAltLead, lastAppointmentAltLead, alterationsLeadDisplay, nextAppointmentRoom,
         countryOfResidence, preferredStylist, preferredStylistIds, rtwSize, rtwSizeManual, rtwSizeDisplay, favStylesAcuity, samplesNotWhereNeeded,
         personalStyleNotes, measBust, measWaist, measHips, measHeight, hasMeasurementPhotos,
         followUpSent: followUpSentRaw, interestCustom, interestAlts, interestM2M, apptNotes,
