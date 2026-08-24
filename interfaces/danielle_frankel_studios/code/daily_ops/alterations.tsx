@@ -32,6 +32,12 @@ function useTheme(): 'light' | 'dark' {
 }
 
 // ─── Constants — DF Clients (tblLLUlDgJ4ktzF7c) ───────────────────────────────
+// PENDING (no client-detail modal exists in this file yet, per Axel
+// 2026-08-24): once one is built, its RTW Size field must follow the
+// base-wide convention in docs/CROSS_CUTTING.md ("RTW Size convention") —
+// editable view writes only to ready_to_wear_size_manual, read-only view
+// reads the ready_to_wear_size fallback formula, Acuity shown only as a
+// non-editable label reference via a local rtwSizeLabelWithAcuity helper.
 const FIELD_IDS = {
   CLIENT_FULL_NAME:                 'fldB3Wyam01D3wR5Q',
   CLIENT_STAGE:                     'fldLcxVZvI1rigBlh',  // singleSelect — used only to filter to "In Alterations"

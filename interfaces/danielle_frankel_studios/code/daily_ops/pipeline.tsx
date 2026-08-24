@@ -1594,23 +1594,29 @@ function DetailRow({ label, value, fieldId }: { label: React.ReactNode; value: s
   );
 }
 
-// RTW Size only: builds "<label> | from Acuity: N ●" so the Acuity value reads as an
+// Part of the base-wide RTW Size convention — see docs/CROSS_CUTTING.md
+// ("RTW Size convention"). Any change to this helper's label/color logic
+// must be mirrored in Recap/Appointments/Draft Orders/Alterations.
+// RTW Size only: builds "<label> | Acuity Size: N ●" so the Acuity value reads as an
 // extension of the label itself, using the same dot styling as the source badges above.
-// Returns the plain label when there's no Acuity value to show.
+// Always renders — shows "Missing Value" (in the label's own muted gray) when there's
+// no Acuity value, instead of hiding the reference entirely (2026-08-24, per Axel).
 function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
-  if (acuityValue == null) return baseLabel;
+  const hasValue = acuityValue != null;
   return (
     <>
       {baseLabel}
       <span className="text-gray-300 dark:text-gray-600">|</span>
-      <span className="text-gray-400 dark:text-gray-500 font-normal normal-case tracking-normal">
-        from Acuity: {acuityValue}
+      <span className={`font-normal normal-case tracking-normal ${hasValue ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>
+        {hasValue ? `Acuity Size: ${acuityValue}` : 'Acuity Size: Missing Value'}
       </span>
-      <span
-        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ backgroundColor: SOURCE_COLORS.acuity }}
-        title={`Sourced from ${SOURCE_LABELS.acuity}`}
-      />
+      {hasValue && (
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: SOURCE_COLORS.acuity }}
+          title={`Sourced from ${SOURCE_LABELS.acuity}`}
+        />
+      )}
     </>
   );
 }

@@ -30,6 +30,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Pipeline**
 - Added a Wedding Date filter (icon button next to the Timeline filter) to both the Board and List views, matching the one already on Alterations — pick a date and the board/list narrows to clients with that exact wedding date.
+- Cleaned up the RTW Size reference text next to the Ready-to-Wear Size field: now always shows the client's self-reported Acuity size (or "Missing Value" if they never entered one) instead of hiding it, and colors it to match the rest of the field values.
 
 **Sold Orders**
 - Fixed a wedding date showing as a made-up specific date (e.g. "Jan 1, 2027") for clients who only have a rough placeholder like "Fall 2027" on file — it now shows that placeholder text as entered instead of guessing a date from it.

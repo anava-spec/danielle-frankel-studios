@@ -799,6 +799,12 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
 // email, phone, sales associate name); ready_to_wear_size is the one
 // editable field, written directly to DF Clients via queueWrite() to avoid
 // a concurrent-write race if the user edits it from two tabs.
+//
+// PENDING — part of the base-wide RTW Size convention, see
+// docs/CROSS_CUTTING.md ("RTW Size convention"). CLIENT_READY_TO_WEAR_SIZE
+// already correctly points at ready_to_wear_size_manual (the write target
+// is right), but this panel shows no Acuity reference at all — needs the
+// same rtwSizeLabelWithAcuity treatment Pipeline/Recap use.
 function ClientMiniPanel({
   theme,
   clientRecord,

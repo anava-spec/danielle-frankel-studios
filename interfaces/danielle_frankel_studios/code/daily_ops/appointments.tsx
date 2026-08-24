@@ -2607,6 +2607,14 @@ function DetailDrawer({
             <DetailRow label="Preferred stylist">
               <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientStylistsField ? linkedClientRecord.getCellValueAsString(clientStylistsField) : '—'}</div>
             </DetailRow>
+            {/* PENDING — part of the base-wide RTW Size convention, see
+                docs/CROSS_CUTTING.md ("RTW Size convention"). This still
+                reads the raw Acuity field (CLIENT_RTW_SIZE) directly, with
+                no manual/formula split and no Acuity-as-reference label —
+                needs to match Pipeline/Recap's pattern (read-only view
+                shows the fallback formula field, editable view writes only
+                to ready_to_wear_size_manual, Acuity shown via
+                rtwSizeLabelWithAcuity). */}
             <DetailRow label="Ready to wear size" fieldId={FIELD_IDS.CLIENT_RTW_SIZE}>
               <div className="text-sm text-gray-800 dark:text-[#F3EFE6]">{clientRtwSizeField ? linkedClientRecord.getCellValueAsString(clientRtwSizeField) : '—'}</div>
             </DetailRow>

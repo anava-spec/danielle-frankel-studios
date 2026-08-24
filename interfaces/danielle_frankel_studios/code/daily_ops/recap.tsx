@@ -1051,6 +1051,13 @@ function FieldLabel({ label, fieldId, className }: { label: React.ReactNode; fie
   );
 }
 
+// Part of the base-wide RTW Size convention — see docs/CROSS_CUTTING.md
+// ("RTW Size convention"). OUT OF SYNC as of 2026-08-24: pipeline.tsx's
+// version of this helper was updated (label text "Acuity Size: N", value-
+// colored when present, muted "Acuity Size: Missing Value" when absent) —
+// this copy still uses the older "from Acuity: N" text with no missing-
+// value state. Apply the same update here when this file is next touched.
+//
 // Ready-to-Wear Size only: builds "<label> | from Acuity: N ●" so the
 // Acuity self-reported value reads as a reference extension of the label
 // itself when present — same convention pipeline.tsx already uses for the
