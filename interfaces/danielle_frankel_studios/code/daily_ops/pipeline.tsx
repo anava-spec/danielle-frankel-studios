@@ -1834,17 +1834,27 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
       if (!anchorRef.current) return;
       const rect   = anchorRef.current.getBoundingClientRect();
       const vpH    = window.innerHeight;
+      const vpW    = window.innerWidth;
       const popupW = width ?? rect.width;
       const spaceBelow = vpH - rect.bottom;
       const spaceAbove = rect.top;
       const flipUp = spaceBelow < POPUP_HEIGHT_ESTIMATE && spaceAbove > spaceBelow;
+      // Fixed 2026-08-23: this only ever anchored to rect.left with no
+      // horizontal bound check, so a trigger near the right edge of the
+      // viewport (e.g. a toolbar icon) produced a popup that ran off-screen
+      // and was unusable. Clamp left so the popup's right edge never passes
+      // the viewport, then re-clamp against the left edge so a very narrow
+      // viewport still favors staying on-screen over honoring both margins.
+      let left = rect.left;
+      if (left + popupW > vpW - MARGIN) left = vpW - MARGIN - popupW;
+      if (left < MARGIN) left = MARGIN;
       // Note: position is 'fixed', so coordinates are already viewport-relative —
       // do NOT add window.scrollX/scrollY here, that would offset the popup away
       // from its trigger as soon as the page is scrolled.
       setCoords(
         flipUp
-          ? { bottom: vpH - rect.top + MARGIN, left: rect.left, width: popupW }
-          : { top: rect.bottom + MARGIN, left: rect.left, width: popupW }
+          ? { bottom: vpH - rect.top + MARGIN, left, width: popupW }
+          : { top: rect.bottom + MARGIN, left, width: popupW }
       );
     };
     updateCoords();
@@ -1885,6 +1895,74 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
   );
 }
 
+// Small hand-drawn ring-with-diamond glyph — Phosphor Icons has no wedding
+// ring icon, so this is a minimal inline SVG rather than pulling in a new
+// icon dependency for one badge. Used only as the small overlay badge on the
+// Wedding Date filter's icon-only trigger (see WeddingDateFilterButton) —
+// distinguishes it from a plain calendar icon without needing a text label.
+function RingIcon({ size = 10 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="15" r="6" stroke="currentColor" strokeWidth="2.4" />
+      <path d="M8.5 9L12 3l3.5 6h-7z" fill="currentColor" />
+      <path d="M9.7 9L12 5l2.3 4h-4.6z" fill="white" fillOpacity="0.35" />
+    </svg>
+  );
+}
+
+// ─── Wedding Date filter — icon-only capsule (2026-08-23) ──────────────────
+// A dedicated Wedding Date filter, matching alterations.tsx's exact-date
+// filter (same field, same client-local-day comparison — see
+// getLocalDateString below), but built icon-only instead of the usual
+// labeled dropdown pill: Pipeline's filter row was already at 4-5 controls
+// wide before this, and a full "Wedding Date" text pill would likely push
+// the row into wrapping sooner than necessary. The ring badge (top-right,
+// overlapping the calendar glyph) is what identifies this as the wedding
+// date filter without needing visible text; the popup itself keeps the
+// "Wedding Date" caption (via CalendarPopup's footerLabel) so it's never
+// ambiguous once opened.
+function getLocalDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+interface WeddingDateFilterButtonProps {
+  value: Date | null;
+  onChange: (d: Date | null) => void;
+}
+function WeddingDateFilterButton({ value, onChange }: WeddingDateFilterButtonProps) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const hasValue = value !== null;
+
+  return (
+    <div className="relative">
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        title={hasValue ? `Wedding Date: ${MONTHS_EN[value!.getMonth()]} ${value!.getDate()}, ${value!.getFullYear()}` : 'Wedding Date filter'}
+        className={`relative flex items-center justify-center w-9 h-8 rounded-full border transition-colors ${
+          hasValue
+            ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24]'
+            : 'bg-white dark:bg-[#242220] border-gray-300 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
+        }`}
+      >
+        <CalendarIcon size={16} />
+        <span
+          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-white dark:border-[#242220]"
+        >
+          <RingIcon size={9} />
+        </span>
+      </button>
+      {open && (
+        <FixedPopup anchorRef={anchorRef} onClose={() => setOpen(false)} width={270} noStyle>
+          <CalendarPopup selectedDate={value} onSelect={onChange} onClose={() => setOpen(false)} footerLabel="Wedding Date" />
+        </FixedPopup>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CALENDAR UTILITIES + POPUP
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1914,9 +1992,14 @@ interface CalendarPopupProps {
   selectedDate: Date | null;
   onSelect: (d: Date | null) => void;
   onClose: () => void;
+  // Optional small caption shown between the day grid and the Clear/Today
+  // row — used only by triggers that have no visible text label of their
+  // own (e.g. the icon-only Wedding Date filter), so it's still obvious
+  // what's being picked. Omitted (default) for every other existing caller.
+  footerLabel?: string;
 }
 
-const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect, onClose }: CalendarPopupProps) {
+const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect, onClose, footerLabel }: CalendarPopupProps) {
   const today = new Date();
   const [viewYear,  setViewYear]  = useState(selectedDate?.getFullYear()  ?? today.getFullYear());
   const [viewMonth, setViewMonth] = useState(selectedDate?.getMonth()     ?? today.getMonth());
@@ -1933,6 +2016,9 @@ const CalendarPopup = React.memo(function CalendarPopup({ selectedDate, onSelect
 
   return (
     <div style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} className="bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-xl p-3" onClick={e => e.stopPropagation()}>
+      {footerLabel && (
+        <div className="text-center text-[11px] font-medium text-gray-400 dark:text-gray-500 tracking-wide mb-2">{footerLabel}</div>
+      )}
       <div className="flex items-center justify-between mb-3">
         <button type="button" onClick={prevMonth}
           className="w-7 h-7 flex items-center justify-center border border-gray-300 dark:border-white/10 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -3989,6 +4075,10 @@ function Pipeline(): React.ReactElement {
   const [salespersonFilter, setSalespersonFilter] = useState<string[]>([]);
   const [stageFilter, setStageFilter] = useState<string[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<string | null>('Last 7 days');
+  // Exact-date match, same convention as alterations.tsx's Wedding Date
+  // filter — cleared by default, compared as local YYYY-MM-DD strings
+  // (never UTC ISO) once set.
+  const [weddingDateFilter, setWeddingDateFilter] = useState<Date | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -4348,14 +4438,29 @@ function Pipeline(): React.ReactElement {
   const filteredClients = useMemo(() => {
     const studioSet = studioFilter.length > 0 ? new Set(studioFilter) : null;
     const salesSet  = salespersonFilter.length > 0 ? new Set(salespersonFilter) : null;
+    const weddingDateStr = weddingDateFilter ? getLocalDateString(weddingDateFilter) : null;
     return clientsData.filter(c => {
       if (!c.isOnBoard) return false;
       if (studioSet && !studioSet.has(c.studio)) return false;
       if (salesSet && !salesSet.has(c.salesAssociateName)) return false;
       if (timelineFilter !== null && c.timelineBucket !== timelineFilter) return false;
+      if (weddingDateStr) {
+        // Fixed 2026-08-23 (day-off bug, same class fixed for Wedding Date
+        // elsewhere in this codebase): comparing via parseDateFlexible ->
+        // new Date(isoString) -> getLocalDateString round-tripped the raw
+        // "YYYY-MM-DD" through `new Date()`, which parses a date-only ISO
+        // string as UTC midnight — reading it back with local getters then
+        // shifted it a day earlier for any viewer west of UTC (a Sep 26
+        // wedding only matched when Sep 25 was picked). c.weddingDate is
+        // already a plain "YYYY-MM-DD"-prefixed string here, so compare the
+        // first 10 characters directly — no Date object, no timezone to
+        // cross.
+        const cWeddingStr = c.weddingDate ? c.weddingDate.slice(0, 10) : null;
+        if (cWeddingStr !== weddingDateStr) return false;
+      }
       return true;
     });
-  }, [clientsData, studioFilter, salespersonFilter, timelineFilter]);
+  }, [clientsData, studioFilter, salespersonFilter, timelineFilter, weddingDateFilter]);
 
   const listFilteredClients = useMemo(() => {
     const stageSet = stageFilter.length > 0 ? new Set(stageFilter) : null;
@@ -4392,7 +4497,7 @@ function Pipeline(): React.ReactElement {
     if (selectedClientId && !selectedClient) { setSelectedClientId(null); setFullProfileOpen(false); }
   }, [selectedClientId, selectedClient]);
 
-  useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, stageFilter, timelineFilter]);
+  useEffect(() => { setStagePage({}); }, [studioFilter, salespersonFilter, stageFilter, timelineFilter, weddingDateFilter]);
 
   const handleCardClick = useCallback((id: string) => {
     setSelectedClientId(id);
@@ -4400,9 +4505,9 @@ function Pipeline(): React.ReactElement {
   }, []);
   const handleSearchSelect  = useCallback((id: string) => { setSelectedClientId(id); setFullProfileOpen(true); }, []);
   const handleCloseFullProfile = useCallback(() => { setSelectedClientId(null); setFullProfileOpen(false); }, []);
-  const clearAllFilters        = useCallback(() => { setStudioFilter([]); setSalespersonFilter([]); setStageFilter([]); setTimelineFilter(null); }, []);
+  const clearAllFilters        = useCallback(() => { setStudioFilter([]); setSalespersonFilter([]); setStageFilter([]); setTimelineFilter(null); setWeddingDateFilter(null); }, []);
 
-  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null
+  const hasActiveFilters  = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null || weddingDateFilter !== null
     || (viewMode === 'list' && stageFilter.length > 0);
   const visibleClients    = viewMode === 'list' ? listFilteredClients : filteredClients;
   const noMatchingClients = visibleClients.length === 0 && hasActiveFilters;
@@ -4431,12 +4536,15 @@ function Pipeline(): React.ReactElement {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden font-sans bg-[#F6F4F0] dark:bg-[#1A1917]">
-      {/* Filter row */}
-      <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
+      {/* Filter row — flex-wrap so a tight viewport drops the trailing
+          controls to a second line instead of silently overflowing; no
+          control here shrinks or gets compressed, they just reflow. */}
+      <div className="px-4 py-2 flex flex-wrap items-center gap-3 gap-y-2 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
         <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
         <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
         <SingleSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
+        <WeddingDateFilterButton value={weddingDateFilter} onChange={setWeddingDateFilter} />
         {viewMode === 'list' && (
           <MultiSelectDropdown label="Stage" options={stageOptions} selected={stageFilter} onChange={setStageFilter} />
         )}

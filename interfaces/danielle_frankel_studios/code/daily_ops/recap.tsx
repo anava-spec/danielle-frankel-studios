@@ -391,6 +391,10 @@ const CLIENT = {
   PHONE:              'fldZrxF4bR6QBUwVK',
   WEDDING:            'fldbgknumKGS5W5WU',
   WEDDING_IF_NOT_SET: 'fldqwfmMczvLhiqk1',
+  // wedding_date_display formula — Formatted, falling back to If Not Set.
+  // Used only for the read-only display in PostAppointmentModal (2026-08-22)
+  // — edits still always target WEDDING (Formatted) above, never this.
+  WEDDING_DISPLAY:    'fldfDHXcCEbFHEX4a',
   WEDDING_CONFIRMED:  'fldOZTDVcR1qwU6U2',
   WEDDING_LOCATION:   'fldikRqj41XYiIDBk',
   WEDDING_PLANNER:    'fldISwHPviwGQBHFJ',
@@ -663,6 +667,36 @@ function fmtFriendly(s: string|null|undefined): string {
   const v = day%100;
   const ord = (['th','st','nd','rd'][(v-20)%10]??['th','st','nd','rd'][v]??'th');
   return `${month} ${day}${ord}, ${d.getFullYear()}`;
+}
+// wedding_date_display (main-list Wedding Date column) returns either a real
+// MM/DD/YYYY date (Formatted is set) or free placeholder text — e.g. "Spring
+// 2027", or even just a bare year like "2027" — never ISO. Deliberately NOT
+// routed through fmtFriendly above: fmtFriendly's `new Date(s)` fallback,
+// fine for the real dates its other 5 call sites always receive (Next/Last
+// Appointment, the wedding-date picker's own ISO value), silently fabricates
+// a fake concrete date out of placeholder text here (found live 2026-08-22 —
+// a bare "2027" was rendering as "January 1st, 2027"). This parses the
+// real-date case first (matching MM/DD/YYYY, building the Date from explicit
+// Y/M/D components so there's no UTC/local day-off risk either) and returns
+// any other non-empty text exactly as stored, never handed to `new Date()`.
+function formatWeddingDisplayText(val: string | null | undefined): string {
+  if (!val) return '—';
+  const mdy = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    const monthIdx = parseInt(mm!, 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      const d = new Date(parseInt(yyyy!, 10), monthIdx, parseInt(dd!, 10));
+      if (!isNaN(d.getTime())) {
+        const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(d);
+        const day = d.getDate();
+        const v = day % 100;
+        const ord = (['th','st','nd','rd'][(v-20)%10] ?? ['th','st','nd','rd'][v] ?? 'th');
+        return `${month} ${day}${ord}, ${d.getFullYear()}`;
+      }
+    }
+  }
+  return val;
 }
 // ─── Lookup unwrapping (main-list Wedding Date / Favorite Styles columns) ─────
 // This runtime returns a multipleLookupValues cell as an array of one entry
@@ -1007,13 +1041,37 @@ const SOURCE_DOT_COLOR: Record<FieldSource, string> = {
   apparel_magic: 'bg-amber-500',
 };
 
-function FieldLabel({ label, fieldId, className }: { label: string; fieldId?: string; className?: string }) {
+function FieldLabel({ label, fieldId, className }: { label: React.ReactNode; fieldId?: string; className?: string }) {
   const source = fieldId ? FIELD_SOURCE[fieldId] : undefined;
   return (
     <div className={`flex items-center gap-1.5 mb-1.5 ${className ?? ''}`}>
       <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">{label}</span>
       {source && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${SOURCE_DOT_COLOR[source]}`} />}
     </div>
+  );
+}
+
+// Ready-to-Wear Size only: builds "<label> | from Acuity: N ●" so the
+// Acuity self-reported value reads as a reference extension of the label
+// itself when present — same convention pipeline.tsx already uses for the
+// same field pair. Returns the plain label when there's no Acuity value to
+// show (2026-08 — Julia: sizing that reaches Recap should always be the
+// Sales-Associate-confirmed value; the Acuity value is reference-only here,
+// never a second editable field).
+function rtwSizeLabelWithAcuity(baseLabel: string, acuityValue: number | null): React.ReactNode {
+  if (acuityValue == null) return baseLabel;
+  return (
+    <>
+      {baseLabel}
+      <span className="text-gray-300 dark:text-gray-600"> | </span>
+      <span className="text-gray-400 dark:text-gray-500 font-normal normal-case tracking-normal">
+        from Acuity: {acuityValue}
+      </span>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500 ml-1.5"
+        title="Sourced from Acuity"
+      />
+    </>
   );
 }
 
@@ -1061,7 +1119,7 @@ function EditableTextarea({ label, fieldId, readOnly, value, onChange, onBlur, p
 }
 
 interface EditableNumberProps {
-  label: string; fieldId?: string; readOnly?: boolean;
+  label: React.ReactNode; fieldId?: string; readOnly?: boolean;
   value: string; onChange?: (v: string) => void; onBlur?: () => void; placeholder?: string;
 }
 function EditableNumber({ label, fieldId, readOnly, value, onChange, onBlur, placeholder }: EditableNumberProps) {
@@ -3832,6 +3890,22 @@ function PostAppointmentModal({
   const cNum  = useCallback((fid:string)=>clientRec ? getVal<number>(clientRec,fid) : null,[clientRec]);
   const cBool = useCallback((fid:string)=>clientRec ? !!(getVal<boolean>(clientRec,fid)??false) : false,[clientRec]);
 
+  // Wedding Date / RTW Size / Size (Acuity Intake) — resolved via the real
+  // `clientsTable` field object (same mechanism the working "Favorite Styles
+  // from Appointment" read already uses below, through favoriteStylesApptField)
+  // instead of cStr/cNum's rec._table introspection, which was found live
+  // (2026-08-22, testing this exact fix in Sandbox) to silently return empty
+  // for these three fields even though the underlying data is populated —
+  // clientRec.getCellValueAsString/getCellValue against a field looked up
+  // directly on clientsTable works reliably where the private-property hack
+  // didn't. Scoped to just these three reads, not a rewrite of cStr/cNum
+  // itself (used in many other places in this file) — flag to Julia/Axel if
+  // other fields on this page turn out to have the same silent-empty issue.
+  const fClientWedding  = clientsTable.getFieldIfExists(CLIENT.WEDDING);
+  const fClientRtwSize  = clientsTable.getFieldIfExists(CLIENT.RTW_SIZE);
+  const fClientSizeIntake = clientsTable.getFieldIfExists(CLIENT.SIZE_ACUITY_INTAKE);
+  const fClientWeddingDisplay = clientsTable.getFieldIfExists(CLIENT.WEDDING_DISPLAY);
+
   // The client's designated first-consultation appointment (2026-08-05, per
   // Julia) — resolved via two LOOKUP fields, not the plain-field helpers
   // above. getVal() on a lookup returns the raw array Airtable always uses
@@ -3861,7 +3935,7 @@ function PostAppointmentModal({
     : null;
 
   // Wedding date
-  const existingWeddingIso = clientRec ? (getVal<string>(clientRec, CLIENT.WEDDING)??'') : '';
+  const existingWeddingIso = (clientRec && fClientWedding) ? ((clientRec.getCellValue(fClientWedding) as string|null) ?? '') : '';
   const [weddingDisplay, setWeddingDisplay] = useState(existingWeddingIso ? fmtFriendly(existingWeddingIso) : '');
   const [weddingIso, setWeddingIso]         = useState(existingWeddingIso);
   const [weddingConfirmed, setWeddingConfirmed] = useState(cBool(CLIENT.WEDDING_CONFIRMED));
@@ -3869,8 +3943,19 @@ function PostAppointmentModal({
 
   // measurement_notes is richText — read via fromRichText
   const [measNotes,  setMeasNotes]  = useState(fromRichText(getVal<unknown>(clientRec!, CLIENT.MEAS_NOTES)));
-  const [sizeAcuityIntake, setSizeAcuityIntake] = useState(cStr(CLIENT.SIZE_ACUITY_INTAKE));
-  const [rtwSize,    setRtwSize]    = useState(cNum(CLIENT.RTW_SIZE)?.toString()??'');
+  const [rtwSize,    setRtwSize]    = useState(
+    (clientRec && fClientRtwSize) ? ((clientRec.getCellValue(fClientRtwSize) as number|null)?.toString() ?? '') : ''
+  );
+  // Reference-only — never written back to from here (see rtwSizeLabelWithAcuity,
+  // used only to extend the "Ready-to-Wear Size" label with the Acuity value
+  // when present). Read live, not local state, since there's no editable
+  // control feeding it here anymore.
+  const sizeAcuityIntakeNum = (() => {
+    const raw = (clientRec && fClientSizeIntake) ? clientRec.getCellValueAsString(fClientSizeIntake) : '';
+    if (!raw) return null;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : null;
+  })();
 
   // Prefer the custom-property-bound field (see getCustomProperties) so the
   // style-filter feature and this editor always read the exact same field;
@@ -4252,7 +4337,6 @@ function PostAppointmentModal({
   const handleNotesBlur    = () => saveClientField(CLIENT.APPT_NOTES, notes);
   // measurement_notes is richText — write as {markdown: value}
   const handleMeasNotesBlur = () => saveClientField(CLIENT.MEAS_NOTES, measNotes ? toRichText(measNotes) : null);
-  const handleSizeBlur     = () => saveClientField(CLIENT.SIZE_ACUITY_INTAKE, sizeAcuityIntake||null);
   const handleRtwBlur      = () => saveClientField(CLIENT.RTW_SIZE, rtwSize?parseFloat(rtwSize)||null:null);
   const handleStyleToggle  = (s:string) => {
     const updated = favStyles.includes(s)?favStyles.filter(x=>x!==s):[...favStyles,s];
@@ -4372,12 +4456,20 @@ function PostAppointmentModal({
               <StylesDropdown selected={favStyles} available={availableStyleNames} onToggle={handleStyleToggle}/>
             </div>
 
-            {/* Wedding Date / Date Confirmation / RTW Size / Order Size — one row, 1/4 each */}
-            <div className="grid grid-cols-4 gap-4">
+            {/* Wedding Date / Date Confirmation / RTW Size — one row, 1/3 each.
+                Size (Acuity Intake) dropped as a 4th editable field (2026-08,
+                per Julia: sizing that reaches Recap must always be the
+                Sales-Associate-confirmed value, never editable straight back
+                onto the client's original Acuity self-report) — its value
+                now only ever appears as a reference suffix on the
+                Ready-to-Wear Size label itself, via rtwSizeLabelWithAcuity. */}
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <FieldLabel label="Wedding Date" fieldId={CLIENT.WEDDING} />
                 {isFieldReadOnlyBySource(CLIENT.WEDDING) ? (
-                  <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5">{weddingDisplay || '—'}</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300 py-1.5">
+                    {formatWeddingDisplayText((clientRec && fClientWeddingDisplay) ? clientRec.getCellValueAsString(fClientWeddingDisplay) : '')}
+                  </div>
                 ) : (
                   <div className="relative">
                     <input type="text" value={weddingDisplay} onChange={e=>setWeddingDisplay(e.target.value)}
@@ -4401,19 +4493,11 @@ function PostAppointmentModal({
                 </button>
               </div>
               <EditableNumber
-                label="Ready-to-Wear Size"
+                label={rtwSizeLabelWithAcuity('Ready-to-Wear Size', sizeAcuityIntakeNum)}
                 value={rtwSize}
                 onChange={setRtwSize}
                 onBlur={handleRtwBlur}
                 placeholder="e.g. 8"
-              />
-              <EditableText
-                label="Size (Acuity Intake)"
-                fieldId={CLIENT.SIZE_ACUITY_INTAKE}
-                value={sizeAcuityIntake}
-                onChange={setSizeAcuityIntake}
-                onBlur={handleSizeBlur}
-                placeholder="e.g. 6"
               />
             </div>
 
@@ -5130,7 +5214,7 @@ function RecapApp(): React.ReactElement {
                         <td className="px-3 py-3"><div className="font-semibold text-sm text-gray-900 dark:text-[#F3EFE6]">{name||'Unknown'}</div></td>
                         <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{studio||'—'}</td>
                         <td className="px-3 py-3">
-                          <div className="text-sm text-gray-700 dark:text-gray-300">{weddingDisplay?fmtFriendly(weddingDisplay):'—'}</div>
+                          <div className="text-sm text-gray-700 dark:text-gray-300">{formatWeddingDisplayText(weddingDisplay)}</div>
                         </td>
                         <td className="px-3 py-3 text-sm text-gray-700 dark:text-gray-300">{sa||'—'}</td>
                         <td className="px-3 py-3">

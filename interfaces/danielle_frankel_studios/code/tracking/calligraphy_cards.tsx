@@ -294,9 +294,23 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
 }
 
 // ─── Date helpers ──────────────────────────────────────────────────────────────
+// Fixed 2026-08-22: a date-only cell value (e.g. "2026-08-23", no time
+// component) was going straight into `new Date(value)`, which JS parses as
+// UTC midnight — Intl.DateTimeFormat then renders that in the viewer's LOCAL
+// timezone, showing the day before for anyone west of UTC (Wedding Date
+// "2026-08-23" was rendering as "Aug 22, 2026"). Matching the ISO
+// year-month-day prefix first and building the Date from those components
+// directly (new Date(y, m, d), all local) avoids crossing a timezone
+// boundary — same fix pattern used for Wedding Date elsewhere in this
+// codebase (Fulfillment, Alterations, Sold Orders, Appointments, Draft
+// Orders). Falls back to `new Date(value)` for anything that isn't a bare
+// date-only string (e.g. a real datetime with its own offset), unchanged.
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
-  const d = new Date(value);
+  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const d = isoMatch
+    ? new Date(parseInt(isoMatch[1]!, 10), parseInt(isoMatch[2]!, 10) - 1, parseInt(isoMatch[3]!, 10))
+    : new Date(value);
   if (isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
 }

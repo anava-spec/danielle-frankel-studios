@@ -68,6 +68,11 @@ const FIELD_IDS = {
   CLIENT_STAGE: 'fldLcxVZvI1rigBlh',
   CLIENT_DUE_DATE: 'flddDJKkZDsOoCOzE',
   CLIENT_WEDDING_DATE: 'fldbgknumKGS5W5WU',
+  // wedding_date_display formula — Wedding Date (Formatted), falling back to
+  // Wedding Date (If Not Set) when empty. Used only by ClientMiniPanel's
+  // read-only "Wedding Date" row (see its comment) — CLIENT_WEDDING_DATE
+  // above stays as-is for every other use in this file.
+  CLIENT_WEDDING_DATE_DISPLAY: 'fldfDHXcCEbFHEX4a',
   CLIENT_DRAFT_ORDERS: 'fldynmy5OIWDVcgIn',
   CLIENT_FAVORITE_STYLES_ACUITY: 'fldZzNR0g5VEJ5RmX',
   CLIENT_FAVORITE_STYLES_APPOINTMENT: 'fldVw8wCgPKvxN1jD',
@@ -428,6 +433,39 @@ function formatDate(dateStr: string | null | undefined): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
 
+// wedding_date_display returns either a real MM/DD/YYYY date (Formatted is
+// set) or free placeholder text (e.g. "Spring 2027", Formatted is empty) —
+// never ISO. Parses the real-date case first and formats it exactly like
+// formatDate above; any other non-empty text is returned as-is. Placeholder
+// text is never handed to `new Date()`, so a stray month/year token inside
+// it can't get silently misparsed into a fabricated date. Used only by
+// ClientMiniPanel's "Wedding Date" row.
+//
+// Builds the Date from explicit Y/M/D components (new Date(y, m, d)) instead
+// of routing through formatDate/parseDate's `new Date(isoString)` — a
+// date-only ISO string is parsed as UTC midnight, which Intl.DateTimeFormat
+// then renders in the viewer's LOCAL timezone, showing the day before for
+// anyone west of UTC (e.g. "2026-10-10" rendering as "Oct 9, 2026"). The
+// Y/M/D constructor uses local components throughout, so there's no
+// timezone boundary to cross and no off-by-one risk — same fix pattern as
+// formatFriendlyDate/formatWeddingDateDisplay in the other Wedding Date
+// fixes (Fulfillment, Alterations, Sold Orders, Appointments).
+function formatWeddingDateDisplay(val: string | null | undefined): string {
+  if (!val) return '';
+  const mdy = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (mdy) {
+    const [, mm, dd, yyyy] = mdy;
+    const monthIdx = parseInt(mm!, 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      const d = new Date(parseInt(yyyy!, 10), monthIdx, parseInt(dd!, 10));
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
+      }
+    }
+  }
+  return val;
+}
+
 // Shipping is a multipleLookupValues field — its cell value is an array (one
 // entry per linked record), even though the state_costs link only ever holds
 // one. This interface's runtime has previously (see BRANDING.md §9's
@@ -775,7 +813,7 @@ function ClientMiniPanel({
   onClose: () => void;
 }) {
   const stageField = getField(clientsTable, FIELD_IDS.CLIENT_STAGE);
-  const weddingDateField = getField(clientsTable, FIELD_IDS.CLIENT_WEDDING_DATE);
+  const weddingDateDisplayField = getField(clientsTable, FIELD_IDS.CLIENT_WEDDING_DATE_DISPLAY);
   const emailField = getField(clientsTable, FIELD_IDS.CLIENT_EMAIL);
   const phoneField = getField(clientsTable, FIELD_IDS.CLIENT_PHONE);
   const salesAssociateNameField = getField(clientsTable, FIELD_IDS.CLIENT_SALES_ASSOCIATE_NAME);
@@ -832,7 +870,7 @@ function ClientMiniPanel({
         </div>
         <div className="px-6 py-4">
           {row('Stage', stageField ? clientRecord.getCellValueAsString(stageField) : '')}
-          {row('Wedding Date', weddingDateField ? formatDate(clientRecord.getCellValueAsString(weddingDateField)) : '')}
+          {row('Wedding Date', weddingDateDisplayField ? formatWeddingDateDisplay(clientRecord.getCellValueAsString(weddingDateDisplayField)) : '')}
           {row('Email', emailField ? clientRecord.getCellValueAsString(emailField) : '')}
           {row('Phone', phoneField ? clientRecord.getCellValueAsString(phoneField) : '')}
           {row('Sales Associate', salesAssociateNameField ? clientRecord.getCellValueAsString(salesAssociateNameField) : '')}

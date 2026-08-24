@@ -21,6 +21,12 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 ## Week of Aug 21, 2026
 
+**Pipeline**
+- Added a Wedding Date filter (icon button next to the Timeline filter) to both the Board and List views, matching the one already on Alterations — pick a date and the board/list narrows to clients with that exact wedding date.
+
+**Sold Orders**
+- Fixed a wedding date showing as a made-up specific date (e.g. "Jan 1, 2027") for clients who only have a rough placeholder like "Fall 2027" on file — it now shows that placeholder text as entered instead of guessing a date from it.
+
 **Fulfillment**
 - Fixed the Wedding Date column in the main table showing a day earlier than the real date (e.g. a wedding on Oct 10 was showing Oct 9), and made it fall back to the manual placeholder date when no confirmed date is set yet, matching the rest of the app.
 
@@ -33,9 +39,22 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Recap**
 - Restored to the version from Friday, Aug 21, keeping the four improvements already delivered that day: the redesigned Feedback form dropdowns, the "Size (Acuity Intake)" field on the client detail page, the Sales Associate / Appointment Time fields now shown on that same page, and the Appointment Time display correctly using the studio's own timezone. Wedding Date on the main list resolved itself once this version was back in place — it reads through a lookup field that was already correctly connected to the manual-placeholder fallback, no script change needed.
+- Fixed the Wedding Date on a client's detail page always showing blank when no confirmed Acuity date was on file — it now falls back to the manual placeholder date, matching the main list.
+- Fixed the main list's Wedding Date column occasionally showing a made-up date (e.g. "January 1st, 2027") for clients with only a rough placeholder like "2027" on file — it now shows that placeholder text as entered instead of guessing a date from it.
+- Ready-to-Wear Size: only the Sales Associate's own confirmed size is now editable on the client detail page. The customer's self-reported size from Acuity intake is shown for reference next to it when available, but is no longer directly editable there — so a size typed into Recap can no longer be mistaken for something the customer entered themselves.
 
 **Appointments**
 - Simplified how Wedding Date is shown in the appointment detail view (opened by clicking an appointment) to read from the same single, already-correct source the rest of the app uses, so it reliably shows the manual placeholder date when no confirmed wedding date is on file yet — same fix pattern as Fulfillment, Sold Orders, and Alterations.
+
+**Draft Orders**
+- Fixed the Wedding Date shown in the "Client Details" popup (View Client, from a draft order) — it was always showing blank, even for clients with a confirmed wedding date on file, and now shows correctly, falling back to the manual placeholder date when no confirmed date is set yet.
+
+**Calligraphy Cards**
+- Fixed Wedding Date (and Due Date) showing a day earlier than the real date, for anyone viewing from a timezone behind UTC — both the main list and the client detail popup now show the correct day.
+
+**Did Not Convert**
+- Fixed Wedding Date on the client detail page showing a day earlier than the real date, for anyone viewing from a timezone behind UTC.
+- Fixed RTW Size always showing blank on the client detail page regardless of what was on file. It now shows the Sales Associate's confirmed size (blank when the SA never confirmed one — meaningful on this page, since it shows who didn't convert), with the customer's self-reported Acuity size shown for reference next to it when available.
 
 ## Week of Aug 17, 2026
 
