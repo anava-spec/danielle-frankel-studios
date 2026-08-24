@@ -729,10 +729,12 @@ function getListPillClassesForColor(colorName: string | null | undefined): strin
   return `inline-flex items-center text-[13px] px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses}`;
 }
 
+// Issue #32/#45 — abbreviated slash-joined format ("Missing Room/SA/AL")
+// instead of a full grammatical sentence, so the flag reads as a compact
+// tag rather than a sentence-length warning.
 function formatMissingFieldsMessage(labels: string[]): string {
   if (labels.length === 0) return '';
-  if (labels.length === 1) return `Missing ${labels[0]}`;
-  return `Missing ${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+  return `Missing ${labels.join('/')}`;
 }
 
 // A multipleLookupValues cell (this is one — a lookup of a singleSelect,
@@ -778,13 +780,23 @@ function extractSelectValue(rawValue: unknown): { name: string; color: string | 
   return null;
 }
 
-function MissingDataPill({ reason }: { reason?: string | null } = {}): React.ReactElement {
+// Issue #32/#45 — "Missing Data" used to be a single hardcoded red pill
+// everywhere, regardless of which field was missing or whether the missing
+// field actually blocks anything. Two severities now: `hard` (red) is
+// reserved for Client — the one case that's genuinely impossible to check in
+// without; `soft` (amber) is everything else (Room/SA/AL) — informational,
+// doesn't block Check In. `label` names the specific field ("Client",
+// "Room", "SA", "AL") instead of the generic word "Data".
+function MissingDataPill({ label = 'Data', severity = 'hard', reason }: { label?: string; severity?: 'hard' | 'soft'; reason?: string | null } = {}): React.ReactElement {
+  const colorClasses = severity === 'hard'
+    ? 'bg-red-50 text-red-600 border-red-200'
+    : 'bg-orange-50 text-orange-600 border-orange-200';
   return (
     <span
       title={reason ?? undefined}
-      className={`inline-flex items-center text-[13px] px-2.5 py-0.5 rounded-full font-medium border bg-red-50 text-red-600 border-red-200 whitespace-nowrap ${reason ? 'cursor-help' : ''}`}
+      className={`inline-flex items-center text-[13px] px-2.5 py-0.5 rounded-full font-medium border whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
     >
-      Missing Data
+      Missing {label}
     </span>
   );
 }
@@ -1300,7 +1312,7 @@ function ActionButtons({
         return (
           <div className={wrapper}>
             <div className={row}>
-              <span className={pillRed}>Missing Appointment Data</span>
+              <span className={pillRed}>Missing Client</span>
             </div>
           </div>
         );
@@ -1337,7 +1349,7 @@ function ActionButtons({
               Check In
             </button>
           ) : (
-            <span className={pillRed}>Missing Appointment Data</span>
+            <span className={pillRed}>Missing Client</span>
           )}
           <span className={pillYellow}>Pick Up Pending</span>
         </div>
@@ -1352,7 +1364,7 @@ function ActionButtons({
         return (
           <div className={wrapper}>
             <div className={row}>
-              <span className={pillRed}>Missing Appointment Data</span>
+              <span className={pillRed}>Missing Client</span>
             </div>
           </div>
         );
@@ -1375,7 +1387,7 @@ function ActionButtons({
                 Check In
               </button>
             ) : (
-              <span className={pillRed}>Missing Appointment Data</span>
+              <span className={pillRed}>Missing Client</span>
             )
           ) : null}
 
@@ -1413,10 +1425,10 @@ function ActionButtons({
               Check In
             </button>
           ) : (
-            <span className={pillRed}>Missing Appointment Data</span>
+            <span className={pillRed}>Missing Client</span>
           )
         ) : !hasRequiredData ? (
-          <span className={pillRed}>Missing Appointment Data</span>
+          <span className={pillRed}>Missing Client</span>
         ) : null}
 
         {checkInValue && (
@@ -1774,14 +1786,10 @@ function CalendarPivot({
                   >
                     <div className="flex flex-col gap-2">
                       {colRecords.map((record) => {
-                        const typeValue = appointmentFields.typeField
-                          ? record.getCellValueAsString(appointmentFields.typeField)
-                          : '';
-                        const category = getAppointmentCategory(typeValue);
+                        // Issue #32/#45 — Room/SA no longer block Check In; only
+                        // a missing Client does (nothing to check in otherwise).
                         const hasRequiredData = !!(
-                          appointmentFields.clientField && record.getCellValueAsString(appointmentFields.clientField) &&
-                          appointmentFields.saNameField && record.getCellValueAsString(appointmentFields.saNameField) &&
-                          (category === 'pick-up-only' || (appointmentFields.roomLinkField && record.getCellValueAsString(appointmentFields.roomLinkField)))
+                          appointmentFields.clientField && record.getCellValueAsString(appointmentFields.clientField)
                         );
                         const timeValue = appointmentFields.timeField
                           ? (record.getCellValue(appointmentFields.timeField) as string | null)
@@ -1925,11 +1933,10 @@ function CalendarCardCompact({
   const stageColorDebug = `value: "${clientStage ?? ''}" | field: DF Clients.stage (fldLcxVZvI1rigBlh) | resolved color: ${stageColorName || 'none (falls back to gray)'} | choices loaded: ${stageColorByName.size}`;
   const apptTypeColorDebug = `value: "${apptNameEntry?.name ?? ''}" | color source: appointment_types.type field (fld5M3HgiIOycZfKJ) | resolved color: ${apptTypeColorName || 'none (falls back to gray)'} | choices loaded: ${apptTypeColorByName.size}`;
 
-  const category = getAppointmentCategory(typeValue);
+  // Issue #32/#45 — only a missing Client blocks Check In now; Room/SA/AL
+  // are soft flags shown inline on the card body instead.
   const missingFieldLabels: string[] = [];
   if (!clientId) missingFieldLabels.push('Client');
-  if (category !== 'pick-up-only' && !roomValue) missingFieldLabels.push('Room');
-  if (!saValue) missingFieldLabels.push('Sales Associate');
   const missingDataMessage = formatMissingFieldsMessage(missingFieldLabels);
 
   if (isBlock) {
@@ -1981,13 +1988,23 @@ function CalendarCardCompact({
 
       {/* Fields */}
       <div className="space-y-0.5">
-        {saValue && <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>}
-        {showAltLead && (
-          <div className={`text-xs ${altLeadValue ? 'text-gray-600 dark:text-gray-400' : 'text-red-500'}`}>
-            Alt Lead: {altLeadValue || 'missing'}
-          </div>
+        {saValue ? (
+          <div className="text-xs text-gray-600 dark:text-gray-400">SA: {saValue}</div>
+        ) : (
+          <div className="text-xs text-orange-600 dark:text-orange-400">Missing SA</div>
         )}
-        {roomValue && <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>}
+        {showAltLead && (
+          altLeadValue ? (
+            <div className="text-xs text-gray-600 dark:text-gray-400">Alt Lead: {altLeadValue}</div>
+          ) : (
+            <div className="text-xs text-orange-600 dark:text-orange-400">Missing AL</div>
+          )
+        )}
+        {roomValue ? (
+          <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>
+        ) : (
+          <div className="text-xs text-orange-600 dark:text-orange-400">Missing Room</div>
+        )}
       </div>
 
       <CalendarActionButtons
@@ -3419,12 +3436,9 @@ function AppointmentsApp(): React.ReactElement {
                     const clientStage = linkedClientId ? (clientStageById.get(linkedClientId) ?? null) : null;
                     const isBlock = isBlockTime(record, clientLinkField);
 
-                    const category = getAppointmentCategory(typeValue);
-                    const hasRequiredData = !!(
-                      clientLinkField && record.getCellValueAsString(clientLinkField) &&
-                      saNameField && record.getCellValueAsString(saNameField) &&
-                      (category === 'pick-up-only' || (roomLinkField && record.getCellValueAsString(roomLinkField)))
-                    );
+                    // Issue #32/#45 — Room/SA no longer block Check In; only
+                    // a missing Client does (nothing to check in otherwise).
+                    const hasRequiredData = !!(clientLinkField && record.getCellValueAsString(clientLinkField));
 
                     const startTime = timeValue ? new Date(timeValue) : null;
                     const endTimeRaw = apptEndTimeField
@@ -3471,7 +3485,7 @@ function AppointmentsApp(): React.ReactElement {
                         <td className="px-3 py-2.5 text-[13px] font-semibold whitespace-nowrap text-[#1A1612] dark:text-[#F3EFE6]">
                           {clientLinkField && record.getCellValueAsString(clientLinkField)
                             ? record.getCellValueAsString(clientLinkField)
-                            : <MissingDataPill />}
+                            : <MissingDataPill label="Client" severity="hard" />}
                         </td>
                         <td className="px-3 py-2.5">
                           {clientStage
@@ -3490,15 +3504,15 @@ function AppointmentsApp(): React.ReactElement {
                             : <MissingDataPill reason={apptNameMissingReason} />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
-                          {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill />}
+                          {roomValue ? <span className="text-gray-600 dark:text-gray-400">{roomValue}</span> : <MissingDataPill label="Room" severity="soft" />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
-                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : '—'}
+                          {saValue ? <span className="text-gray-600 dark:text-gray-400">{saValue}</span> : <MissingDataPill label="SA" severity="soft" />}
                         </td>
                         <td className="px-3 py-2.5 text-[13px] whitespace-nowrap">
                           {altLeadValue
                             ? <span className="text-gray-600 dark:text-gray-400">{altLeadValue}</span>
-                            : isAlterationsAppt ? <MissingDataPill /> : '—'}
+                            : isAlterationsAppt ? <MissingDataPill label="AL" severity="soft" /> : '—'}
                         </td>
                         <td className="px-3 py-2.5">
                           <ActionButtons
