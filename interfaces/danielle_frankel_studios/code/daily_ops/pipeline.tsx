@@ -831,6 +831,24 @@ const STAGE_DISPLAY_LABELS: Record<string, string> = {
   'Fulfilled': 'Fulfilled',
 };
 
+// Feedback Tracker "Add Column Header Tooltips Explaining Pipeline Stages" —
+// native `title` attribute on each Kanban column header (matches this file's
+// only other tooltip pattern, see SOURCE_LABELS usage above — no custom
+// tooltip component exists here). Order Ready's copy states the >75%
+// threshold, since that's what's actually live today per
+// docs/phase_logic_rulebook.md — the confirmed-with-Julia >50% redesign is
+// explicitly flagged there as "not yet built," so don't update this text to
+// 50% until that rebuild ships.
+const STAGE_TOOLTIPS: Record<string, string> = {
+  'Waitlist': 'Prospective clients who requested a date or time but have not yet been matched to a confirmed client appointment.',
+  'Pre-Appointment': 'Clients with an appointment scheduled within the selected period who have not yet had their first visit.',
+  'Deliberating': 'Clients who have had their first appointment but have not yet made a purchase.',
+  'Sold': 'Clients who have made a purchase and have a completed order on their record.',
+  'Order Ready': 'Orders ready to move into Alterations or Fulfillment. An order enters this stage if at least one gown is Picked or if more than 75% of the order is Picked.',
+  'In Alterations': 'Clients with a scheduled alterations appointment whose order is currently going through the alterations process.',
+  'In Fulfillment': 'Clients whose order is ready for pickup or shipping and does not require in-house alterations.',
+};
+
 const TIMELINE_OPTIONS = [
   'Last 7 days', 'Last 30 days', 'Last 6 months',
 ];
@@ -4752,7 +4770,7 @@ function Pipeline(): React.ReactElement {
             const wCanNext     = wPage < wTotalPages - 1;
             return (
               <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
-                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
+                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10" title={STAGE_TOOLTIPS[WAITLIST_STAGE_LABEL]}>
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{WAITLIST_STAGE_LABEL}</span>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
                     style={{ backgroundColor: WAITLIST_COLUMN_COLORS.bg, color: WAITLIST_COLUMN_COLORS.fg }}>
@@ -4806,7 +4824,7 @@ function Pipeline(): React.ReactElement {
               <div key={stage}
                 ref={(el) => { if (el) kanbanColumnRefs.current.set(stage, el); else kanbanColumnRefs.current.delete(stage); }}
                 className={`flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden ${needsBottomClearance ? 'h-[calc(100%-60px)]' : ''}`}>
-                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
+                <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10" title={STAGE_TOOLTIPS[stage]}>
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{stageLabel}</span>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
                     style={{ backgroundColor: stageColors.bg, color: stageColors.fg }}>
