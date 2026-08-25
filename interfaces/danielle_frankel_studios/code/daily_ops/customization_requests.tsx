@@ -863,6 +863,16 @@ function formatCurrency(n: number): string {
   return `$${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Feedback Tracker "Only Show Customized Gown Styles for Customization
+// Requests" — the picker should only offer styles whose name signals they're
+// customizable: "- customized" anywhere in the name, or an exact match on
+// "custom" / "custom gown" / "customization" (case-insensitive per spec).
+function isCustomizableStyleName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  if (n.includes('- customized')) return true;
+  return n === 'custom' || n === 'custom gown' || n === 'customization';
+}
+
 // Base Price can be a lookup/rollup, whose raw getCellValue() is a wrapped
 // object rather than a plain number (formatCurrency on that silently prints
 // "[object Object]" via Object.prototype.toLocaleString). getCellValueAsString
@@ -1323,7 +1333,7 @@ function NewRequestModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const styleOptions = useMemo(() => stylesRecords.map(r => {
+  const styleOptions = useMemo(() => stylesRecords.filter(r => isCustomizableStyleName(r.name)).map(r => {
     const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
     return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
   }).sort((a, b) => a.label.localeCompare(b.label)), [stylesRecords, stylesBasePriceField]);
@@ -2385,14 +2395,23 @@ function RecordDetailPage({
 
   const clientName   = fClient ? getLinkedRecordName(record.getCellValue(fClient)) : '—';
 
-  // Style dropdown — every style in the base, unfiltered (per Julia,
-  // 2026-07-27: no Favorite-Styles-in-Acuity scoping for Regular or Hybrid).
-  const styleOptions = useMemo(() => stylesRecords.map(r => {
-    // Base Price folded into the label itself (shown in both the closed/
-    // selected view and each dropdown row), matching recap.tsx's Style picker.
-    const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
-    return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
-  }).sort((a, b) => a.label.localeCompare(b.label)), [stylesRecords, stylesBasePriceField]);
+  // Style dropdown — no Favorite-Styles-in-Acuity scoping for Regular or
+  // Hybrid (per Julia, 2026-07-27), but narrowed to customizable styles only
+  // (see isCustomizableStyleName) per the "Only Show Customized Gown Styles
+  // for Customization Requests" tracker item. Existing records saved before
+  // this filter (or against an edge-case style name it excludes, e.g. "Custom
+  // Veil") keep their currently-linked style visible/selected here even
+  // though it wouldn't appear for a brand-new pick — otherwise editing an
+  // older request would silently blank out its Style field.
+  const styleOptions = useMemo(() => {
+    const keepIds = new Set([styleId, additionalStyleId].filter((id): id is string => !!id));
+    return stylesRecords.filter(r => isCustomizableStyleName(r.name) || keepIds.has(r.id)).map(r => {
+      // Base Price folded into the label itself (shown in both the closed/
+      // selected view and each dropdown row), matching recap.tsx's Style picker.
+      const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
+      return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+  }, [stylesRecords, stylesBasePriceField, styleId, additionalStyleId]);
 
   // Within Stage A, New Request only ever offers "Move to Under Review" — the
   // Approve/Deny/Counter-Propose decision only makes sense once someone has
