@@ -4,7 +4,7 @@ type: rulebook
 tags: [rulebook, danielle-frankel, airtable, phase-logic, pipeline, source-of-truth]
 priority: critical
 related: [CROSS_CUTTING.md, ../interfaces/danielle_frankel_studios/readmes/pipeline.README.md, ../interfaces/danielle_frankel_studios/readmes/fulfillment.README.md, ../interfaces/danielle_frankel_studios/readmes/alterations.README.md, ../interfaces/danielle_frankel_studios/readmes/appointments.README.md]
-last_updated: 2026-08-25
+last_updated: 2026-08-25 (rev. 2)
 owner: Miguel Pérez
 status: active — supersedes slack-files/recovered/AIRTABLE PHASE LOGIC.docx (2026-06-26, outdated)
 ---
@@ -34,14 +34,49 @@ Where sources conflict, **this document reflects what's actually live in Sandbox
 | Phase | Scope | Rules |
 |---|---|---|
 | **Waitlist** | Leads who asked for a specific studio date/time but haven't been booked into an appointment yet — not yet a client in the pipeline | • She's a lead the moment someone submits a date/time request; she stays "Active" until matched to a real client.<br>• A match — automatic (when a new client record is created with a matching name/email/phone) or manual by staff — resolves her and starts her real journey at Pre-Appointment; being on the Waitlist never counts as her first appointment.<br>• If she's flagged as an exception (duplicate entry, not a real lead), she's excluded from staff to-dos and from Pipeline entirely.<br>• Julia is alerted if a requested date is 5+ days out and still unresolved, and again if the requested date has already passed with nothing done. |
-| **Pre-Appointment** | Brides who've scheduled an appointment but haven't come in yet — **or** who've never purchased and haven't been seen by the studio in 6+ months | • Client has a scheduled appointment and this is her first one (total appointment count = 1).<br>• **Added 2026-08-25:** also includes brides who haven't purchased anything and whose last appointment was more than 6 months ago — flagged in Known Gaps below since Did Not Convert already uses a related-but-different "time since last appointment" threshold (4 months); needs a precedence rule confirmed with Julia so a bride isn't shown in two phases at once.<br>• Never shows measurements, photos, or favorite-style flags — those only make sense once she's actually visited the studio. |
+| **Pre-Appointment** | Brides who've scheduled an appointment but haven't come in yet — **or** who've never purchased and haven't been seen by the studio in 6+ months | • Client has a scheduled appointment and this is her first one (total appointment count = 1).<br>• Also includes brides who haven't purchased anything and whose last appointment was more than 6 months ago (see Known Gaps — this overlaps with Did Not Convert's own time-based rule and needs a precedence call from Julia).<br>• Never shows measurements, photos, or favorite-style flags — those only make sense once she's actually visited the studio. |
 | **Deliberating** | Brides who've had a first appointment (including 2nd/3rd-visit returns) but haven't purchased yet | • By end of day, if her appointment wasn't cancelled — whether she checked in, was cleared, or was never checked in at all — she moves from Pre-Appointment into Deliberating automatically. |
 | **Sold** | Brides who've purchased | • She has a completed order on her record. In Julia's own words: before this point, "not enough of her stuff is picked yet." |
-| **Order Ready** | Brides whose order (or enough of it) is ready to move on to alterations, shipping, or pickup | • If she bought a gown, she qualifies as soon as that gown is picked (physically pulled and set aside for her) — the gown condition always wins over the percentage rule below.<br>• If she didn't buy a gown (separates/accessories only), she qualifies once more than half of her order is picked.<br>• She only qualifies while nothing on that order has shipped yet — picked resets to zero once something ships, so a fully-shipped order should never look Order Ready again.<br>• A bride shipping one item and picking up another can appear as two separate jobs, each tracked and closed on its own — one row per real next-step, not one row per bride. |
-| **Alterations** | Brides with a scheduled alterations appointment | • She enters this phase the moment her alterations appointment is **booked**, not when she checks in for it.<br>• She can't move into Alterations until she's actually paid — if she booked before paying, she's flagged "booked but didn't pay" and held until a Shopify order with Alterations on it comes through.<br>• If she pays for alterations in person in NY or LA, she must be charged that state's tax rate at the time. |
-| **Fulfillment** | Brides who are Order Ready but not doing in-house alterations — just waiting on shipping or pickup | • She's routed here once Order Ready and Alterations isn't part of her order.<br>• What happens next depends on her appointment: a Final Fitting & Pickup where she actually leaves with the gown skips this phase entirely (closed directly); if she doesn't leave with it, or she only booked a plain pickup, or she's shipping, she lands here and closes once pickup/tracking completes. |
-| **Closed** *(renamed from "Fulfilled" for this table — see Implementation Notes for the live field name)* | The order is fully wrapped up — nothing left to ship, pick up, or invoice | • Closes automatically once nothing is outstanding on her order(s), or a staff member manually marks her closed for edge cases.<br>• Longer-term goal (not yet built): driven by real Apparel Magic invoicing instead of the current automated check — each item's invoice closes that part of the order, and the whole order closes once every item is invoiced. This also properly handles partial shipments, which today's mechanism doesn't. |
+| **Order Ready** | Brides whose order (or enough of it) is ready to move into triage — Alterations, or Fulfillment for shipping/pickup | • If she bought a gown, she qualifies as soon as that gown is picked (physically pulled and set aside for her) — the gown condition always wins over the percentage rule below.<br>• If she didn't buy a gown (separates/accessories only), she qualifies once more than half of her order is picked.<br>• She only qualifies while nothing on that order has shipped yet — picked resets to zero once something ships, so a fully-shipped order should never look Order Ready again.<br>• A bride shipping one item and picking up another can appear as two separate jobs, each tracked and closed on its own — one row per real next-step, not one row per bride.<br>• This is a **triage step, not a resting stage** — see [Client View vs. Order View](#client-view-vs-order-view-the-triage-step) below. Every order lands here just long enough to be routed into exactly one of the two rows below. |
+| **Alterations** *(triage outcome — in-house route)* | Brides with a scheduled alterations appointment | • She enters this phase the moment her alterations appointment is **booked**, not when she checks in for it.<br>• She can't move into Alterations until she's actually paid — if she booked before paying, she's flagged "booked but didn't pay" and held until a Shopify order with Alterations on it comes through.<br>• If she pays for alterations in person in NY or LA, she must be charged that state's tax rate at the time. |
+| **Fulfillment** *(triage outcome — ship/pickup route)* | Brides who are Order Ready but not doing in-house alterations — just waiting on shipping or pickup | • She's routed here once Order Ready and Alterations isn't part of her order.<br>• What happens next depends on her appointment: a Final Fitting & Pickup where she actually leaves with the gown skips this phase entirely (closed directly); if she doesn't leave with it, or she only booked a plain pickup, or she's shipping, she lands here and closes once pickup/tracking completes. |
+| **Closed** | The order is fully wrapped up — nothing left to ship, pick up, or invoice | • Closes automatically once nothing is outstanding on her order(s), or a staff member manually marks her closed for edge cases.<br>• Longer-term goal (not yet built): driven by real Apparel Magic invoicing instead of the current automated check — each item's invoice closes that part of the order, and the whole order closes once every item is invoiced. This also properly handles partial shipments, which today's mechanism doesn't. |
 | **Did Not Convert** | Brides who haven't purchased, haven't had an appointment in 4+ months, have nothing scheduled, and whose wedding is 5+ months away | • Last appointment more than 4 months ago, no purchase, wedding date still more than 5 months out.<br>• Includes a reason (e.g. "went with another designer") plus free-text notes, kept separate from the general Change Log. |
+
+---
+
+## Client View vs. Order View (the triage step)
+
+**Order Ready is not a place a bride sits — it's the moment each of her orders gets triaged into exactly one next step: Alterations, or Fulfillment (shipping/pickup).** Everything from Order Ready through Closed actually happens *per order*, not per client. What Sales Associates see as one phase on a client's card is a computed roll-up of however many orders she has, each on its own independent track.
+
+```mermaid
+flowchart LR
+    subgraph Client["Client-Level View — what the Sales Associate sees"]
+        direction LR
+        C1[Sold] --> C2[Order Ready] --> C3["In Progress\n(mixed sub-states)"] --> C4[Closed]
+    end
+```
+
+```mermaid
+flowchart LR
+    subgraph OrderA["Order A — Gown"]
+        direction LR
+        A1[Sold] --> A2["Order Ready\nGown picked"] --> A3["Triage: In Alterations\nFittings scheduled"] --> A4["Closed\nAppointment pickup"]
+    end
+    subgraph OrderB["Order B — Shipped item"]
+        direction LR
+        B1[Sold] --> B2["Order Ready\n>50% items picked"] --> B3["Triage: Confirm Address"] --> B4["In Fulfillment\nPacking for carrier"] --> B5["Closed\nShipped"]
+    end
+    subgraph OrderC["Order C — Pickup item"]
+        direction LR
+        C1[Sold] --> C2["Order Ready\nAll items picked"] --> C3["Triage: Schedule Pickup"] --> C4["In Fulfillment\nHeld for pickup"] --> C5["Closed\nPicked up"]
+    end
+```
+
+- **The client-level stage has no independent logic of its own** — it's a computed roll-up of open orders. All real transition rules live at the order level, in the diagrams above.
+- **Order Ready is the triage moment**: every order passes through it just long enough to determine whether it needs in-house Alterations, or is headed straight to Fulfillment (confirm address for shipping, or schedule pickup) — never both, never neither.
+- **The client only closes once every one of her orders is independently closed** — one lagging order (still in Alterations, say) keeps the whole client card showing "In Progress" even if her other orders are already Closed.
+- Source: `Order Ready - Client vs Order View` diagram (Axel, Aug 2026).
 
 ---
 
