@@ -22,6 +22,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 
 **Recap**
 - Cleaned up the RTW Size reference text next to the Ready-to-Wear Size field, matching the same fix already made on Pipeline: now always shows the client's self-reported Acuity size (or "Missing Value" if they never entered one) instead of hiding it, and colors it to match the rest of the field values.
+- Each style shown in the Recap Doc (favorites, customization requests, and both styles in a Hybrid request) now has a "View [Style Name]" link underneath it that opens the style's real product page on the website. Styles without a product page on file simply don't get a link.
 
 **Appointments**
 - Missing Room, Sales Associate, or Alterations Lead no longer blocks Check In — those now show as an informational amber "Missing ___" note instead (plain text, no colored chip, spelled out in full rather than abbreviated). Only a missing Client (nothing to check in) still blocks it, shown in red. Applies to both the list and calendar card views.

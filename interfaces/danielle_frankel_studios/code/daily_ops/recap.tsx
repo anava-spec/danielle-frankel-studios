@@ -871,6 +871,12 @@ const STYLES_CATEGORY_FIELD_ID = 'fld0eUrQtGo5zFrbe';
 // this back to the lookups (or to whatever field Cobalt's sync lands in)
 // once real descriptions are available.
 const STYLES_DESCRIPTION_PLACEHOLDER_FIELD_ID = 'fldjBgzkomQ26lSzV';
+// Styles.product_page_url — formula, built from product_handle_ny:
+// `https://www.daniellefrankelstudio.com/products/<handle>`, blank when the
+// style has no handle. Added 2026-08-24 (per Axel) so the Recap Doc can link
+// each style's name out to its live product page. Never falls back to
+// constructing the URL in code — if the field is blank, there's no link.
+const STYLES_PRODUCT_URL_FIELD_ID = 'fldIpZoALKOYjBEHU';
 function isConsultation(label: string): boolean {
   return label.toLowerCase().includes('consultation');
 }
@@ -3264,6 +3270,19 @@ const RECAP_SMALL_LABEL_STYLE: React.CSSProperties = {
 const RECAP_DISCLAIMER_STYLE: React.CSSProperties = {
   fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontStyle: 'italic', fontSize: '10.5px', lineHeight: '15px', letterSpacing: '0%', textAlign: 'left',
 };
+// "View [Style]" product-page link (2026-08-24, per Axel — Cobalt's own
+// design reference for this doc styles it as plain black text with a
+// hairline underline, no color, no all-caps: inline-block, no
+// text-decoration, a thin border-bottom standing in for the underline,
+// small top margin to separate it from the notes above). Cobalt's reference
+// HTML sets this at 15px for a much larger sheet; this doc's own body copy
+// (RECAP_STYLE_NOTES_STYLE) runs at 10.5px, so this scales the same visual
+// treatment down to that size rather than reproducing 15px literally.
+const RECAP_VIEW_LINK_STYLE: React.CSSProperties = {
+  fontFamily: RECAP_BODY_FONT_FAMILY, fontWeight: 100, fontSize: '10.5px', lineHeight: 1.4, letterSpacing: '0.06em',
+  textAlign: 'left', display: 'inline-block', color: '#000000', textDecoration: 'none',
+  borderBottom: '0.5px solid #000000', paddingBottom: '2px', marginTop: '8px',
+};
 
 // Footer wordmark PNG — provided directly (2026-08-03), since the Figma
 // design file itself needs authentication no available connector in this
@@ -3280,6 +3299,7 @@ interface RecapDocFavoriteEntry {
   name: string;
   price: number;
   photoUrl: string | null;
+  productUrl: string | null;
 }
 // A single-style customization request that's reached internal approval.
 // Price to the right of the name is the style's BASE price (not the grand
@@ -3294,6 +3314,7 @@ interface RecapDocRegularEntry {
   photoUrl: string | null;
   description: string;
   crNotes: string;
+  productUrl: string | null;
 }
 // A two-style Hybrid customization request. Two style blocks (each name +
 // description + base price), the CR's own notes below both. No Custom
@@ -3305,8 +3326,8 @@ interface RecapDocRegularEntry {
 interface RecapDocHybridEntry {
   kind: 'hybrid';
   id: string;
-  style1: { name: string; price: number; photoUrl: string | null; description: string };
-  style2: { name: string; price: number; photoUrl: string | null; description: string };
+  style1: { name: string; price: number; photoUrl: string | null; description: string; productUrl: string | null };
+  style2: { name: string; price: number; photoUrl: string | null; description: string; productUrl: string | null };
   crNotes: string;
 }
 type RecapDocEntry = RecapDocFavoriteEntry | RecapDocRegularEntry | RecapDocHybridEntry;
@@ -3350,6 +3371,9 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
                   <span style={RECAP_NUMBER_FONT_STYLE}>{formatCurrency(s.price)}</span>
                 </div>
                 {s.description && <div className="mt-1 text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{s.description}</div>}
+                {s.productUrl && (
+                  <a href={s.productUrl} target="_blank" rel="noopener noreferrer" style={RECAP_VIEW_LINK_STYLE}>View {s.name}</a>
+                )}
               </div>
             </div>
           ))}
@@ -3381,6 +3405,9 @@ function RecapEntryRow({ entry, isLast }: { entry: RecapDocEntry; isLast?: boole
             <span className="text-gray-500" style={RECAP_SMALL_LABEL_STYLE}>NOTES</span>
             <span className="text-gray-700" style={RECAP_STYLE_NOTES_STYLE}>{entry.crNotes}</span>
           </div>
+        )}
+        {entry.productUrl && (
+          <div><a href={entry.productUrl} target="_blank" rel="noopener noreferrer" style={RECAP_VIEW_LINK_STYLE}>View {entry.name}</a></div>
         )}
       </div>
     </div>
@@ -4016,10 +4043,12 @@ function PostAppointmentModal({
     style1PhotoUrl: string | null;
     style1Price: number;
     style1Description: string;
+    style1ProductUrl: string | null;
     style2Name: string | null;
     style2PhotoUrl: string | null;
     style2Price: number | null;
     style2Description: string | null;
+    style2ProductUrl: string | null;
   }
   const customizationRows = useMemo<CustomizationRow[]>(() => {
     if (!customizationsTable) return [];
@@ -4045,6 +4074,7 @@ function PostAppointmentModal({
     // instead of the CUSTOMIZED_STYLE_NOTES/ADDITIONAL_CUSTOMIZED_STYLE_NOTES
     // lookup fields, which still point at the pre-Cobalt Styles.Notes field.
     const fStylesDescription = stylesTable?.getFieldIfExists(STYLES_DESCRIPTION_PLACEHOLDER_FIELD_ID) ?? null;
+    const fStylesProductUrl = stylesTable?.getFieldIfExists(STYLES_PRODUCT_URL_FIELD_ID) ?? null;
 
     // A style link's own Base Price, resolved via stylesRecords — same
     // lookup Regular's own basePriceNumber below uses, just reusable for
@@ -4114,10 +4144,12 @@ function PostAppointmentModal({
             style1PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle1Photo ? rec.getCellValue(fStyle1Photo) : null)?.url ?? null,
             style1Price: firstLookupValue<number>(fStyle1PriceLookup ? rec.getCellValue(fStyle1PriceLookup) : null) ?? base1,
             style1Description: (styleRec1 && fStylesDescription) ? (styleRec1.getCellValueAsString(fStylesDescription) || '') : '',
+            style1ProductUrl: (styleRec1 && fStylesProductUrl) ? (styleRec1.getCellValueAsString(fStylesProductUrl) || null) : null,
             style2Name: styleRec2?.name ?? '',
             style2PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle2Photo ? rec.getCellValue(fStyle2Photo) : null)?.url ?? null,
             style2Price: firstLookupValue<number>(fStyle2PriceLookup ? rec.getCellValue(fStyle2PriceLookup) : null) ?? base2,
             style2Description: (styleRec2 && fStylesDescription) ? (styleRec2.getCellValueAsString(fStylesDescription) || '') : '',
+            style2ProductUrl: (styleRec2 && fStylesProductUrl) ? (styleRec2.getCellValueAsString(fStylesProductUrl) || null) : null,
           };
         }
 
@@ -4145,10 +4177,12 @@ function PostAppointmentModal({
           style1PhotoUrl: firstLookupValue<{url:string;thumbnails?:{large?:{url:string}}}>(fStyle1Photo ? rec.getCellValue(fStyle1Photo) : null)?.url ?? null,
           style1Price: firstLookupValue<number>(fStyle1PriceLookup ? rec.getCellValue(fStyle1PriceLookup) : null) ?? basePriceNumber,
           style1Description: (styleRec && fStylesDescription) ? (styleRec.getCellValueAsString(fStylesDescription) || '') : '',
+          style1ProductUrl: (styleRec && fStylesProductUrl) ? (styleRec.getCellValueAsString(fStylesProductUrl) || null) : null,
           style2Name: null,
           style2PhotoUrl: null,
           style2Price: null,
           style2Description: null,
+          style2ProductUrl: null,
         };
       })
       .filter((r): r is CustomizationRow => r !== null)
@@ -4243,8 +4277,8 @@ function PostAppointmentModal({
       .map(row => ({
         kind: 'hybrid',
         id: row.id,
-        style1: { name: row.style1Name, price: row.style1Price, photoUrl: row.style1PhotoUrl, description: row.style1Description },
-        style2: { name: row.style2Name ?? '', price: row.style2Price ?? 0, photoUrl: row.style2PhotoUrl, description: row.style2Description ?? '' },
+        style1: { name: row.style1Name, price: row.style1Price, photoUrl: row.style1PhotoUrl, description: row.style1Description, productUrl: row.style1ProductUrl },
+        style2: { name: row.style2Name ?? '', price: row.style2Price ?? 0, photoUrl: row.style2PhotoUrl, description: row.style2Description ?? '', productUrl: row.style2ProductUrl },
         crNotes: row.crNotes,
         // No customPricing here — removed 2026-08-05 per Julia. row.grandTotal
         // (base price ± multiplier) is still computed above for the separate
@@ -4261,6 +4295,7 @@ function PostAppointmentModal({
         photoUrl: row.style1PhotoUrl,
         description: row.style1Description,
         crNotes: row.crNotes,
+        productUrl: row.style1ProductUrl,
         // No customPricing here — see the note in hybridEntries above.
       }));
 
@@ -4272,6 +4307,7 @@ function PostAppointmentModal({
       ...hybridEntries.flatMap(e => [e.style1.name, e.style2.name]),
     ]);
     const fStylePhoto = stylesTable?.getFieldIfExists(STYLES_PHOTO_FIELD_ID) ?? null;
+    const fFavoriteProductUrl = stylesTable?.getFieldIfExists(STYLES_PRODUCT_URL_FIELD_ID) ?? null;
     const favoriteEntries: RecapDocFavoriteEntry[] = favStyles
       .filter(name => !namesCoveredByApprovedCR.has(name))
       .map(name => {
@@ -4288,6 +4324,7 @@ function PostAppointmentModal({
           name,
           price: basePrice,
           photoUrl: photoAttachments?.[0] ? (photoAttachments[0].thumbnails?.large?.url ?? photoAttachments[0].url) : null,
+          productUrl: (styleRec && fFavoriteProductUrl) ? (styleRec.getCellValueAsString(fFavoriteProductUrl) || null) : null,
         };
       });
 
