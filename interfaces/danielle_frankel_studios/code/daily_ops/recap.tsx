@@ -963,6 +963,17 @@ function formatCurrency(n: number): string {
   return `$${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Feedback Tracker "Only Show Customized Gown Styles for Customization
+// Requests" — same fix as customization_requests.tsx's Style picker,
+// replicated here since recap.tsx builds its own Regular/Hybrid
+// customization records with their own Style pickers. A plain
+// case-insensitive "custom" substring check covers every real naming
+// variant in DF Styles ("Rainey Customized", "Custom Veil", "Mari -
+// Customized Gown", etc) without a regex or fixed word list.
+function isCustomizableStyleName(name: string): boolean {
+  return name.toLowerCase().includes('custom');
+}
+
 // A lookup/rollup field's raw getCellValue() can be a wrapped object rather
 // than a plain number (a bare `as number` cast silently carries that object
 // through — formatCurrency on it then reads as blank/garbage rather than the
@@ -2144,14 +2155,19 @@ function CustomizationModal({
   }, [hybridCustomization.pricingIds, pricingRecords, pPriceField, pricingPercentField, pricingMultipleField, hybridHigherBasePrice, hybridMultiplierFactor]);
   const hybridGrandTotal = hybridCombinedTotal + hybridCustomizationTotal;
 
-  // Style dropdown for Hybrid — unfiltered (per Julia, 2026-07-24: the
-  // Favorite-Styles filter never made sense for a merge of two styles).
+  // Style dropdown for Hybrid — no Favorite-Styles filter (per Julia,
+  // 2026-07-24: never made sense for a merge of two styles), but narrowed to
+  // customizable styles only (see isCustomizableStyleName), same as Regular
+  // above. Keeps both currently-linked styles visible/selectable even if
+  // they don't match the filter, so an existing Hybrid request being edited
+  // doesn't lose Style A/B.
   const hybridStyleOptions = useMemo(() => {
-    return (stylesRecords ?? []).map(r => {
+    const keepIds = new Set(hybridStyleIds.filter((id): id is string => !!id));
+    return (stylesRecords ?? []).filter(r => isCustomizableStyleName(r.name) || keepIds.has(r.id)).map(r => {
       const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
       return { id: r.id, label: `${r.name} — ${formatCurrency(price)}` };
     }).sort((a, b) => a.label.localeCompare(b.label));
-  }, [stylesRecords, stylesBasePriceField]);
+  }, [stylesRecords, stylesBasePriceField, hybridStyleIds]);
 
   // ── Hybrid Generate Proposal ──────────────────────────────────────────────
   // One combined proposal for the whole Hybrid request, sourced from this
@@ -2287,17 +2303,23 @@ function CustomizationModal({
     document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h);
   },[requestClose]);
 
-  // Style dropdown — every style in the base, unfiltered (per Julia,
-  // 2026-07-27: no Favorite-Styles-in-Acuity scoping for Regular or Hybrid).
+  // Style dropdown — no Favorite-Styles-in-Acuity scoping for Regular or
+  // Hybrid (per Julia, 2026-07-27), but narrowed to customizable styles only
+  // (see isCustomizableStyleName) per the "Only Show Customized Gown Styles
+  // for Customization Requests" tracker item. This modal handles both 'add'
+  // and 'edit' mode (same styleId state either way — see mode ternary
+  // above), so an existing record's already-linked style stays visible/
+  // selectable even if it doesn't match the filter — otherwise editing an
+  // older request would silently blank out its Style field.
   const styleOptions = useMemo(()=>{
     // Base Price is folded into the option label itself (both the closed/
     // selected view and each dropdown row use `label` as-is) so the price
     // shows inside the Style picker instead of as a separate column.
-    return (stylesRecords ?? []).map(r=>{
+    return (stylesRecords ?? []).filter(r => isCustomizableStyleName(r.name) || r.id === styleId).map(r=>{
       const price = stylesBasePriceField ? parseCurrencyString(r.getCellValueAsString(stylesBasePriceField)) : 0;
       return { id:r.id, label:`${r.name} — ${formatCurrency(price)}` };
     }).sort((a,b)=>a.label.localeCompare(b.label));
-  },[stylesRecords, stylesBasePriceField]);
+  },[stylesRecords, stylesBasePriceField, styleId]);
 
   // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
