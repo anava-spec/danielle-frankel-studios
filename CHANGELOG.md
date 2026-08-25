@@ -19,6 +19,8 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Replaced the plain Shopify #/AM # numbers on Sold with a table listing every style sold, each with its own order numbers, unit price, and total — instead of only showing one order's numbers even when a bride had several.
 - Fixed the Due Date calculation so a manually-overridden rush due date actually gets used instead of being ignored, and fixed a date-parsing bug that could show the wrong day.
 - Fixed a bug where a client's Alterations Lead could show blank in the In Alterations view even though it was correctly on file in Acuity — it now falls back to her most recent alterations appointment when her next one doesn't have a lead assigned yet.
+- Studio, Sales Associate, Timeline, and Wedding Date filters are now grouped behind a single filter icon next to the search bar, instead of four separate dropdowns taking up the toolbar — click it to see and change all four in one place. The icon lights up whenever any of them is active.
+- Fixed the Prev/Next buttons at the bottom of the Board view's rightmost columns (In Alterations, In Fulfillment) sometimes being impossible to click because they landed underneath the floating Feedback button — those columns now automatically shrink just enough to stay clear of it, and only when they actually need to (a wide screen only affects In Fulfillment; a narrower one may also affect In Alterations or Order Ready).
 
 **Recap**
 - Cleaned up the RTW Size reference text next to the Ready-to-Wear Size field, matching the same fix already made on Pipeline: now always shows the client's self-reported Acuity size (or "Missing Value" if they never entered one) instead of hiding it, and colors it to match the rest of the field values.

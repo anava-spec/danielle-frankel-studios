@@ -21,6 +21,7 @@ import {
   Warning as WarningIcon,
   ChatCircleText as ChatCircleTextIcon,
   Paperclip as PaperclipIcon,
+  Funnel as FunnelIcon,
 } from '@phosphor-icons/react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -217,7 +218,10 @@ function queueFeedbackWrite<T>(fn: () => Promise<T>): Promise<T> {
 
 function FeedbackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick}
+    // id used by Pipeline's Kanban clearance logic to measure this
+    // button's real screen position (see kanbanColumnsNeedingClearance) —
+    // don't remove/rename without updating that lookup.
+    <button id="pipeline-feedback-button" type="button" onClick={onClick}
       className="fixed bottom-4 right-20 inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg bg-[#D97706] hover:bg-[#B45309] dark:bg-[#FBBF24] dark:hover:bg-[#F59E0B] text-white dark:text-[#1B1813] shadow-2xl transition-colors"
       style={{ zIndex: 9600 }}>
       <ChatCircleTextIcon size={16} /> Feedback
@@ -1919,32 +1923,13 @@ function FixedPopup({ anchorRef, onClose, width, noStyle, children }: FixedPopup
   );
 }
 
-// Small hand-drawn ring-with-diamond glyph — Phosphor Icons has no wedding
-// ring icon, so this is a minimal inline SVG rather than pulling in a new
-// icon dependency for one badge. Used only as the small overlay badge on the
-// Wedding Date filter's icon-only trigger (see WeddingDateFilterButton) —
-// distinguishes it from a plain calendar icon without needing a text label.
-function RingIcon({ size = 10 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="15" r="6" stroke="currentColor" strokeWidth="2.4" />
-      <path d="M8.5 9L12 3l3.5 6h-7z" fill="currentColor" />
-      <path d="M9.7 9L12 5l2.3 4h-4.6z" fill="white" fillOpacity="0.35" />
-    </svg>
-  );
-}
-
-// ─── Wedding Date filter — icon-only capsule (2026-08-23) ──────────────────
-// A dedicated Wedding Date filter, matching alterations.tsx's exact-date
-// filter (same field, same client-local-day comparison — see
-// getLocalDateString below), but built icon-only instead of the usual
-// labeled dropdown pill: Pipeline's filter row was already at 4-5 controls
-// wide before this, and a full "Wedding Date" text pill would likely push
-// the row into wrapping sooner than necessary. The ring badge (top-right,
-// overlapping the calendar glyph) is what identifies this as the wedding
-// date filter without needing visible text; the popup itself keeps the
-// "Wedding Date" caption (via CalendarPopup's footerLabel) so it's never
-// ambiguous once opened.
+// ─── Wedding Date filter — client-local-day comparison ─────────────────────
+// Matches alterations.tsx's exact-date filter (same field, same comparison
+// rule). The icon-only standalone pill this used to be (with a hand-drawn
+// ring badge, since Phosphor Icons has no wedding-ring glyph) was replaced
+// 2026-08-25 by the row inside FilterMenuButton below (see
+// WeddingDateInlineField) — grouped there along with Studio/Sales
+// Associate/Timeline, per Axel.
 function getLocalDateString(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -1953,10 +1938,35 @@ interface WeddingDateFilterButtonProps {
   value: Date | null;
   onChange: (d: Date | null) => void;
 }
-function WeddingDateFilterButton({ value, onChange }: WeddingDateFilterButtonProps) {
+
+// ─── Filter menu — groups Studio/Sales Associate/Timeline/Wedding Date
+// behind one icon (2026-08-25, per Axel) ───────────────────────────────────
+// These 4 used to be separate pills in the toolbar; grouping them frees up
+// horizontal space (the List view's Stage filter was wrapping to a second
+// line) and scales better if more filters get added later. Unlike their old
+// standalone pills, each row here shows its filter's name as a fixed label
+// to the LEFT — the control itself no longer repeats the name as its own
+// placeholder (MultiSelectDropdown/SingleSelectDropdown's `label` prop is
+// passed a generic "All"/"Any time" here instead). The funnel icon itself
+// highlights (same amber treatment as every other active filter in this
+// file) when ANY of the 4 has a value — necessary because these filters
+// don't persist across page visits, so once collapsed behind one icon,
+// this is the only at-a-glance signal that something is filtering the view.
+interface FilterMenuButtonProps {
+  studioOptions: string[]; studioFilter: string[]; onStudioChange: (v: string[]) => void;
+  salespersonOptions: string[]; salespersonFilter: string[]; onSalespersonChange: (v: string[]) => void;
+  timelineFilter: string | null; onTimelineChange: (v: string | null) => void;
+  weddingDateFilter: Date | null; onWeddingDateChange: (d: Date | null) => void;
+}
+function FilterMenuButton({
+  studioOptions, studioFilter, onStudioChange,
+  salespersonOptions, salespersonFilter, onSalespersonChange,
+  timelineFilter, onTimelineChange,
+  weddingDateFilter, onWeddingDateChange,
+}: FilterMenuButtonProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const hasValue = value !== null;
+  const hasActive = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null || weddingDateFilter !== null;
 
   return (
     <div className="relative">
@@ -1964,19 +1974,81 @@ function WeddingDateFilterButton({ value, onChange }: WeddingDateFilterButtonPro
         ref={anchorRef}
         type="button"
         onClick={() => setOpen(o => !o)}
-        title={hasValue ? `Wedding Date: ${MONTHS_EN[value!.getMonth()]} ${value!.getDate()}, ${value!.getFullYear()}` : 'Wedding Date filter'}
+        title="Filters"
         className={`relative flex items-center justify-center w-9 h-8 rounded-full border transition-colors ${
-          hasValue
+          hasActive
             ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24]'
             : 'bg-white dark:bg-[#242220] border-gray-300 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
         }`}
       >
-        <CalendarIcon size={16} />
-        <span
-          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-white dark:border-[#242220]"
-        >
-          <RingIcon size={9} />
-        </span>
+        <FunnelIcon size={16} weight={hasActive ? 'fill' : 'regular'} />
+      </button>
+      {open && (
+        <FixedPopup anchorRef={anchorRef} onClose={() => setOpen(false)} width={320}>
+          <div className="p-3 flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Studio</span>
+              <div className="flex-1 min-w-0">
+                <MultiSelectDropdown label="All" options={studioOptions} selected={studioFilter} onChange={onStudioChange} />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Sales Associate</span>
+              <div className="flex-1 min-w-0">
+                <MultiSelectDropdown label="All" options={salespersonOptions} selected={salespersonFilter} onChange={onSalespersonChange} />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Timeline</span>
+              <div className="flex-1 min-w-0">
+                <SingleSelectDropdown label="Any time" options={TIMELINE_OPTIONS} selected={timelineFilter} onChange={onTimelineChange} />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Wedding Date</span>
+              <div className="flex-1 min-w-0">
+                <WeddingDateInlineField value={weddingDateFilter} onChange={onWeddingDateChange} />
+              </div>
+            </div>
+          </div>
+        </FixedPopup>
+      )}
+    </div>
+  );
+}
+
+// Wedding Date's control inside the filter menu — same CalendarPopup as the
+// old icon-only WeddingDateFilterButton, just rendered as a full-width
+// dropdown-style trigger (showing the picked date, or "Any date") to match
+// the other 3 rows in the panel, instead of the icon+ring badge that made
+// sense as a standalone pill but would look out of place inside this list.
+function WeddingDateInlineField({ value, onChange }: WeddingDateFilterButtonProps) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const hasValue = value !== null;
+  const displayText = hasValue ? `${MONTHS_EN[value!.getMonth()]} ${value!.getDate()}, ${value!.getFullYear()}` : 'Any date';
+
+  return (
+    <div className="relative">
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center justify-between gap-2 w-full bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] rounded-lg px-3 py-1.5 text-sm hover:border-gray-400 dark:hover:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24] outline-none transition-colors ${hasValue ? 'text-gray-900 dark:text-[#F5F3EF] font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+        <span className="truncate">{displayText}</span>
+        {hasValue ? (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onChange(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onChange(null); } }}
+            className="flex-shrink-0 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            <XIcon size={14} />
+          </span>
+        ) : (
+          <CalendarIcon size={14} className="flex-shrink-0 text-gray-400 dark:text-gray-500" />
+        )}
       </button>
       {open && (
         <FixedPopup anchorRef={anchorRef} onClose={() => setOpen(false)} width={270} noStyle>
@@ -2749,11 +2821,19 @@ function PipelineListView({ clients, onSelectClient, suppressEmptyMessage, waitl
           className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors"
         >← Prev</button>
         <span className="text-xs text-gray-400 dark:text-gray-500">{page + 1} / {totalPages}</span>
+        {/* mr-24 (2026-08-25, per Alonso): this row sits at the very bottom
+            of the page, so "Next →" — the only control flush against the
+            right edge — is the one that lands under the floating Feedback
+            button / Airtable chat widget on a short/narrow viewport (same
+            bug already in legacy production). Shifting just this button
+            left, instead of reserving vertical space for the whole row,
+            keeps every other part of the list (row count, Prev, page
+            indicator) pixel-identical to before. */}
         <button
           type="button"
           onClick={() => setPage(p => p + 1)}
           disabled={!canNext}
-          className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors"
+          className="text-xs font-medium px-2 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-default transition-colors mr-24"
         >Next →</button>
       </div>
     )}
@@ -4112,6 +4192,65 @@ function Pipeline(): React.ReactElement {
   const [selectedWaitlistId, setSelectedWaitlistId] = useState<string | null>(null);
   const [showWaitlistFormModal, setShowWaitlistFormModal] = useState(false);
 
+  // ─── Kanban bottom-right clearance — responsive, 2026-08-25 (per Alonso)
+  // ───────────────────────────────────────────────────────────────────────
+  // The floating Feedback button (id="pipeline-feedback-button" below) +
+  // Airtable's own chat widget sit at a fixed screen position, while Kanban
+  // columns are flex-1 (their real pixel x-range depends on how much
+  // horizontal room the whole board has). Two earlier approaches — a manual
+  // per-column edge formula, then width breakpoints — were both guesses at
+  // where the overlap happens instead of actually checking; this measures
+  // the REAL rendered rectangles instead: does the Feedback button's
+  // horizontal span (getBoundingClientRect) actually intersect this
+  // column's horizontal span? Only a column that's genuinely overlapped
+  // gets clipped — a wide screen where only In Fulfillment's x-range
+  // reaches the button leaves In Alterations (and everything else) at its
+  // normal full height, exactly as asked.
+  //
+  // Vertical overlap isn't checked separately: the board already fills
+  // down to just above the viewport's bottom edge, so every column's
+  // natural (unclipped) bottom already sits in the button's vertical zone —
+  // the only thing that varies per column is whether it's horizontally
+  // under the button at all. Measuring x-only also sidesteps a chicken-
+  // and-egg problem: a column's WIDTH (unlike its height) never changes
+  // when it gets clipped, so re-measuring after clipping still gives an
+  // accurate x-range.
+  const kanbanRowRef = useRef<HTMLDivElement>(null);
+  const kanbanColumnRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [kanbanColumnsNeedingClearance, setKanbanColumnsNeedingClearance] = useState<Set<string>>(new Set());
+
+  const recomputeKanbanClearance = useCallback(() => {
+    const feedbackEl = document.getElementById('pipeline-feedback-button');
+    if (!feedbackEl) return;
+    const feedbackRect = feedbackEl.getBoundingClientRect();
+    const needy = new Set<string>();
+    kanbanColumnRefs.current.forEach((el, stage) => {
+      const rect = el.getBoundingClientRect();
+      const overlapsX = feedbackRect.left < rect.right && feedbackRect.right > rect.left;
+      if (overlapsX) needy.add(stage);
+    });
+    setKanbanColumnsNeedingClearance(needy);
+  }, []);
+
+  useEffect(() => {
+    const el = kanbanRowRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      // Wait a frame so column widths have actually settled post-resize
+      // before measuring — reading mid-reflow can catch stale rects.
+      requestAnimationFrame(recomputeKanbanClearance);
+    });
+    observer.observe(el);
+    recomputeKanbanClearance();
+    return () => observer.disconnect();
+  }, [recomputeKanbanClearance]);
+  // This 60px value is hand-copied into the `max-h-[calc(100%-60px)]`
+  // class further below (on the flagged columns) — Tailwind's arbitrary-
+  // value classes must be literal strings, so it can't be interpolated
+  // from a variable here. Keep the two in sync if this ever changes.
+  // (Shortened from an initial 72px to 60px, 2026-08-25 — per Alonso,
+  // ~3mm taller on a typical screen, still clears the floating button.)
+
   const stageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE);
   const stageChoices = useMemo(() => {
     if (!stageField) return [];
@@ -4568,10 +4707,12 @@ function Pipeline(): React.ReactElement {
           control here shrinks or gets compressed, they just reflow. */}
       <div className="px-4 py-2 flex flex-wrap items-center gap-3 gap-y-2 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
-        <MultiSelectDropdown label="Studio"      options={studioOptions}      selected={studioFilter}      onChange={setStudioFilter} />
-        <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />
-        <SingleSelectDropdown label="Timeline"    options={TIMELINE_OPTIONS}   selected={timelineFilter}    onChange={setTimelineFilter} />
-        <WeddingDateFilterButton value={weddingDateFilter} onChange={setWeddingDateFilter} />
+        <FilterMenuButton
+          studioOptions={studioOptions} studioFilter={studioFilter} onStudioChange={setStudioFilter}
+          salespersonOptions={salespersonOptions} salespersonFilter={salespersonFilter} onSalespersonChange={setSalespersonFilter}
+          timelineFilter={timelineFilter} onTimelineChange={setTimelineFilter}
+          weddingDateFilter={weddingDateFilter} onWeddingDateChange={setWeddingDateFilter}
+        />
         {viewMode === 'list' && (
           <MultiSelectDropdown label="Stage" options={stageOptions} selected={stageFilter} onChange={setStageFilter} />
         )}
@@ -4601,7 +4742,7 @@ function Pipeline(): React.ReactElement {
 
       {/* Main content — Kanban or List */}
       {viewMode === 'kanban' ? (
-        <div className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
+        <div ref={kanbanRowRef} className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
           {/* Waitlist — leftmost pseudo-column, sourced from the Waitlist table, not clientsByStage */}
           {(() => {
             const wPage        = waitlistPage;
@@ -4646,8 +4787,25 @@ function Pipeline(): React.ReactElement {
             const pagedClients = clients.slice(page * KANBAN_PAGE_SIZE, (page + 1) * KANBAN_PAGE_SIZE);
             const canPrev     = page > 0;
             const canNext     = page < totalPages - 1;
+            // Which columns actually overlap the floating Feedback button
+            // is measured live via real DOM rects (kanbanColumnsNeedingClearance,
+            // see the recomputeKanbanClearance effect above) — not guessed
+            // from stage names or width breakpoints. Fixed 2026-08-25: an
+            // earlier version used `max-h-[...]` here, which only caps a
+            // height, it doesn't guarantee one — combined with `self-start`
+            // (needed to opt OUT of Flexbox's default `align-items:
+            // stretch`), a column with little content (e.g. Order Ready
+            // with 0 clients) collapsed down to its own tiny content
+            // instead of filling up to the cap, looking broken next to its
+            // full-height empty siblings. `h-[calc(100%-60px)]` is an
+            // explicit height instead — always exactly that tall regardless
+            // of how much or how little is inside, same as every unflagged
+            // column (which keeps stretching to full height, untouched).
+            const needsBottomClearance = kanbanColumnsNeedingClearance.has(stage);
             return (
-              <div key={stage} className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
+              <div key={stage}
+                ref={(el) => { if (el) kanbanColumnRefs.current.set(stage, el); else kanbanColumnRefs.current.delete(stage); }}
+                className={`flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden ${needsBottomClearance ? 'h-[calc(100%-60px)]' : ''}`}>
                 <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{stageLabel}</span>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"
