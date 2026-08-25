@@ -865,12 +865,14 @@ function formatCurrency(n: number): string {
 
 // Feedback Tracker "Only Show Customized Gown Styles for Customization
 // Requests" — the picker should only offer styles whose name signals they're
-// customizable: "- customized" anywhere in the name, or an exact match on
-// "custom" / "custom gown" / "customization" (case-insensitive per spec).
+// customizable. A plain case-insensitive "custom" substring check (no regex,
+// no fixed word list) covers every real naming variant in DF Styles, since
+// "custom"/"customized" always appears somewhere in the name regardless of
+// spacing/casing/suffix (e.g. "Rainey Customized", "Custom Veil", "Mari -
+// Customized Gown") — a stricter "- customized"-only pattern (tried first)
+// missed accessory-style names like "Custom Veil"/"Custom Belt"/"Custom Item".
 function isCustomizableStyleName(name: string): boolean {
-  const n = name.trim().toLowerCase();
-  if (n.includes('- customized')) return true;
-  return n === 'custom' || n === 'custom gown' || n === 'customization';
+  return name.toLowerCase().includes('custom');
 }
 
 // Base Price can be a lookup/rollup, whose raw getCellValue() is a wrapped
