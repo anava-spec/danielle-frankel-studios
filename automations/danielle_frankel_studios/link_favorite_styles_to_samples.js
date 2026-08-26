@@ -52,9 +52,13 @@ const CONFIG = { LOG_LEVEL: 'B' };
 // ─────────────────────────────────────────────────────────────────────────────
 class Logger {
   constructor(level) { this.level = level; this.lines = []; }
-  a(msg) { this.lines.push(`[A][${new Date().toISOString()}] ${msg}`); }
-  b(msg) { if (this.level !== 'A') this.lines.push(`[B][${new Date().toISOString()}] ${msg}`); }
-  c(msg) { if (this.level === 'C') this.lines.push(`[C][${new Date().toISOString()}] ${msg}`); }
+  // Every line also goes to console.log() — Airtable's "Test" panel shows
+  // those live as the script runs, alongside the log_summary output
+  // variable (which stays useful for reading the full log back after a
+  // real run, since console.log output isn't captured in run history).
+  a(msg) { const line = `[A][${new Date().toISOString()}] ${msg}`; this.lines.push(line); console.log(line); }
+  b(msg) { if (this.level === 'A') return; const line = `[B][${new Date().toISOString()}] ${msg}`; this.lines.push(line); console.log(line); }
+  c(msg) { if (this.level !== 'C') return; const line = `[C][${new Date().toISOString()}] ${msg}`; this.lines.push(line); console.log(line); }
   summary() { return this.lines.join('\n'); }
 }
 
