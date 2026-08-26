@@ -2,7 +2,7 @@
 
 Group: Daily Ops · File: `sold_orders.tsx`
 
-> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.).
+> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.), and [`docs/date_handling_rulebook.md`](../../../docs/date_handling_rulebook.md) for how this file's date parsing/comparison/formatting must work.
 
 ## Business Objective
 

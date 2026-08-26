@@ -2,7 +2,7 @@
 
 Group: Daily Ops · File: `customization_requests.tsx`
 
-> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.).
+> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.), and [`docs/date_handling_rulebook.md`](../../../docs/date_handling_rulebook.md) for how this file's date parsing/comparison/formatting must work (see that rulebook's §14.6 for a known, tracked-but-not-yet-scheduled violation in this file's production Wedding Date filter).
 
 ## Business Objective
 

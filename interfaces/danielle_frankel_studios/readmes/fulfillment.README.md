@@ -2,7 +2,7 @@
 
 Group: Daily Ops · File: `fulfillment.tsx`
 
-> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.), and [`docs/phase_logic_rulebook.md`](../../../docs/phase_logic_rulebook.md) for the source-of-truth business rules behind every phase transition referenced below (Order Ready, Alterations, Fulfillment, Closed).
+> See [`docs/CROSS_CUTTING.md`](../../../docs/CROSS_CUTTING.md) for rules shared across interfaces (Cobalt boundary, dark mode, sandboxing, etc.), [`docs/phase_logic_rulebook.md`](../../../docs/phase_logic_rulebook.md) for the source-of-truth business rules behind every phase transition referenced below (Order Ready, Alterations, Fulfillment, Closed), and [`docs/date_handling_rulebook.md`](../../../docs/date_handling_rulebook.md) for how this file's date parsing/comparison/formatting must work.
 
 ## Business Objective
 
