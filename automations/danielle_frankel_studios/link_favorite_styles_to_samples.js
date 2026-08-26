@@ -135,10 +135,15 @@ class AppointmentRepository {
     return extractLinkedRecordIds(record.getCellValue(FIELD_IDS.SAMPLE_LOG));
   }
 
-  async linkSamples(recordId, sampleLogRecordIds) {
-    await this.table.updateRecordAsync(recordId, {
-      [FIELD_IDS.SAMPLE_LOG]: sampleLogRecordIds.map((id) => ({ id })),
-    });
+  // Airtable's own rate limiting makes one updateRecordAsync call per
+  // record far too slow for a backfill over thousands of appointments
+  // (the 180s script time limit) — batch via updateRecordsAsync instead,
+  // 50 records per call (Airtable's own per-call cap).
+  async linkSamplesBatch(updates) {
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      await this.table.updateRecordsAsync(updates.slice(i, i + BATCH_SIZE));
+    }
   }
 }
 
@@ -185,7 +190,8 @@ class LinkFavoriteStylesService {
     const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { backfill });
     this.logger.a(`Found ${appointments.length} consultation appointment(s) ${backfill ? '(all time)' : 'this week'} with favorite styles set`);
 
-    let updated = 0, unchanged = 0, noMatch = 0, skippedExisting = 0;
+    let unchanged = 0, noMatch = 0, skippedExisting = 0;
+    const pendingUpdates = [];
     for (const record of appointments) {
       const currentSampleIds = AppointmentRepository.currentSampleLogIds(record);
 
@@ -215,10 +221,16 @@ class LinkFavoriteStylesService {
         continue;
       }
 
-      await this.appointmentRepo.linkSamples(record.id, matchedSampleIds);
-      updated++;
-      this.logger.b(`${record.id}: linked ${matchedSampleIds.length} sample(s) — ${JSON.stringify(matchedSampleIds)}`);
+      pendingUpdates.push({
+        id: record.id,
+        fields: { [FIELD_IDS.SAMPLE_LOG]: matchedSampleIds.map((id) => ({ id })) },
+      });
+      this.logger.b(`${record.id}: will link ${matchedSampleIds.length} sample(s) — ${JSON.stringify(matchedSampleIds)}`);
     }
+
+    this.logger.a(`Writing ${pendingUpdates.length} update(s) in batches of 50`);
+    await this.appointmentRepo.linkSamplesBatch(pendingUpdates);
+    const updated = pendingUpdates.length;
 
     this.logger.a(`Done. updated=${updated} unchanged=${unchanged} noMatch=${noMatch} skippedExisting=${skippedExisting} total=${appointments.length}`);
     return { updated, unchanged, noMatch, skippedExisting, total: appointments.length };

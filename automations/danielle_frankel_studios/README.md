@@ -91,7 +91,10 @@ for the normal daily run; the literal string `"true"` for a one-time manual
 backfill that ignores the "this week" filter and catches every appointment
 that failed under the old broken logic since Aug 14. Backfill never
 rewrites — any appointment whose Sample Log already has a value is skipped
-untouched, even if the computed match would differ.
+untouched, even if the computed match would differ. Writes go through
+`updateRecordsAsync` in batches of 50 rather than one `updateRecordAsync`
+call per record — a backfill over thousands of appointments blew past the
+180s script time limit before this.
 
 ---
 
