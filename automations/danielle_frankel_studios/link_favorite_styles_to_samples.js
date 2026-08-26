@@ -104,13 +104,28 @@ function extractLinkedRecordIds(raw) {
 class AppointmentRepository {
   constructor(table) { this.table = table; }
 
-  async findConsultationsWithFavorites(now, { backfill }) {
+  async findConsultationsWithFavorites(now, { backfill }, logger) {
     const result = await this.table.selectRecordsAsync({
       fields: [FIELD_IDS.APPT_TIME, FIELD_IDS.FAVORITE_STYLES, FIELD_IDS.APPT_TYPE, FIELD_IDS.SAMPLE_LOG],
     });
+    let dumped = 0;
     return result.records.filter((record) => {
-      const favoriteIds = extractLinkedRecordIds(record.getCellValue(FIELD_IDS.FAVORITE_STYLES));
-      if (favoriteIds.length === 0) return false;
+      const rawFavorites = record.getCellValue(FIELD_IDS.FAVORITE_STYLES);
+      // TEMP DIAGNOSTIC (2026-08-26) — log the raw shape of the first few
+      // non-empty favorite_styles_from_acuity cells so we can confirm
+      // exactly what extractLinkedRecordIds needs to handle, instead of
+      // guessing again. Remove this block once confirmed.
+      if (logger && dumped < 3 && rawFavorites != null
+        && !(Array.isArray(rawFavorites) && rawFavorites.length === 0)) {
+        logger.a(`DIAGNOSTIC ${record.id} raw favorite_styles_from_acuity = ${JSON.stringify(rawFavorites)}`);
+        dumped++;
+      }
+
+      // Lenient presence check — anything non-null/non-empty counts as
+      // "has favorites," regardless of exact shape, so this filter can't
+      // silently zero everything out the way a failed extraction did.
+      const hasFavorites = Array.isArray(rawFavorites) ? rawFavorites.length > 0 : !!rawFavorites;
+      if (!hasFavorites) return false;
 
       const typeValue = record.getCellValueAsString(FIELD_IDS.APPT_TYPE) || '';
       if (!typeValue.toLowerCase().includes('consultation')) return false;
@@ -141,12 +156,22 @@ class AppointmentRepository {
 // Builds a DF-Style-id -> [sample_log record id, ...] index once, so every
 // appointment this run just does an in-memory lookup instead of a fresh query.
 class SampleLogIndex {
-  constructor(table) { this.table = table; this.byStyleId = new Map(); }
+  constructor(table, logger) { this.table = table; this.logger = logger; this.byStyleId = new Map(); }
 
   async build() {
     const result = await this.table.selectRecordsAsync({ fields: [FIELD_IDS.PARENT_STYLE] });
+    let dumped = 0;
     result.records.forEach((record) => {
-      const styleIds = extractLinkedRecordIds(record.getCellValue(FIELD_IDS.PARENT_STYLE));
+      const rawParent = record.getCellValue(FIELD_IDS.PARENT_STYLE);
+      // TEMP DIAGNOSTIC (2026-08-26) — see the matching note in
+      // AppointmentRepository.findConsultationsWithFavorites. Remove once
+      // extractLinkedRecordIds is confirmed correct for both fields.
+      if (this.logger && dumped < 3 && rawParent != null
+        && !(Array.isArray(rawParent) && rawParent.length === 0)) {
+        this.logger.a(`DIAGNOSTIC ${record.id} raw parent_style = ${JSON.stringify(rawParent)}`);
+        dumped++;
+      }
+      const styleIds = extractLinkedRecordIds(rawParent);
       styleIds.forEach((styleId) => {
         if (!this.byStyleId.has(styleId)) this.byStyleId.set(styleId, []);
         this.byStyleId.get(styleId).push(record.id);
@@ -177,7 +202,7 @@ class LinkFavoriteStylesService {
     await this.sampleLogIndex.build();
     this.logger.b(`Indexed ${this.sampleLogIndex.byStyleId.size} distinct styles across sample_log`);
 
-    const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { backfill });
+    const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { backfill }, this.logger);
     this.logger.a(`Found ${appointments.length} consultation appointment(s) ${backfill ? '(all time)' : 'this week'} with favorite styles set`);
 
     let updated = 0, unchanged = 0, noMatch = 0, skippedExisting = 0;
@@ -238,7 +263,7 @@ try {
   const sampleLogTable = base.getTable(SAMPLE_LOG_TABLE_ID);
 
   const appointmentRepo = new AppointmentRepository(appointmentsTable);
-  const sampleLogIndex = new SampleLogIndex(sampleLogTable);
+  const sampleLogIndex = new SampleLogIndex(sampleLogTable, logger);
   const service = new LinkFavoriteStylesService(appointmentRepo, sampleLogIndex, logger);
 
   const result = await service.run(now, { backfill });
