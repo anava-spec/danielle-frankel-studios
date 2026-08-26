@@ -305,12 +305,42 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
 // codebase (Fulfillment, Alterations, Sold Orders, Appointments, Draft
 // Orders). Falls back to `new Date(value)` for anything that isn't a bare
 // date-only string (e.g. a real datetime with its own offset), unchanged.
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+// Normalizes whatever getCellValue() hands back for a date/formula-date
+// field into a plain string, or '' if it can't safely be treated as one.
+// Confirmed live 2026-08-26 across ~7,600 real client records that this
+// value is NOT reliably a string: it can be a native Date object (this
+// file's formula-derived Due Date field — same SDK quirk already handled
+// elsewhere in this codebase via `.toISOString()`, see unwrapLookupValue in
+// pipeline.tsx/alterations.tsx/did_not_convert.tsx), an INVALID Date object
+// (`.toISOString()` throws a RangeError on those — legacy/malformed data),
+// or some other shape entirely on old records. Anything that isn't cleanly
+// a string or a valid Date returns '' rather than throwing — one bad legacy
+// record must never crash the whole page (per docs/date_handling_rulebook.md
+// R-03: verify runtime shape, never assume it from the schema type alone).
+function toDateOnlyString(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return '';
+    return value.toISOString();
+  }
+  return '';
+}
+
+function formatDate(value: unknown): string {
+  const raw = toDateOnlyString(value);
+  if (!raw) return '—';
+  // ISO year-month-day prefix, built from its own components directly
+  // (new Date(y, m, d), all local) rather than reparsed as a string — avoids
+  // crossing a timezone boundary. Same fix pattern used for Wedding Date
+  // elsewhere in this codebase (Fulfillment, Alterations, Sold Orders,
+  // Appointments, Draft Orders). Falls back to `new Date(raw)` for anything
+  // that isn't a bare date-only string (e.g. a real datetime with its own
+  // offset), unchanged since the 2026-08-22 fix.
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const d = isoMatch
     ? new Date(parseInt(isoMatch[1]!, 10), parseInt(isoMatch[2]!, 10) - 1, parseInt(isoMatch[3]!, 10))
-    : new Date(value);
+    : new Date(raw);
   if (isNaN(d.getTime())) return '—';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
 }
@@ -319,6 +349,23 @@ function getLocalDateString(d: Date): string {
 }
 function getTodayLocalString(): string {
   return getLocalDateString(new Date());
+}
+// Per docs/date_handling_rulebook.md R-04/R-05/R-06: a date-only cell value
+// must never round-trip through `new Date(value)` for comparison purposes —
+// same bug class as formatDate's 2026-08-22 fix above, just hitting the
+// filter/sort paths instead of display. Extracts the YYYY-MM-DD prefix
+// directly so it can be compared as plain text — safe because ISO
+// date-only strings sort/compare correctly lexicographically. Goes through
+// the same toDateOnlyString() normalization formatDate uses, for the same
+// reason (see its comment) — this exact function crashed twice live on
+// 2026-08-26 before that normalization existed, first on a Date-object cell
+// value, then on a different malformed value once tested against the full
+// ~7,600-record production dataset.
+function dateOnlyKey(value: unknown): string {
+  const str = toDateOnlyString(value);
+  if (!str) return '';
+  const isoMatch = str.match(/^\d{4}-\d{2}-\d{2}/);
+  return isoMatch ? isoMatch[0] : str;
 }
 
 // ─── Qualification floor (always-on, not a UI toggle) ──────────────────────────
@@ -1024,13 +1071,13 @@ function CalligraphyCardsApp(): React.ReactElement {
       if (weddingDateFilter && fWedding) {
         const wd = rec.getCellValue(fWedding) as string | null;
         if (!wd) return false;
-        const wdLocal = getLocalDateString(new Date(wd));
+        const wdLocal = dateOnlyKey(wd);
         if (weddingDateFilter === 'upcoming' && wdLocal < today) return false;
         if (weddingDateFilter === 'past' && wdLocal >= today) return false;
       }
       if (selectedDueStr && fDue) {
         const due = rec.getCellValue(fDue) as string | null;
-        if (!due || getLocalDateString(new Date(due)) !== selectedDueStr) return false;
+        if (!due || dateOnlyKey(due) !== selectedDueStr) return false;
       }
       if (selectedClientId && rec.id !== selectedClientId) return false;
       return true;
@@ -1042,7 +1089,7 @@ function CalligraphyCardsApp(): React.ReactElement {
       if (wdA && !wdB) return -1;
       if (!wdA && wdB) return 1;
       if (wdA && wdB) {
-        const diff = new Date(wdA).getTime() - new Date(wdB).getTime();
+        const diff = dateOnlyKey(wdA).localeCompare(dateOnlyKey(wdB));
         if (diff !== 0) return diff;
       }
       const nameA = fName ? (a.getCellValueAsString(fName) ?? '') : '';
