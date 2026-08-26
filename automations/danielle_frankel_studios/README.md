@@ -67,6 +67,27 @@ Evaluates Julia's "Order Ready" rule per order — `gown_picked` = TRUE, or
 to "Order Ready" only if they haven't already passed that point in
 `STAGE_ORDER`. Never regresses a client who's moved further along.
 
+### `link_favorite_styles_to_samples.js`
+**Automation:** LINK FAVORITE STYLES FROM ACUITY TO SAMPLES (`wflsh1QYrx1ql3uUH`)
+**Trigger:** Scheduled, daily 12:15am America/New_York
+**Base:** `appMmEE4zyHMGhkkd`
+**Status (2026-08-26):** scaffolded, pending Axel to paste it into a Run-a-Script
+step — see the automation's own description for the paste-in steps.
+Replaces the original findRecords → repeatingGroup → updateRecord chain,
+which had been failing ~50% of its daily runs (Health Report item #72,
+`INVALID_VALUE: Cannot modify a computed field`). Root cause: the old
+updateRecord node linked `DF Appointments - Acuity.Sample Log` by writing
+`favorite_styles_from_acuity` *names* into that link field, relying on
+Airtable matching them against `sample_log`'s primary field — which is a
+computed formula (`label` = style name + size), never equal to a bare style
+name. Fix: match by style *link* instead. Builds a `DF Styles` record-id →
+`sample_log` record-id index from `sample_log.parent_style` once per run,
+then for every Consultation-type appointment this calendar week with
+favorite styles set, links every `sample_log` record whose `parent_style`
+matches one of the appointment's `favorite_styles_from_acuity` — all
+matches, not just the first (e.g. two samples both with `parent_style =
+Talia` both get linked).
+
 ---
 
 ## One-time manual backfills (no trigger — run ad hoc via a button/Run Script)
