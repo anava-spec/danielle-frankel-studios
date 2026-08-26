@@ -68,11 +68,12 @@ to "Order Ready" only if they haven't already passed that point in
 `STAGE_ORDER`. Never regresses a client who's moved further along.
 
 ### `link_favorite_styles_to_samples.js`
-**Automation:** LINK FAVORITE STYLES FROM ACUITY TO SAMPLES (`wflsh1QYrx1ql3uUH`)
+**Automation:** Link Favorite Styles From Acuity To Samples (`wflsh1QYrx1ql3uUH`)
 **Trigger:** Scheduled, daily 12:15am America/New_York
 **Base:** `appMmEE4zyHMGhkkd`
-**Status (2026-08-26):** scaffolded, pending Axel to paste it into a Run-a-Script
-step — see the automation's own description for the paste-in steps.
+**Status (2026-08-26):** live — script pasted in, backfill run against production
+data and verified (`updated=2309, skipped_existing=1520, no_match=1,
+total=3830`).
 Replaces the original findRecords → repeatingGroup → updateRecord chain,
 which had been failing ~50% of its daily runs (Health Report item #72,
 `INVALID_VALUE: Cannot modify a computed field`). Root cause: the old
@@ -86,15 +87,29 @@ then for every Consultation-type appointment this calendar week with
 favorite styles set, links every `sample_log` record whose `parent_style`
 matches one of the appointment's `favorite_styles_from_acuity` — all
 matches, not just the first (e.g. two samples both with `parent_style =
-Talia` both get linked). Optional input variable `backfill` (string) — unset
-for the normal daily run; the literal string `"true"` for a one-time manual
-backfill that ignores the "this week" filter and catches every appointment
-that failed under the old broken logic since Aug 14. Backfill never
-rewrites — any appointment whose Sample Log already has a value is skipped
-untouched, even if the computed match would differ. Writes go through
-`updateRecordsAsync` in batches of 50 rather than one `updateRecordAsync`
-call per record — a backfill over thousands of appointments blew past the
-180s script time limit before this.
+Talia` both get linked). A small `extractLinkedRecordIds()` helper unwraps
+whatever shape the base actually hands back — confirmed live to differ by
+field: `parent_style`/`Sample Log` (direct `multipleRecordLinks` fields)
+come back as a flat array of `{id, name}`, while `favorite_styles_from_acuity`
+(a *lookup* through the Client link) comes back as a flat array of bare
+record-id strings with no wrapper at all — the mismatch that caused the
+first live test to match 0 records. Optional input variable `backfill`
+(string) — unset for the normal daily run; the literal string `"true"` for
+a one-time manual backfill that ignores the "this week" filter and catches
+every appointment that failed under the old broken logic since Aug 14.
+Backfill never rewrites — any appointment whose Sample Log already has a
+value is skipped untouched, even if the computed match would differ.
+Writes go through `updateRecordsAsync` in batches of 50 rather than one
+`updateRecordAsync` call per record — one-at-a-time writes over thousands
+of appointments blew past the 180s script time limit on the first backfill
+attempt. Every `Logger` line also calls `console.log()` so a Test run in
+the Airtable script editor shows progress live, matching this project's
+other automation scripts.
+No other automation in this base writes to `Sample Log` — confirmed by
+auditing all 33 automations' triggers/nodes and every script in this
+folder; the only other one that touches "Sample Log" conceptually,
+`champion_sample_match.js`, writes to the unrelated `DF Clients.champion_samples`
+field instead.
 
 ---
 
