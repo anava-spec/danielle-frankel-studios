@@ -28,9 +28,9 @@
 // it doesn't touch the runs that already failed since Aug 14. Re-pointing
 // the trigger to a manual/button run does NOT widen that scope by itself,
 // because the week filter lives in this script, not the trigger. Pass the
-// input variable `allTime` = `true` on a manual run to skip the week filter
-// and process every Consultation appointment with favorite styles set,
-// regardless of date — leave it unset/false for the normal daily run.
+// input variable `backfill` as the string `"true"` on a manual run to skip
+// the week filter and process every Consultation appointment with favorite
+// styles set, regardless of date — leave it unset for the normal daily run.
 //
 // Field IDs:
 const FIELD_IDS = {
@@ -83,7 +83,7 @@ class CalendarWeek {
 class AppointmentRepository {
   constructor(table) { this.table = table; }
 
-  async findConsultationsWithFavorites(now, { allTime }) {
+  async findConsultationsWithFavorites(now, { backfill }) {
     const result = await this.table.selectRecordsAsync({
       fields: [FIELD_IDS.APPT_TIME, FIELD_IDS.FAVORITE_STYLES, FIELD_IDS.APPT_TYPE, FIELD_IDS.SAMPLE_LOG],
     });
@@ -94,7 +94,7 @@ class AppointmentRepository {
       const typeValue = record.getCellValueAsString(FIELD_IDS.APPT_TYPE) || '';
       if (!typeValue.toLowerCase().includes('consultation')) return false;
 
-      if (allTime) return true;
+      if (backfill) return true;
 
       const apptTime = record.getCellValue(FIELD_IDS.APPT_TIME);
       return CalendarWeek.isWithin(apptTime, now, TIME_ZONE);
@@ -155,13 +155,13 @@ class LinkFavoriteStylesService {
     this.logger = logger;
   }
 
-  async run(now, { allTime } = {}) {
+  async run(now, { backfill } = {}) {
     this.logger.a('Building Sample Log parent_style index');
     await this.sampleLogIndex.build();
     this.logger.b(`Indexed ${this.sampleLogIndex.byStyleId.size} distinct styles across sample_log`);
 
-    const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { allTime });
-    this.logger.a(`Found ${appointments.length} consultation appointment(s) ${allTime ? '(all time)' : 'this week'} with favorite styles set`);
+    const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { backfill });
+    this.logger.a(`Found ${appointments.length} consultation appointment(s) ${backfill ? '(all time)' : 'this week'} with favorite styles set`);
 
     let updated = 0, unchanged = 0, noMatch = 0;
     for (const record of appointments) {
@@ -198,11 +198,13 @@ const logger = new Logger(CONFIG.LOG_LEVEL);
 
 try {
   const now = new Date();
-  // Optional input variable — leave unset/false for the normal daily run
-  // (this week only); set to true for a one-time manual backfill run that
-  // processes every Consultation appointment with favorite styles set,
-  // regardless of date. See the "One-time backfill" note above.
-  const allTime = config.allTime === true || config.allTime === 'true';
+  // Optional input variable, read as a string (Airtable's automation input
+  // variables are always strings) — leave unset for the normal daily run
+  // (this week only); set to the literal string "true" for a one-time
+  // manual backfill that processes every Consultation appointment with
+  // favorite styles set, regardless of date. See the "One-time backfill"
+  // note above.
+  const backfill = config.backfill === 'true';
 
   const appointmentsTable = base.getTable(APPOINTMENTS_TABLE_ID);
   const sampleLogTable = base.getTable(SAMPLE_LOG_TABLE_ID);
@@ -211,7 +213,7 @@ try {
   const sampleLogIndex = new SampleLogIndex(sampleLogTable);
   const service = new LinkFavoriteStylesService(appointmentRepo, sampleLogIndex, logger);
 
-  const result = await service.run(now, { allTime });
+  const result = await service.run(now, { backfill });
 
   output.set('updated', result.updated);
   output.set('unchanged', result.unchanged);
