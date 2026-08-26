@@ -791,14 +791,27 @@ function extractSelectValue(rawValue: unknown): { name: string; color: string | 
 // the specific field instead of the generic word "Data". Plain colored text,
 // no chip/pill background — so it doesn't compete visually with the actual
 // Stage/Type pills in the same row.
+//
+// Wording (new feedback item, 2026-08-26): a `soft` flag reads just "Must
+// Assign" — no field name — instead of "Missing {label}". This component is
+// only ever used for `soft` inside the List layout's own table cells, where
+// the column header (Room / Sales Associate / Alteration Lead) already names
+// the field; repeating it in the cell itself is redundant, especially for
+// the two long labels ("Sales Associate", "Alterations Lead"). "Missing"
+// also implied a data-entry gap blocking the appointment, when in practice
+// these three fields never block Check In — "Must Assign" names the actual
+// outstanding action instead. `hard` (Client) keeps "Missing {label}" — that
+// one genuinely is missing data, not an assignment task, and isn't sitting
+// under a column header that already names it.
 function MissingDataPill({ label = 'Data', severity = 'hard', reason }: { label?: string; severity?: 'hard' | 'soft'; reason?: string | null } = {}): React.ReactElement {
   const colorClasses = severity === 'hard' ? 'text-red-600' : 'text-orange-600';
+  const text = severity === 'soft' ? 'Must Assign' : `Missing ${label}`;
   return (
     <span
       title={reason ?? undefined}
       className={`text-[13px] font-medium whitespace-nowrap ${colorClasses} ${reason ? 'cursor-help' : ''}`}
     >
-      Missing {label}
+      {text}
     </span>
   );
 }
@@ -2098,19 +2111,19 @@ function CalendarCardCompact({
         {saValue ? (
           <div className="text-xs text-gray-600 dark:text-gray-400">Sales Associate: {saValue}</div>
         ) : (
-          <div className="text-[13px] text-orange-600 dark:text-orange-400">Missing Sales Associate</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">Sales Associate: <span className="text-[13px] font-medium text-orange-600 dark:text-orange-400">Must Assign</span></div>
         )}
         {showAltLead && (
           altLeadValue ? (
             <div className="text-xs text-gray-600 dark:text-gray-400">Alterations Lead: {altLeadValue}</div>
           ) : (
-            <div className="text-[13px] text-orange-600 dark:text-orange-400">Missing Alterations Lead</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400">Alterations Lead: <span className="text-[13px] font-medium text-orange-600 dark:text-orange-400">Must Assign</span></div>
           )
         )}
         {roomValue ? (
           <div className="text-xs text-gray-600 dark:text-gray-400">Room: {roomValue}</div>
         ) : (
-          <div className="text-[13px] text-orange-600 dark:text-orange-400">Missing Room</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">Room: <span className="text-[13px] font-medium text-orange-600 dark:text-orange-400">Must Assign</span></div>
         )}
       </div>
 
