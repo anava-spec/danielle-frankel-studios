@@ -86,7 +86,10 @@ then for every Consultation-type appointment this calendar week with
 favorite styles set, links every `sample_log` record whose `parent_style`
 matches one of the appointment's `favorite_styles_from_acuity` — all
 matches, not just the first (e.g. two samples both with `parent_style =
-Talia` both get linked).
+Talia` both get linked). Optional input variable `allTime` (boolean) — unset
+for the normal daily run; `true` for a one-time manual backfill that ignores
+the "this week" filter and catches every appointment that failed under the
+old broken logic since Aug 14.
 
 ---
 

@@ -23,6 +23,15 @@
 // then link ALL matching samples (not just the first) via record ID, which a
 // computed primary field can never block.
 //
+// One-time backfill: the live automation's own trigger cadence (daily,
+// scoped to "this calendar week") only fixes appointments going forward —
+// it doesn't touch the runs that already failed since Aug 14. Re-pointing
+// the trigger to a manual/button run does NOT widen that scope by itself,
+// because the week filter lives in this script, not the trigger. Pass the
+// input variable `allTime` = `true` on a manual run to skip the week filter
+// and process every Consultation appointment with favorite styles set,
+// regardless of date — leave it unset/false for the normal daily run.
+//
 // Field IDs:
 const FIELD_IDS = {
   APPT_TIME:      'fldL7kYvgkmyhGniX', // DF Appointments - Acuity, dateTime (primary field)
@@ -74,7 +83,7 @@ class CalendarWeek {
 class AppointmentRepository {
   constructor(table) { this.table = table; }
 
-  async findThisWeekConsultationsWithFavorites(now) {
+  async findConsultationsWithFavorites(now, { allTime }) {
     const result = await this.table.selectRecordsAsync({
       fields: [FIELD_IDS.APPT_TIME, FIELD_IDS.FAVORITE_STYLES, FIELD_IDS.APPT_TYPE, FIELD_IDS.SAMPLE_LOG],
     });
@@ -84,6 +93,8 @@ class AppointmentRepository {
 
       const typeValue = record.getCellValueAsString(FIELD_IDS.APPT_TYPE) || '';
       if (!typeValue.toLowerCase().includes('consultation')) return false;
+
+      if (allTime) return true;
 
       const apptTime = record.getCellValue(FIELD_IDS.APPT_TIME);
       return CalendarWeek.isWithin(apptTime, now, TIME_ZONE);
@@ -144,13 +155,13 @@ class LinkFavoriteStylesService {
     this.logger = logger;
   }
 
-  async run(now) {
+  async run(now, { allTime } = {}) {
     this.logger.a('Building Sample Log parent_style index');
     await this.sampleLogIndex.build();
     this.logger.b(`Indexed ${this.sampleLogIndex.byStyleId.size} distinct styles across sample_log`);
 
-    const appointments = await this.appointmentRepo.findThisWeekConsultationsWithFavorites(now);
-    this.logger.a(`Found ${appointments.length} consultation appointment(s) this week with favorite styles set`);
+    const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { allTime });
+    this.logger.a(`Found ${appointments.length} consultation appointment(s) ${allTime ? '(all time)' : 'this week'} with favorite styles set`);
 
     let updated = 0, unchanged = 0, noMatch = 0;
     for (const record of appointments) {
@@ -182,10 +193,17 @@ class LinkFavoriteStylesService {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+const config = input.config();
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
 try {
   const now = new Date();
+  // Optional input variable — leave unset/false for the normal daily run
+  // (this week only); set to true for a one-time manual backfill run that
+  // processes every Consultation appointment with favorite styles set,
+  // regardless of date. See the "One-time backfill" note above.
+  const allTime = config.allTime === true || config.allTime === 'true';
+
   const appointmentsTable = base.getTable(APPOINTMENTS_TABLE_ID);
   const sampleLogTable = base.getTable(SAMPLE_LOG_TABLE_ID);
 
@@ -193,7 +211,7 @@ try {
   const sampleLogIndex = new SampleLogIndex(sampleLogTable);
   const service = new LinkFavoriteStylesService(appointmentRepo, sampleLogIndex, logger);
 
-  const result = await service.run(now);
+  const result = await service.run(now, { allTime });
 
   output.set('updated', result.updated);
   output.set('unchanged', result.unchanged);
