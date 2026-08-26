@@ -89,7 +89,9 @@ matches, not just the first (e.g. two samples both with `parent_style =
 Talia` both get linked). Optional input variable `backfill` (string) — unset
 for the normal daily run; the literal string `"true"` for a one-time manual
 backfill that ignores the "this week" filter and catches every appointment
-that failed under the old broken logic since Aug 14.
+that failed under the old broken logic since Aug 14. Backfill never
+rewrites — any appointment whose Sample Log already has a value is skipped
+untouched, even if the computed match would differ.
 
 ---
 

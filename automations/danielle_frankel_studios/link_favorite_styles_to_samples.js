@@ -31,6 +31,9 @@
 // input variable `backfill` as the string `"true"` on a manual run to skip
 // the week filter and process every Consultation appointment with favorite
 // styles set, regardless of date — leave it unset for the normal daily run.
+// Backfill never rewrites: any appointment whose Sample Log already has a
+// value (from a past successful run, or entered by hand) is left untouched,
+// even if the computed match would differ.
 //
 // Field IDs:
 const FIELD_IDS = {
@@ -163,11 +166,22 @@ class LinkFavoriteStylesService {
     const appointments = await this.appointmentRepo.findConsultationsWithFavorites(now, { backfill });
     this.logger.a(`Found ${appointments.length} consultation appointment(s) ${backfill ? '(all time)' : 'this week'} with favorite styles set`);
 
-    let updated = 0, unchanged = 0, noMatch = 0;
+    let updated = 0, unchanged = 0, noMatch = 0, skippedExisting = 0;
     for (const record of appointments) {
+      const currentSampleIds = AppointmentRepository.currentSampleLogIds(record);
+
+      // Backfill is a one-time catch-up for records the old broken logic
+      // never touched — it must never overwrite a record someone (or a
+      // prior successful run) already put values into. Only untouched
+      // (empty) records are eligible during a backfill run.
+      if (backfill && currentSampleIds.length > 0) {
+        skippedExisting++;
+        this.logger.b(`${record.id}: backfill skip — Sample Log already has ${currentSampleIds.length} value(s)`);
+        continue;
+      }
+
       const styleIds = AppointmentRepository.favoriteStyleIds(record);
       const matchedSampleIds = this.sampleLogIndex.sampleIdsForStyleIds(styleIds);
-      const currentSampleIds = AppointmentRepository.currentSampleLogIds(record);
 
       if (matchedSampleIds.length === 0) {
         noMatch++;
@@ -187,8 +201,8 @@ class LinkFavoriteStylesService {
       this.logger.b(`${record.id}: linked ${matchedSampleIds.length} sample(s) — ${JSON.stringify(matchedSampleIds)}`);
     }
 
-    this.logger.a(`Done. updated=${updated} unchanged=${unchanged} noMatch=${noMatch} total=${appointments.length}`);
-    return { updated, unchanged, noMatch, total: appointments.length };
+    this.logger.a(`Done. updated=${updated} unchanged=${unchanged} noMatch=${noMatch} skippedExisting=${skippedExisting} total=${appointments.length}`);
+    return { updated, unchanged, noMatch, skippedExisting, total: appointments.length };
   }
 }
 
@@ -218,6 +232,7 @@ try {
   output.set('updated', result.updated);
   output.set('unchanged', result.unchanged);
   output.set('no_match', result.noMatch);
+  output.set('skipped_existing', result.skippedExisting);
   output.set('total', result.total);
   output.set('log_summary', logger.summary());
 } catch (err) {
