@@ -1,0 +1,27 @@
+Status,Priority,Item to discuss,Next Step,Reported Date,From,Deadline,Owner,Comments,,,,,,,,,,,,,,,,,,,,
+4. Done,1. High,Convert a Draft Order in Airtable into a Shopify Order Draft,"- Axel: delivered the flow diagram. 
+- Nadiia/Rob: confirm which field will carry the Shopify Draft Order ID back into Airtable, and Miguel's open question on whether ""Orders - Shopify"" can carry an ""order type"" flag to identify draft-order origin.",2026-07-27T00:00:00,Axel Nava,,nadiia@cobaltcommerce.com rob@cobaltcommerce.com,,,,,,,,,,,,,,,,,,,,,
+4. Done,1. High,Convert a Draft Order in Airtable into a Shopify Order Draft,"- Axel needs Shopify access to model the data structure
+- Nadiia to share the final endpoint + security header
+- Miguel asked whether ""Orders - Shopify"" needs an ""order type"" flag to identify draft-order origin.",2026-07-27T00:00:00,Axel Nava,,nadiia@cobaltcommerce.com rob@cobaltcommerce.com,"Trigger design mostly finalized. It will be a manual button, only styles go into the draft order, customized styles will update the ""style - customized"" price in Shopify. Nadiia has already built an initial endpoint.",,,,,,,,,,,,,,,,,,,,
+4. Done,2. Mid,Alterations vs. Customizations relationship,,2026-07-27T00:00:00,Axel Nava,,julia.shao.collins@daniellefrankelstudio.com,"Same conceptual thread, or fully separate processes that just share a name?",,,,,,,,,,,,,,,,,,,,
+4. Done,2. Mid,Gown/garment field for Alterations list,"- Julia: decided to show all purchased items unfiltered.
+- Axel: rename the column header to ""Item Sold"" and implement the logic change in the alterations interface.",2026-07-27T00:00:00,Axel Nava,,julia.shao.collins@daniellefrankelstudio.com,"No attribute currently marks which garment is in alterations 
+Should we show everything purchased (unfiltered), or build a way to flag the specific garment?",,,,,,,,,,,,,,,,,,,,
+4. Done,1. High,Add Wedding Date from Apparel Magic into Airtable,"- Nadiia: implement a fallback — if Wedding Date (Acuity) is empty, pull from Apparel Magic's Event Date.",,julia.shao.collins@daniellefrankelstudio.com,,nadiia@cobaltcommerce.com,"Summary: We've added a new field in Airtable: Wedding Date Source (select: Acuity / Apparel Magic / Manual) — tracks who last set the date, so the system knows whether it's safe to overwrite.
+Updated the wedding date logic per the requirements and tested it. Ran a backfill script in Sandbox and Production to populate Wedding Date Source for every client. 
+Code is deployed to production.
+
+One line for staff:
+When manually correcting a Wedding Date in Airtable, also set ""Wedding Date Source"" to ""Manual"" — otherwise the next Acuity or Apparel Magic sync may silently overwrite your correction.
+
+Next Steps: Singular team to add this field to the appropriate view or interface where the staff manually enters the wedding date.",,,,,,,,,,,,,,,,,,,,
+4. Done,2. Mid,Need the auth code for login into IT email,- Axel: follow up directly with Julia via email/Slack,2026-07-27T00:00:00,Axel Nava,2026-07-27T00:00:00,julia.shao.collins@daniellefrankelstudio.com,,,,,,,,,,,,,,,,,,,,,
+4. Done,2. Mid,Pick up column scope,"- Julia: confirmed picked up/shipped status doesn't apply to alterations but picked status does.
+- Axel: implement a check based on whether Item Sold contains ""Alterations"" (paid) vs. no check (payment pending).",2026-07-27T00:00:00,Axel Nava,,julia.shao.collins@daniellefrankelstudio.com,"Should it reflect pickup only, or also account for Shipping as a fulfillment method?",,,,,,,,,,,,,,,,,,,,
+4. Done,3. Low,Report: updated Sandbox (deleted previous one and created new one,,2026-07-27T00:00:00,Axel Nava,,,,,,,,,,,,,,,,,,,,,,,
+3. In Progress,2. Mid,Singular team to add this Wedding Date Source to the appropriate view or interface where the staff manually enters the wedding date.,"- Axel to add the field in Pipeline, Appointments, and Recap",2026-07-30T00:00:00,cassidy@cobaltcommerce.com,,Axel Nava,,,,,,,,,,,,,,,,,,,,,
+1. Backlog,2. Mid,Confirm how the approval and notification with the Calligrapher will be handled,,2026-08-03T00:00:00,Axel Nava,,julia.shao.collins@daniellefrankelstudio.com,,,,,,,,,,,,,,,,,,,,,
+1. Backlog,1. High,Provide Alonso creator-level access to Airtable,,2026-08-10T00:00:00,Axel Nava,,julia.shao.collins@daniellefrankelstudio.com,,,,,,,,,,,,,,,,,,,,,
+1. Backlog,1. High,Coordinate next steps regarding latest Recap Feedback Doc,,2026-08-10T00:00:00,julia.shao.collins@daniellefrankelstudio.com,,Singular & Cobalt,,,,,,,,,,,,,,,,,,,,,
+3. In Progress,1. High,Draft Order creation in Shopify from Airtable: finish script and test it,,2026-08-10T00:00:00,,,Axel Nava,,,,,,,,,,,,,,,,,,,,,
