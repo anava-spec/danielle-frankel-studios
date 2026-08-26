@@ -34,6 +34,7 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 - Ready to Wear Size is now editable from an appointment's detail view (First Visit/Consultation), same as Pipeline and Recap — only the Sales Associate's confirmed size can be edited there, with the client's self-reported Acuity size shown for reference next to it.
 - Field labels in the appointment detail view now show as "Sentence case" instead of "ALL CAPS" (e.g. "Ready to wear size" instead of "READY TO WEAR SIZE").
 - Fixed the daily "link favorite styles to samples" automation, which had been failing about half the time — it was trying to link the sample by matching on a name that Airtable computes automatically and can never match. Rebuilt it to match on the actual style instead, and to link every matching sample it finds, not just one. Ran a one-time catch-up pass to backfill every past appointment this had silently missed since mid-August (without touching any appointment a sample was already linked to).
+- Diagnosed the "New Customization Request Notification" automation's failed runs — Slack was rejecting the message because the Slack account connected to the automation had gone disconnected, not because of anything wrong with the automation itself. Reconnected.
 
 **Draft Orders**
 - The Ready to Wear Size field in the Client Details popup now shows the client's self-reported Acuity size for reference next to it (or "Missing Value" if they never entered one) — matching Pipeline, Recap, and Appointments. What the field writes to didn't change.
