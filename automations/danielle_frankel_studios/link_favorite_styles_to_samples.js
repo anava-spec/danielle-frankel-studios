@@ -83,6 +83,24 @@ class CalendarWeek {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Airtable link-field cell values don't always come back as a flat array of
+// {id, name} — a *lookup* through a link (like favorite_styles_from_acuity,
+// which goes through the Client link) can come back nested: one entry per
+// linked row on this side (here, always exactly one Client), each holding
+// that row's own array of linked-record objects. Recursing handles both the
+// flat shape (direct multipleRecordLinks fields, e.g. parent_style / Sample
+// Log) and the nested one in a single pass.
+function extractLinkedRecordIds(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.flatMap(extractLinkedRecordIds);
+  if (typeof raw === 'object') {
+    if (raw.id) return [raw.id];
+    if (Array.isArray(raw.linkedRecordIds)) return raw.linkedRecordIds;
+  }
+  return [];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 class AppointmentRepository {
   constructor(table) { this.table = table; }
 
@@ -91,8 +109,8 @@ class AppointmentRepository {
       fields: [FIELD_IDS.APPT_TIME, FIELD_IDS.FAVORITE_STYLES, FIELD_IDS.APPT_TYPE, FIELD_IDS.SAMPLE_LOG],
     });
     return result.records.filter((record) => {
-      const favorites = record.getCellValue(FIELD_IDS.FAVORITE_STYLES);
-      if (!Array.isArray(favorites) || favorites.length === 0) return false;
+      const favoriteIds = extractLinkedRecordIds(record.getCellValue(FIELD_IDS.FAVORITE_STYLES));
+      if (favoriteIds.length === 0) return false;
 
       const typeValue = record.getCellValueAsString(FIELD_IDS.APPT_TYPE) || '';
       if (!typeValue.toLowerCase().includes('consultation')) return false;
@@ -105,13 +123,11 @@ class AppointmentRepository {
   }
 
   static favoriteStyleIds(record) {
-    const favorites = record.getCellValue(FIELD_IDS.FAVORITE_STYLES);
-    return Array.isArray(favorites) ? favorites.map((f) => f.id).filter(Boolean) : [];
+    return extractLinkedRecordIds(record.getCellValue(FIELD_IDS.FAVORITE_STYLES));
   }
 
   static currentSampleLogIds(record) {
-    const existing = record.getCellValue(FIELD_IDS.SAMPLE_LOG);
-    return Array.isArray(existing) ? existing.map((r) => r.id) : [];
+    return extractLinkedRecordIds(record.getCellValue(FIELD_IDS.SAMPLE_LOG));
   }
 
   async linkSamples(recordId, sampleLogRecordIds) {
@@ -130,12 +146,10 @@ class SampleLogIndex {
   async build() {
     const result = await this.table.selectRecordsAsync({ fields: [FIELD_IDS.PARENT_STYLE] });
     result.records.forEach((record) => {
-      const parents = record.getCellValue(FIELD_IDS.PARENT_STYLE);
-      if (!Array.isArray(parents)) return;
-      parents.forEach((p) => {
-        if (!p || !p.id) return;
-        if (!this.byStyleId.has(p.id)) this.byStyleId.set(p.id, []);
-        this.byStyleId.get(p.id).push(record.id);
+      const styleIds = extractLinkedRecordIds(record.getCellValue(FIELD_IDS.PARENT_STYLE));
+      styleIds.forEach((styleId) => {
+        if (!this.byStyleId.has(styleId)) this.byStyleId.set(styleId, []);
+        this.byStyleId.get(styleId).push(record.id);
       });
     });
     return this;
