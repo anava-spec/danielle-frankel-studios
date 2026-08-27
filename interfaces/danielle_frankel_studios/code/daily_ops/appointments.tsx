@@ -19,6 +19,9 @@ import {
   EnvelopeSimple as EnvelopeSimpleIcon,
   ChatCircleText as ChatCircleTextIcon,
   Paperclip as PaperclipIcon,
+  ArrowLeft as ArrowLeftIcon,
+  Info as InfoIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@phosphor-icons/react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -448,11 +451,71 @@ const TABLE_IDS = {
 // why the write/close/Slack side is still pending Cobalt confirmation.
 const ORDER_FIELD_IDS = {
   SHOPIFY_ORDER_NUMBER: 'fldWiKEXjId411DQc',
+  AM_ORDER_NUMBER:      'fldBvuNZDqzOx6azb',
   PAYMENT_STATUS:       'fldFI488S8GPaVgCt',
   DELIVERY_METHOD:      'fldFATO0oJUQjPEzr', // 'Pick Up in Store' / 'Ship'
   PICKED_STATUS:        'fldqhI6Aq9zIhFsFW', // None / Partial / Full
   TOTAL:                'fldkIMTeKdneKABS4',
   ORDER_STATUS:         'fldYq3JxRSWQUUHm6', // Open / Closed / Cancelled
+  SUBTOTAL:             'fld9CtuMBLprH0SA1',
+  SHIPPING:             'fldkorfpXkwh0TWfs',
+  TAXES:                'fld2chJ0ME8MA3OWq',
+  ADJUSTED_TOTAL:       'fldK8iVktZl5Vg24Q',
+  STORE:                'fldGW9ECCrIEZnNQ5',
+  TRACKING_NUMBER:      'fldCfwwMFNkVKJApj',
+  CARRIER:              'fld3JafhFWzW6Knuw',
+  TAX_CONFIRMED:                    'fld8mrCQUnWlA7cgk',
+  CLIENT_ADDRESS_CONFIRMED:        'fldNJLMMdJvhWCCUn', // lookup — DF Clients.address_confirmed via client link
+  CLIENT_HOLD_RELEASED:            'fldDRkCyTlbqy83Te', // lookup — DF Clients.hold_released via client link
+  PICKUP_RELEASED:                 'fldsFJgAKIlMP8Feu',
+  FULFILLMENT_PROGRESS_PERCENTAGE: 'fldKDT2x7wmZ2Suui',
+  HOLD_REASON:                     'fld2MAllXcFTSIOVZ', // lookup — DF Clients.hold_reason via client link
+  HOLD_SHIPMENT_DATE:              'fldsJ8LJdNHBKJhC0', // lookup — DF Clients.hold_shipment_date via client link
+  ORDER_ADJUSTMENTS:               'fldI1GmVHGcZcEJab',
+  ORDER_SYNC_CHANGELOG:            'fldq0X1wdBJlOYVn8',
+} as const;
+
+// Issue #54 — order_adjustments (read-only here, no "Add Adjustment" capability
+// per scope — that stays a Fulfillment-only action).
+const ADJ_TABLE_ID = 'tbly4tfEDJdB6kYkg';
+const ADJ_FIELD_IDS = {
+  CHANGE_TYPE:   'fldz0a13Pm8gwawI4',
+  DIRECTION:     'fldIQTMAPV5R8qUCq',
+  SIGNED_AMOUNT: 'fldddI1MumdkDZMSV',
+} as const;
+
+// Issue #54 — order_items. Data synced from Apparel Magic — read only, same
+// as fulfillment.tsx.
+const ORDER_ITEMS_TABLE_ID = 'tblWOBS5nX0GZokaU';
+const ORDER_ITEMS_FIELD_IDS = {
+  AM_ORDER_ITEM_ID:    'fldi7F9rPeWLNfarJ',
+  ORDER:               'fldXrdBFm5SeGCTvq',
+  STYLE:               'fldL9rj7ZeDnjnXiY',
+  STYLE_PHOTO:         'fldWORLRjBw3oMZOb', // lookup — attachment from DF Styles via style link
+  ATTR_2:              'fldk3kg4OLToNqDbK',
+  ATTR_3:              'fld5KHXDv1MekJp5U',
+  SIZE:                'fldqihfODfR9L9Uxt',
+  AMOUNT:              'fldLT05tO5ep0WkyP',
+  QUANTITY:            'fldLZ0kD0QwzEA1J6',
+  QUANTITY_ALLOCATED:  'fldktKHqf8C5oL9OA',
+  QUANTITY_PICKED:     'fldNmj9AMDG3gvlEc',
+  QUANTITY_SHIPPED:    'fldhapPEGU3CVjVye',
+  QUANTITY_OPEN:       'fldvU2sU8b6V0wTlG',
+  DUE_DATE:            'fld2Rp7eQXoPnOZNo',
+  DESCRIPTION:         'fldEoDIghGigaujp0',
+  NAME_IF_NO_STYLE:    'fld2Hzmni4fGcKAgh',
+  ORDER_DATE:          'fld7jjtQvCDZQlDNL',
+} as const;
+
+// Issue #54 — order sync change log. Read-only, populated by the Shopify/AM
+// sync automation, not staff.
+const SYNC_LOG_TABLE_ID = 'tblOCgG5WDP51FB2n';
+const SYNC_LOG_FIELD_IDS = {
+  FIELD_CHANGED:  'fldhvCRFHDiWrtR53',
+  PREVIOUS_VALUE: 'fldCk1aXfztfWsnLs',
+  NEW_VALUE:      'fldeKvrtoczn1b3a2',
+  REASON:         'fldy5nEQjWEd6cTBW',
+  CHANGED_AT:     'fldI2iA0qIJLsvmoY',
 } as const;
 
 const VIEW_IDS = {
@@ -2353,24 +2416,712 @@ interface DetailDrawerProps {
   stageColorByName: Map<string, string>;
   ordersTable: Table | undefined;
   orderRecords: Record[] | null;
+  adjTable: Table | undefined;
+  adjRecords: Record[];
+  itemsTable: Table | undefined;
+  itemsRecords: Record[];
+  syncLogTable: Table | undefined;
+  syncLogRecords: Record[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #54 — Order detail page helpers, ported from fulfillment.tsx. IMPORTANT:
+// this Order detail page (PickUpOrdersTable + OrderDetailModal + OrderItemDetailModal
+// below) is meant to stay semi-identical to fulfillment.tsx's own Order detail
+// page, within the scope agreed for Appointments (Pickup Readiness fully
+// editable; Fulfillment section: Delivery Method read-only — changed via the
+// table's own Order Status action instead — Tax Confirmed editable, Tracking
+// Number/Carrier read-only, Client Notified/Delivery Status/Picked Status
+// hidden entirely; Order Items read-only; Order Adjustments read-only with no
+// "Add Adjustment" capability; Financials and Sync Change Log read-only). If
+// you change one file's version, check whether the same change applies to
+// the other's — they intentionally do not share imports (project convention),
+// so this is a manual sync, not automatic.
+
+let _writeQueue = Promise.resolve();
+function queueWrite(fn: () => Promise<void>) {
+  const next = _writeQueue.then(fn);
+  _writeQueue = next.then(() => {}, () => {});
+  return next;
+}
+
+function formatCurrency(val: number | null | undefined): string {
+  if (val === null || val === undefined) return '—';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+}
+function formatOrderDate(val: string | null): string {
+  if (!val) return '—';
+  try { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(val)); }
+  catch { return '—'; }
+}
+function formatDateTime(val: string | null): string {
+  if (!val) return '—';
+  try { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(val)); }
+  catch { return '—'; }
+}
+
+type OrderPillVariant = 'green' | 'red' | 'yellow' | 'blue' | 'purple' | 'gray' | 'orange';
+function OrderPill({ children, variant }: { children: React.ReactNode; variant: OrderPillVariant }) {
+  const cls: Record<OrderPillVariant, string> = {
+    green:  'bg-green-50  dark:bg-green-500/15  text-green-700  dark:text-green-300  border-green-200  dark:border-green-500/30',
+    red:    'bg-red-50    dark:bg-red-500/15    text-red-600    dark:text-red-300    border-red-200    dark:border-red-500/30',
+    yellow: 'bg-yellow-50 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-500/30',
+    blue:   'bg-blue-50   dark:bg-blue-500/15   text-blue-700   dark:text-blue-300   border-blue-200   dark:border-blue-500/30',
+    purple: 'bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-500/30',
+    gray:   'bg-gray-100  dark:bg-white/10      text-gray-600   dark:text-gray-300   border-transparent',
+    orange: 'bg-orange-50 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-500/30',
+  };
+  return <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${cls[variant]}`}>{children}</span>;
+}
+
+function ToggleButton({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+        disabled && !checked ? 'opacity-50' : ''} ${disabled ? 'cursor-not-allowed' : ''} ${
+        checked ? 'bg-green-50 dark:bg-green-500/15 text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/40 shadow-sm'
+                : 'bg-white dark:bg-[#1e1d1b] text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10 shadow-sm hover:border-gray-300 dark:hover:border-white/20'}`}>
+      {checked && <CheckCircleIcon size={13} />}{label}
+    </button>
+  );
+}
+
+// Pickup Readiness Gate — data-resolution helpers, distinguishing "field
+// legitimately false" from "could not be read" (missing field, unreachable
+// record, or — for lookups through the client link — an empty lookup array
+// caused by a broken/missing linked record). Same as fulfillment.tsx.
+type Resolved<T> = { value: T; resolved: boolean };
+function resolveLookupBool(raw: unknown): Resolved<boolean> {
+  if (Array.isArray(raw)) return raw.length === 0 ? { value: false, resolved: false } : { value: !!raw[0], resolved: true };
+  return { value: !!raw, resolved: true };
+}
+function resolveLookupNum(raw: unknown): Resolved<number> {
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return { value: 0, resolved: false };
+    const v = raw[0]; return { value: typeof v === 'number' ? v : 0, resolved: true };
+  }
+  return { value: typeof raw === 'number' ? raw : 0, resolved: true };
+}
+
+type ReadinessSeverity = 'green' | 'yellow' | 'red' | 'unavailable';
+function getReadinessSeverity(checksResolved: boolean, checksPassed: boolean, progressResolved: boolean, progress: number): ReadinessSeverity {
+  if (!checksResolved) return 'unavailable';
+  if (checksPassed) return 'green';
+  if (!progressResolved) return 'unavailable';
+  return progress > 0 ? 'red' : 'yellow';
+}
+const READINESS_UNAVAILABLE_TOOLTIP = 'Unavailable — could not load — client or order record not found. Refresh or contact support.';
+
+function ReadinessDot({ severity, label }: { severity: ReadinessSeverity; label: string }) {
+  const cls: Record<ReadinessSeverity, string> = {
+    green:  'bg-green-500',
+    yellow: 'bg-yellow-400',
+    red:    'bg-red-500',
+    unavailable: 'bg-gray-400 dark:bg-gray-500',
+  };
+  return (
+    <span className="inline-flex items-center" title={label} aria-label={label} role="img">
+      <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${cls[severity]}`} />
+    </span>
+  );
+}
+
+function OrderMiniTable({ headers, rows, onRowClick, emptyText = 'None' }: {
+  headers: string[];
+  rows: Array<Array<React.ReactNode>>;
+  onRowClick?: (i: number) => void;
+  emptyText?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+            {headers.map((h, i) => (
+              <th key={i} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 capitalize tracking-wider">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={headers.length} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">{emptyText}</td></tr>
+          ) : rows.map((row, i) => (
+            <tr key={i} onClick={() => onRowClick?.(i)}
+              className={`border-b border-gray-100 dark:border-white/5 last:border-0 ${onRowClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors' : ''}`}>
+              {row.map((cell, j) => (
+                <td key={j} className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OrderConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }: {
+  title: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onCancel, 200); }, [onCancel]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, [requestClose]);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="p-5">
+          <p className="text-base font-semibold text-gray-900 dark:text-[#F5F3EF] mb-1.5">{title}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+        </div>
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
+          <button type="button" onClick={requestClose}
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm}
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors">
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Issue #54 — read-only detail page for a single order_item (AM-synced,
+// never editable). Ported from fulfillment.tsx's OrderItemDetailModal.
+function OrderItemDetailModal({ record, itemsTable, onClose }: {
+  record: Record; itemsTable: Table; onClose: () => void;
+}) {
+  const getStr = (fid: string): string => { try { return record.getCellValueAsString(itemsTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; } };
+  const getNum = (fid: string): number | null => { try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
+  const getDate = (fid: string): string | null => { try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as string | null; } catch { return null; } };
+  const getAttachmentUrl = (fid: string): string | null => {
+    const f = itemsTable.getFieldIfExists(fid); if (!f) return null;
+    try {
+      const raw = record.getCellValue(f);
+      const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      for (const item of arr) {
+        const candidate = Array.isArray(item) ? item[0] : item;
+        if (candidate && typeof candidate === 'object' && 'url' in candidate) return (candidate as { url: string }).url;
+      }
+      return null;
+    } catch { return null; }
+  };
+
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, [requestClose]);
+
+  const amId          = getStr(ORDER_ITEMS_FIELD_IDS.AM_ORDER_ITEM_ID);
+  const styleName     = getStr(ORDER_ITEMS_FIELD_IDS.STYLE);
+  const nameIfNoStyle = getStr(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE);
+  const displayStyle  = styleName || nameIfNoStyle || '—';
+  const amount        = getNum(ORDER_ITEMS_FIELD_IDS.AMOUNT);
+  const quantity       = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY);
+  const qtyAllocated   = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_ALLOCATED);
+  const qtyPicked      = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_PICKED);
+  const qtyShipped     = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_SHIPPED);
+  const qtyOpen        = getNum(ORDER_ITEMS_FIELD_IDS.QUANTITY_OPEN);
+  const stylePhotoUrl  = getAttachmentUrl(ORDER_ITEMS_FIELD_IDS.STYLE_PHOTO);
+
+  const fieldsToShow: Array<[string, React.ReactNode]> = [
+    ['AM Order Item ID', amId || '—'],
+    ['Style', displayStyle],
+    ['Style Photo (from DF Styles)', stylePhotoUrl
+      ? <img src={stylePhotoUrl} alt={displayStyle} className="w-16 h-16 rounded-lg object-cover border border-gray-200 dark:border-white/10" />
+      : <span className="text-gray-400 dark:text-gray-500">—</span>],
+    ['Attr 2', getStr(ORDER_ITEMS_FIELD_IDS.ATTR_2) || '—'],
+    ['Attr 3', getStr(ORDER_ITEMS_FIELD_IDS.ATTR_3) || '—'],
+    ['Size', getStr(ORDER_ITEMS_FIELD_IDS.SIZE) || '—'],
+    ['Amount', formatCurrency(amount)],
+    ['Quantity', quantity ?? '—'],
+    ['Quantity Allocated', qtyAllocated ?? '—'],
+    ['Quantity Picked', qtyPicked ?? '—'],
+    ['Quantity Shipped', qtyShipped ?? '—'],
+    ['Quantity Open', qtyOpen ?? '—'],
+    ['Due Date', formatOrderDate(getDate(ORDER_ITEMS_FIELD_IDS.DUE_DATE))],
+    ['Description', getStr(ORDER_ITEMS_FIELD_IDS.DESCRIPTION) || '—'],
+    ['Order Date', formatOrderDate(getDate(ORDER_ITEMS_FIELD_IDS.ORDER_DATE))],
+  ];
+
+  const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+      <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+        style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+          <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order Item</p>
+            <p className="text-base font-semibold text-gray-900 dark:text-[#F3EFE6] truncate">{amId || 'Item Detail'}</p>
+          </div>
+        </div>
+        <div className="px-5 py-2.5 border-b border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 flex items-center gap-2">
+          <InfoIcon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+          <p className="text-xs text-gray-500 dark:text-gray-400">Data synced from Apparel Magic — read only.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid grid-cols-3 gap-4">
+            {fieldsToShow.map(([label, value]) => (
+              <div key={label}>
+                <span className={lbl}>{label}</span>
+                <p className="text-sm text-gray-700 dark:text-gray-200">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Issue #54 — the Order detail page, opened by clicking a row in
+// PickUpOrdersTable below. Scoped per Axel's spec (see the sync-comment
+// above): Pickup Readiness fully editable; Fulfillment section shows
+// Delivery Method/Tracking Number/Carrier read-only, Tax Confirmed editable,
+// Client Notified/Delivery Status/Picked Status hidden; Order Items and
+// Order Adjustments read-only (no Add Adjustment); Financials and Sync
+// Change Log read-only. Ported from fulfillment.tsx's OrderDetailModal —
+// keep the two in sync.
+function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable, itemsRecords, syncLogTable, syncLogRecords, onClose }: {
+  record: Record; orderTable: Table;
+  adjTable: Table | undefined; adjRecords: Record[]; itemsTable: Table | undefined; itemsRecords: Record[];
+  syncLogTable: Table | undefined; syncLogRecords: Record[]; onClose: () => void;
+}) {
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setIsVisible(true), 10); return () => clearTimeout(t); }, []);
+  const requestClose = useCallback(() => { setIsVisible(false); setTimeout(onClose, 200); }, [onClose]);
+
+  const getStr = (fid: string): string => { try { return record.getCellValueAsString(orderTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; } };
+  const getNum = (fid: string): number | null => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return null; return record.getCellValue(f) as number | null; } catch { return null; } };
+  const getSel = (fid: string): string => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return ''; const v = record.getCellValue(f) as { name: string } | null; return v?.name ?? ''; } catch { return ''; } };
+  const getBool = (fid: string): boolean => { try { const f = orderTable.getFieldIfExists(fid); if (!f) return false; return !!(record.getCellValue(f) as boolean | null); } catch { return false; } };
+  const getBoolOrError = (fid: string): Resolved<boolean> => {
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: false, resolved: false };
+    try { return resolveLookupBool(record.getCellValue(f)); } catch { return { value: false, resolved: false }; }
+  };
+  const getNumOrError = (fid: string): Resolved<number> => {
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: 0, resolved: false };
+    try { return resolveLookupNum(record.getCellValue(f)); } catch { return { value: 0, resolved: false }; }
+  };
+  const getSelOrError = (fid: string): Resolved<string> => {
+    const f = orderTable.getFieldIfExists(fid); if (!f) return { value: '', resolved: false };
+    try { const v = record.getCellValue(f) as { name: string } | null; return { value: v?.name ?? '', resolved: true }; }
+    catch { return { value: '', resolved: false }; }
+  };
+
+  const delivMethod = getSel(ORDER_FIELD_IDS.DELIVERY_METHOD);
+  const trackingNum = getStr(ORDER_FIELD_IDS.TRACKING_NUMBER);
+  const carrier     = getSel(ORDER_FIELD_IDS.CARRIER);
+  const [pickupReleased, setPickupReleased] = useState(() => getBool(ORDER_FIELD_IDS.PICKUP_RELEASED));
+  const [releaseError,   setReleaseError]   = useState('');
+  const [taxConfirmed,   setTaxConfirmed]   = useState(() => getBool(ORDER_FIELD_IDS.TAX_CONFIRMED));
+  const [showTaxConfirmPrompt, setShowTaxConfirmPrompt] = useState(false);
+
+  // Pickup Readiness Gate — this order's own three checks + progress
+  const taxConfirmedRes           = getBoolOrError(ORDER_FIELD_IDS.TAX_CONFIRMED);
+  const clientAddressConfirmedRes = getBoolOrError(ORDER_FIELD_IDS.CLIENT_ADDRESS_CONFIRMED);
+  const clientHoldReleasedRes     = getBoolOrError(ORDER_FIELD_IDS.CLIENT_HOLD_RELEASED);
+  const fulfillmentProgressRes    = getNumOrError(ORDER_FIELD_IDS.FULFILLMENT_PROGRESS_PERCENTAGE);
+  const clientAddressConfirmed = clientAddressConfirmedRes.value;
+  const clientHoldReleased     = clientHoldReleasedRes.value;
+  const fulfillmentProgress    = fulfillmentProgressRes.value;
+
+  const orderNumber = getNum(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+  const amOrderNum  = getNum(ORDER_FIELD_IDS.AM_ORDER_NUMBER);
+  const subtotal    = getNum(ORDER_FIELD_IDS.SUBTOTAL);
+  const shipping    = getNum(ORDER_FIELD_IDS.SHIPPING);
+  const taxes       = getNum(ORDER_FIELD_IDS.TAXES);
+  const total       = getNum(ORDER_FIELD_IDS.TOTAL);
+  const adjTotalField = getNum(ORDER_FIELD_IDS.ADJUSTED_TOTAL);
+  const payStatusRes = getSelOrError(ORDER_FIELD_IDS.PAYMENT_STATUS);
+  const store       = getSel(ORDER_FIELD_IDS.STORE);
+  const holdReason     = getStr(ORDER_FIELD_IDS.HOLD_REASON);
+  const holdShipDate   = getStr(ORDER_FIELD_IDS.HOLD_SHIPMENT_DATE);
+
+  const isShip = delivMethod.toLowerCase().includes('ship');
+
+  const saveTracked = useCallback((fid: string, value: unknown): Promise<void> => {
+    const f = orderTable.getFieldIfExists(fid);
+    if (!f) return Promise.reject(new Error(`Field ${fid} not found`));
+    return queueWrite(() => orderTable.updateRecordAsync(record, { [f.id]: value }));
+  }, [orderTable, record]);
+
+  const requiredChecksResolved = taxConfirmedRes.resolved && clientAddressConfirmedRes.resolved && clientHoldReleasedRes.resolved && payStatusRes.resolved;
+  const unmetReleaseReasons: string[] = [];
+  if (!requiredChecksResolved) unmetReleaseReasons.push('Cannot verify readiness — data unavailable');
+  if (taxConfirmedRes.resolved && !taxConfirmed) unmetReleaseReasons.push('Tax not confirmed');
+  if (clientAddressConfirmedRes.resolved && !clientAddressConfirmed) unmetReleaseReasons.push('Address not confirmed');
+  if (clientHoldReleasedRes.resolved && !clientHoldReleased) unmetReleaseReasons.push('Client is on hold');
+  if (payStatusRes.resolved && payStatusRes.value === 'Unpaid') unmetReleaseReasons.push('Payment Status is Unpaid');
+  const canRelease = unmetReleaseReasons.length === 0;
+
+  const handleTogglePickupReleased = (v: boolean) => {
+    if (v && !canRelease) { setReleaseError(`Cannot release pickup — ${unmetReleaseReasons.join(', ')}.`); return; }
+    setReleaseError('');
+    const prior = pickupReleased;
+    setPickupReleased(v);
+    saveTracked(ORDER_FIELD_IDS.PICKUP_RELEASED, v)
+      .then(() => setReleaseError(''))
+      .catch(() => {
+        setPickupReleased(prior);
+        setReleaseError(`Could not save — pickup was not ${v ? 'released' : 'unreleased'}. Try again.`);
+      });
+  };
+
+  // Once confirmed, tax_confirmed is locked — the toggle itself is disabled when checked.
+  const handleToggleTaxConfirmed = (v: boolean) => {
+    if (taxConfirmed) return;
+    if (v) { setShowTaxConfirmPrompt(true); return; }
+    const prior = taxConfirmed;
+    setTaxConfirmed(v);
+    saveTracked(ORDER_FIELD_IDS.TAX_CONFIRMED, v)
+      .then(() => setReleaseError(''))
+      .catch(() => {
+        setTaxConfirmed(prior);
+        setReleaseError('Could not save — tax confirmation was not saved. Try again.');
+      });
+  };
+  const confirmTaxConfirmed = () => {
+    setShowTaxConfirmPrompt(false);
+    setTaxConfirmed(true);
+    saveTracked(ORDER_FIELD_IDS.TAX_CONFIRMED, true)
+      .then(() => setReleaseError(''))
+      .catch(() => {
+        setTaxConfirmed(false);
+        setReleaseError('Could not save — tax was not confirmed. Try again.');
+      });
+  };
+
+  const linkedAdjIds = useMemo(() => {
+    try {
+      const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.ORDER_ADJUSTMENTS); if (!f) return new Set<string>();
+      const links = record.getCellValue(f) as Array<{ id: string }> | null;
+      return new Set((links ?? []).map(l => l.id));
+    } catch { return new Set<string>(); }
+  }, [record, orderTable]);
+  const linkedAdjs = useMemo(() => adjRecords.filter(r => linkedAdjIds.has(r.id)), [adjRecords, linkedAdjIds]);
+
+  const linkedSyncLogIds = useMemo(() => {
+    try {
+      const f = orderTable.getFieldIfExists(ORDER_FIELD_IDS.ORDER_SYNC_CHANGELOG); if (!f) return new Set<string>();
+      const links = record.getCellValue(f) as Array<{ id: string }> | null;
+      return new Set((links ?? []).map(l => l.id));
+    } catch { return new Set<string>(); }
+  }, [record, orderTable]);
+  const linkedSyncLogs = useMemo(() => {
+    const getChangedAt = (r: Record): string => {
+      if (!syncLogTable) return '';
+      try { const f = syncLogTable.getFieldIfExists(SYNC_LOG_FIELD_IDS.CHANGED_AT); if (!f) return ''; return (r.getCellValue(f) as string | null) ?? ''; } catch { return ''; }
+    };
+    return syncLogRecords
+      .filter(r => linkedSyncLogIds.has(r.id))
+      .sort((a, b) => getChangedAt(b).localeCompare(getChangedAt(a)));
+  }, [syncLogRecords, linkedSyncLogIds, syncLogTable]);
+
+  const getSyncLogStr = (r: Record, fid: string): string => {
+    if (!syncLogTable) return '';
+    try { return r.getCellValueAsString(syncLogTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; }
+  };
+  const getSyncLogNum = (r: Record, fid: string): number | null => {
+    if (!syncLogTable) return null;
+    try { const f = syncLogTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  };
+
+  const getAdjNum = (r: Record, fid: string): number | null => {
+    if (!adjTable) return null;
+    try { const f = adjTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  };
+  const getAdjSel = (r: Record, fid: string): string => {
+    if (!adjTable) return '—';
+    try { const f = adjTable.getFieldIfExists(fid); if (!f) return '—'; const v = r.getCellValue(f) as { name: string } | null; return v?.name ?? '—'; } catch { return '—'; }
+  };
+
+  const selectedItem = useMemo(() => selectedItemId ? itemsRecords.find(r => r.id === selectedItemId) ?? null : null, [selectedItemId, itemsRecords]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !selectedItem) requestClose(); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, [requestClose, selectedItem]);
+
+  const lbl = 'text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide block mb-1';
+
+  const linkedItems = useMemo(() => {
+    if (!itemsTable) return [];
+    const f = itemsTable.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER); if (!f) return [];
+    return itemsRecords.filter(r => {
+      try { const links = r.getCellValue(f) as Array<{ id: string }> | null; return (links ?? []).some(l => l.id === record.id); }
+      catch { return false; }
+    });
+  }, [itemsRecords, itemsTable, record]);
+
+  const getItemStr = (r: Record, fid: string): string => {
+    if (!itemsTable) return '';
+    try { return r.getCellValueAsString(itemsTable.getFieldIfExists(fid)!) ?? ''; } catch { return ''; }
+  };
+  const getItemNum = (r: Record, fid: string): number | null => {
+    if (!itemsTable) return null;
+    try { const f = itemsTable.getFieldIfExists(fid); if (!f) return null; return r.getCellValue(f) as number | null; } catch { return null; }
+  };
+
+  const itemRows: Array<Array<React.ReactNode>> = linkedItems.map(r => {
+    const amId          = getItemStr(r, ORDER_ITEMS_FIELD_IDS.AM_ORDER_ITEM_ID);
+    const styleName     = getItemStr(r, ORDER_ITEMS_FIELD_IDS.STYLE);
+    const nameIfNoStyle = getItemStr(r, ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE);
+    const displayStyle  = styleName || nameIfNoStyle || '—';
+    const amount        = getItemNum(r, ORDER_ITEMS_FIELD_IDS.AMOUNT);
+    const quantity       = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY);
+    const qtyPicked      = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY_PICKED);
+    const qtyShipped     = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY_SHIPPED);
+    const qtyOpen        = getItemNum(r, ORDER_ITEMS_FIELD_IDS.QUANTITY_OPEN);
+    const isFulfilled = qtyOpen !== null
+      ? qtyOpen === 0
+      : ((quantity ?? 0) > 0 && (qtyPicked ?? 0) + (qtyShipped ?? 0) >= (quantity ?? 0));
+    return [
+      amId || '—',
+      displayStyle,
+      formatCurrency(amount),
+      quantity ?? '—',
+      <OrderPill variant={isFulfilled ? 'green' : 'yellow'}>{isFulfilled ? 'Fulfilled' : 'Pending'}</OrderPill>,
+    ];
+  });
+  const handleItemRowClick = (i: number) => setSelectedItemId(linkedItems[i]?.id ?? null);
+
+  const adjRows: Array<Array<React.ReactNode>> = linkedAdjs.map(r => {
+    const ct  = getAdjSel(r, ADJ_FIELD_IDS.CHANGE_TYPE);
+    const dir = getAdjSel(r, ADJ_FIELD_IDS.DIRECTION);
+    const amt = getAdjNum(r, ADJ_FIELD_IDS.SIGNED_AMOUNT);
+    const amtDisplay = amt === null ? '—' : (amt >= 0
+      ? <span className="text-orange-600 dark:text-orange-400 font-medium">+{formatCurrency(amt)}</span>
+      : <span className="text-green-600 dark:text-green-400 font-medium">{formatCurrency(amt)}</span>);
+    return [ct === '—' ? '—' : ct, dir && dir !== '—' ? <OrderPill variant={dir === 'Charge' ? 'orange' : 'green'}>{dir}</OrderPill> : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>, amtDisplay];
+  });
+
+  const syncLogRows: Array<Array<React.ReactNode>> = linkedSyncLogs.map(r => {
+    const fieldChanged = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.FIELD_CHANGED);
+    const prevVal      = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.PREVIOUS_VALUE);
+    const newVal       = getSyncLogNum(r, SYNC_LOG_FIELD_IDS.NEW_VALUE);
+    const reason       = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.REASON);
+    const changedAt    = getSyncLogStr(r, SYNC_LOG_FIELD_IDS.CHANGED_AT);
+    return [
+      fieldChanged || '—',
+      formatCurrency(prevVal),
+      formatCurrency(newVal),
+      reason ? <span className="text-gray-500 dark:text-gray-400">{reason}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>,
+      <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDateTime(changedAt)}</span>,
+    ];
+  });
+
+  if (selectedItem && itemsTable) {
+    return <OrderItemDetailModal record={selectedItem} itemsTable={itemsTable} onClose={() => setSelectedItemId(null)} />;
+  }
+
+  return (
+    <>
+      {showTaxConfirmPrompt && (
+        <OrderConfirmDialog
+          title="Confirm Tax"
+          message="Confirm tax for this order? This cannot be undone."
+          confirmLabel="Confirm"
+          onConfirm={confirmTaxConfirmed}
+          onCancel={() => setShowTaxConfirmPrompt(false)}
+        />
+      )}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 transition-opacity duration-200 ease-out"
+        style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', opacity: isVisible?1:0 }}
+        onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
+        <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
+          style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)' }}
+          onClick={e => e.stopPropagation()}>
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3">
+            <button onClick={requestClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"><ArrowLeftIcon size={16} /></button>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide mb-0.5">Order</p>
+              <p className="text-base font-semibold text-gray-900 dark:text-[#F3EFE6]">
+                {orderNumber ? `#${orderNumber}` : '—'}{amOrderNum ? ` · AM ${amOrderNum}` : ''}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {store && <OrderPill variant="gray">{store}</OrderPill>}
+              {!payStatusRes.resolved && <OrderPill variant="gray">Unavailable</OrderPill>}
+              {payStatusRes.resolved && payStatusRes.value && (
+                <OrderPill variant={payStatusRes.value === 'Paid' ? 'green' : payStatusRes.value.includes('Partial') ? 'yellow' : 'red'}>{payStatusRes.value}</OrderPill>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Pickup Readiness</span>
+              <div className="flex items-center gap-4 flex-wrap">
+                {([
+                  ['Tax', taxConfirmed, taxConfirmedRes.resolved],
+                  ['Address', clientAddressConfirmed, clientAddressConfirmedRes.resolved],
+                  ['Hold', clientHoldReleased, clientHoldReleasedRes.resolved],
+                ] as [string, boolean, boolean][]).map(([label, passed, checkResolved]) => {
+                  const severity = getReadinessSeverity(checkResolved, passed, fulfillmentProgressRes.resolved, fulfillmentProgress);
+                  const dotLabel = severity === 'unavailable' ? `${label}: ${READINESS_UNAVAILABLE_TOOLTIP}` : `${label}: ${passed ? 'Passed' : 'Failed'}`;
+                  return (
+                    <div key={label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10">
+                      <ReadinessDot severity={severity} label={dotLabel} />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{label}</span>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide">Pickup Released</span>
+                  <ToggleButton checked={pickupReleased} disabled={!canRelease && !pickupReleased}
+                    label={pickupReleased ? 'Released' : 'Not Released'}
+                    onChange={handleTogglePickupReleased} />
+                </div>
+              </div>
+              {!canRelease && (
+                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1.5">Blocked: {unmetReleaseReasons.join(', ')}.</p>
+              )}
+              {releaseError && <p className="text-xs text-red-500 dark:text-red-400 mt-1.5">{releaseError}</p>}
+              {clientHoldReleasedRes.resolved && !clientHoldReleased && (
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <OrderPill variant="red">On hold until {holdShipDate ? formatOrderDate(holdShipDate) : '—'}</OrderPill>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{holdReason || 'No reason provided'}</span>
+                </div>
+              )}
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Fulfillment</span>
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <span className={lbl}>Delivery Method</span>
+                    <p className="text-sm text-gray-700 dark:text-gray-200 px-3 py-1.5">{delivMethod || '—'}</p>
+                  </div>
+                  <div>
+                    <span className={lbl}>Tax Confirmed</span>
+                    <ToggleButton checked={taxConfirmed} disabled={taxConfirmed}
+                      label={taxConfirmed ? 'Confirmed' : 'Not Confirmed'}
+                      onChange={handleToggleTaxConfirmed} />
+                    {releaseError && <p className="text-xs text-red-500 dark:text-red-400 mt-1.5">{releaseError}</p>}
+                  </div>
+                </div>
+                {isShip && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className={lbl}>Tracking Number</span>
+                      <p className="text-sm text-gray-700 dark:text-gray-200 px-3 py-1.5">{trackingNum || '—'}</p>
+                    </div>
+                    <div>
+                      <span className={lbl}>Carrier</span>
+                      <p className="text-sm text-gray-700 dark:text-gray-200 px-3 py-1.5">{carrier || '—'}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium">Order Items</span>
+                {linkedItems.length > 0 && <span className="text-xs text-gray-400 dark:text-gray-500">({linkedItems.length})</span>}
+              </div>
+              <OrderMiniTable
+                headers={['AM ID', 'Style', 'Amount', 'Quantity', 'Picked/Shipped']}
+                rows={itemRows}
+                onRowClick={handleItemRowClick}
+              />
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Order Adjustments</span>
+              <OrderMiniTable
+                headers={['Type', 'Direction', 'Amount']}
+                rows={adjRows}
+              />
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Financials</span>
+              <div className="grid grid-cols-4 gap-3">
+                {([['Subtotal', subtotal], ['Shipping', shipping], ['Taxes', taxes], ['Total', total]] as [string, number | null][]).map(([label, val]) => (
+                  <div key={label} className="bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2.5">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</p>
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(val)}</p>
+                  </div>
+                ))}
+              </div>
+              {adjTotalField !== null && (
+                <div className="mt-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-sm text-amber-700 dark:text-amber-300">Adjusted Total</span>
+                  <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(adjTotalField)}</span>
+                </div>
+              )}
+            </section>
+            <div className="border-t border-gray-100 dark:border-white/5" />
+            <section>
+              <span className="text-xs text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium block mb-3">Sync Change Log</span>
+              <OrderMiniTable
+                headers={['Field', 'Previous', 'New', 'Reason', 'Changed At']}
+                rows={syncLogRows}
+                emptyText="No synced price changes yet"
+              />
+            </section>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
 // Issue #54 — read-only Orders table for Pick Up appointments. Layout
 // mirrors fulfillment.tsx's Shopify Orders inline table (border/rounded
 // container, same column set minus Adjusted Total, which this page has no
-// use for). No write actions yet — the Order Status dropdown + confirm
-// flow + Slack notification are pending Cobalt's answers, see
+// use for). Row click opens the shared OrderDetailModal above (semi-identical
+// to fulfillment.tsx's, see the sync-comment on OrderDetailModal). The Order
+// Status dropdown/confirm flow + Delivery Method change + Slack notification
+// on the *table row itself* are still pending Cobalt's answers, see
 // docs/appointments_pickup_orders_plan.md. Sort: pending pickup first,
-// already-picked-up next, Ship orders last (informational only either way).
+// already-picked-up next, Ship orders last (informational either way).
 function PickUpOrdersTable({
   clientsTable,
   linkedClientRecord,
   orderRecords,
+  ordersTable,
+  adjTable,
+  adjRecords,
+  itemsTable,
+  itemsRecords,
+  syncLogTable,
+  syncLogRecords,
 }: {
   clientsTable: Table;
   linkedClientRecord: Record;
   orderRecords: Record[] | null;
+  ordersTable: Table | undefined;
+  adjTable: Table | undefined;
+  adjRecords: Record[];
+  itemsTable: Table | undefined;
+  itemsRecords: Record[];
+  syncLogTable: Table | undefined;
+  syncLogRecords: Record[];
 }): React.ReactElement {
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const clientOrdersField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_SHOPIFY_ORDERS);
 
   const clientOrders = useMemo(() => {
@@ -2387,6 +3138,11 @@ function PickUpOrdersTable({
     return picked === 'Full' ? 1 : 0; // pending pickup, then already picked up
   };
   const sortedOrders = [...clientOrders].sort((a, b) => rank(a) - rank(b));
+
+  const selectedOrder = useMemo(
+    () => selectedOrderId ? sortedOrders.find((o) => o.id === selectedOrderId) ?? null : null,
+    [selectedOrderId, sortedOrders]
+  );
 
   const payVariant = (pay: string): string => {
     if (pay === 'Paid') return 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
@@ -2426,7 +3182,8 @@ function PickUpOrdersTable({
               const total = o.getCellValueAsString(ORDER_FIELD_IDS.TOTAL);
               const orderStatus = o.getCellValueAsString(ORDER_FIELD_IDS.ORDER_STATUS);
               return (
-                <tr key={o.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                <tr key={o.id} onClick={() => setSelectedOrderId(o.id)}
+                  className="border-b border-gray-100 dark:border-white/5 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                   <td className="px-3 py-2.5 font-medium text-gray-800 dark:text-[#F3EFE6]">{num ? `#${num}` : '—'}</td>
                   <td className="px-3 py-2.5"><span className={`${pillCls} ${payVariant(pay)}`}>{pay || '—'}</span></td>
                   <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{delivery || '—'}</td>
@@ -2440,8 +3197,21 @@ function PickUpOrdersTable({
         </table>
       </div>
       <div className="text-xs text-gray-400 dark:text-gray-500 italic mt-2">
-        Marking an order as recogida/enviada from here is coming soon — pending confirmation with Cobalt (see docs/appointments_pickup_orders_plan.md).
+        Changing Order Status/Delivery Method from here is coming soon — pending confirmation with Cobalt (see docs/appointments_pickup_orders_plan.md). Click a row to view its full detail page.
       </div>
+      {selectedOrder && ordersTable && (
+        <OrderDetailModal
+          record={selectedOrder}
+          orderTable={ordersTable}
+          adjTable={adjTable}
+          adjRecords={adjRecords}
+          itemsTable={itemsTable}
+          itemsRecords={itemsRecords}
+          syncLogTable={syncLogTable}
+          syncLogRecords={syncLogRecords}
+          onClose={() => setSelectedOrderId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2466,6 +3236,12 @@ function DetailDrawer({
   stageColorByName,
   ordersTable,
   orderRecords,
+  adjTable,
+  adjRecords,
+  itemsTable,
+  itemsRecords,
+  syncLogTable,
+  syncLogRecords,
 }: DetailDrawerProps) {
   const apptTypeField = appointmentsTable.getFieldIfExists(FIELD_IDS.APPT_TYPE);
   const apptTimeField = appointmentsTable.getFieldIfExists(FIELD_IDS.APPT_TIME);
@@ -2934,6 +3710,13 @@ function DetailDrawer({
             clientsTable={clientsTable}
             linkedClientRecord={linkedClientRecord}
             orderRecords={orderRecords}
+            ordersTable={ordersTable}
+            adjTable={adjTable}
+            adjRecords={adjRecords}
+            itemsTable={itemsTable}
+            itemsRecords={itemsRecords}
+            syncLogTable={syncLogTable}
+            syncLogRecords={syncLogRecords}
           />
         )}
 
@@ -3005,6 +3788,11 @@ function AppointmentsApp(): React.ReactElement {
   // failure class as the earlier order_items/Pipeline issue. If orders
   // never load, check the page's declared tables in the Airtable UI first.
   const ordersTable = base.getTableByIdIfExists(TABLE_IDS.ORDERS_SHOPIFY) ?? undefined;
+  // Issue #54 — Order detail page tables (adjustments/items/sync log). Same
+  // failure-class warning as ordersTable above applies to each of these.
+  const adjTable = base.getTableByIdIfExists(ADJ_TABLE_ID) ?? undefined;
+  const itemsTable = base.getTableByIdIfExists(ORDER_ITEMS_TABLE_ID) ?? undefined;
+  const syncLogTable = base.getTableByIdIfExists(SYNC_LOG_TABLE_ID) ?? undefined;
   const appointmentFieldsToLoad = useMemo(
     () => getExistingFields(appointmentsTable, APPOINTMENT_RECORD_FIELDS),
     [appointmentsTable]
@@ -3018,15 +3806,10 @@ function AppointmentsApp(): React.ReactElement {
     [roomsTable]
   );
 
+  // Issue #54 — full field list, since the Order detail page (not just the
+  // row-summary table) reads from this same orderRecords set.
   const orderFieldsToLoad = useMemo(
-    () => getExistingFields(ordersTable, [
-      ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER,
-      ORDER_FIELD_IDS.PAYMENT_STATUS,
-      ORDER_FIELD_IDS.DELIVERY_METHOD,
-      ORDER_FIELD_IDS.PICKED_STATUS,
-      ORDER_FIELD_IDS.TOTAL,
-      ORDER_FIELD_IDS.ORDER_STATUS,
-    ]),
+    () => getExistingFields(ordersTable, Object.values(ORDER_FIELD_IDS)),
     [ordersTable]
   );
 
@@ -3053,6 +3836,11 @@ function AppointmentsApp(): React.ReactElement {
   const orderRecords = useRecords(ordersTable ?? null, {
     fields: orderFieldsToLoad,
   });
+  // Issue #54 — no field filter, matching fulfillment.tsx's own convention
+  // for these smaller secondary tables (order_adjustments/order_items/sync log).
+  const adjRecords = useRecords(adjTable ?? null);
+  const itemsRecords = useRecords(itemsTable ?? null);
+  const syncLogRecords = useRecords(syncLogTable ?? null);
 
   const saStaffRecords = useRecords(staffTable ?? null, {
     fields: staffFieldsToLoad,
@@ -3895,6 +4683,12 @@ function AppointmentsApp(): React.ReactElement {
               stageColorByName={stageColorByName}
               ordersTable={ordersTable}
               orderRecords={orderRecords}
+              adjTable={adjTable}
+              adjRecords={adjRecords}
+              itemsTable={itemsTable}
+              itemsRecords={itemsRecords}
+              syncLogTable={syncLogTable}
+              syncLogRecords={syncLogRecords}
             />
           </div>
         </div>

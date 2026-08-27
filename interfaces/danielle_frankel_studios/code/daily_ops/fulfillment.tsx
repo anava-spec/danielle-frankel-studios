@@ -1182,6 +1182,19 @@ function OrderItemDetailModal({ record, itemsTable, onClose }: {
 }
 
 // ─── OrderDetailModal ─────────────────────────────────────────────────────────
+// Issue #54 (appointments.tsx) — this Order detail page is meant to stay
+// semi-identical to the ported copy in appointments.tsx's own
+// OrderDetailModal (opened from its PickUpOrdersTable), within the scope
+// agreed for that page: Pickup Readiness fully editable there too;
+// Fulfillment section there shows Delivery Method/Tracking Number/Carrier
+// read-only (changed via the Orders table's own Order Status action
+// instead), Tax Confirmed editable, Client Notified/Delivery Status/Picked
+// Status hidden entirely (all three stay fully editable here); Order Items
+// and Order Adjustments read-only there with no "Add Adjustment" capability
+// (both editable/addable here); Financials and Sync Change Log read-only in
+// both. If you change this component, check whether the same change
+// applies to appointments.tsx's copy — they intentionally do not share
+// imports (project convention), so this is a manual sync, not automatic.
 function OrderDetailModal({ record, orderTable, adjTable, adjRecords, itemsTable, itemsRecords, syncLogTable, syncLogRecords, onClose }: {
   record: AirtableRecord; orderTable: Table;
   adjTable: Table | null; adjRecords: AirtableRecord[];
