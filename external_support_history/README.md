@@ -56,3 +56,29 @@ IDS_ROWS = [...];` block in the exact shape the artifact's `<script>` expects.
 Splice that into the artifact HTML in place of its own `FEEDBACK_ROWS`/
 `IDS_ROWS` consts and republish (Claude does this step — no manual
 copy-pasting into the board).
+
+**Splice gotcha**: don't do this with `re.sub(pattern, replacement_string,
+text)` — Python's `re.sub` decodes backslash escapes (`\n`, `\t`, ...) inside
+the *replacement string*, silently turning valid JSON's `\n` into a real
+newline and breaking the JS. Use a replacement *function* instead
+(`pattern.sub(lambda m: new_block, text)`), which returns the string
+literally, or a plain (non-regex) string splice. Always re-parse the spliced
+block with `json.loads()` before publishing to catch this class of bug.
+
+## Editing directly in the artifact
+
+The board also supports editing in the browser — an "Edit" button in each
+row's expanded panel (all columns, including Status/Priority/Comments),
+"+ Add item" for a new row, and delete from the same edit form. **None of
+this saves anywhere** — the artifact has no filesystem/git access and can't
+write back to this repo or the Sheets. It's an in-memory scratchpad for the
+current browser tab only; reloading the page reverts to whatever was last
+published.
+
+To make an edit permanent: click **Download CSV** in the toolbar — it saves
+the current in-browser state as two files (`Feedback_Tracker.csv`,
+`Weekly_IDS_DFS_x_Singular_x_Cobalt.csv`, same column layout the snapshots
+already use) and send them to Claude in chat. Claude saves them as the next
+dated snapshot in `feedback_tracker/`/`weekly_ids/`, re-runs
+`build_board_data.py`, and republishes — the same pipeline as a fresh Sheet
+export, just sourced from the artifact's edits instead.
