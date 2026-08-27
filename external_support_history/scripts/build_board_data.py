@@ -54,7 +54,14 @@ def latest_snapshot(directory, name_fragment):
 
 def clean_cell(v):
     v = (v or "").strip()
-    return v if v else None
+    if not v:
+        return None
+    # A handful of cells in the source Google Sheet have a curly apostrophe
+    # (') that got mangled into the Unicode replacement character (U+FFFD)
+    # at some point upstream, before this ever reaches us — repair it to a
+    # plain apostrophe rather than shipping a broken glyph to the board.
+    v = v.replace("�", "'")
+    return v
 
 
 def parse_number_id(v):
