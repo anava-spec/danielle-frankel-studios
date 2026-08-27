@@ -1687,5 +1687,16 @@ const IDS_ROWS = [
     "Deadline": "2026-08-28",
     "Owner": "Cobalt",
     "Comments": "From Miguel's Slack round-up: tracker consolidation merged Julia's separate backlog into the main tracker (Singular's item count went 25→51 as a result — the lower completion % reflects more visibility into the full backlog, not less progress). Current merged state: Singular 22/51 done (43%), Cobalt 6/19 done (32%), joint items 1/17 done (6%). Cobalt also closed out the items Axel had open with Rob (Klaviyo mapping, Package/PAR/Customization Proposals architecture) and is now waiting on Singular for next steps there."
+  },
+  {
+    "Status": "1. Backlog",
+    "Priority": "1. High",
+    "Item to discuss": "Order Status write-back to Shopify + order_items quantity semantics (Order Ready / Pick Up feature)",
+    "Next Step": "Sent to Rob/Nadiia on Slack (#danielle-frankel-development). Waiting on their answers before finalizing the Order Status action in the new Appointments Pick Up Orders table.",
+    "Reported Date": "2026-08-27",
+    "From": "Axel Nava",
+    "Deadline": null,
+    "Owner": "Singular & Cobalt",
+    "Comments": "3 questions sent to Cobalt: (1) Does Order Status re-sync from Shopify after order creation, or is it set once and left alone? We know Delivery Method is set-once-at-creation and safe to edit from Airtable — need to confirm the same for Order Status, specifically whether manually setting it to Closed risks Shopify later overwriting it (e.g. to Cancelled), causing a silent mismatch. (2) What do quantity_open / quantity_shipped mean on order_items? We'd been assuming quantity_shipped = shipped to the client and quantity_open = delivered (shipped or picked up); after a pattern-recognition diagnostic we now think quantity_shipped = shipped to the store from the warehouse, and quantity_open = confirmed received at the store. Need Cobalt to confirm which is correct — affects fulfillment progress calculations in multiple places, unrelated to the button in question 3. (3) Does it make sense for Airtable to push Order Status back to Shopify, and how would Cobalt suggest doing it? Goal: for Pick Up appointments, let the Receptionist open all of a bride's orders, mark a Pick Up order as picked up, and push that to Shopify — plus let them change Delivery Method to Ship when a bride wants delivery instead, also pushed to Shopify."
   }
 ];
