@@ -41,6 +41,9 @@ Plain-language log of what changed for the client, grouped by week. Client-facin
 **Draft Orders**
 - The Ready to Wear Size field in the Client Details popup now shows the client's self-reported Acuity size for reference next to it (or "Missing Value" if they never entered one) — matching Pipeline, Recap, and Appointments. What the field writes to didn't change.
 
+**Sample Tracker**
+- Clicking a client's name on a risk alert now opens her appointment details (room, sales associate, ready-to-wear size, notes, favorite styles, wedding info) plus a Favorite Samples section showing stock status for each of her favorite styles — read-only, same information already used to build the alert itself.
+
 ## Week of Aug 21, 2026
 
 **Pipeline**

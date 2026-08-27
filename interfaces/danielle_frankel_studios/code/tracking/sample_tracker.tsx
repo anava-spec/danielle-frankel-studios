@@ -110,6 +110,12 @@ const FIELD_IDS = {
     STATUS:           'fldZTkJdTBhmcchTb',
     SA_NAME:          'fldAopgXS7Zw42ZgV', // multipleLookupValues → SA name string
     TYPE:             'fldZO3rF3KOGxG0S5', // singleSelect — same field/table recap.tsx's isConsultation() reads
+    // Read-only client detail modal (2026-08-27) — same field IDs
+    // appointments.tsx uses for its own detail drawer header/body. Text-only
+    // reads (getCellValueAsString), no write path from this page.
+    ROOM_LINK:    'fldKVUlPm7Gq3EUF9', // multipleRecordLinks → Room — display name only
+    STUDIO_NAME:  'fldelULQNcaGnAv5K',
+    NOTES:        'fld3nCe9MAo4dKavc', // appointment-level "Appointment notes"
   },
   CLIENT: {
     FULL_NAME:        'fldB3Wyam01D3wR5Q',
@@ -121,6 +127,17 @@ const FIELD_IDS = {
     READY_TO_WEAR_SIZE_MANUAL: 'fldEEH4CK3Qqp0g0C', // number — raw manual entry, superseded by READY_TO_WEAR_SIZE above
     FAVORITE_STYLES:  'fldZzNR0g5VEJ5RmX', // multipleRecordLinks → DF Styles — same field the Champion Match automation watches
     CHAMPION_SAMPLES: 'fldEDcL6wGGmUt6ni', // multipleRecordLinks → Sample Log — written by the Champion Match automation
+    // Read-only client detail modal (2026-08-27) — same field IDs
+    // appointments.tsx's "First Visit" detail section reads.
+    EMAIL:            'fld5f3IVZoX0QZZ8R',
+    PHONE:            'fldZrxF4bR6QBUwVK',
+    WEDDING_DISPLAY:  'fldfDHXcCEbFHEX4a', // wedding_date_display formula — Formatted, falling back to If Not Set
+    STYLISTS:         'fld2jVE1qluvlhV7D', // "Preferred stylist"
+    NEXT_APPT:        'fldTe2cyBmicx9Ple',
+    APPT_RECORDS:     'fldYb8G67izm3qelZ', // "Previous appointments" text lookup
+    PERSONAL_NOTES:   'fldQiGCx5hRQ0Am1Z',
+    WEDDING_LOC:      'fldikRqj41XYiIDBk',
+    WEDDING_PLANNER:  'fldISwHPviwGQBHFJ',
   },
   DF_STYLES: {
     STYLE_NAME: 'fldEs3chQAeplPc1w', // singleLineText
@@ -1956,6 +1973,10 @@ function SampleTracker() {
   const [saFilter,       setSaFilter]       = useState<string[]>([]);
   const [alertTypeFilter, setAlertTypeFilter] = useState<string[]>([]);
   const [selectedSample, setSelectedSample] = useState<Record | null>(null);
+  // Issue Tracker #19 (2026-08-27) — client detail modal opened from a Risk
+  // Card's client name. Holds the RiskAlert, not just the client id, so the
+  // modal can reuse its already-computed styleMatches for Favorite Samples.
+  const [selectedDetailAlert, setSelectedDetailAlert] = useState<RiskAlert | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showAddSampleModal, setShowAddSampleModal] = useState(false);
 
@@ -2422,7 +2443,7 @@ function SampleTracker() {
                 </div>
               )
             ) : visibleAlerts.map(alert => (
-              <RiskCard key={alert.apptRecord.id} alert={alert} tok={tok} onSelectSample={setSelectedSample} />
+              <RiskCard key={alert.apptRecord.id} alert={alert} tok={tok} onSelectSample={setSelectedSample} onOpenClientDetail={setSelectedDetailAlert} />
             ))}
           </div>
         </div>
@@ -2446,14 +2467,101 @@ function SampleTracker() {
         <AddSampleModal base={base} sampleTable={sampleTable} onClose={() => setShowAddSampleModal(false)} tok={tok} />
       )}
 
+      {selectedDetailAlert && (
+        <ClientApptDetailModal
+          alert={selectedDetailAlert}
+          clientRecords={clientRecords}
+          appointmentsTable={apptTable ?? null}
+          clientsTable={clientTable ?? null}
+          tok={tok}
+          onSelectSample={setSelectedSample}
+          onClose={() => setSelectedDetailAlert(null)}
+        />
+      )}
+
       <FeedbackButton onClick={() => setShowFeedbackModal(true)} tok={tok} />
       {showFeedbackModal && <FeedbackModal base={base} onClose={() => setShowFeedbackModal(false)} tok={tok} />}
     </div>
   );
 }
 
+// Shared by RiskCard's expanded panel and ClientApptDetailModal's "Favorite
+// Samples" section (2026-08-27) — same match computation (exact/close/no
+// stock, in-studio tiebreak), just two places that need to render it.
+function StyleCoverageList({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; onSelectSample: (r: Record) => void }) {
+  return (
+    <div>
+      {alert.missingData === 'no-styles' ? (
+        <div style={{ fontSize: '12px', color: tok.badge_trunk_text, padding: '6px 0' }}>
+          No requested styles on file for this appointment. Update the client's favorite styles in DF Appointments – Acuity to enable evaluation.
+        </div>
+      ) : alert.missingData === 'no-size' && alert.styleMatches.length === 0 ? (
+        <div style={{ fontSize: '12px', color: tok.badge_trunk_text, padding: '6px 0' }}>
+          Client size is missing. Add the client's ready-to-wear size in DF Clients to enable size-distance matching.
+        </div>
+      ) : null}
+      {alert.styleMatches.map(m => {
+        // Exact match must remain visible even when close alternatives also
+        // exist (rule 3). Alternates never claim the exact requested size
+        // is available (rule 7) — labeled "Close size", not "In Studio".
+        const alternates = m.matchState === 'exact' ? m.closeMatches : (m.matchState === 'close' ? m.closeMatches.slice(1) : []);
+        const rowSample = m.bestSample ?? m.anySample;
+        const isClickable = !!rowSample;
+        const badge = m.matchState === 'exact'
+          ? { text: 'Exact match', color: tok.badge_in_studio_text, bg: tok.badge_in_studio, border: 'transparent' }
+          : m.matchState === 'close'
+            ? { text: 'Close size', color: tok.badge_trunk_text, bg: tok.badge_trunk, border: 'transparent' }
+            : { text: 'No stock', color: tok.risk_text, bg: tok.risk_bg, border: tok.risk_border };
+        return (
+          <div key={m.styleId} style={{ padding: '5px 0', borderBottom: `1px solid ${tok.border}` }}>
+            <div
+              onClick={() => { if (rowSample) onSelectSample(rowSample); }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isClickable ? 'pointer' : 'default' }}
+              onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+            >
+              <span style={{ fontSize: '12px', color: tok.text_primary, flex: 1, marginRight: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {m.style}{rowSample ? ` — ${rowSample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}` : ''}
+              </span>
+              <span
+                style={{
+                  color: badge.color, background: badge.bg, padding: '1px 7px', borderRadius: '999px',
+                  fontSize: '11px', fontWeight: 600, flexShrink: 0,
+                  border: badge.border !== 'transparent' ? `1px solid ${badge.border}` : 'none',
+                }}
+              >
+                {badge.text}
+              </span>
+            </div>
+            {alternates.length > 0 && (
+              <div style={{ marginTop: '3px', paddingLeft: '10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {alternates.map(alt => (
+                  <div
+                    key={alt.id}
+                    onClick={() => onSelectSample(alt)}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                  >
+                    <span style={{ fontSize: '11px', color: tok.text_secondary }}>
+                      Alt size {alt.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}
+                    </span>
+                    <span style={{ color: tok.badge_trunk_text, background: tok.badge_trunk, padding: '1px 6px', borderRadius: '999px', fontSize: '10px', fontWeight: 600 }}>
+                      Close size
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── RISK CARD ────────────────────────────────────────────────────────────────
-function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; onSelectSample: (r: Record) => void }) {
+function RiskCard({ alert, tok, onSelectSample, onOpenClientDetail }: { alert: RiskAlert; tok: Tok; onSelectSample: (r: Record) => void; onOpenClientDetail: (alert: RiskAlert) => void }) {
   const [expanded, setExpanded] = useState(false);
   const urgency = alert.daysUntil <= 2 ? 'high' : alert.daysUntil <= 4 ? 'medium' : 'low';
   const c = {
@@ -2471,7 +2579,13 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
       >
         <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.dot, flexShrink: 0, marginTop: '5px' }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '13px', color: tok.text_primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div
+            onClick={e => { e.stopPropagation(); onOpenClientDetail(alert); }}
+            title="Open appointment details"
+            style={{ fontWeight: 700, fontSize: '13px', color: tok.text_primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'transparent', textUnderlineOffset: '2px' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.textDecorationColor = tok.text_secondary; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.textDecorationColor = 'transparent'; }}
+          >
             {alert.clientName}
           </div>
           <div style={{ fontSize: '11px', color: tok.text_secondary, marginTop: '1px' }}>
@@ -2504,73 +2618,152 @@ function RiskCard({ alert, tok, onSelectSample }: { alert: RiskAlert; tok: Tok; 
           <div style={{ fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.05em', marginBottom: '5px' }}>
             Style Coverage
           </div>
-          {alert.missingData === 'no-styles' ? (
-            <div style={{ fontSize: '12px', color: tok.badge_trunk_text, padding: '6px 0' }}>
-              No requested styles on file for this appointment. Update the client's favorite styles in DF Appointments – Acuity to enable evaluation.
-            </div>
-          ) : alert.missingData === 'no-size' && alert.styleMatches.length === 0 ? (
-            <div style={{ fontSize: '12px', color: tok.badge_trunk_text, padding: '6px 0' }}>
-              Client size is missing. Add the client's ready-to-wear size in DF Clients to enable size-distance matching.
-            </div>
-          ) : null}
-          {alert.styleMatches.map(m => {
-            // Exact match must remain visible even when close alternatives also
-            // exist (rule 3). Alternates never claim the exact requested size
-            // is available (rule 7) — labeled "Close size", not "In Studio".
-            const alternates = m.matchState === 'exact' ? m.closeMatches : (m.matchState === 'close' ? m.closeMatches.slice(1) : []);
-            const rowSample = m.bestSample ?? m.anySample;
-            const isClickable = !!rowSample;
-            const badge = m.matchState === 'exact'
-              ? { text: 'Exact match', color: tok.badge_in_studio_text, bg: tok.badge_in_studio, border: 'transparent' }
-              : m.matchState === 'close'
-                ? { text: 'Close size', color: tok.badge_trunk_text, bg: tok.badge_trunk, border: 'transparent' }
-                : { text: 'No stock', color: tok.risk_text, bg: tok.risk_bg, border: tok.risk_border };
-            return (
-              <div key={m.styleId} style={{ padding: '5px 0', borderBottom: `1px solid ${tok.border}` }}>
-                <div
-                  onClick={() => { if (rowSample) onSelectSample(rowSample); }}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isClickable ? 'pointer' : 'default' }}
-                  onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-                >
-                  <span style={{ fontSize: '12px', color: tok.text_primary, flex: 1, marginRight: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.style}{rowSample ? ` — ${rowSample.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}` : ''}
-                  </span>
-                  <span
-                    style={{
-                      color: badge.color, background: badge.bg, padding: '1px 7px', borderRadius: '999px',
-                      fontSize: '11px', fontWeight: 600, flexShrink: 0,
-                      border: badge.border !== 'transparent' ? `1px solid ${badge.border}` : 'none',
-                    }}
-                  >
-                    {badge.text}
-                  </span>
-                </div>
-                {alternates.length > 0 && (
-                  <div style={{ marginTop: '3px', paddingLeft: '10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {alternates.map(alt => (
-                      <div
-                        key={alt.id}
-                        onClick={() => onSelectSample(alt)}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = tok.surface_alt; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-                      >
-                        <span style={{ fontSize: '11px', color: tok.text_secondary }}>
-                          Alt size {alt.getCellValueAsString(FIELD_IDS.SAMPLE.SIZE) || '—'}
-                        </span>
-                        <span style={{ color: tok.badge_trunk_text, background: tok.badge_trunk, padding: '1px 6px', borderRadius: '999px', fontSize: '10px', fontWeight: 600 }}>
-                          Close size
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <StyleCoverageList alert={alert} tok={tok} onSelectSample={onSelectSample} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── CLIENT APPOINTMENT DETAIL MODAL ───────────────────────────────────────────
+// Read-only port of appointments.tsx's DetailDrawer (Issue Tracker #19,
+// 2026-08-27) — opened by clicking a client's name on a Risk Card. Scoped
+// down on purpose: every alert here is already a Consultation appointment
+// (isConsultation() gate above), so this only needs the "First Visit"
+// section of that drawer, and none of Check In/Clear/Pick Up Orders (those
+// are appointment-day actions that don't belong on this page, and porting
+// them would also require declaring Orders-Shopify/order_items etc. as
+// accessible tables on this interface page — the same manual Airtable UI
+// work Axel was trying to avoid). Per-file convention: no shared imports
+// with appointments.tsx, so labels/field IDs are duplicated here on purpose
+// — if appointments.tsx's First Visit section changes, mirror it here too.
+function ClientApptDetailModal({
+  alert, clientRecords, appointmentsTable, clientsTable, tok, onSelectSample, onClose,
+}: {
+  alert: RiskAlert;
+  clientRecords: Record[] | null;
+  appointmentsTable: Table | null;
+  clientsTable: Table | null;
+  tok: Tok;
+  onSelectSample: (r: Record) => void;
+  onClose: () => void;
+}) {
+  const appt = alert.apptRecord;
+  const clientLinked = appt.getCellValue(FIELD_IDS.APPT.CLIENT) as Array<{ id: string; name: string }> | null;
+  const clientId = clientLinked?.[0]?.id ?? null;
+  const clientRec = clientId ? (clientRecords ?? []).find(c => c.id === clientId) ?? null : null;
+
+  const displayName = clientRec
+    ? (clientRec.getCellValueAsString(FIELD_IDS.CLIENT.FULL_NAME) || clientLinked?.[0]?.name || alert.clientName)
+    : alert.clientName;
+
+  const get = (table: Table | null, fieldId: string, rec: Record | null) => {
+    if (!table || !rec) return null;
+    const f = table.getFieldIfExists(fieldId);
+    return f ? rec.getCellValueAsString(f) : null;
+  };
+
+  const roomValue = get(appointmentsTable, FIELD_IDS.APPT.ROOM_LINK, appt);
+  const studioName = get(appointmentsTable, FIELD_IDS.APPT.STUDIO_NAME, appt);
+  const saValue = get(appointmentsTable, FIELD_IDS.APPT.SA_NAME, appt);
+  const notesValue = get(appointmentsTable, FIELD_IDS.APPT.NOTES, appt);
+  const phone = get(clientsTable, FIELD_IDS.CLIENT.PHONE, clientRec);
+  const email = get(clientsTable, FIELD_IDS.CLIENT.EMAIL, clientRec);
+  const weddingDisplay = get(clientsTable, FIELD_IDS.CLIENT.WEDDING_DISPLAY, clientRec);
+  const stylist = get(clientsTable, FIELD_IDS.CLIENT.STYLISTS, clientRec);
+  const nextAppt = get(clientsTable, FIELD_IDS.CLIENT.NEXT_APPT, clientRec);
+  const prevAppts = get(clientsTable, FIELD_IDS.CLIENT.APPT_RECORDS, clientRec);
+  const favStylesText = get(clientsTable, FIELD_IDS.CLIENT.FAVORITE_STYLES, clientRec);
+  const personalNotes = get(clientsTable, FIELD_IDS.CLIENT.PERSONAL_NOTES, clientRec);
+  const weddingLoc = get(clientsTable, FIELD_IDS.CLIENT.WEDDING_LOC, clientRec);
+  const weddingPlanner = get(clientsTable, FIELD_IDS.CLIENT.WEDDING_PLANNER, clientRec);
+  const rtwRaw = get(clientsTable, FIELD_IDS.CLIENT.READY_TO_WEAR_SIZE, clientRec);
+
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: '11px', fontWeight: 700, color: tok.text_muted, letterSpacing: '0.07em', marginBottom: '4px',
+  };
+  const valueStyle: React.CSSProperties = { fontSize: '13px', color: tok.text_primary };
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div>
+      <div style={sectionLabelStyle}>{label}</div>
+      <div style={valueStyle}>{children ?? '—'}</div>
+    </div>
+  );
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 45,
+        background: tok.overlay, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: tok.surface, border: `1px solid ${tok.border}`, borderRadius: '14px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)', width: '620px', maxWidth: 'calc(100vw - 32px)',
+          maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div style={{ padding: '16px 18px 14px', borderBottom: `1px solid ${tok.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '16px', fontWeight: 700, color: tok.text_primary }}>{displayName}</span>
+            {studioName && <span style={{ fontSize: '13px', color: tok.text_secondary }}>{studioName}</span>}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: '4px' }}>
+            {phone && <a href={`tel:${phone}`} style={{ fontSize: '12.5px', color: tok.accent, textDecoration: 'none' }}>{phone}</a>}
+            {email && <a href={`mailto:${email}`} style={{ fontSize: '12.5px', color: tok.accent, textDecoration: 'none' }}>{email}</a>}
+            {weddingDisplay && <span style={{ fontSize: '12.5px', color: tok.text_secondary }}>{weddingDisplay}</span>}
+            {saValue && <span style={{ fontSize: '12.5px', color: tok.text_secondary }}>SA: {saValue}</span>}
+          </div>
+        </div>
+
+        <div style={{ padding: '18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div>
+            <div style={{ ...sectionLabelStyle, marginBottom: '10px' }}>Appointment details</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
+              <Row label="Date">{alert.apptDate}</Row>
+              <Row label="Room">{roomValue}</Row>
+              <Row label="Sales associate">{saValue}</Row>
+              <Row label="Ready to wear size">
+                {rtwRaw ? rtwRaw : <span style={{ color: tok.text_muted }}>Missing Value</span>}
+              </Row>
+            </div>
+            {notesValue && (
+              <div style={{ marginTop: '14px' }}>
+                <div style={sectionLabelStyle}>Appointment notes</div>
+                <div style={{ ...valueStyle, whiteSpace: 'pre-wrap' }}>{notesValue}</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <Row label="Preferred stylist">{stylist}</Row>
+            <Row label="Next appointment">{nextAppt}</Row>
+            <Row label="Previous appointments">{prevAppts}</Row>
+            {favStylesText && <Row label="Favorite styles (Acuity)">{favStylesText}</Row>}
+            {personalNotes && <Row label="Personal style notes">{personalNotes}</Row>}
+            {weddingLoc && <Row label="Wedding location">{weddingLoc}</Row>}
+            {weddingPlanner && <Row label="Wedding planner">{weddingPlanner}</Row>}
+          </div>
+
+          <div>
+            <div style={{ ...sectionLabelStyle, marginBottom: '6px' }}>Favorite Samples</div>
+            <StyleCoverageList alert={alert} tok={tok} onSelectSample={onSelectSample} />
+          </div>
+        </div>
+
+        <div style={{ padding: '12px 18px', borderTop: `1px solid ${tok.border}`, display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: '8px 14px', fontSize: '13px', borderRadius: '8px', border: 'none', background: 'transparent', color: tok.text_secondary, cursor: 'pointer' }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
