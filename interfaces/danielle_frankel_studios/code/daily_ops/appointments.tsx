@@ -113,6 +113,8 @@ const FIELD_IDS = {
   CLIENT_FAV_STYLES_ACUITY: 'fldZzNR0g5VEJ5RmX',
   CLIENT_PERSONAL_NOTES: 'fldQiGCx5hRQ0Am1Z',
   CLIENT_WEDDING_LOC: 'fldikRqj41XYiIDBk',
+  // Issue #54 — DF Clients -> Orders - Shopify link, same field fulfillment.tsx reads.
+  CLIENT_SHOPIFY_ORDERS: 'fldWSGqQW9czYdams',
   CLIENT_WEDDING_PLANNER: 'fldISwHPviwGQBHFJ',
   CLIENT_MEASUREMENTS: 'fldcWwbKOc9nkgzzV',
   CLIENT_APPT_PHOTOS: 'fldWti8XzHbnGcjz9',
@@ -436,6 +438,21 @@ const TABLE_IDS = {
   // source field's option colors here — so the color has to come from this
   // table's own singleSelect field instead (FIELD_IDS.APPT_TYPE_CHOICE).
   APPOINTMENT_TYPES: 'tblhU6FD6innd2VUZ',
+  // Issue #54 — Pick Up appointments show the client's orders. Same table
+  // fulfillment.tsx/pipeline.tsx already read from; read-only here for now.
+  ORDERS_SHOPIFY: 'tblHFGbijtvZcRPkE',
+} as const;
+
+// Issue #54 — mirrors fulfillment.tsx's ORDER_FIELD_IDS. Read-only usage
+// here (no writes yet) — see docs/appointments_pickup_orders_plan.md for
+// why the write/close/Slack side is still pending Cobalt confirmation.
+const ORDER_FIELD_IDS = {
+  SHOPIFY_ORDER_NUMBER: 'fldWiKEXjId411DQc',
+  PAYMENT_STATUS:       'fldFI488S8GPaVgCt',
+  DELIVERY_METHOD:      'fldFATO0oJUQjPEzr', // 'Pick Up in Store' / 'Ship'
+  PICKED_STATUS:        'fldqhI6Aq9zIhFsFW', // None / Partial / Full
+  TOTAL:                'fldkIMTeKdneKABS4',
+  ORDER_STATUS:         'fldYq3JxRSWQUUHm6', // Open / Closed / Cancelled
 } as const;
 
 const VIEW_IDS = {
@@ -2334,6 +2351,99 @@ interface DetailDrawerProps {
   altLeadLinkField: Field | null;
   clientStageById: Map<string, string>;
   stageColorByName: Map<string, string>;
+  ordersTable: Table | undefined;
+  orderRecords: Record[] | null;
+}
+
+// Issue #54 — read-only Orders table for Pick Up appointments. Layout
+// mirrors fulfillment.tsx's Shopify Orders inline table (border/rounded
+// container, same column set minus Adjusted Total, which this page has no
+// use for). No write actions yet — the Order Status dropdown + confirm
+// flow + Slack notification are pending Cobalt's answers, see
+// docs/appointments_pickup_orders_plan.md. Sort: pending pickup first,
+// already-picked-up next, Ship orders last (informational only either way).
+function PickUpOrdersTable({
+  clientsTable,
+  linkedClientRecord,
+  orderRecords,
+}: {
+  clientsTable: Table;
+  linkedClientRecord: Record;
+  orderRecords: Record[] | null;
+}): React.ReactElement {
+  const clientOrdersField = clientsTable.getFieldIfExists(FIELD_IDS.CLIENT_SHOPIFY_ORDERS);
+
+  const clientOrders = useMemo(() => {
+    if (!orderRecords || !clientOrdersField) return [];
+    const linked = linkedClientRecord.getCellValue(clientOrdersField) as Array<{ id: string }> | null;
+    const linkedIds = new Set((linked ?? []).map((l) => l.id));
+    return orderRecords.filter((o) => linkedIds.has(o.id));
+  }, [orderRecords, clientOrdersField, linkedClientRecord]);
+
+  const rank = (o: Record): number => {
+    const delivery = o.getCellValueAsString(ORDER_FIELD_IDS.DELIVERY_METHOD);
+    const picked = o.getCellValueAsString(ORDER_FIELD_IDS.PICKED_STATUS);
+    if (delivery === 'Ship') return 2;
+    return picked === 'Full' ? 1 : 0; // pending pickup, then already picked up
+  };
+  const sortedOrders = [...clientOrders].sort((a, b) => rank(a) - rank(b));
+
+  const payVariant = (pay: string): string => {
+    if (pay === 'Paid') return 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
+    if (pay.includes('Partial')) return 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800';
+    return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
+  };
+  const statusVariant = (s: string): string => {
+    if (s === 'Closed') return 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800';
+    if (s === 'Cancelled') return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800';
+    return 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10';
+  };
+  const pillCls = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap';
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide font-medium">Orders</span>
+        {sortedOrders.length > 0 && <span className="text-xs text-gray-400 dark:text-gray-500">({sortedOrders.length})</span>}
+      </div>
+      <div className="rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
+              {['Order #', 'Payment', 'Delivery', 'Readiness', 'Total', 'Order Status'].map((h) => (
+                <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedOrders.length === 0 ? (
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-xs text-gray-400 dark:text-gray-500">None</td></tr>
+            ) : sortedOrders.map((o) => {
+              const num = o.getCellValueAsString(ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+              const pay = o.getCellValueAsString(ORDER_FIELD_IDS.PAYMENT_STATUS);
+              const delivery = o.getCellValueAsString(ORDER_FIELD_IDS.DELIVERY_METHOD);
+              const readiness = o.getCellValueAsString(ORDER_FIELD_IDS.PICKED_STATUS);
+              const total = o.getCellValueAsString(ORDER_FIELD_IDS.TOTAL);
+              const orderStatus = o.getCellValueAsString(ORDER_FIELD_IDS.ORDER_STATUS);
+              return (
+                <tr key={o.id} className="border-b border-gray-100 dark:border-white/5 last:border-0">
+                  <td className="px-3 py-2.5 font-medium text-gray-800 dark:text-[#F3EFE6]">{num ? `#${num}` : '—'}</td>
+                  <td className="px-3 py-2.5"><span className={`${pillCls} ${payVariant(pay)}`}>{pay || '—'}</span></td>
+                  <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{delivery || '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{readiness || '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">{total || '—'}</td>
+                  <td className="px-3 py-2.5"><span className={`${pillCls} ${statusVariant(orderStatus)}`}>{orderStatus || '—'}</span></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-xs text-gray-400 dark:text-gray-500 italic mt-2">
+        Marking an order as recogida/enviada from here is coming soon — pending confirmation with Cobalt (see docs/appointments_pickup_orders_plan.md).
+      </div>
+    </div>
+  );
 }
 
 function DetailDrawer({
@@ -2354,6 +2464,8 @@ function DetailDrawer({
   altLeadLinkField,
   clientStageById,
   stageColorByName,
+  ordersTable,
+  orderRecords,
 }: DetailDrawerProps) {
   const apptTypeField = appointmentsTable.getFieldIfExists(FIELD_IDS.APPT_TYPE);
   const apptTimeField = appointmentsTable.getFieldIfExists(FIELD_IDS.APPT_TIME);
@@ -2504,6 +2616,11 @@ function DetailDrawer({
   const apptNameDetail = apptNameFieldDetail ? record.getCellValueAsString(apptNameFieldDetail) : '';
   const isFitPickUp = apptNameDetail?.includes('Fit Assessment & Pick Up') || apptNameDetail?.includes('Fit Assessment') || apptNameDetail?.includes('Pick Up');
   const isAlterations = apptNameDetail?.includes('Alterations') && !isFitPickUp;
+  // Issue #54 — the Orders table is scoped to the same condition already
+  // gating the Pick Up button (category, not the broader isFitPickUp match,
+  // which also covers plain Fit Assessment appointments with no pickup).
+  const apptCategory = getAppointmentCategory(typeLabel);
+  const isPickUpAppt = apptCategory === 'pick-up-only' || apptCategory === 'combined-pick-up';
 
   // Determine if we should show Alterations Lead
   const clientStage = linkedClientId ? clientStageById.get(linkedClientId) : null;
@@ -2812,6 +2929,14 @@ function DetailDrawer({
           </div>
         )}
 
+        {isPickUpAppt && linkedClientRecord && (
+          <PickUpOrdersTable
+            clientsTable={clientsTable}
+            linkedClientRecord={linkedClientRecord}
+            orderRecords={orderRecords}
+          />
+        )}
+
         {isAlterations && (
           <div className="mt-6 space-y-5">
             <DetailRow label="Alterations notes">
@@ -2873,6 +2998,13 @@ function AppointmentsApp(): React.ReactElement {
   const staffTable = base.getTableByIdIfExists(TABLE_IDS.STAFF) ?? undefined;
   const studiosTable = base.getTableByIdIfExists(TABLE_IDS.STUDIOS) ?? undefined;
   const appointmentTypesTable = base.getTableByIdIfExists(TABLE_IDS.APPOINTMENT_TYPES) ?? undefined;
+  // Issue #54 — Orders table for the Pick Up appointment detail modal.
+  // Read-only for now; if this table isn't declared accessible on this
+  // interface page, getTableByIdIfExists still returns it (unlike a direct
+  // base.getTable() crash), but useRecords below may then throw — same
+  // failure class as the earlier order_items/Pipeline issue. If orders
+  // never load, check the page's declared tables in the Airtable UI first.
+  const ordersTable = base.getTableByIdIfExists(TABLE_IDS.ORDERS_SHOPIFY) ?? undefined;
   const appointmentFieldsToLoad = useMemo(
     () => getExistingFields(appointmentsTable, APPOINTMENT_RECORD_FIELDS),
     [appointmentsTable]
@@ -2884,6 +3016,18 @@ function AppointmentsApp(): React.ReactElement {
   const roomFieldsToLoad = useMemo(
     () => getExistingFields(roomsTable, ROOM_RECORD_FIELDS),
     [roomsTable]
+  );
+
+  const orderFieldsToLoad = useMemo(
+    () => getExistingFields(ordersTable, [
+      ORDER_FIELD_IDS.SHOPIFY_ORDER_NUMBER,
+      ORDER_FIELD_IDS.PAYMENT_STATUS,
+      ORDER_FIELD_IDS.DELIVERY_METHOD,
+      ORDER_FIELD_IDS.PICKED_STATUS,
+      ORDER_FIELD_IDS.TOTAL,
+      ORDER_FIELD_IDS.ORDER_STATUS,
+    ]),
+    [ordersTable]
   );
 
   const staffFieldsToLoad = useMemo(() => {
@@ -2904,6 +3048,10 @@ function AppointmentsApp(): React.ReactElement {
   });
   const roomRecords = useRecords(roomsTable ?? null, {
     fields: roomFieldsToLoad,
+  });
+
+  const orderRecords = useRecords(ordersTable ?? null, {
+    fields: orderFieldsToLoad,
   });
 
   const saStaffRecords = useRecords(staffTable ?? null, {
@@ -3745,6 +3893,8 @@ function AppointmentsApp(): React.ReactElement {
               altLeadLinkField={altLeadLinkField}
               clientStageById={clientStageById}
               stageColorByName={stageColorByName}
+              ordersTable={ordersTable}
+              orderRecords={orderRecords}
             />
           </div>
         </div>
