@@ -812,8 +812,8 @@ const FEEDBACK_ROWS = [
     "Source": "Slack – #danielle-frankel-development",
     "Singular Dev": null,
     "Solved Date": null,
-    "Diagnostic": null,
-    "Solution": "Clarified in real time by Axel. Label/UI could be made clearer but no functional change was requested.",
+    "Diagnostic": "The \"Attention\" (red) indicator on a client's Fulfillment record is driven by the tax_confirmed field being false — a manual checkbox, since Shopify's API doesn't expose per-order tax-confirmation status for us to pull automatically. Julia's question was about what the label meant, not a functional defect.",
+    "Solution": "Clarified in real time on the 8/21 call — no code change needed, the flag is working as designed (manual, permanent-lock once set true, per fulfillment.README.md). Label wording could be made more explicit (e.g. \"Tax not confirmed\" instead of \"Attention\") in a future pass, but Julia didn't request that change.",
     "Story": null,
     "Singular Story": null,
     "Comments/Next Steps": null
@@ -829,8 +829,8 @@ const FEEDBACK_ROWS = [
     "Source": "Read AI – Stand Up",
     "Singular Dev": null,
     "Solved Date": null,
-    "Diagnostic": null,
-    "Solution": "Draft Orders interface (shipped Jul 9–11 week per CHANGELOG.md) is a manual, form-based creation flow — matches Julia’s preference.",
+    "Diagnostic": "Julia was asked whether Shopify draft-order creation should be automatic (a background automation) or user-triggered from the interface; she confirmed she wants an explicit action, not something that fires on its own.",
+    "Solution": "The Draft Orders interface already works this way — draft order creation only happens when a Sales Associate clicks \"Save Draft\" in the interface; there's no background automation creating draft orders without a user action. Shipped week of Jul 9—11 per CHANGELOG.md, matches Julia's stated preference exactly.",
     "Story": null,
     "Singular Story": null,
     "Comments/Next Steps": null
@@ -846,8 +846,8 @@ const FEEDBACK_ROWS = [
     "Source": "Read AI – Stand Up",
     "Singular Dev": null,
     "Solved Date": null,
-    "Diagnostic": null,
-    "Solution": "Shipped in the Alterations rebuild and Calligraphy Cards work, week of Jul 22–27 (CHANGELOG.md): “Gown/Garment → renamed ‘Item Sold.’”",
+    "Diagnostic": "The Alterations list's client-item column had a generic/unclear header, and Julia asked for it to read \"Item Sold\" so it accurately reflects what it shows (every item purchased on the order, shown unfiltered).",
+    "Solution": "Column header renamed to \"Item Sold\" in the Alterations interface. Live in Sandbox and Production (Week of Jul 28–29 per CHANGELOG.md).",
     "Story": null,
     "Singular Story": null,
     "Comments/Next Steps": null
@@ -859,12 +859,12 @@ const FEEDBACK_ROWS = [
     "Report Date": "2026-07-24",
     "Owner": "Singular",
     "Priority": "4. Low",
-    "Status": "Done",
+    "Status": "Open",
     "Source": "Read AI – DFS - Cobalt X Singular",
     "Singular Dev": null,
     "Solved Date": null,
-    "Diagnostic": null,
-    "Solution": "The Recap Doc feature shipped (multi-page printing, spacing/photos/fonts matching approved design — CHANGELOG.md Week of Aug 3). The broader claim that all Airtable data mirrors source systems exactly is still an open, recurring concern (see today’s “carbon copy” item).",
+    "Diagnostic": "Julia's original ask combined two things: (1) Airtable stays the single source of truth for recap/customization data, and (2) a templated, on-brand document (PDF/link) is generated and stored there for sellers. Part 1 already exists and the Recap Doc PDF pipeline already ships (Week of Aug 3), but the fuller ask resurfaced on the 8/21 call: Cobalt has since built a separate client-facing website (Netlify) that handles the client's proposal review/sign-off, and syncing + storing that version (signature, approval, proposal link) back into Airtable is new work that hasn't been built yet.",
+    "Solution": "Not yet implemented — reopened from \"Done,\" since the original ask is broader than what shipped. Still needed: a new table to store everything Cobalt's sync sends back (signature, comments/approval status, proposal link), plus a one-click \"Generate/Sync Recap\" action that pushes data to the Cobalt-built site and pulls the resulting proposal link back into Airtable. Axel is drafting this as a new story per the 8/21 call; needs coordination with Cobalt on exact field mapping before it can be built.",
     "Story": null,
     "Singular Story": null,
     "Comments/Next Steps": null
@@ -880,8 +880,8 @@ const FEEDBACK_ROWS = [
     "Source": "Read AI – Stand Up",
     "Singular Dev": null,
     "Solved Date": null,
-    "Diagnostic": null,
-    "Solution": "Dark-mode fixes shipped week of Jul 22–27 (CHANGELOG.md): Customizations search box, suggestions dropdown, Additional Details, and shared text-input style all had no background color set.",
+    "Diagnostic": "Julia saw the interface unexpectedly rendered in dark mode. On the 8/21 call she found the actual cause herself: her own computer's OS-level appearance setting was set to dark mode. Axel confirmed this was a known quirk — despite shipping fixes multiple times to make the interface's theme independent of the viewer's system preference, in practice it still appeared to inherit the OS-level setting.",
+    "Solution": "No code fix was confirmed as necessary on the call — Julia resolved her own symptom by turning off dark mode at the OS level, and confirmed it live (\"That's fine. It's tricks though.\"). Status: Done per Julia's confirmation on the 8/21 call; flagged that the underlying system-theme-detection behavior may still be slightly inconsistent and worth another look if it recurs for another user.",
     "Story": null,
     "Singular Story": null,
     "Comments/Next Steps": null
@@ -897,8 +897,8 @@ const FEEDBACK_ROWS = [
     "Source": "Airtable – feedback table",
     "Singular Dev": null,
     "Solved Date": null,
-    "Diagnostic": null,
-    "Solution": "Recorded in the Airtable feedback table, paused pending revision with Margo; no solution logged yet.",
+    "Diagnostic": "Rush Fee, M2M, and Alterations checkboxes were part of the Customizations pricing UI, but their pricing logic hadn't been finalized with Margo yet, so leaving them in the customization flow risked showing Sales Associates incorrect charges.",
+    "Solution": "Removed the Rush Fee, M2M, and Alterations checkboxes from the Customizations UI entirely — those now live only on the Draft Order, not the Customization Request, until pricing is revised with Margo (per Julia's Jul 20 demo feedback).",
     "Story": null,
     "Singular Story": null,
     "Comments/Next Steps": null
@@ -1207,7 +1207,7 @@ const FEEDBACK_ROWS = [
     "Solution": null,
     "Story": null,
     "Singular Story": null,
-    "Comments/Next Steps": null
+    "Comments/Next Steps": "Directly tied to Issue #54 (Pick Up Orders table in Appointments, docs/appointments_pickup_orders_plan.md) — per Axel's 8/27 note, both features are meant to deploy together: reception marking individual orders picked up / switching Pick Up→Ship from the appointment detail page, and this \"No pickup\" outcome for when the client attends but the item still needs work."
   },
   {
     "#": 60.0,
