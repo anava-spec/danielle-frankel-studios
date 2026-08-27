@@ -1590,7 +1590,7 @@ const IDS_ROWS = [
     "Comments": null
   },
   {
-    "Status": "3. In Progress",
+    "Status": "4. Done",
     "Priority": "2. Mid",
     "Item to discuss": "Singular team to add this Wedding Date Source to the appropriate view or interface where the staff manually enters the wedding date.",
     "Next Step": "- Axel to add the field in Pipeline, Appointments, and Recap",
@@ -1601,7 +1601,7 @@ const IDS_ROWS = [
     "Comments": null
   },
   {
-    "Status": "1. Backlog",
+    "Status": "4. Done",
     "Priority": "2. Mid",
     "Item to discuss": "Confirm how the approval and notification with the Calligrapher will be handled",
     "Next Step": null,
@@ -1612,7 +1612,7 @@ const IDS_ROWS = [
     "Comments": null
   },
   {
-    "Status": "1. Backlog",
+    "Status": "4. Done",
     "Priority": "1. High",
     "Item to discuss": "Provide Alonso creator-level access to Airtable",
     "Next Step": null,
@@ -1623,7 +1623,7 @@ const IDS_ROWS = [
     "Comments": null
   },
   {
-    "Status": "1. Backlog",
+    "Status": "4. Done",
     "Priority": "1. High",
     "Item to discuss": "Coordinate next steps regarding latest Recap Feedback Doc",
     "Next Step": null,
@@ -1634,7 +1634,7 @@ const IDS_ROWS = [
     "Comments": null
   },
   {
-    "Status": "3. In Progress",
+    "Status": "4. Done",
     "Priority": "1. High",
     "Item to discuss": "Draft Order creation in Shopify from Airtable: finish script and test it",
     "Next Step": null,
