@@ -583,6 +583,11 @@ const CLIENT_RECORD_FIELDS = [
   FIELD_IDS.CLIENT_IS_RUSH,
   FIELD_IDS.CLIENT_SA_LINK,
   FIELD_IDS.CLIENT_FOLLOW_UP_SENT,
+  // Issue #54 — PickUpOrdersTable reads this to find a client's orders, but
+  // it was never added to the client useRecords field restriction, so
+  // getCellValue() on it always came back empty and the Orders table
+  // rendered with "None" for every client regardless of real order data.
+  FIELD_IDS.CLIENT_SHOPIFY_ORDERS,
 ] as const;
 
 const ROOM_RECORD_FIELDS = [
@@ -3395,7 +3400,12 @@ function DetailDrawer({
   // Issue #54 — the Orders table is scoped to the same condition already
   // gating the Pick Up button (category, not the broader isFitPickUp match,
   // which also covers plain Fit Assessment appointments with no pickup).
-  const apptCategory = getAppointmentCategory(typeLabel);
+  // Reads apptNameDetail (FIELD_IDS.APPT_NAME) — the authoritative type
+  // field isFitPickUp/isAlterations above already use — not `typeLabel`,
+  // which comes from the separate, less-reliable FIELD_IDS.APPT_TYPE and
+  // was silently returning 'standard' for genuine Pick Up appointments,
+  // hiding the Orders table entirely.
+  const apptCategory = getAppointmentCategory(apptNameDetail);
   const isPickUpAppt = apptCategory === 'pick-up-only' || apptCategory === 'combined-pick-up';
 
   // Determine if we should show Alterations Lead
