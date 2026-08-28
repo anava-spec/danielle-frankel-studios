@@ -1491,6 +1491,7 @@ const IDS_ROWS = [
     "Next Step": "- Axel: delivered the flow diagram. \n- Nadiia/Rob: confirm which field will carry the Shopify Draft Order ID back into Airtable, and Miguel's open question on whether \"Orders - Shopify\" can carry an \"order type\" flag to identify draft-order origin.",
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "nadiia@cobaltcommerce.com rob@cobaltcommerce.com",
     "Comments": null
@@ -1502,6 +1503,7 @@ const IDS_ROWS = [
     "Next Step": "- Axel needs Shopify access to model the data structure\n- Nadiia to share the final endpoint + security header\n- Miguel asked whether \"Orders - Shopify\" needs an \"order type\" flag to identify draft-order origin.",
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "nadiia@cobaltcommerce.com rob@cobaltcommerce.com",
     "Comments": "Trigger design mostly finalized. It will be a manual button, only styles go into the draft order, customized styles will update the \"style - customized\" price in Shopify. Nadiia has already built an initial endpoint."
@@ -1513,6 +1515,7 @@ const IDS_ROWS = [
     "Next Step": null,
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "julia.shao.collins@daniellefrankelstudio.com",
     "Comments": "Same conceptual thread, or fully separate processes that just share a name?"
@@ -1524,6 +1527,7 @@ const IDS_ROWS = [
     "Next Step": "- Julia: decided to show all purchased items unfiltered.\n- Axel: rename the column header to \"Item Sold\" and implement the logic change in the alterations interface.",
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "julia.shao.collins@daniellefrankelstudio.com",
     "Comments": "No attribute currently marks which garment is in alterations \nShould we show everything purchased (unfiltered), or build a way to flag the specific garment?"
@@ -1535,6 +1539,7 @@ const IDS_ROWS = [
     "Next Step": "- Nadiia: implement a fallback — if Wedding Date (Acuity) is empty, pull from Apparel Magic's Event Date.",
     "Reported Date": null,
     "From": "julia.shao.collins@daniellefrankelstudio.com",
+    "To": null,
     "Deadline": null,
     "Owner": "nadiia@cobaltcommerce.com",
     "Comments": "Summary: We've added a new field in Airtable: Wedding Date Source (select: Acuity / Apparel Magic / Manual) — tracks who last set the date, so the system knows whether it's safe to overwrite.\nUpdated the wedding date logic per the requirements and tested it. Ran a backfill script in Sandbox and Production to populate Wedding Date Source for every client. \nCode is deployed to production.\n\nOne line for staff:\nWhen manually correcting a Wedding Date in Airtable, also set \"Wedding Date Source\" to \"Manual\" — otherwise the next Acuity or Apparel Magic sync may silently overwrite your correction.\n\nNext Steps: Singular team to add this field to the appropriate view or interface where the staff manually enters the wedding date."
@@ -1546,6 +1551,7 @@ const IDS_ROWS = [
     "Next Step": "- Axel: follow up directly with Julia via email/Slack",
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": "2026-07-27T00:00:00",
     "Owner": "julia.shao.collins@daniellefrankelstudio.com",
     "Comments": null
@@ -1557,6 +1563,7 @@ const IDS_ROWS = [
     "Next Step": "- Julia: confirmed picked up/shipped status doesn't apply to alterations but picked status does.\n- Axel: implement a check based on whether Item Sold contains \"Alterations\" (paid) vs. no check (payment pending).",
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "julia.shao.collins@daniellefrankelstudio.com",
     "Comments": "Should it reflect pickup only, or also account for Shipping as a fulfillment method?"
@@ -1568,6 +1575,7 @@ const IDS_ROWS = [
     "Next Step": null,
     "Reported Date": "2026-07-27T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": null,
     "Comments": null
@@ -1579,6 +1587,7 @@ const IDS_ROWS = [
     "Next Step": "- Axel to add the field in Pipeline, Appointments, and Recap",
     "Reported Date": "2026-07-30T00:00:00",
     "From": "cassidy@cobaltcommerce.com",
+    "To": null,
     "Deadline": null,
     "Owner": "Axel Nava",
     "Comments": null
@@ -1590,6 +1599,7 @@ const IDS_ROWS = [
     "Next Step": null,
     "Reported Date": "2026-08-03T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "julia.shao.collins@daniellefrankelstudio.com",
     "Comments": null
@@ -1601,6 +1611,7 @@ const IDS_ROWS = [
     "Next Step": null,
     "Reported Date": "2026-08-10T00:00:00",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "julia.shao.collins@daniellefrankelstudio.com",
     "Comments": null
@@ -1612,6 +1623,7 @@ const IDS_ROWS = [
     "Next Step": null,
     "Reported Date": "2026-08-10T00:00:00",
     "From": "julia.shao.collins@daniellefrankelstudio.com",
+    "To": null,
     "Deadline": null,
     "Owner": "Singular & Cobalt",
     "Comments": null
@@ -1623,6 +1635,7 @@ const IDS_ROWS = [
     "Next Step": null,
     "Reported Date": "2026-08-10T00:00:00",
     "From": null,
+    "To": null,
     "Deadline": null,
     "Owner": "Axel Nava",
     "Comments": null
@@ -1634,6 +1647,7 @@ const IDS_ROWS = [
     "Next Step": "Axel to confirm with Julia whether Draft Orders should become a 1:1 match of Shopify's own Draft Order interface (not currently in scope) before building the variant/store-selector logic. Also needs a decision on selected_store: can a bride buy from more than one store (e.g. gown from NY, veil from LA)?",
     "Reported Date": "2026-08-26",
     "From": "Rob Dukarski (Cobalt)",
+    "To": null,
     "Deadline": null,
     "Owner": "Singular & Cobalt",
     "Comments": "Nadiia added 2 new tables for Shopify product variants (NY & LA) — they have a Style link but no product handle yet. Customers actually buy a Product Variant (e.g. \"Ada, Color: Pearl, Size: 6\"), not the base style, so Draft Orders/Recap need a Store selector that populates the matching variants from those tables. Axel flagged that selected_store is currently auto-selected from the bride's appointment location, which breaks for brides with appointments in more than one location."
@@ -1645,6 +1659,7 @@ const IDS_ROWS = [
     "Next Step": "Rob confirmed on Slack it's doable and Axel's architecture notes doc is fully commented. Needs Rob's sign-off on the doc before Singular starts building the 3 new tables.",
     "Reported Date": "2026-08-24",
     "From": "Rob Dukarski (Cobalt)",
+    "To": null,
     "Deadline": null,
     "Owner": "Singular & Cobalt",
     "Comments": "Rob proposed 3 new tables (Package, PAR/Post-Appointment-Recap, Customization Proposals) to hold everything an SA enters during a Recap, synced to Shopify metaobjects via a \"Sync to Shopify\" button so the client can review/select styles and sign off on a package page, with approval synced back to Airtable. Axel's notes: docs.google.com/spreadsheets/d/13N4b5YzfAi0.../edit. Related: Alonso flagged 186 real DF Styles (of 704 checked) whose product_handle_ny live product-page link 404s, after filtering out internal-only customization/alteration line items."
@@ -1656,6 +1671,7 @@ const IDS_ROWS = [
     "Next Step": "Axel finished commenting on Rob's Google Sheet (grouped repeated comments by root cause to avoid duplicates). Waiting on Rob to action the comments, then agree on how to move the 2 Sandbox automations to Production.",
     "Reported Date": "2026-08-25",
     "From": "Rob Dukarski (Cobalt)",
+    "To": null,
     "Deadline": null,
     "Owner": "Singular & Cobalt",
     "Comments": "2 automations already syncing in Sandbox, including wedding_date_formatted — needed to properly segment clients for Klaviyo email flows (e.g. include Wedding Date in messages). Doc: docs.google.com/spreadsheets/d/1odLdLklFanq.../edit."
@@ -1667,6 +1683,7 @@ const IDS_ROWS = [
     "Next Step": "Align on whether item #31 (carrier/tracking) is Open (per the Cobalt Owned tab) or In Progress (per the main tracker), and get the exact row for Cobalt's one Critical-priority item — Miguel says it's 3PL/Fulfillment, but the only carrier/tracking row on the tracker is Medium priority, not Critical. Needs resolving before Friday's sync.",
     "Reported Date": "2026-08-26",
     "From": "Miguel (Cobalt)",
+    "To": null,
     "Deadline": "2026-08-28",
     "Owner": "Cobalt",
     "Comments": "From Miguel's Slack round-up: tracker consolidation merged Julia's separate backlog into the main tracker (Singular's item count went 25→51 as a result — the lower completion % reflects more visibility into the full backlog, not less progress). Current merged state: Singular 22/51 done (43%), Cobalt 6/19 done (32%), joint items 1/17 done (6%). Cobalt also closed out the items Axel had open with Rob (Klaviyo mapping, Package/PAR/Customization Proposals architecture) and is now waiting on Singular for next steps there."
@@ -1678,8 +1695,21 @@ const IDS_ROWS = [
     "Next Step": "Sent to Rob/Nadiia on Slack (#danielle-frankel-development). Waiting on their answers before finalizing the Order Status action in the new Appointments Pick Up Orders table.",
     "Reported Date": "2026-08-27",
     "From": "Axel Nava",
+    "To": null,
     "Deadline": null,
     "Owner": "Singular & Cobalt",
     "Comments": "3 questions sent to Cobalt:\n\n1. Does Order Status re-sync from Shopify after order creation, or is it set once and left alone? We know Delivery Method is set-once-at-creation and safe to edit from Airtable — need to confirm the same for Order Status, specifically whether manually setting it to Closed risks Shopify later overwriting it (e.g. to Cancelled), causing a silent mismatch.\n\n2. What do quantity_open / quantity_shipped mean on order_items? We'd been assuming quantity_shipped = shipped to the client and quantity_open = delivered (shipped or picked up); after a pattern-recognition diagnostic we now think quantity_shipped = shipped to the store from the warehouse, and quantity_open = confirmed received at the store. Need Cobalt to confirm which is correct — affects fulfillment progress calculations in multiple places, unrelated to the button in question 3.\n\n3. Does it make sense for Airtable to push Order Status back to Shopify, and how would Cobalt suggest doing it? Goal: for Pick Up appointments, let the Receptionist open all of a bride's orders, mark a Pick Up order as picked up, and push that to Shopify — plus let them change Delivery Method to Ship when a bride wants delivery instead, also pushed to Shopify."
+  },
+  {
+    "Status": "1. Backlog",
+    "Priority": "2. Mid",
+    "Item to discuss": "Wedding Date Filtering",
+    "Next Step": "For Appointments and Recap (single-day views), filtering by Wedding Date against the day currently shown returns almost no results. Two options: (A) keep the filter scoped to the selected day as-is, accepting it will rarely show anything, or (B) when Wedding Date filter is active, temporarily switch the view to show matching clients across all days instead of just the selected one. Which do you prefer for these two pages?",
+    "Reported Date": "2026-08-25",
+    "From": "Alonso",
+    "To": "Julia",
+    "Deadline": null,
+    "Owner": "Singular",
+    "Comments": "The newly-added Wedding Date Search field should be surfaced in Pipeline, Deployments, and Recap views, not only where it currently lives. Wedding Date filtering was not consistently available across the requested interfaces. Pipeline could support the same filtering pattern already used in Alterations, but Appointments and Recap operate as single-day views: applying a Wedding Date filter on top of the selected appointment day would typically return little or no useful data, since a client's appointment date is unrelated to their wedding date. See the Appointments Mockup artifact referenced in the Questions/Uncertainty/Suggestions tab."
   }
 ];

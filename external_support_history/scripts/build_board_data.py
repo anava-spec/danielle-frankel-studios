@@ -40,7 +40,7 @@ FEEDBACK_COLS = [
 ]
 IDS_COLS = [
     "Status", "Priority", "Item to discuss", "Next Step", "Reported Date",
-    "From", "Deadline", "Owner", "Comments",
+    "From", "To", "Deadline", "Owner", "Comments",
 ]
 
 
