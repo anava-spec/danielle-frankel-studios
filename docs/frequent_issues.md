@@ -9,6 +9,19 @@ A registry of the **conceptual bug classes** we keep re-discovering across the D
 
 Each class below is written as: **what it looks like** → **why it actually happens** → **the rule to follow**. Concrete instances (which file, which fix, when) are logged in the table at the bottom for traceability, but the class itself is the reusable part — read that first.
 
+## TL;DR
+
+| # | Class | In one line |
+|---|---|---|
+| 1 | Shape-vs-assumption mismatch | Airtable often returns a different runtime shape than the field type implies (lookups as arrays, linked records as `{id,name}`, `%` as a decimal, fields excluded from `useRecords` reading as empty) — check the real shape before writing display/parsing logic. |
+| 2 | Cardinality mismatch | A field modeled at the client/bride level when a bride can really have more than one (order, appointment, recap) — belongs on the child record as a table, not a single parent field. |
+| 3 | Stale reference | Code or an automation still reads a field/value that was superseded — fails silently (empty/wrong), not with an error, so it can hide for weeks. |
+| 4 | Date semantic confusion | Treating one date category (date-only, datetime, formula text, free text) as another causes month/day swaps, ±1-day timezone shifts, or broken filters — see the dedicated rulebook. |
+| 5 | Shared derived state, no single writer | A value like Stage gets written by multiple automations instead of derived once from underlying facts — writers can disagree or race. |
+| 6 | Native control styling assumptions | A styled control (esp. `<select>`) doesn't fully own its native chrome — options inherit unwanted CSS, `outline` ignores `border-radius`. |
+| 7 | "Broken" automation, external cause | The automation's logic is fine; a disconnected external account/token is the real failure — check Run History before rewriting the script. |
+| 8 | Cross-platform ID collision | A matching key (order #, etc.) isn't as unique across Shopify/AM/wholesale as assumed, linking a record to the wrong client/order. |
+
 ---
 
 ## 1. Airtable's actual returned shape doesn't match what the code assumes
