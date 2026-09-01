@@ -66,13 +66,58 @@ const REFUND_REQUEST_FIELD_IDS = {
   SETTLEMENT_STAGE:          'fldkTiBPnBEygcwJ2',
 } as const;
 const REFUND_CATEGORY_NAME_FIELD_ID = 'fldmp5TGQkMTMWHcN';
+const REFUND_CATEGORY_ACTIVE_FIELD_ID = 'fldwB5zkVXjdS65VL';
 
 type RefundCaseSummary = {
-  category:         string;
-  resolutionLabel:  string; // e.g. "Direct Refund" or "Proposed: Direct Refund"
-  requestStage:     string;
-  settlementStage:  string; // '' when not yet applicable
+  category:             string;
+  categoryColor:        string; // hex, hardcoded rainbow (category is a link, no live choice color)
+  resolutionLabel:      string; // e.g. "Direct Refund" or "Proposed: Direct Refund"
+  resolutionColor:      string; // hex, '' when no resolution type set at all
+  requestStage:         string;
+  requestStageColor:    string; // hex
+  settlementStage:      string; // '' when not yet applicable
+  settlementStageColor: string; // hex
 };
+
+// Solid bg = source field's own choice color, white text (BRANDING §9,
+// revised 2026-09-01) — same lookup as refund_requests.tsx/draft_orders.tsx.
+function getSoldChoiceColorHex(color: string | undefined): string {
+  const colorMap: Record<string, string> = {
+    blueLight2: '#D1E2FF', blueLight1: '#9CC7FF', blueBright: '#2D7FF9', blueDark1: '#0B5FCC',
+    cyanLight2: '#C6F0F9', cyanLight1: '#71DCF5', cyanBright: '#18BFFF', cyanDark1: '#0A94CC',
+    tealLight2: '#C0F5E9', tealLight1: '#63E6D3', tealBright: '#00D2C4', tealDark1: '#00A99A',
+    greenLight2: '#D3F5D3', greenLight1: '#8AE28A', greenBright: '#20C933', greenDark1: '#0E8A1F',
+    yellowLight2: '#FEF3C7', yellowLight1: '#FFE07A', yellowBright: '#F6BE00', yellowDark1: '#B98900',
+    orangeLight2: '#FEE4CC', orangeLight1: '#FFC582', orangeBright: '#FF9D00', orangeDark1: '#C77400',
+    redLight2: '#FFDCE0', redLight1: '#FF9AA6', redBright: '#F94343', redDark1: '#C22B2B',
+    pinkLight2: '#FEDDF6', pinkLight1: '#FF9DEB', pinkBright: '#FF08C2', pinkDark1: '#B90792',
+    purpleLight2: '#EEE0FD', purpleLight1: '#C99BF5', purpleBright: '#8B46FF', purpleDark1: '#5C2CB0',
+    grayLight2: '#EBEDF0', grayLight1: '#C6CBD1', grayBright: '#6B7280', grayDark1: '#41454D',
+  };
+  return colorMap[color ?? ''] ?? '#9CA3AF';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getSoldFieldChoices(field: any): Array<{ name: string; color?: string }> {
+  if (!field) return [];
+  const config = field.config;
+  if (config?.type === 'singleSelect' && config.options?.choices) return config.options.choices;
+  return [];
+}
+
+function getSoldRainbowHsl(index: number, total: number): string {
+  const hue = total > 0 ? Math.round((360 * index) / total) : 0;
+  return `hsl(${hue}, 65%, 45%)`;
+}
+
+function RefundChip({ label, hex }: { label: string; hex: string }) {
+  if (!label) return <span className="text-sm text-gray-400 dark:text-gray-500">—</span>;
+  return (
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white" style={{ backgroundColor: hex }}>
+      {label}
+    </span>
+  );
+}
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
 const FEEDBACK_TABLE_ID = 'tbluy7JS31NwCoeIi';
@@ -562,6 +607,13 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
     </div>
   );
 
+  const FinRowChip = ({ label, value, hex }: { label: string; value: string; hex: string }) => (
+    <div className="flex justify-between items-center py-1.5 text-sm border-b border-gray-50 dark:border-white/5 last:border-0">
+      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+      <RefundChip label={value} hex={hex} />
+    </div>
+  );
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ease-out"
@@ -691,10 +743,10 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
                   <div className="bg-gray-50 dark:bg-white/5 rounded-xl overflow-hidden">
                     {data.refundCases.map((rc, i) => (
                       <div key={i} className={`p-4 ${i > 0 ? 'border-t border-gray-200 dark:border-white/10' : ''}`}>
-                        <FinRow label="Category" value={rc.category} />
-                        <FinRow label="Resolution Type" value={rc.resolutionLabel} />
-                        <FinRow label="Request Stage" value={rc.requestStage} />
-                        {rc.settlementStage && <FinRow label="Settlement Stage" value={rc.settlementStage} />}
+                        <FinRowChip label="Category" value={rc.category} hex={rc.categoryColor} />
+                        <FinRowChip label="Resolution Type" value={rc.resolutionLabel} hex={rc.resolutionColor} />
+                        <FinRowChip label="Request Stage" value={rc.requestStage} hex={rc.requestStageColor} />
+                        {rc.settlementStage && <FinRowChip label="Settlement Stage" value={rc.settlementStage} hex={rc.settlementStageColor} />}
                       </div>
                     ))}
                   </div>
@@ -780,6 +832,18 @@ function SoldApp(): React.ReactElement {
     return m;
   }, [refundCategoryRecords, refundCategoriesTable]);
 
+  // Stable rainbow ordering — sorted by name so a category's hue doesn't
+  // shift around as unrelated records load/unload (same rule as
+  // refund_requests.tsx/draft_orders.tsx).
+  const orderedRefundCategoryIds = useMemo(() => {
+    if (!refundCategoryRecords || !refundCategoriesTable) return [];
+    const fActive = refundCategoriesTable.getFieldIfExists(REFUND_CATEGORY_ACTIVE_FIELD_ID);
+    return refundCategoryRecords
+      .filter(r => (fActive ? r.getCellValue(fActive) === true : true))
+      .map(r => r.id)
+      .sort((a, b) => (refundCategoryNameMap.get(a) ?? '').localeCompare(refundCategoryNameMap.get(b) ?? ''));
+  }, [refundCategoryRecords, refundCategoriesTable, refundCategoryNameMap]);
+
   // Groups refund cases by the Orders - Shopify record they're filed against,
   // read-only — this file never writes to refund_requests.
   const refundCasesByOrderId = useMemo(() => {
@@ -791,24 +855,45 @@ function SoldApp(): React.ReactElement {
     const fResApproved = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED);
     const fRequestStage = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE);
     const fSettlementStage = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE);
+    const resProposedChoices = getSoldFieldChoices(fResProposed);
+    const resApprovedChoices = getSoldFieldChoices(fResApproved);
+    const requestStageChoices = getSoldFieldChoices(fRequestStage);
+    const settlementStageChoices = getSoldFieldChoices(fSettlementStage);
     if (!fOrder) return m;
     for (const r of refundRequestRecords) {
       const orderLinks = r.getCellValue(fOrder) as Array<{ id: string }> | null;
       const orderId = orderLinks?.[0]?.id;
       if (!orderId) continue;
       const categoryLinks = fCategory ? (r.getCellValue(fCategory) as Array<{ id: string }> | null) : null;
-      const category = categoryLinks?.[0] ? (refundCategoryNameMap.get(categoryLinks[0].id) ?? '—') : '—';
+      const categoryId = categoryLinks?.[0]?.id ?? null;
+      const category = categoryId ? (refundCategoryNameMap.get(categoryId) ?? '—') : '—';
+      const categoryColor = getSoldRainbowHsl(
+        categoryId ? Math.max(0, orderedRefundCategoryIds.indexOf(categoryId)) : 0,
+        orderedRefundCategoryIds.length || 1
+      );
       const resApproved = fResApproved ? (r.getCellValue(fResApproved) as { name: string } | null)?.name : null;
       const resProposed = fResProposed ? (r.getCellValue(fResProposed) as { name: string } | null)?.name : null;
-      const resolutionLabel = resApproved ?? (resProposed ? `Proposed: ${resProposed}` : '—');
-      const requestStage = fRequestStage ? (r.getCellValue(fRequestStage) as { name: string } | null)?.name ?? '—' : '—';
+      const resolutionLabel = resApproved ?? (resProposed ? `Proposed: ${resProposed}` : '');
+      const resolutionColor = resApproved
+        ? getSoldChoiceColorHex(resApprovedChoices.find(c => c.name === resApproved)?.color)
+        : resProposed
+          ? getSoldChoiceColorHex(resProposedChoices.find(c => c.name === resProposed)?.color)
+          : '';
+      const requestStage = fRequestStage ? (r.getCellValue(fRequestStage) as { name: string } | null)?.name ?? '' : '';
+      const requestStageColor = getSoldChoiceColorHex(requestStageChoices.find(c => c.name === requestStage)?.color);
       const settlementStage = fSettlementStage ? (r.getCellValue(fSettlementStage) as { name: string } | null)?.name ?? '' : '';
-      const entry: RefundCaseSummary = { category, resolutionLabel, requestStage, settlementStage };
+      const settlementStageColor = settlementStage ? getSoldChoiceColorHex(settlementStageChoices.find(c => c.name === settlementStage)?.color) : '';
+      const entry: RefundCaseSummary = {
+        category, categoryColor,
+        resolutionLabel, resolutionColor,
+        requestStage, requestStageColor,
+        settlementStage, settlementStageColor,
+      };
       const existing = m.get(orderId);
       if (existing) existing.push(entry); else m.set(orderId, [entry]);
     }
     return m;
-  }, [refundRequestRecords, refundRequestsTable, refundCategoryNameMap]);
+  }, [refundRequestRecords, refundRequestsTable, refundCategoryNameMap, orderedRefundCategoryIds]);
 
   const activeStudios = useMemo(() => {
     if (!studioRecords || !studiosTable) return [];

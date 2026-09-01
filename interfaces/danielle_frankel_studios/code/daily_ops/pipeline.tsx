@@ -218,9 +218,8 @@ function queueFeedbackWrite<T>(fn: () => Promise<T>): Promise<T> {
 
 function FeedbackButton({ onClick }: { onClick: () => void }) {
   return (
-    // id used by Pipeline's Kanban clearance logic to measure this
-    // button's real screen position (see kanbanColumnsNeedingClearance) —
-    // don't remove/rename without updating that lookup.
+    // Floats on top of everything (z-index 9600) rather than making Kanban
+    // columns shrink to clear it — per Axel, 2026-09-01.
     <button id="pipeline-feedback-button" type="button" onClick={onClick}
       className="fixed bottom-4 right-20 inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg bg-[#D97706] hover:bg-[#B45309] dark:bg-[#FBBF24] dark:hover:bg-[#F59E0B] text-white dark:text-[#1B1813] shadow-2xl transition-colors"
       style={{ zIndex: 9600 }}>
@@ -1957,80 +1956,115 @@ interface WeddingDateFilterButtonProps {
   onChange: (d: Date | null) => void;
 }
 
-// ─── Filter menu — groups Studio/Sales Associate/Timeline/Wedding Date
-// behind one icon (2026-08-25, per Axel) ───────────────────────────────────
-// These 4 used to be separate pills in the toolbar; grouping them frees up
-// horizontal space (the List view's Stage filter was wrapping to a second
-// line) and scales better if more filters get added later. Unlike their old
-// standalone pills, each row here shows its filter's name as a fixed label
-// to the LEFT — the control itself no longer repeats the name as its own
-// placeholder (MultiSelectDropdown/SingleSelectDropdown's `label` prop is
-// passed a generic "All"/"Any time" here instead). The funnel icon itself
-// highlights (same amber treatment as every other active filter in this
-// file) when ANY of the 4 has a value — necessary because these filters
-// don't persist across page visits, so once collapsed behind one icon,
-// this is the only at-a-glance signal that something is filtering the view.
-interface FilterMenuButtonProps {
-  studioOptions: string[]; studioFilter: string[]; onStudioChange: (v: string[]) => void;
-  salespersonOptions: string[]; salespersonFilter: string[]; onSalespersonChange: (v: string[]) => void;
-  timelineFilter: string | null; onTimelineChange: (v: string | null) => void;
-  weddingDateFilter: Date | null; onWeddingDateChange: (d: Date | null) => void;
+// ─── Responsive filter grouping (revised 2026-09-01, per Axel) ─────────────
+// Replaces the old static "always group these exact 4" FilterMenuButton.
+// Every filter now renders as its own standalone box in the toolbar row —
+// grouping only kicks in once the row genuinely doesn't have room for all of
+// them, measured live via ResizeObserver rather than guessed at a fixed
+// breakpoint. This is the reference implementation other interfaces
+// (refund_requests.tsx so far) replicate.
+interface FilterSpec {
+  key: string;
+  label: string; // also the group-panel row label and the sort key
+  node: React.ReactNode;
+  isActive: boolean;
 }
-function FilterMenuButton({
-  studioOptions, studioFilter, onStudioChange,
-  salespersonOptions, salespersonFilter, onSalespersonChange,
-  timelineFilter, onTimelineChange,
-  weddingDateFilter, onWeddingDateChange,
-}: FilterMenuButtonProps) {
+
+// Studio always first, Wedding Date always last, everything else sorted by
+// label length ascending — keeps the row looking deliberately ordered
+// instead of arbitrary, and stays correct if filters are added/removed later.
+function sortFiltersForDisplay(filters: FilterSpec[]): FilterSpec[] {
+  const studio = filters.filter(f => f.label === 'Studio');
+  const weddingDate = filters.filter(f => f.label === 'Wedding Date');
+  const rest = filters
+    .filter(f => f.label !== 'Studio' && f.label !== 'Wedding Date')
+    .sort((a, b) => a.label.length - b.label.length);
+  return [...studio, ...rest, ...weddingDate];
+}
+
+const FILTER_BOX_WIDTH = 160; // matches every standalone filter's min-w-[160px]
+const FILTER_GAP = 8; // gap-2
+const FILTER_GROUP_BUTTON_WIDTH = 36; // w-9
+
+// Measures the row's actually-available width live and returns how many
+// filters fit before the group button needs to absorb the rest.
+function useResponsiveFilterCount(totalItems: number) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(totalItems);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const compute = () => {
+      const available = el.clientWidth;
+      const allFit = totalItems * FILTER_BOX_WIDTH + Math.max(0, totalItems - 1) * FILTER_GAP;
+      if (allFit <= available) { setVisibleCount(totalItems); return; }
+      const forFilters = available - FILTER_GROUP_BUTTON_WIDTH - FILTER_GAP;
+      const fit = Math.max(0, Math.floor((forFilters + FILTER_GAP) / (FILTER_BOX_WIDTH + FILTER_GAP)));
+      setVisibleCount(Math.min(fit, totalItems));
+    };
+    compute();
+    const ro = new ResizeObserver(() => requestAnimationFrame(compute));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [totalItems]);
+
+  return { containerRef, visibleCount };
+}
+
+// The "+N filters" button — only rendered when at least one filter has
+// overflowed into it. rounded-lg (not rounded-full) to match the search
+// bar's radius; icon one tier down (14px, was 16px); active state is a
+// solid accent fill with a light icon (same pairing as "+ Waitlist" —
+// white icon in light mode, dark icon in dark mode — not an amber-tinted
+// border+icon, which read inconsistently against every other button here).
+function FilterGroupButton({ filters, hasActive }: { filters: FilterSpec[]; hasActive: boolean }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const hasActive = studioFilter.length > 0 || salespersonFilter.length > 0 || timelineFilter !== null || weddingDateFilter !== null;
 
   return (
-    <div className="relative">
+    <div className="relative flex-shrink-0">
       <button
         ref={anchorRef}
         type="button"
         onClick={() => setOpen(o => !o)}
-        title="Filters"
-        className={`relative flex items-center justify-center w-9 h-8 rounded-full border transition-colors ${
+        title="More filters"
+        className={`flex items-center justify-center w-9 h-8 rounded-lg transition-colors ${
           hasActive
-            ? 'bg-[#FEF3C7] dark:bg-[#3A2E12] border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24]'
-            : 'bg-white dark:bg-[#242220] border-gray-300 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
+            ? 'bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813]'
+            : 'bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
         }`}
       >
-        <FunnelIcon size={16} weight={hasActive ? 'fill' : 'regular'} />
+        <FunnelIcon size={14} weight={hasActive ? 'fill' : 'regular'} />
       </button>
       {open && (
-        <FixedPopup anchorRef={anchorRef} onClose={() => setOpen(false)} width={320}>
+        <FixedPopup anchorRef={anchorRef} onClose={() => setOpen(false)} width={280}>
           <div className="p-3 flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Studio</span>
-              <div className="flex-1 min-w-0">
-                <MultiSelectDropdown label="All" options={studioOptions} selected={studioFilter} onChange={onStudioChange} />
+            {filters.map(f => (
+              <div key={f.key} className="flex items-center gap-3">
+                <span className="flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">{f.label}</span>
+                <div style={{ width: FILTER_BOX_WIDTH }}>{f.node}</div>
               </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Sales Associate</span>
-              <div className="flex-1 min-w-0">
-                <MultiSelectDropdown label="All" options={salespersonOptions} selected={salespersonFilter} onChange={onSalespersonChange} />
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Timeline</span>
-              <div className="flex-1 min-w-0">
-                <SingleSelectDropdown label="Any time" options={TIMELINE_OPTIONS} selected={timelineFilter} onChange={onTimelineChange} />
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="w-28 flex-shrink-0 text-sm text-gray-600 dark:text-gray-300">Wedding Date</span>
-              <div className="flex-1 min-w-0">
-                <WeddingDateInlineField value={weddingDateFilter} onChange={onWeddingDateChange} />
-              </div>
-            </div>
+            ))}
           </div>
         </FixedPopup>
       )}
+    </div>
+  );
+}
+
+// Renders as many filters as actually fit in one row, grouping the overflow
+// behind FilterGroupButton — never wraps, never clips.
+function ResponsiveFilterRow({ filters }: { filters: FilterSpec[] }) {
+  const sorted = useMemo(() => sortFiltersForDisplay(filters), [filters]);
+  const { containerRef, visibleCount } = useResponsiveFilterCount(sorted.length);
+  const visible = sorted.slice(0, visibleCount);
+  const grouped = sorted.slice(visibleCount);
+
+  return (
+    <div ref={containerRef} className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+      {visible.map(f => <React.Fragment key={f.key}>{f.node}</React.Fragment>)}
+      {grouped.length > 0 && <FilterGroupButton filters={grouped} hasActive={grouped.some(f => f.isActive)} />}
     </div>
   );
 }
@@ -4210,64 +4244,13 @@ function Pipeline(): React.ReactElement {
   const [selectedWaitlistId, setSelectedWaitlistId] = useState<string | null>(null);
   const [showWaitlistFormModal, setShowWaitlistFormModal] = useState(false);
 
-  // ─── Kanban bottom-right clearance — responsive, 2026-08-25 (per Alonso)
-  // ───────────────────────────────────────────────────────────────────────
-  // The floating Feedback button (id="pipeline-feedback-button" below) +
-  // Airtable's own chat widget sit at a fixed screen position, while Kanban
-  // columns are flex-1 (their real pixel x-range depends on how much
-  // horizontal room the whole board has). Two earlier approaches — a manual
-  // per-column edge formula, then width breakpoints — were both guesses at
-  // where the overlap happens instead of actually checking; this measures
-  // the REAL rendered rectangles instead: does the Feedback button's
-  // horizontal span (getBoundingClientRect) actually intersect this
-  // column's horizontal span? Only a column that's genuinely overlapped
-  // gets clipped — a wide screen where only In Fulfillment's x-range
-  // reaches the button leaves In Alterations (and everything else) at its
-  // normal full height, exactly as asked.
-  //
-  // Vertical overlap isn't checked separately: the board already fills
-  // down to just above the viewport's bottom edge, so every column's
-  // natural (unclipped) bottom already sits in the button's vertical zone —
-  // the only thing that varies per column is whether it's horizontally
-  // under the button at all. Measuring x-only also sidesteps a chicken-
-  // and-egg problem: a column's WIDTH (unlike its height) never changes
-  // when it gets clipped, so re-measuring after clipping still gives an
-  // accurate x-range.
-  const kanbanRowRef = useRef<HTMLDivElement>(null);
-  const kanbanColumnRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [kanbanColumnsNeedingClearance, setKanbanColumnsNeedingClearance] = useState<Set<string>>(new Set());
-
-  const recomputeKanbanClearance = useCallback(() => {
-    const feedbackEl = document.getElementById('pipeline-feedback-button');
-    if (!feedbackEl) return;
-    const feedbackRect = feedbackEl.getBoundingClientRect();
-    const needy = new Set<string>();
-    kanbanColumnRefs.current.forEach((el, stage) => {
-      const rect = el.getBoundingClientRect();
-      const overlapsX = feedbackRect.left < rect.right && feedbackRect.right > rect.left;
-      if (overlapsX) needy.add(stage);
-    });
-    setKanbanColumnsNeedingClearance(needy);
-  }, []);
-
-  useEffect(() => {
-    const el = kanbanRowRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      // Wait a frame so column widths have actually settled post-resize
-      // before measuring — reading mid-reflow can catch stale rects.
-      requestAnimationFrame(recomputeKanbanClearance);
-    });
-    observer.observe(el);
-    recomputeKanbanClearance();
-    return () => observer.disconnect();
-  }, [recomputeKanbanClearance]);
-  // This 60px value is hand-copied into the `max-h-[calc(100%-60px)]`
-  // class further below (on the flagged columns) — Tailwind's arbitrary-
-  // value classes must be literal strings, so it can't be interpolated
-  // from a variable here. Keep the two in sync if this ever changes.
-  // (Shortened from an initial 72px to 60px, 2026-08-25 — per Alonso,
-  // ~3mm taller on a typical screen, still clears the floating button.)
+  // Kanban bottom-right clearance (the max-h shrink that made columns under
+  // the floating Feedback button stop short, per Alonso 2026-08-25) is
+  // removed 2026-09-01 per Axel: the button should overlay on top of column
+  // content (it already has a high z-index, 9600) rather than columns making
+  // room for it — the clearance was itself the visible "cut off" look Axel
+  // flagged (In Fulfillment stopping short). Columns now always render full
+  // height regardless of the button's position.
 
   const stageField = clientsTable?.getFieldIfExists(FIELD_IDS.CLIENT_STAGE);
   const stageChoices = useMemo(() => {
@@ -4718,25 +4701,45 @@ function Pipeline(): React.ReactElement {
     );
   }
 
+  const toolbarFilters: FilterSpec[] = useMemo(() => {
+    const specs: FilterSpec[] = [
+      {
+        key: 'studio', label: 'Studio', isActive: studioFilter.length > 0,
+        node: <MultiSelectDropdown label="Studio" options={studioOptions} selected={studioFilter} onChange={setStudioFilter} />,
+      },
+      {
+        key: 'salesAssociate', label: 'Sales Associate', isActive: salespersonFilter.length > 0,
+        node: <MultiSelectDropdown label="Sales Associate" options={salespersonOptions} selected={salespersonFilter} onChange={setSalespersonFilter} />,
+      },
+      {
+        key: 'timeline', label: 'Timeline', isActive: timelineFilter !== null,
+        node: <SingleSelectDropdown label="Timeline" options={TIMELINE_OPTIONS} selected={timelineFilter} onChange={setTimelineFilter} />,
+      },
+      {
+        key: 'weddingDate', label: 'Wedding Date', isActive: weddingDateFilter !== null,
+        node: <WeddingDateInlineField value={weddingDateFilter} onChange={setWeddingDateFilter} />,
+      },
+    ];
+    if (viewMode === 'list') {
+      specs.push({
+        key: 'stage', label: 'Stage', isActive: stageFilter.length > 0,
+        node: <MultiSelectDropdown label="Stage" options={stageOptions} selected={stageFilter} onChange={setStageFilter} />,
+      });
+    }
+    return specs;
+  }, [studioOptions, studioFilter, salespersonOptions, salespersonFilter, timelineFilter, weddingDateFilter, viewMode, stageOptions, stageFilter]);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden font-sans bg-[#F6F4F0] dark:bg-[#1A1917]">
-      {/* Filter row — flex-wrap so a tight viewport drops the trailing
-          controls to a second line instead of silently overflowing; no
-          control here shrinks or gets compressed, they just reflow. */}
-      <div className="px-4 py-2 flex flex-wrap items-center gap-3 gap-y-2 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
+      {/* Filter row — every filter always renders as its own box; only once
+          they genuinely don't fit does the overflow collapse behind the
+          group button (ResponsiveFilterRow), so this row never wraps. */}
+      <div className="px-4 py-2 flex items-center gap-3 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#242220] flex-shrink-0">
         <SearchDropdown clientsData={clientsData} onSelect={handleSearchSelect} stageColorsByStage={stageColorsByStage} />
-        <FilterMenuButton
-          studioOptions={studioOptions} studioFilter={studioFilter} onStudioChange={setStudioFilter}
-          salespersonOptions={salespersonOptions} salespersonFilter={salespersonFilter} onSalespersonChange={setSalespersonFilter}
-          timelineFilter={timelineFilter} onTimelineChange={setTimelineFilter}
-          weddingDateFilter={weddingDateFilter} onWeddingDateChange={setWeddingDateFilter}
-        />
-        {viewMode === 'list' && (
-          <MultiSelectDropdown label="Stage" options={stageOptions} selected={stageFilter} onChange={setStageFilter} />
-        )}
+        <ResponsiveFilterRow filters={toolbarFilters} />
 
         {/* View mode toggle */}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <ViewDropdown value={viewMode} onChange={setViewMode} />
           <button
             type="button"
@@ -4760,7 +4763,7 @@ function Pipeline(): React.ReactElement {
 
       {/* Main content — Kanban or List */}
       {viewMode === 'kanban' ? (
-        <div ref={kanbanRowRef} className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
+        <div className="flex-1 min-h-0 overflow-hidden flex gap-3 px-4 py-3 bg-gray-50 dark:bg-[#1A1917]">
           {/* Waitlist — leftmost pseudo-column, sourced from the Waitlist table, not clientsByStage */}
           {(() => {
             const wPage        = waitlistPage;
@@ -4805,25 +4808,12 @@ function Pipeline(): React.ReactElement {
             const pagedClients = clients.slice(page * KANBAN_PAGE_SIZE, (page + 1) * KANBAN_PAGE_SIZE);
             const canPrev     = page > 0;
             const canNext     = page < totalPages - 1;
-            // Which columns actually overlap the floating Feedback button
-            // is measured live via real DOM rects (kanbanColumnsNeedingClearance,
-            // see the recomputeKanbanClearance effect above) — not guessed
-            // from stage names or width breakpoints. Fixed 2026-08-25: an
-            // earlier version used `max-h-[...]` here, which only caps a
-            // height, it doesn't guarantee one — combined with `self-start`
-            // (needed to opt OUT of Flexbox's default `align-items:
-            // stretch`), a column with little content (e.g. Order Ready
-            // with 0 clients) collapsed down to its own tiny content
-            // instead of filling up to the cap, looking broken next to its
-            // full-height empty siblings. `h-[calc(100%-60px)]` is an
-            // explicit height instead — always exactly that tall regardless
-            // of how much or how little is inside, same as every unflagged
-            // column (which keeps stretching to full height, untouched).
-            const needsBottomClearance = kanbanColumnsNeedingClearance.has(stage);
+            // Columns always render full height (Flexbox align-items:
+            // stretch, the default) regardless of the floating Feedback
+            // button's position — it overlays on top (see FeedbackButton).
             return (
               <div key={stage}
-                ref={(el) => { if (el) kanbanColumnRefs.current.set(stage, el); else kanbanColumnRefs.current.delete(stage); }}
-                className={`flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden ${needsBottomClearance ? 'h-[calc(100%-60px)]' : ''}`}>
+                className="flex-1 min-w-0 flex flex-col bg-white dark:bg-[#242220] border border-gray-200 dark:border-[#34312C] rounded-lg overflow-hidden">
                 <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-white/10" title={STAGE_TOOLTIPS[stage]}>
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 tracking-wide">{stageLabel}</span>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-[22px] px-1.5 rounded-full text-xs font-semibold"

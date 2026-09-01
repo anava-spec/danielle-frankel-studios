@@ -166,14 +166,15 @@ function getRefundFieldChoices(field: Field | null): Array<{ name: string; color
   return [];
 }
 
-// Same 20%-alpha-bg / solid-text pill as refund_requests.tsx's StagePill —
-// used here for Resolution Type / Request Stage / Settlement Stage so the
-// Refund Case panel reads identically wherever it appears (Axel, 2026-09-01).
+// Solid bg = source field's own choice color, white text (BRANDING §9,
+// revised 2026-09-01) — used for Resolution Type / Request Stage /
+// Settlement Stage so the Refund Case panel reads identically wherever it
+// appears.
 function RefundStagePill({ value, choices }: { value: string | null | undefined; choices: Array<{ name: string; color?: string }> }) {
   if (!value) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
   const hex = getRefundChoiceColorHex(choices.find(c => c.name === value)?.color);
   return (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium" style={{ backgroundColor: hex + '20', color: hex }}>
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white" style={{ backgroundColor: hex }}>
       {value}
     </span>
   );
@@ -191,8 +192,8 @@ function RefundCategoryChip({ label, categoryId, orderedCategoryIds }: { label: 
   const hsl = getRefundRainbowHsl(index, orderedCategoryIds.length || 1);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium"
-      style={{ backgroundColor: hsl.replace('hsl(', 'hsla(').replace(')', ', 0.16)'), color: hsl }}
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white"
+      style={{ backgroundColor: hsl }}
     >
       {label}
     </span>
@@ -296,8 +297,7 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const interfaceInventoryTable = base.getTableByIdIfExists(INTERFACE_INVENTORY_TABLE_ID);
-  const interfaceInventoryRecordsRaw = useRecords(interfaceInventoryTable ?? base.tables[0]);
-  const interfaceInventoryRecords = interfaceInventoryTable ? interfaceInventoryRecordsRaw : [];
+  const interfaceInventoryRecords = useRecords(interfaceInventoryTable ?? undefined);
   const inventoryNameField  = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.NAME) ?? null;
   const inventoryLevelField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.LEVEL) ?? null;
   const inventoryInterfaceLinkField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.INTERFACE_LINK) ?? null;
@@ -1022,13 +1022,13 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
   const customizationsTable = base.getTableByIdIfExists('tbl7HUWDI7IRjWY92');
 
   return [
-    { key: 'draftOrdersTable', label: 'Draft orders', type: 'table' as const, defaultValue: draftOrdersTable ?? undefined },
-    { key: 'clientsTable', label: 'Clients', type: 'table' as const, defaultValue: clientsTable ?? undefined },
-    { key: 'stylesTable', label: 'Styles', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl0hWIRBbcB4UkVC') ?? undefined },
-    { key: 'customizationsTable', label: 'Customizations', type: 'table' as const, defaultValue: customizationsTable ?? undefined },
-    { key: 'stateCostsTable', label: 'State costs', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblMnPV8Z00QePma9') ?? undefined },
-    { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') ?? undefined },
-    { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') ?? undefined },
+    { key: 'draftOrdersTable', label: 'Draft orders', type: 'table' as const, defaultValue: draftOrdersTable },
+    { key: 'clientsTable', label: 'Clients', type: 'table' as const, defaultValue: clientsTable },
+    { key: 'stylesTable', label: 'Styles', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbl0hWIRBbcB4UkVC') },
+    { key: 'customizationsTable', label: 'Customizations', type: 'table' as const, defaultValue: customizationsTable },
+    { key: 'stateCostsTable', label: 'State costs', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblMnPV8Z00QePma9') },
+    { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') },
+    { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') },
     { key: 'refundRequestsTable', label: 'Refund requests', type: 'table' as const, defaultValue: base.getTableByIdIfExists(REFUND_REQUESTS_TABLE_ID) ?? undefined },
     { key: 'refundCategoriesTable', label: 'Refund categories', type: 'table' as const, defaultValue: base.getTableByIdIfExists(REFUND_CATEGORIES_TABLE_ID) ?? undefined },
 
@@ -1088,36 +1088,15 @@ function DraftOrdersApp() {
   const refundRequestsTable = customPropertyValueByKey.refundRequestsTable as Table | undefined;
   const refundCategoriesTable = customPropertyValueByKey.refundCategoriesTable as Table | undefined;
 
-  // Same useRecords() null-crash risk as the refund tables below — apply the
-  // same base.tables[0]-fallback guard to every custom-property-sourced table
-  // in this file, not just the two newly added ones. useRecords is always
-  // called unconditionally (Rules of Hooks); only the *result* is swapped
-  // for [] when the real table isn't actually available.
-  const draftRecordsRaw = useRecords(draftOrdersTable ?? base.tables[0]);
-  const clientRecordsRaw = useRecords(clientsTable ?? base.tables[0]);
-  const styleRecordsRaw = useRecords(stylesTable ?? base.tables[0]);
-  const customizationRecordsRaw = useRecords(customizationsTable ?? base.tables[0]);
-  const stateCostRecordsRaw = useRecords(stateCostsTable ?? base.tables[0]);
-  const rushFeeRuleRecordsRaw = useRecords(rushFeeRulesTable ?? base.tables[0]);
-  const staffRecordsRaw = useRecords(staffTable ?? base.tables[0]);
-  const draftRecords = draftOrdersTable ? draftRecordsRaw : [];
-  const clientRecords = clientsTable ? clientRecordsRaw : [];
-  const styleRecords = stylesTable ? styleRecordsRaw : [];
-  const customizationRecords = customizationsTable ? customizationRecordsRaw : [];
-  const stateCostRecords = stateCostsTable ? stateCostRecordsRaw : [];
-  const rushFeeRuleRecords = rushFeeRulesTable ? rushFeeRuleRecordsRaw : [];
-  const staffRecords = staffTable ? staffRecordsRaw : [];
-  // useRecords() dereferences `table.id` with no null-check internally — it
-  // throws immediately if called with null/undefined. refundRequestsTable and
-  // refundCategoriesTable come from custom properties, which can genuinely
-  // resolve to undefined until Airtable's Interface Designer has picked up
-  // these (newly added) properties for this page. Falling back to base.tables[0]
-  // (always present) keeps the hook call itself safe; the actual records are
-  // discarded below whenever the real table isn't available yet.
-  const refundRequestsRecordsRaw = useRecords(refundRequestsTable ?? base.tables[0]);
-  const refundCategoriesRecordsRaw = useRecords(refundCategoriesTable ?? base.tables[0]);
-  const refundRequestsRecords = refundRequestsTable ? refundRequestsRecordsRaw : [];
-  const refundCategoriesRecords = refundCategoriesTable ? refundCategoriesRecordsRaw : [];
+  const draftRecords = useRecords(draftOrdersTable ?? null);
+  const clientRecords = useRecords(clientsTable ?? null);
+  const styleRecords = useRecords(stylesTable ?? null);
+  const customizationRecords = useRecords(customizationsTable ?? null);
+  const stateCostRecords = useRecords(stateCostsTable ?? null);
+  const rushFeeRuleRecords = useRecords(rushFeeRulesTable ?? null);
+  const staffRecords = useRecords(staffTable ?? null);
+  const refundRequestsRecords = useRecords(refundRequestsTable ?? null);
+  const refundCategoriesRecords = useRecords(refundCategoriesTable ?? null);
 
   const [viewState, setViewState] = useState<ViewState>({ layer: 1 });
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);

@@ -17,6 +17,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   ChatCircleText as ChatCircleTextIcon,
+  Funnel as FunnelIcon,
 } from '@phosphor-icons/react';
 
 // ─── Champagne color system (BRANDING.md §1) ─────────────────────────────────
@@ -595,6 +596,130 @@ function Dropdown({
   );
 }
 
+// ─── Responsive filter grouping (matches pipeline.tsx's reference
+// implementation, revised 2026-09-01 per Axel) ───────────────────────────────
+interface FilterSpec {
+  key: string;
+  label: string; // also the group-panel row label and the sort key
+  node: React.ReactNode;
+  isActive: boolean;
+}
+
+// Studio always first, Wedding Date always last (not applicable here — no
+// such filters exist yet — kept for parity with pipeline.tsx), everything
+// else sorted by label length ascending.
+function sortFiltersForDisplay(filters: FilterSpec[]): FilterSpec[] {
+  const studio = filters.filter((f) => f.label === 'Studio');
+  const weddingDate = filters.filter((f) => f.label === 'Wedding Date');
+  const rest = filters
+    .filter((f) => f.label !== 'Studio' && f.label !== 'Wedding Date')
+    .sort((a, b) => a.label.length - b.label.length);
+  return [...studio, ...rest, ...weddingDate];
+}
+
+const FILTER_BOX_WIDTH = 160;
+const FILTER_GAP = 8;
+const FILTER_GROUP_BUTTON_WIDTH = 36;
+
+function useResponsiveFilterCount(totalItems: number) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(totalItems);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const compute = () => {
+      const available = el.clientWidth;
+      const allFit = totalItems * FILTER_BOX_WIDTH + Math.max(0, totalItems - 1) * FILTER_GAP;
+      if (allFit <= available) {
+        setVisibleCount(totalItems);
+        return;
+      }
+      const forFilters = available - FILTER_GROUP_BUTTON_WIDTH - FILTER_GAP;
+      const fit = Math.max(0, Math.floor((forFilters + FILTER_GAP) / (FILTER_BOX_WIDTH + FILTER_GAP)));
+      setVisibleCount(Math.min(fit, totalItems));
+    };
+    compute();
+    const ro = new ResizeObserver(() => requestAnimationFrame(compute));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [totalItems]);
+
+  return { containerRef, visibleCount };
+}
+
+// rounded-lg (matches the search bar's radius, not rounded-full); icon at
+// 14px (one tier down from a standalone-icon's usual 16px); active state is
+// a solid accent fill with a light icon — same pairing as the "New Refund
+// Case" button, not an accent-tinted border+icon.
+function FilterGroupButton({ filters, hasActive, tok }: { filters: FilterSpec[]; hasActive: boolean; tok: Tokens }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="More filters"
+        className="flex items-center justify-center w-9 h-8 rounded-lg transition-colors"
+        style={
+          hasActive
+            ? { backgroundColor: tok.accent, border: 'none' }
+            : { backgroundColor: tok.surface, border: `1px solid ${tok.border}` }
+        }
+      >
+        <FunnelIcon
+          size={14}
+          weight={hasActive ? 'fill' : 'regular'}
+          style={{ color: hasActive ? '#FFFFFF' : tok.text_secondary }}
+        />
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 mt-1 right-0 rounded-lg overflow-hidden"
+          style={{ width: '280px', backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
+        >
+          <div className="p-3 flex flex-col gap-3">
+            {filters.map((f) => (
+              <div key={f.key} className="flex items-center gap-3">
+                <span className="flex-shrink-0 text-sm" style={{ color: tok.text_secondary }}>
+                  {f.label}
+                </span>
+                <div style={{ width: FILTER_BOX_WIDTH }}>{f.node}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResponsiveFilterRow({ filters, tok }: { filters: FilterSpec[]; tok: Tokens }) {
+  const sorted = useMemo(() => sortFiltersForDisplay(filters), [filters]);
+  const { containerRef, visibleCount } = useResponsiveFilterCount(sorted.length);
+  const visible = sorted.slice(0, visibleCount);
+  const grouped = sorted.slice(visibleCount);
+
+  return (
+    <div ref={containerRef} className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+      {visible.map((f) => (
+        <React.Fragment key={f.key}>{f.node}</React.Fragment>
+      ))}
+      {grouped.length > 0 && <FilterGroupButton filters={grouped} hasActive={grouped.some((f) => f.isActive)} tok={tok} />}
+    </div>
+  );
+}
+
 function LayoutDropdown({ value, onChange, tok }: { value: 'requests' | 'review'; onChange: (val: 'requests' | 'review') => void; tok: Tokens }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -645,15 +770,16 @@ function LayoutDropdown({ value, onChange, tok }: { value: 'requests' | 'review'
   );
 }
 
-// StagePill — BRANDING §9: bg = color+'20' (20% alpha), text = solid color.
+// StagePill — BRANDING §9 (revised 2026-09-01): solid bg = source field's own
+// choice color, white text.
 function StagePill({ value, choices }: { value: string | null; choices: Array<{ name: string; color?: string }> }) {
   if (!value) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
   const choice = choices.find((c) => c.name === value);
   const hex = getChoiceColorHex(choice?.color);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium"
-      style={{ backgroundColor: hex + '20', color: hex }}
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white"
+      style={{ backgroundColor: hex }}
     >
       {value}
     </span>
@@ -677,8 +803,8 @@ function CategoryChip({
   const hsl = getRainbowHsl(index, orderedCategoryIds.length || 1);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium"
-      style={{ backgroundColor: hsl.replace('hsl(', 'hsla(').replace(')', ', 0.16)'), color: hsl }}
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white"
+      style={{ backgroundColor: hsl }}
     >
       {label}
     </span>
@@ -2387,8 +2513,8 @@ function RefundRequestsApp(): React.ReactElement {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: tok.app_bg }}>
-      <div className="px-6 py-3 flex items-center gap-4 flex-wrap" style={{ borderBottom: `1px solid ${tok.border}`, backgroundColor: tok.surface }}>
-        <div className="relative">
+      <div className="px-6 py-3 flex items-center gap-4" style={{ borderBottom: `1px solid ${tok.border}`, backgroundColor: tok.surface }}>
+        <div className="relative flex-shrink-0">
           <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: tok.text_muted }} />
           <input
             type="text"
@@ -2401,14 +2527,19 @@ function RefundRequestsApp(): React.ReactElement {
         </div>
         {currentLayout === 'requests' && (
           <>
-            <Dropdown placeholder="Category" value={categoryFilter} options={categoryFilterOptions} onChange={setCategoryFilter} tok={tok} />
-            <Dropdown placeholder="Request Stage" value={stageFilter} options={stageFilterOptions} onChange={setStageFilter} tok={tok} />
-            <Dropdown placeholder="Resolution Type" value={resolutionTypeFilter} options={resolutionFilterOptions} onChange={setResolutionTypeFilter} tok={tok} />
-            <Dropdown placeholder="Settlement Stage" value={settlementStageFilter} options={settlementStageFilterOptions} onChange={setSettlementStageFilter} tok={tok} />
+            <ResponsiveFilterRow
+              tok={tok}
+              filters={[
+                { key: 'category', label: 'Category', isActive: !!categoryFilter, node: <Dropdown placeholder="Category" value={categoryFilter} options={categoryFilterOptions} onChange={setCategoryFilter} tok={tok} /> },
+                { key: 'requestStage', label: 'Request Stage', isActive: !!stageFilter, node: <Dropdown placeholder="Request Stage" value={stageFilter} options={stageFilterOptions} onChange={setStageFilter} tok={tok} /> },
+                { key: 'resolutionType', label: 'Resolution Type', isActive: !!resolutionTypeFilter, node: <Dropdown placeholder="Resolution Type" value={resolutionTypeFilter} options={resolutionFilterOptions} onChange={setResolutionTypeFilter} tok={tok} /> },
+                { key: 'settlementStage', label: 'Settlement Stage', isActive: !!settlementStageFilter, node: <Dropdown placeholder="Settlement Stage" value={settlementStageFilter} options={settlementStageFilterOptions} onChange={setSettlementStageFilter} tok={tok} /> },
+              ]}
+            />
             <button
               type="button"
               onClick={() => setShowAllRecords((v) => !v)}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
               style={
                 showAllRecords
                   ? { border: `1px solid ${tok.accent}`, color: tok.accent, backgroundColor: tok.accent_soft }
@@ -2419,7 +2550,7 @@ function RefundRequestsApp(): React.ReactElement {
             </button>
           </>
         )}
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-3 flex-shrink-0">
           <LayoutDropdown value={currentLayout} onChange={(val) => setViewState({ layer: 1, layout: val })} tok={tok} />
           <button
             type="button"
