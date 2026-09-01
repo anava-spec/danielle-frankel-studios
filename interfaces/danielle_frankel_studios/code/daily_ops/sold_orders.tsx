@@ -105,9 +105,16 @@ function getSoldFieldChoices(field: any): Array<{ name: string; color?: string }
   return [];
 }
 
-function getSoldRainbowHsl(index: number, total: number): string {
-  const hue = total > 0 ? Math.round((360 * index) / total) : 0;
-  return `hsl(${hue}, 65%, 45%)`;
+// Same rainbow palette as refund_requests.tsx's CategoryChip — Airtable's own
+// real choice colors (Bright tier) cycled in a fixed order, not a synthetic
+// evenly-spread HSL hue (per Axel, 2026-09-01).
+const SOLD_RAINBOW_PALETTE = [
+  '#2D7FF9', '#18BFFF', '#00D2C4', '#20C933', '#F6BE00',
+  '#FF9D00', '#F94343', '#FF08C2', '#8B46FF', '#6B7280',
+] as const;
+
+function getSoldRainbowHex(index: number): string {
+  return SOLD_RAINBOW_PALETTE[index % SOLD_RAINBOW_PALETTE.length];
 }
 
 function RefundChip({ label, hex }: { label: string; hex: string }) {
@@ -867,10 +874,7 @@ function SoldApp(): React.ReactElement {
       const categoryLinks = fCategory ? (r.getCellValue(fCategory) as Array<{ id: string }> | null) : null;
       const categoryId = categoryLinks?.[0]?.id ?? null;
       const category = categoryId ? (refundCategoryNameMap.get(categoryId) ?? '—') : '—';
-      const categoryColor = getSoldRainbowHsl(
-        categoryId ? Math.max(0, orderedRefundCategoryIds.indexOf(categoryId)) : 0,
-        orderedRefundCategoryIds.length || 1
-      );
+      const categoryColor = getSoldRainbowHex(categoryId ? Math.max(0, orderedRefundCategoryIds.indexOf(categoryId)) : 0);
       const resApproved = fResApproved ? (r.getCellValue(fResApproved) as { name: string } | null)?.name : null;
       const resProposed = fResProposed ? (r.getCellValue(fResProposed) as { name: string } | null)?.name : null;
       const resolutionLabel = resApproved ?? (resProposed ? `Proposed: ${resProposed}` : '');

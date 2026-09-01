@@ -180,20 +180,26 @@ function RefundStagePill({ value, choices }: { value: string | null | undefined;
   );
 }
 
-// Same rainbow-hue formula as refund_requests.tsx's CategoryChip.
-function getRefundRainbowHsl(index: number, total: number): string {
-  const hue = total > 0 ? Math.round((360 * index) / total) : 0;
-  return `hsl(${hue}, 65%, 45%)`;
+// Same rainbow palette as refund_requests.tsx's CategoryChip — Airtable's own
+// real choice colors (Bright tier) cycled in a fixed order, not a synthetic
+// evenly-spread HSL hue (per Axel, 2026-09-01).
+const REFUND_RAINBOW_PALETTE = [
+  '#2D7FF9', '#18BFFF', '#00D2C4', '#20C933', '#F6BE00',
+  '#FF9D00', '#F94343', '#FF08C2', '#8B46FF', '#6B7280',
+] as const;
+
+function getRefundRainbowHex(index: number): string {
+  return REFUND_RAINBOW_PALETTE[index % REFUND_RAINBOW_PALETTE.length];
 }
 
 function RefundCategoryChip({ label, categoryId, orderedCategoryIds }: { label: string | null; categoryId: string | null; orderedCategoryIds: string[] }) {
   if (!label) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
   const index = categoryId ? Math.max(0, orderedCategoryIds.indexOf(categoryId)) : 0;
-  const hsl = getRefundRainbowHsl(index, orderedCategoryIds.length || 1);
+  const hex = getRefundRainbowHex(index);
   return (
     <span
       className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
-      style={{ backgroundColor: hsl }}
+      style={{ backgroundColor: hex }}
     >
       {label}
     </span>

@@ -111,40 +111,90 @@ const ORDERS_FIELD_IDS = {
   ITEMS: 'fldZHRtwkWdIWCrpF',
 } as const;
 
-// Order display label: "#<Shopify Order Number> — <item names>", falling
-// back to the order's own "Items" link when it has no order_items records at
-// all (per Axel, 2026-09-01). Used everywhere an order is shown — the plain
-// table/detail-page display and every Order picker.
+// An order_item's own primary field ("AM Order Item ID") is an internal
+// numeric ID, not a display name — it was leaking into the order label as
+// e.g. "190816, 190818". The actual product name lives on `style` (a link to
+// DF Styles), falling back to `name_if_no_style` for style-less items like
+// alterations charges (per Axel, 2026-09-01).
+function getOrderItemLabel(oi: AirtableRecord, styleField: Field | null, nameIfNoStyleField: Field | null): string {
+  const styleLinked = styleField ? (oi.getCellValue(styleField) as Array<{ id: string; name?: string }> | null) : null;
+  const styleNames = styleLinked?.map((l) => l.name ?? '').filter(Boolean).join(', ') ?? '';
+  if (styleNames) return styleNames;
+  return nameIfNoStyleField ? oi.getCellValueAsString(nameIfNoStyleField) : '';
+}
+
+// Groups order_item style labels by their linked order once (O(items)) so
+// buildOrderLabel never has to re-scan the whole order_items table per order.
+// Orders (~5k) times order_items (~7.7k) as a per-order .filter() was ~39M
+// getCellValue calls through the SDK's wrapper — that's what was hanging the
+// page on every "New Refund Case" click / record open (per Axel, 2026-09-01).
+function groupOrderItemLabelsByOrder(
+  orderItemsRecords: readonly AirtableRecord[],
+  orderItemsOrderField: Field | null,
+  styleField: Field | null,
+  nameIfNoStyleField: Field | null
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (!orderItemsOrderField) return map;
+  for (const oi of orderItemsRecords) {
+    const linked = oi.getCellValue(orderItemsOrderField) as Array<{ id: string }> | null;
+    if (!linked) continue;
+    const label = getOrderItemLabel(oi, styleField, nameIfNoStyleField);
+    if (!label) continue;
+    for (const l of linked) {
+      const arr = map.get(l.id);
+      if (arr) arr.push(label);
+      else map.set(l.id, [label]);
+    }
+  }
+  return map;
+}
+
+// Order display label: "#<Shopify Order Number> — <item style names>",
+// falling back to the order's own "Items" link when it has no order_items
+// records at all (per Axel, 2026-09-01). Used everywhere an order is shown —
+// the plain table/detail-page display and every Order picker.
 function buildOrderLabel(
   order: AirtableRecord,
   shopifyNumberField: Field | null,
   itemsField: Field | null,
-  orderItemsRecords: readonly AirtableRecord[],
-  orderItemsOrderField: Field | null
+  orderItemLabelsByOrderId: Map<string, string[]>
 ): string {
   const num = shopifyNumberField ? (order.getCellValue(shopifyNumberField) as number | null) : null;
   if (!num) return '—';
-  const matchingItems = orderItemsOrderField
-    ? orderItemsRecords.filter((oi) => {
-        const linked = oi.getCellValue(orderItemsOrderField) as Array<{ id: string }> | null;
-        return linked?.some((l) => l.id === order.id);
-      })
-    : [];
-  const itemNames = matchingItems.map((oi) => oi.name ?? '').filter(Boolean).join(', ');
+  const itemNames = (orderItemLabelsByOrderId.get(order.id) ?? []).join(', ');
   const itemsText = itemNames || (itemsField ? order.getCellValueAsString(itemsField) : '');
   return itemsText ? `#${num} — ${itemsText}` : `#${num}`;
 }
 
 // Rainbow chip palette for the `refund_category` linked-record field — there's
 // no live Airtable choice color to read (it's a link, not a select), so per
-// Axel's ask each active category gets a hardcoded, evenly-spread hue.
-function getRainbowHsl(index: number, total: number): string {
-  const hue = total > 0 ? Math.round((360 * index) / total) : 0;
-  return `hsl(${hue}, 65%, 45%)`;
+// Axel's ask each active category cycles through Airtable's own real choice
+// colors (Bright tier, from getChoiceColorHex's map) instead of a synthetic
+// evenly-spread HSL hue — same background/font-color pairing as Airtable's
+// native chips (BRANDING §9). Reused verbatim in draft_orders.tsx and
+// sold_orders.tsx's read-only Refund Case panels (2026-09-01).
+const RAINBOW_PALETTE = [
+  '#2D7FF9', // blueBright
+  '#18BFFF', // cyanBright
+  '#00D2C4', // tealBright
+  '#20C933', // greenBright
+  '#F6BE00', // yellowBright
+  '#FF9D00', // orangeBright
+  '#F94343', // redBright
+  '#FF08C2', // pinkBright
+  '#8B46FF', // purpleBright
+  '#6B7280', // grayBright
+] as const;
+
+function getRainbowHex(index: number): string {
+  return RAINBOW_PALETTE[index % RAINBOW_PALETTE.length];
 }
 
 const ORDER_ITEMS_FIELD_IDS = {
   ORDER: 'fldXrdBFm5SeGCTvq',
+  STYLE: 'fldL9rj7ZeDnjnXiY',
+  NAME_IF_NO_STYLE: 'fld2Hzmni4fGcKAgh',
 } as const;
 
 const CLIENTS_FIELD_IDS = {
@@ -698,7 +748,7 @@ function FilterGroupButton({ filters, hasActive, tok }: { filters: FilterSpec[];
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="More filters"
-        className="flex items-center justify-center w-9 py-2 rounded-lg transition-colors"
+        className="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-lg transition-colors"
         style={
           hasActive
             ? { backgroundColor: tok.accent, border: 'none' }
@@ -713,9 +763,12 @@ function FilterGroupButton({ filters, hasActive, tok }: { filters: FilterSpec[];
       </button>
       {open && (
         <div
-          className="absolute z-20 mt-1 right-0 rounded-lg overflow-hidden"
+          className="absolute z-20 mt-1 right-0 rounded-lg"
           style={{ width: '280px', backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
         >
+          {/* No overflow-hidden here — same reason as ResponsiveFilterRow:
+              each filter's own dropdown renders as a child popup, and
+              clipping would cut those off too (per Axel, 2026-09-01). */}
           <div className="p-3 flex flex-col gap-3">
             {filters.map((f) => (
               <div key={f.key} className="flex items-center gap-3">
@@ -831,11 +884,11 @@ function CategoryChip({
 }) {
   if (!label) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
   const index = categoryId ? Math.max(0, orderedCategoryIds.indexOf(categoryId)) : 0;
-  const hsl = getRainbowHsl(index, orderedCategoryIds.length || 1);
+  const hex = getRainbowHex(index);
   return (
     <span
       className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
-      style={{ backgroundColor: hsl }}
+      style={{ backgroundColor: hex }}
     >
       {label}
     </span>
@@ -1200,6 +1253,13 @@ function NewRefundCaseModal({
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
   const ordersItemsField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
   const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
+  const orderItemsStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.STYLE) ?? null;
+  const orderItemsNameIfNoStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE) ?? null;
+
+  const orderItemLabelsByOrderId = useMemo(
+    () => groupOrderItemLabelsByOrder(orderItemsRecords, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField),
+    [orderItemsRecords, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField]
+  );
 
   const orderOptions = useMemo(() => {
     if (!draft.clientId || !ordersClientField) return [];
@@ -1208,8 +1268,8 @@ function NewRefundCaseModal({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === draft.clientId);
       })
-      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemsRecords, orderItemsOrderField) }));
-  }, [ordersRecords, draft.clientId, ordersClientField, ordersShopifyNumberField, ordersItemsField, orderItemsRecords, orderItemsOrderField]);
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId) }));
+  }, [ordersRecords, draft.clientId, ordersClientField, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId]);
 
   const orderItemOptions = useMemo(() => {
     if (!draft.orderId || !orderItemsOrderField) return [];
@@ -1509,12 +1569,18 @@ function DetailPage({
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
   const ordersItemsFieldTop = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
   const orderItemsOrderFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
+  const orderItemsStyleFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.STYLE) ?? null;
+  const orderItemsNameIfNoStyleFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE) ?? null;
+  const orderItemLabelsByOrderIdTop = useMemo(
+    () => groupOrderItemLabelsByOrder(orderItemsRecords, orderItemsOrderFieldTop, orderItemsStyleFieldTop, orderItemsNameIfNoStyleFieldTop),
+    [orderItemsRecords, orderItemsOrderFieldTop, orderItemsStyleFieldTop, orderItemsNameIfNoStyleFieldTop]
+  );
   const orderLabel = useMemo(() => {
     if (!orderLinkedTop || orderLinkedTop.length === 0) return '—';
     const orderRecord = ordersRecords.find((o) => o.id === orderLinkedTop[0]?.id);
     if (!orderRecord) return '—';
-    return buildOrderLabel(orderRecord, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop);
-  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop]);
+    return buildOrderLabel(orderRecord, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop);
+  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop]);
 
   const categoryActiveFieldTop = categoriesTable?.getFieldIfExists(CATEGORY_FIELD_IDS.ACTIVE);
   const orderedCategoryIds = useMemo(() => {
@@ -1710,8 +1776,8 @@ function DetailPage({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === currentClientId);
       })
-      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop) }));
-  }, [ordersRecords, currentClientId, ordersClientField, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop]);
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop) }));
+  }, [ordersRecords, currentClientId, ordersClientField, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop]);
 
   const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
   const currentOrderId = orderLinked?.[0]?.id ?? null;
@@ -2333,14 +2399,23 @@ function RefundRequestsApp(): React.ReactElement {
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
   const ordersItemsField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
   const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
+  const orderItemsStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.STYLE) ?? null;
+  const orderItemsNameIfNoStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE) ?? null;
+  // Grouped once (O(items)) rather than filtering all ~7.7k order_items per
+  // each of ~5k orders — that O(orders × items) scan was what hung the page
+  // on every click that re-rendered this table (per Axel, 2026-09-01).
+  const orderItemLabelsByOrderId = useMemo(
+    () => groupOrderItemLabelsByOrder(orderItemsRecords ?? [], orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField),
+    [orderItemsRecords, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField]
+  );
   const orderLabelById = useMemo(() => {
     const m = new Map<string, string>();
     if (!ordersShopifyNumberField) return m;
     for (const r of ordersRecords ?? []) {
-      m.set(r.id, buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemsRecords ?? [], orderItemsOrderField));
+      m.set(r.id, buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId));
     }
     return m;
-  }, [ordersRecords, ordersShopifyNumberField, ordersItemsField, orderItemsRecords, orderItemsOrderField]);
+  }, [ordersRecords, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId]);
 
   const filteredRecords = useMemo(() => {
     if (!refundRequestsRecords) return [];
