@@ -145,11 +145,16 @@ const REFUND_CATEGORY_FIELD_IDS = {
 // the live field's own choices (BRANDING §9) — same lookup as refund_requests.tsx.
 function getRefundChoiceColorHex(color: string | undefined): string {
   const colorMap: Record<string, string> = {
-    blueLight2: '#2D7FF9', cyanLight2: '#18BFFF', tealLight2: '#00D2C4', greenLight2: '#20C933',
-    yellowLight2: '#F6BE00', orangeLight2: '#FF9D00', redLight2: '#F94343', pinkLight2: '#FF08C2',
-    purpleLight2: '#8B46FF', grayLight2: '#6B7280', blueDark1: '#0D52AC', cyanDark1: '#0F68A2',
-    tealDark1: '#17726E', greenDark1: '#036A19', yellowDark1: '#AF6002', orangeDark1: '#AA2D00',
-    redDark1: '#B10F41', pinkDark1: '#AB0A83', purpleDark1: '#6231AE', grayDark1: '#41454D',
+    blueLight2: '#D1E2FF', blueLight1: '#9CC7FF', blueBright: '#2D7FF9', blueDark1: '#0B5FCC',
+    cyanLight2: '#C6F0F9', cyanLight1: '#71DCF5', cyanBright: '#18BFFF', cyanDark1: '#0A94CC',
+    tealLight2: '#C0F5E9', tealLight1: '#63E6D3', tealBright: '#00D2C4', tealDark1: '#00A99A',
+    greenLight2: '#D3F5D3', greenLight1: '#8AE28A', greenBright: '#20C933', greenDark1: '#0E8A1F',
+    yellowLight2: '#FEF3C7', yellowLight1: '#FFE07A', yellowBright: '#F6BE00', yellowDark1: '#B98900',
+    orangeLight2: '#FEE4CC', orangeLight1: '#FFC582', orangeBright: '#FF9D00', orangeDark1: '#C77400',
+    redLight2: '#FFDCE0', redLight1: '#FF9AA6', redBright: '#F94343', redDark1: '#C22B2B',
+    pinkLight2: '#FEDDF6', pinkLight1: '#FF9DEB', pinkBright: '#FF08C2', pinkDark1: '#B90792',
+    purpleLight2: '#EEE0FD', purpleLight1: '#C99BF5', purpleBright: '#8B46FF', purpleDark1: '#5C2CB0',
+    grayLight2: '#EBEDF0', grayLight1: '#C6CBD1', grayBright: '#6B7280', grayDark1: '#41454D',
   };
   return colorMap[color ?? ''] ?? '#9CA3AF';
 }
@@ -168,7 +173,7 @@ function RefundStagePill({ value, choices }: { value: string | null | undefined;
   if (!value) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
   const hex = getRefundChoiceColorHex(choices.find(c => c.name === value)?.color);
   return (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: hex + '20', color: hex }}>
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium" style={{ backgroundColor: hex + '20', color: hex }}>
       {value}
     </span>
   );
@@ -186,7 +191,7 @@ function RefundCategoryChip({ label, categoryId, orderedCategoryIds }: { label: 
   const hsl = getRefundRainbowHsl(index, orderedCategoryIds.length || 1);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium"
       style={{ backgroundColor: hsl.replace('hsl(', 'hsla(').replace(')', ', 0.16)'), color: hsl }}
     >
       {label}

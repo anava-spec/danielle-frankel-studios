@@ -485,28 +485,22 @@ function getFieldChoices(field: Field | null): Array<{ id: string; name: string;
 
 // Airtable single-select choice-color name → hex. Resolved dynamically from the
 // live field's own choices (never a hardcoded status→color map) per BRANDING §9.
+// Full Airtable single-select color enum (Light2/Light1/Bright/Dark1 per hue) —
+// the previous map only covered Light2+Dark1, so any field using a Light1 or
+// Bright choice color (as request_stage/settlement_stage/resolution_type all
+// do, live) silently fell through to the gray fallback. Complete map fixes it.
 function getChoiceColorHex(color: string | undefined): string {
   const colorMap: Record<string, string> = {
-    blueLight2: '#2D7FF9',
-    cyanLight2: '#18BFFF',
-    tealLight2: '#00D2C4',
-    greenLight2: '#20C933',
-    yellowLight2: '#F6BE00',
-    orangeLight2: '#FF9D00',
-    redLight2: '#F94343',
-    pinkLight2: '#FF08C2',
-    purpleLight2: '#8B46FF',
-    grayLight2: '#6B7280',
-    blueDark1: '#0D52AC',
-    cyanDark1: '#0F68A2',
-    tealDark1: '#17726E',
-    greenDark1: '#036A19',
-    yellowDark1: '#AF6002',
-    orangeDark1: '#AA2D00',
-    redDark1: '#B10F41',
-    pinkDark1: '#AB0A83',
-    purpleDark1: '#6231AE',
-    grayDark1: '#41454D',
+    blueLight2: '#D1E2FF', blueLight1: '#9CC7FF', blueBright: '#2D7FF9', blueDark1: '#0B5FCC',
+    cyanLight2: '#C6F0F9', cyanLight1: '#71DCF5', cyanBright: '#18BFFF', cyanDark1: '#0A94CC',
+    tealLight2: '#C0F5E9', tealLight1: '#63E6D3', tealBright: '#00D2C4', tealDark1: '#00A99A',
+    greenLight2: '#D3F5D3', greenLight1: '#8AE28A', greenBright: '#20C933', greenDark1: '#0E8A1F',
+    yellowLight2: '#FEF3C7', yellowLight1: '#FFE07A', yellowBright: '#F6BE00', yellowDark1: '#B98900',
+    orangeLight2: '#FEE4CC', orangeLight1: '#FFC582', orangeBright: '#FF9D00', orangeDark1: '#C77400',
+    redLight2: '#FFDCE0', redLight1: '#FF9AA6', redBright: '#F94343', redDark1: '#C22B2B',
+    pinkLight2: '#FEDDF6', pinkLight1: '#FF9DEB', pinkBright: '#FF08C2', pinkDark1: '#B90792',
+    purpleLight2: '#EEE0FD', purpleLight1: '#C99BF5', purpleBright: '#8B46FF', purpleDark1: '#5C2CB0',
+    grayLight2: '#EBEDF0', grayLight1: '#C6CBD1', grayBright: '#6B7280', grayDark1: '#41454D',
   };
   return colorMap[color ?? ''] ?? '#9CA3AF';
 }
@@ -657,7 +651,7 @@ function StagePill({ value, choices }: { value: string | null; choices: Array<{ 
   const hex = getChoiceColorHex(choice?.color);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium"
       style={{ backgroundColor: hex + '20', color: hex }}
     >
       {value}
@@ -682,7 +676,7 @@ function CategoryChip({
   const hsl = getRainbowHsl(index, orderedCategoryIds.length || 1);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium"
       style={{ backgroundColor: hsl.replace('hsl(', 'hsla(').replace(')', ', 0.16)'), color: hsl }}
     >
       {label}
@@ -766,16 +760,14 @@ function SearchablePicker({
           className="absolute z-20 mt-1 w-full rounded-lg overflow-hidden max-h-60 flex flex-col"
           style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
         >
-          <div className="p-2" style={{ borderBottom: `1px solid ${tok.border}` }}>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full rounded px-2 py-1 text-sm outline-none"
-              style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
-            />
-          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="w-full px-3 py-2 text-sm outline-none bg-transparent"
+            style={{ borderBottom: `1px solid ${tok.border}`, color: tok.text_primary }}
+          />
           <div className="overflow-y-auto flex-1">
             {filtered.length === 0 && (
               <div className="px-3 py-2 text-sm" style={{ color: tok.text_muted }}>
@@ -880,16 +872,14 @@ function MultiSelectPicker({
           className="absolute z-20 mt-1 w-full rounded-lg overflow-hidden max-h-60 flex flex-col"
           style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
         >
-          <div className="p-2" style={{ borderBottom: `1px solid ${tok.border}` }}>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full rounded px-2 py-1 text-sm outline-none"
-              style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
-            />
-          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="w-full px-3 py-2 text-sm outline-none bg-transparent"
+            style={{ borderBottom: `1px solid ${tok.border}`, color: tok.text_primary }}
+          />
           <div className="overflow-y-auto flex-1">
             {filtered.length === 0 && (
               <div className="px-3 py-2 text-sm" style={{ color: tok.text_muted }}>
@@ -1296,6 +1286,7 @@ function DetailPage({
   resolutionTypeApprovedChoices,
   onGoBack,
   canUpdate,
+  sourceLayout,
 }: {
   record: AirtableRecord;
   refundRequestsTable: Table;
@@ -1313,6 +1304,7 @@ function DetailPage({
   resolutionTypeApprovedChoices: Array<{ name: string }>;
   onGoBack: () => void;
   canUpdate: boolean;
+  sourceLayout: 'requests' | 'review';
 }) {
   const tok = useTokens();
 
@@ -1710,17 +1702,21 @@ function DetailPage({
               Saving...
             </span>
           )}
-          {requestStageValue === 'Requested' && canUpdate && (
+          {/* Move to Under Review / Approve / Reject / Cancel only ever show when the page
+              was opened from the Review layout (Margo's queue) — same rule as
+              customization_requests.tsx gating internal Approve/Deny by sourceLayout.
+              A Sales Associate opening a case from the Requests layout never sees these. */}
+          {sourceLayout === 'review' && requestStageValue === 'Requested' && canUpdate && (
             <button
               type="button"
               onClick={handleMoveToUnderReview}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              className="w-[172px] text-center px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
               style={{ border: `1px solid ${tok.border}`, color: tok.text_primary }}
             >
               Move to Under Review
             </button>
           )}
-          {requestStageValue === 'Under Review' && canUpdate && (
+          {sourceLayout === 'review' && requestStageValue === 'Under Review' && canUpdate && (
             <>
               <button
                 type="button"
@@ -1728,21 +1724,21 @@ function DetailPage({
                   setApproveResolution(resolutionProposedValue);
                   setShowApproveConfirm(true);
                 }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${SEMANTIC.success.bg} ${SEMANTIC.success.text}`}
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
               >
                 Approve
               </button>
               <button
                 type="button"
                 onClick={() => setShowRejectConfirm(true)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${SEMANTIC.danger.bg} ${SEMANTIC.danger.text}`}
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
               >
                 Reject
               </button>
               <button
                 type="button"
                 onClick={() => setShowCancelConfirm(true)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                className="w-[172px] text-center px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
                 style={{ border: `1px solid ${tok.border}`, color: tok.text_primary }}
               >
                 Cancel
@@ -2058,6 +2054,9 @@ function RefundRequestsApp(): React.ReactElement {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [resolutionTypeFilter, setResolutionTypeFilter] = useState<string | null>(null);
+  const [settlementStageFilter, setSettlementStageFilter] = useState<string | null>(null);
+  // Default view hides Approved+Closed cases; "Show All" lets staff see them again.
+  const [showAllRecords, setShowAllRecords] = useState(false);
 
   const [showNewCaseModal, setShowNewCaseModal] = useState(false);
   const [newCaseDraft, setNewCaseDraft] = useState<NewCaseDraft>(emptyDraft);
@@ -2107,6 +2106,7 @@ function RefundRequestsApp(): React.ReactElement {
   const categoryFilterOptions = useMemo(() => activeCategoriesRecords.map((r) => ({ value: r.id, label: r.name ?? r.id })), [activeCategoriesRecords]);
   const stageFilterOptions = useMemo(() => requestStageChoices.map((c) => ({ value: c.name, label: c.name })), [requestStageChoices]);
   const resolutionFilterOptions = useMemo(() => resolutionApprovedChoices.map((c) => ({ value: c.name, label: c.name })), [resolutionApprovedChoices]);
+  const settlementStageFilterOptions = useMemo(() => settlementStageChoices.map((c) => ({ value: c.name, label: c.name })), [settlementStageChoices]);
 
   // Stable rainbow ordering for CategoryChip — sorted by name so a category's
   // hue doesn't shift around as unrelated records load/unload.
@@ -2143,14 +2143,14 @@ function RefundRequestsApp(): React.ReactElement {
     if (!refundRequestsRecords) return [];
     let result = [...refundRequestsRecords];
 
-    result = result.filter((r) => {
-      if (!requestStageField || !settlementStageField) return true;
-      const stage = (r.getCellValue(requestStageField) as { name: string } | null)?.name;
-      const settlement = (r.getCellValue(settlementStageField) as { name: string } | null)?.name;
-      if (stage === 'Rejected' || stage === 'Cancelled') return false;
-      if (settlement === 'Closed') return false;
-      return true;
-    });
+    if (!showAllRecords) {
+      result = result.filter((r) => {
+        if (!requestStageField || !settlementStageField) return true;
+        const stage = (r.getCellValue(requestStageField) as { name: string } | null)?.name;
+        const settlement = (r.getCellValue(settlementStageField) as { name: string } | null)?.name;
+        return !(stage === 'Approved' && settlement === 'Closed');
+      });
+    }
 
     if (searchText.trim() && clientField && clientFullNameField) {
       const s = searchText.toLowerCase();
@@ -2185,13 +2185,40 @@ function RefundRequestsApp(): React.ReactElement {
       });
     }
 
+    if (settlementStageFilter && settlementStageField) {
+      result = result.filter((r) => {
+        const settlement = (r.getCellValue(settlementStageField) as { name: string } | null)?.name;
+        return settlement === settlementStageFilter;
+      });
+    }
+
+    // Sort by Request Stage, then Settlement Stage — using each field's own
+    // defined choice order (its workflow sequence), not alphabetical.
+    const requestStageOrder = new Map(requestStageChoices.map((c, i) => [c.name, i]));
+    const settlementStageOrder = new Map(settlementStageChoices.map((c, i) => [c.name, i]));
+    result.sort((a, b) => {
+      const aStage = requestStageField ? (a.getCellValue(requestStageField) as { name: string } | null)?.name : undefined;
+      const bStage = requestStageField ? (b.getCellValue(requestStageField) as { name: string } | null)?.name : undefined;
+      const aStageIdx = aStage ? requestStageOrder.get(aStage) ?? 999 : 999;
+      const bStageIdx = bStage ? requestStageOrder.get(bStage) ?? 999 : 999;
+      if (aStageIdx !== bStageIdx) return aStageIdx - bStageIdx;
+
+      const aSettlement = settlementStageField ? (a.getCellValue(settlementStageField) as { name: string } | null)?.name : undefined;
+      const bSettlement = settlementStageField ? (b.getCellValue(settlementStageField) as { name: string } | null)?.name : undefined;
+      const aSettlementIdx = aSettlement ? settlementStageOrder.get(aSettlement) ?? 999 : 999;
+      const bSettlementIdx = bSettlement ? settlementStageOrder.get(bSettlement) ?? 999 : 999;
+      return aSettlementIdx - bSettlementIdx;
+    });
+
     return result;
   }, [
     refundRequestsRecords,
+    showAllRecords,
     searchText,
     categoryFilter,
     stageFilter,
     resolutionTypeFilter,
+    settlementStageFilter,
     requestStageField,
     settlementStageField,
     categoryField,
@@ -2199,6 +2226,8 @@ function RefundRequestsApp(): React.ReactElement {
     clientFullNameField,
     clientsRecords,
     resolutionApprovedField,
+    requestStageChoices,
+    settlementStageChoices,
   ]);
 
   const requestedRecords = useMemo(() => {
@@ -2336,6 +2365,7 @@ function RefundRequestsApp(): React.ReactElement {
         resolutionTypeApprovedChoices={resolutionApprovedChoices}
         onGoBack={() => setViewState({ layer: 1, layout: viewState.sourceLayout })}
         canUpdate={canUpdate}
+        sourceLayout={viewState.sourceLayout}
       />
     );
   }
@@ -2361,6 +2391,19 @@ function RefundRequestsApp(): React.ReactElement {
             <Dropdown placeholder="Category" value={categoryFilter} options={categoryFilterOptions} onChange={setCategoryFilter} tok={tok} />
             <Dropdown placeholder="Request Stage" value={stageFilter} options={stageFilterOptions} onChange={setStageFilter} tok={tok} />
             <Dropdown placeholder="Resolution Type" value={resolutionTypeFilter} options={resolutionFilterOptions} onChange={setResolutionTypeFilter} tok={tok} />
+            <Dropdown placeholder="Settlement Stage" value={settlementStageFilter} options={settlementStageFilterOptions} onChange={setSettlementStageFilter} tok={tok} />
+            <button
+              type="button"
+              onClick={() => setShowAllRecords((v) => !v)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              style={
+                showAllRecords
+                  ? { border: `1px solid ${tok.accent}`, color: tok.accent, backgroundColor: tok.accent_soft }
+                  : { border: `1px solid ${tok.border}`, color: tok.text_secondary, backgroundColor: tok.surface }
+              }
+            >
+              {showAllRecords ? 'Showing All' : 'Show All'}
+            </button>
           </>
         )}
         <div className="ml-auto flex items-center gap-3">
@@ -2383,7 +2426,7 @@ function RefundRequestsApp(): React.ReactElement {
             <table className="w-full">
               <thead style={{ backgroundColor: tok.app_bg }}>
                 <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
-                  {['Client', 'Order', 'Category', 'Resolution Type', 'Request Stage', 'Settlement Stage'].map((h) => (
+                  {['Client', 'Order', 'Category', 'Request Stage', 'Resolution Type (Proposed)', 'Resolution Type (Approved)', 'Settlement Stage'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
                       {h}
                     </th>
@@ -2393,7 +2436,7 @@ function RefundRequestsApp(): React.ReactElement {
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: tok.text_secondary }}>
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm" style={{ color: tok.text_secondary }}>
                       No refund cases found.
                     </td>
                   </tr>
@@ -2426,20 +2469,14 @@ function RefundRequestsApp(): React.ReactElement {
                         <td className="px-4 py-3 text-sm">
                           <CategoryChip label={categoryId ? categoryNameById.get(categoryId) ?? null : null} categoryId={categoryId} orderedCategoryIds={orderedCategoryIds} />
                         </td>
-                        <td className="px-4 py-3 text-sm">
-                          {resApproved ? (
-                            <StagePill value={resApproved} choices={resolutionApprovedChoices} />
-                          ) : resProposed ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="text-xs" style={{ color: tok.text_muted }}>Proposed:</span>
-                              <StagePill value={resProposed} choices={resolutionProposedChoices} />
-                            </span>
-                          ) : (
-                            <span style={{ color: tok.text_muted }}>—</span>
-                          )}
-                        </td>
                         <td className="px-4 py-3">
                           <StagePill value={reqStage} choices={requestStageChoices} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <StagePill value={resProposed} choices={resolutionProposedChoices} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <StagePill value={resApproved} choices={resolutionApprovedChoices} />
                         </td>
                         <td className="px-4 py-3">
                           <StagePill value={settStage} choices={settlementStageChoices} />
