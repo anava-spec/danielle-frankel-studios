@@ -106,11 +106,12 @@ function getSoldFieldChoices(field: any): Array<{ name: string; color?: string }
 }
 
 // Same rainbow palette as refund_requests.tsx's CategoryChip — Airtable's own
-// real choice colors (Bright tier) cycled in a fixed order, not a synthetic
-// evenly-spread HSL hue (per Axel, 2026-09-01).
+// real choice colors cycled in a fixed order, not a synthetic evenly-spread
+// HSL hue. Uses the Light1 tier (the picker's second row of tones, per Axel,
+// 2026-09-01) — was Bright tier before that.
 const SOLD_RAINBOW_PALETTE = [
-  '#2D7FF9', '#18BFFF', '#00D2C4', '#20C933', '#F6BE00',
-  '#FF9D00', '#F94343', '#FF08C2', '#8B46FF', '#6B7280',
+  '#9CC7FF', '#71DCF5', '#63E6D3', '#8AE28A', '#FFE07A',
+  '#FFC582', '#FF9AA6', '#FF9DEB', '#C99BF5', '#C6CBD1',
 ] as const;
 
 function getSoldRainbowHex(index: number): string {

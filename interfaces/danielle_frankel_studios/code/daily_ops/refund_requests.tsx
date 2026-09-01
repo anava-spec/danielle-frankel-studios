@@ -14,7 +14,6 @@ import {
   ArrowLeft as ArrowLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   Plus as PlusIcon,
-  CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   ChatCircleText as ChatCircleTextIcon,
   Funnel as FunnelIcon,
@@ -32,6 +31,11 @@ const LIGHT = {
   accent: '#D97706',
   accent_soft: '#FEF3C7',
   hover_bg: '#F8F5EE',
+  // A visibly different tone from app_bg (which hover_bg matches exactly in
+  // light mode) for the Detail Page's stage/summary side panel — same sandy
+  // "neutralBg" tone draft_orders.tsx uses for its own summary panels, per
+  // Axel's 2026-09-01 ask (the panel was blending into the page background).
+  panel_bg: '#F5F0EB',
 };
 
 const DARK = {
@@ -45,6 +49,7 @@ const DARK = {
   accent: '#FBBF24',
   accent_soft: '#3A2E12',
   hover_bg: '#2E2A22',
+  panel_bg: '#302D28',
 };
 
 type Tokens = typeof LIGHT;
@@ -109,13 +114,23 @@ const ORDERS_FIELD_IDS = {
   // order_items child table. Only used as a fallback label when an order has
   // no order_items records at all (per Axel, 2026-09-01).
   ITEMS: 'fldZHRtwkWdIWCrpF',
+  // Rollup (unique values of order_items' `style`) living directly on the
+  // order — replaces the old per-order .filter() over the whole order_items
+  // table (which was O(orders×items), ~39M getCellValue calls, and hung the
+  // page on every "New Refund Case" click / record open). Per Axel,
+  // 2026-09-01: this field already returns only unique style names, so it's
+  // now the sole source for the order label's item text — O(1) per order.
+  ORDER_ITEMS_STYLE: 'fld38iuxvuEVYOhZ6',
+  // Client's own pipeline `stage` (Clients table, tblLLUlDgJ4ktzF7c), looked
+  // up here for readability — see CLIENTS_FIELD_IDS.STAGE for the real field.
 } as const;
 
 // An order_item's own primary field ("AM Order Item ID") is an internal
-// numeric ID, not a display name — it was leaking into the order label as
-// e.g. "190816, 190818". The actual product name lives on `style` (a link to
-// DF Styles), falling back to `name_if_no_style` for style-less items like
-// alterations charges (per Axel, 2026-09-01).
+// numeric ID, not a display name — the product name lives on `style` (a link
+// to DF Styles), falling back to `name_if_no_style` for style-less items like
+// alterations charges (per Axel, 2026-09-01). Used per-row in the Order Items
+// table (ID/Style/Amount) — the order-level label itself now reads the
+// order_items_style rollup directly instead of scanning order_items.
 function getOrderItemLabel(oi: AirtableRecord, styleField: Field | null, nameIfNoStyleField: Field | null): string {
   const styleLinked = styleField ? (oi.getCellValue(styleField) as Array<{ id: string; name?: string }> | null) : null;
   const styleNames = styleLinked?.map((l) => l.name ?? '').filter(Boolean).join(', ') ?? '';
@@ -123,68 +138,43 @@ function getOrderItemLabel(oi: AirtableRecord, styleField: Field | null, nameIfN
   return nameIfNoStyleField ? oi.getCellValueAsString(nameIfNoStyleField) : '';
 }
 
-// Groups order_item style labels by their linked order once (O(items)) so
-// buildOrderLabel never has to re-scan the whole order_items table per order.
-// Orders (~5k) times order_items (~7.7k) as a per-order .filter() was ~39M
-// getCellValue calls through the SDK's wrapper — that's what was hanging the
-// page on every "New Refund Case" click / record open (per Axel, 2026-09-01).
-function groupOrderItemLabelsByOrder(
-  orderItemsRecords: readonly AirtableRecord[],
-  orderItemsOrderField: Field | null,
-  styleField: Field | null,
-  nameIfNoStyleField: Field | null
-): Map<string, string[]> {
-  const map = new Map<string, string[]>();
-  if (!orderItemsOrderField) return map;
-  for (const oi of orderItemsRecords) {
-    const linked = oi.getCellValue(orderItemsOrderField) as Array<{ id: string }> | null;
-    if (!linked) continue;
-    const label = getOrderItemLabel(oi, styleField, nameIfNoStyleField);
-    if (!label) continue;
-    for (const l of linked) {
-      const arr = map.get(l.id);
-      if (arr) arr.push(label);
-      else map.set(l.id, [label]);
-    }
-  }
-  return map;
-}
-
-// Order display label: "#<Shopify Order Number> — <item style names>",
-// falling back to the order's own "Items" link when it has no order_items
-// records at all (per Axel, 2026-09-01). Used everywhere an order is shown —
-// the plain table/detail-page display and every Order picker.
+// Order display label: "#<Shopify Order Number> — <item style names>", read
+// straight off the order_items_style rollup (already unique-value text, no
+// child-table scan needed) and falling back to the order's own "Items" link
+// only when that rollup is empty (per Axel, 2026-09-01). Used everywhere an
+// order is shown — the plain table/detail-page display and every Order picker.
 function buildOrderLabel(
   order: AirtableRecord,
   shopifyNumberField: Field | null,
   itemsField: Field | null,
-  orderItemLabelsByOrderId: Map<string, string[]>
+  orderItemsStyleField: Field | null
 ): string {
   const num = shopifyNumberField ? (order.getCellValue(shopifyNumberField) as number | null) : null;
   if (!num) return '—';
-  const itemNames = (orderItemLabelsByOrderId.get(order.id) ?? []).join(', ');
-  const itemsText = itemNames || (itemsField ? order.getCellValueAsString(itemsField) : '');
+  const styleText = orderItemsStyleField ? order.getCellValueAsString(orderItemsStyleField) : '';
+  const itemsText = styleText || (itemsField ? order.getCellValueAsString(itemsField) : '');
   return itemsText ? `#${num} — ${itemsText}` : `#${num}`;
 }
 
 // Rainbow chip palette for the `refund_category` linked-record field — there's
 // no live Airtable choice color to read (it's a link, not a select), so per
 // Axel's ask each active category cycles through Airtable's own real choice
-// colors (Bright tier, from getChoiceColorHex's map) instead of a synthetic
-// evenly-spread HSL hue — same background/font-color pairing as Airtable's
-// native chips (BRANDING §9). Reused verbatim in draft_orders.tsx and
-// sold_orders.tsx's read-only Refund Case panels (2026-09-01).
+// colors instead of a synthetic evenly-spread HSL hue — same
+// background/font-color pairing as Airtable's native chips (BRANDING §9).
+// Uses the Light1 tier (the picker's second row of tones, per Axel,
+// 2026-09-01) — was Bright tier before that. Reused verbatim in
+// draft_orders.tsx and sold_orders.tsx's read-only Refund Case panels.
 const RAINBOW_PALETTE = [
-  '#2D7FF9', // blueBright
-  '#18BFFF', // cyanBright
-  '#00D2C4', // tealBright
-  '#20C933', // greenBright
-  '#F6BE00', // yellowBright
-  '#FF9D00', // orangeBright
-  '#F94343', // redBright
-  '#FF08C2', // pinkBright
-  '#8B46FF', // purpleBright
-  '#6B7280', // grayBright
+  '#9CC7FF', // blueLight1
+  '#71DCF5', // cyanLight1
+  '#63E6D3', // tealLight1
+  '#8AE28A', // greenLight1
+  '#FFE07A', // yellowLight1
+  '#FFC582', // orangeLight1
+  '#FF9AA6', // redLight1
+  '#FF9DEB', // pinkLight1
+  '#C99BF5', // purpleLight1
+  '#C6CBD1', // grayLight1
 ] as const;
 
 function getRainbowHex(index: number): string {
@@ -195,10 +185,18 @@ const ORDER_ITEMS_FIELD_IDS = {
   ORDER: 'fldXrdBFm5SeGCTvq',
   STYLE: 'fldL9rj7ZeDnjnXiY',
   NAME_IF_NO_STYLE: 'fld2Hzmni4fGcKAgh',
+  AMOUNT: 'fldLT05tO5ep0WkyP',
 } as const;
 
 const CLIENTS_FIELD_IDS = {
   FULL_NAME: 'fldB3Wyam01D3wR5Q',
+  // Client pipeline stage (Pre-Appointment...Fulfilled, plus a separate
+  // "Did Not Convert" not counted as "in the pipeline" — see pipeline.tsx's
+  // STAGE_ORDER). No literal "Closed" choice exists on this field; per
+  // Axel's 2026-09-01 ask to exclude "Fulfilled or Closed" clients from the
+  // New Refund Case picker, "Did Not Convert" (the other terminal/closed-out
+  // stage) is treated as the "Closed" he meant — flagged to him to confirm.
+  STAGE: 'fldLcxVZvI1rigBlh',
 } as const;
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) — same subsystem as draft_orders.tsx,
@@ -726,6 +724,12 @@ function useResponsiveFilterCount(totalItems: number) {
   return { containerRef, visibleCount };
 }
 
+// Every other control in this toolbar (search bar, filter Dropdowns, Show
+// All, LayoutDropdown, New Refund Case) is `px-3 py-1.5 text-sm` with a 1px
+// border, which renders at 34px tall. This button has no text baseline to
+// pin that height by padding alone, so it's fixed to the same 34px directly
+// instead (per Axel, 2026-09-01 — the whole toolbar row must share one
+// height; this button must NOT be taller than the filters it groups).
 // rounded-lg (matches the search bar's radius, not rounded-full); icon at
 // 14px (one tier down from a standalone-icon's usual 16px); active state is
 // a solid accent fill with a light icon — same pairing as the "New Refund
@@ -748,7 +752,7 @@ function FilterGroupButton({ filters, hasActive, tok }: { filters: FilterSpec[];
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="More filters"
-        className="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-lg transition-colors"
+        className="flex items-center justify-center w-[34px] h-[34px] flex-shrink-0 rounded-lg transition-colors"
         style={
           hasActive
             ? { backgroundColor: tok.accent, border: 'none' }
@@ -823,7 +827,7 @@ function LayoutDropdown({ value, onChange, tok }: { value: 'requests' | 'review'
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
+        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
         style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
       >
         <span>{labels[value]}</span>
@@ -1009,118 +1013,6 @@ function SearchablePicker({
   );
 }
 
-// MultiSelectPicker — BRANDING §5: never a checkbox next to an option.
-// Selection is communicated by highlighting (accent text + trailing checkmark).
-function MultiSelectPicker({
-  label,
-  placeholder,
-  options,
-  value,
-  onChange,
-  disabled,
-  tok,
-}: {
-  label: string;
-  placeholder: string;
-  options: Array<{ id: string; label: string }>;
-  value: string[];
-  onChange: (ids: string[]) => void;
-  disabled?: boolean;
-  tok: Tokens;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch('');
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const filtered = useMemo(() => {
-    const s = search.toLowerCase();
-    return options.filter((o) => o.label.toLowerCase().includes(s));
-  }, [options, search]);
-
-  const selectedLabels = value.map((id) => options.find((o) => o.id === id)?.label).filter(Boolean).join(', ');
-  const isActive = value.length > 0;
-
-  const toggleOption = (id: string) => {
-    onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
-  };
-
-  return (
-    <div ref={ref} className="relative">
-      <label className="text-[11px] capitalize tracking-wide font-medium mb-1.5 block" style={{ color: tok.text_secondary }}>
-        {label}
-      </label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setOpen(!open)}
-        className={`w-full flex items-center justify-between gap-1.5 rounded-lg px-3 py-2 text-sm text-left outline-none transition-colors ${
-          disabled ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
-        style={{ border: `1px solid ${isActive ? tok.accent : tok.border}`, backgroundColor: tok.surface, color: isActive ? tok.text_primary : tok.text_muted }}
-      >
-        <span className="truncate">{isActive ? selectedLabels : placeholder}</span>
-        {isActive ? (
-          <span role="button" onClick={(e) => { e.stopPropagation(); onChange([]); }} className="flex-shrink-0" style={{ color: tok.text_muted }}>
-            <XIcon size={14} />
-          </span>
-        ) : (
-          <CaretDownIcon size={14} className="flex-shrink-0" style={{ color: tok.text_muted }} />
-        )}
-      </button>
-      {open && (
-        <div
-          className="absolute z-20 mt-1 w-full rounded-lg overflow-hidden max-h-60 flex flex-col"
-          style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
-        >
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
-            className="w-full px-3 py-2 text-sm outline-none bg-transparent"
-            style={{ borderBottom: `1px solid ${tok.border}`, color: tok.text_primary }}
-          />
-          <div className="overflow-y-auto flex-1">
-            {filtered.length === 0 && (
-              <div className="px-3 py-2 text-sm" style={{ color: tok.text_muted }}>
-                No results
-              </div>
-            )}
-            {filtered.map((opt) => {
-              const selected = value.includes(opt.id);
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => toggleOption(opt.id)}
-                  className="w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between gap-2"
-                  style={selected ? { color: tok.accent, backgroundColor: tok.accent_soft, fontWeight: 500 } : { color: tok.text_primary }}
-                  onMouseEnter={(e) => { if (!selected) e.currentTarget.style.backgroundColor = tok.hover_bg; }}
-                  onMouseLeave={(e) => { if (!selected) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                >
-                  <span className="truncate">{opt.label}</span>
-                  {selected && <CheckCircleIcon size={14} weight="fill" className="flex-shrink-0" style={{ color: tok.accent }} />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SimplePicker({
   label,
   placeholder,
@@ -1188,6 +1080,212 @@ function SimplePicker({
   );
 }
 
+function formatCurrency(n: number): string {
+  const safe = Number.isFinite(n) ? n : 0;
+  return `$${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// One row of the Order Items table below — id is the order_item record id
+// (for add/remove), itemId is its own primary field ("AM Order Item ID",
+// shown as-is since it's the only stable identifier customers/staff refer
+// to), style is the same style-or-fallback text as getOrderItemLabel, amount
+// is the order_item's own `amount` field (per Axel, 2026-09-01).
+function buildOrderItemRow(
+  oi: AirtableRecord,
+  styleField: Field | null,
+  nameIfNoStyleField: Field | null,
+  amountField: Field | null
+): { id: string; itemId: string; style: string; amount: number } {
+  return {
+    id: oi.id,
+    itemId: oi.name ?? oi.id,
+    style: getOrderItemLabel(oi, styleField, nameIfNoStyleField),
+    amount: amountField ? ((oi.getCellValue(amountField) as number | null) ?? 0) : 0,
+  };
+}
+
+// "This refund is product-specific" — still a plain checkbox field
+// underneath (IS_PRODUCT_SPECIFIC), but rendered as a two-state toggle
+// button per Axel's ask (2026-09-01): off reads "No, order-level", on reads
+// "Yes, product-specific" — same accent-fill/light-icon pairing as every
+// other active-state toggle in this file (BRANDING §9).
+function ProductSpecificToggle({
+  checked,
+  onChange,
+  disabled,
+  tok,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  tok: Tokens;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      style={
+        checked
+          ? { backgroundColor: tok.accent, color: '#FFFFFF', border: 'none' }
+          : { backgroundColor: tok.surface, color: tok.text_secondary, border: `1px solid ${tok.border}` }
+      }
+    >
+      {checked ? 'Yes, product-specific' : 'No, order-level'}
+    </button>
+  );
+}
+
+// Search-to-add control for the Order Items table below. Per Axel
+// (2026-09-01): never shows the current selection, just the "Select an
+// order item" placeholder — already-selected items are excluded from the
+// list so the same item can't be added twice.
+function OrderItemSelectDropdown({
+  options,
+  onAdd,
+  disabled,
+  tok,
+}: {
+  options: Array<{ id: string; itemId: string; style: string }>;
+  onAdd: (id: string) => void;
+  disabled?: boolean;
+  tok: Tokens;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return options.filter((o) => !s || o.style.toLowerCase().includes(s) || o.itemId.toLowerCase().includes(s));
+  }, [options, search]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className={`w-full flex items-center justify-between gap-1.5 rounded-lg px-3 py-1.5 text-sm text-left outline-none transition-colors ${
+          disabled ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+        style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_muted }}
+      >
+        <span className="truncate">Select an order item</span>
+        <CaretDownIcon size={14} className="flex-shrink-0" style={{ color: tok.text_muted }} />
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 mt-1 w-full rounded-lg overflow-hidden max-h-60 flex flex-col"
+          style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
+        >
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="w-full px-3 py-2 text-sm outline-none bg-transparent"
+            style={{ borderBottom: `1px solid ${tok.border}`, color: tok.text_primary }}
+          />
+          <div className="overflow-y-auto flex-1">
+            {filtered.length === 0 && (
+              <div className="px-3 py-2 text-sm" style={{ color: tok.text_muted }}>
+                No results
+              </div>
+            )}
+            {filtered.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onAdd(opt.id);
+                  setSearch('');
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm transition-colors"
+                style={{ color: tok.text_primary }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = tok.hover_bg; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              >
+                {opt.style || opt.itemId}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Order Items breakdown table — same search-to-add-above/invoice-table-below
+// pattern as customization_requests.tsx's LineItemsTable, but with this
+// record's own columns (ID/Style/Amount) and the remove control as the LAST
+// column instead of the first (per Axel, 2026-09-01). `disabled` hides the
+// remove column entirely — used for the read-only detail view.
+function OrderItemsTable({
+  items,
+  onRemove,
+  disabled,
+  tok,
+}: {
+  items: Array<{ id: string; itemId: string; style: string; amount: number }>;
+  onRemove?: (id: string) => void;
+  disabled?: boolean;
+  tok: Tokens;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${tok.border}` }}>
+      <table className="w-full">
+        <thead style={{ backgroundColor: tok.app_bg }}>
+          <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
+            <th className="px-3 py-2 text-[11px] font-medium capitalize tracking-wide text-left" style={{ color: tok.text_secondary }}>ID</th>
+            <th className="px-3 py-2 text-[11px] font-medium capitalize tracking-wide text-left" style={{ color: tok.text_secondary }}>Style</th>
+            <th className="px-3 py-2 text-[11px] font-medium capitalize tracking-wide text-right" style={{ color: tok.text_secondary }}>Amount</th>
+            {!disabled && <th className="px-3 py-2 w-8" />}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} className="last:border-0" style={{ borderBottom: `1px solid ${tok.border_light}` }}>
+              <td className="px-3 py-2.5 text-sm" style={{ color: tok.text_primary }}>{item.itemId}</td>
+              <td className="px-3 py-2.5 text-sm" style={{ color: tok.text_primary }}>{item.style || '—'}</td>
+              <td className="px-3 py-2.5 text-sm text-right" style={{ color: tok.text_secondary }}>{formatCurrency(item.amount)}</td>
+              {!disabled && (
+                <td className="px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onRemove?.(item.id)}
+                    aria-label={`Remove ${item.itemId}`}
+                    className="transition-colors"
+                    style={{ color: tok.text_muted }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = tok.text_muted; }}
+                  >
+                    <XIcon size={14} />
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── New Refund Case modal ────────────────────────────────────────────────────
 function NewRefundCaseModal({
   draft,
@@ -1244,22 +1342,40 @@ function NewRefundCaseModal({
 
   const clientFullNameField = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.FULL_NAME);
 
-  const clientOptions = useMemo(() => {
-    if (!clientFullNameField) return [];
-    return clientsRecords.map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameField) as string) ?? r.id }));
-  }, [clientsRecords, clientFullNameField]);
-
   const ordersClientField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.CLIENT);
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
   const ordersItemsField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
+  const ordersOrderItemsStyleField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ORDER_ITEMS_STYLE) ?? null;
   const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
   const orderItemsStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.STYLE) ?? null;
   const orderItemsNameIfNoStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE) ?? null;
+  const orderItemsAmountField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.AMOUNT) ?? null;
 
-  const orderItemLabelsByOrderId = useMemo(
-    () => groupOrderItemLabelsByOrder(orderItemsRecords, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField),
-    [orderItemsRecords, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField]
-  );
+  // Only clients with at least one Shopify order, whose own pipeline stage
+  // hasn't wrapped up, can start a refund case (per Axel, 2026-09-01).
+  const clientIdsWithOrders = useMemo(() => {
+    const set = new Set<string>();
+    if (!ordersClientField) return set;
+    for (const o of ordersRecords) {
+      const linked = o.getCellValue(ordersClientField) as Array<{ id: string }> | null;
+      linked?.forEach((l) => set.add(l.id));
+    }
+    return set;
+  }, [ordersRecords, ordersClientField]);
+
+  const clientStageField = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.STAGE) ?? null;
+
+  const clientOptions = useMemo(() => {
+    if (!clientFullNameField) return [];
+    return clientsRecords
+      .filter((r) => clientIdsWithOrders.has(r.id))
+      .filter((r) => {
+        if (!clientStageField) return true;
+        const stage = (r.getCellValue(clientStageField) as { name: string } | null)?.name ?? null;
+        return stage !== 'Fulfilled' && stage !== 'Did Not Convert';
+      })
+      .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameField) as string) ?? r.id }));
+  }, [clientsRecords, clientFullNameField, clientIdsWithOrders, clientStageField]);
 
   const orderOptions = useMemo(() => {
     if (!draft.clientId || !ordersClientField) return [];
@@ -1268,23 +1384,32 @@ function NewRefundCaseModal({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === draft.clientId);
       })
-      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId) }));
-  }, [ordersRecords, draft.clientId, ordersClientField, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId]);
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField) }));
+  }, [ordersRecords, draft.clientId, ordersClientField, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField]);
 
-  const orderItemOptions = useMemo(() => {
+  const orderItemRows = useMemo(() => {
     if (!draft.orderId || !orderItemsOrderField) return [];
     return orderItemsRecords
       .filter((r) => {
         const linked = r.getCellValue(orderItemsOrderField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === draft.orderId);
       })
-      .map((r) => ({ id: r.id, label: r.name ?? r.id }));
-  }, [orderItemsRecords, draft.orderId, orderItemsOrderField]);
+      .map((r) => buildOrderItemRow(r, orderItemsStyleField, orderItemsNameIfNoStyleField, orderItemsAmountField));
+  }, [orderItemsRecords, draft.orderId, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField, orderItemsAmountField]);
+
+  const orderItemDropdownOptions = useMemo(
+    () => orderItemRows.filter((r) => !draft.orderItemIds.includes(r.id)),
+    [orderItemRows, draft.orderItemIds]
+  );
+  const selectedOrderItemRows = useMemo(
+    () => draft.orderItemIds.map((id) => orderItemRows.find((r) => r.id === id)).filter((r): r is NonNullable<typeof r> => !!r),
+    [draft.orderItemIds, orderItemRows]
+  );
 
   // Whether the selected order has any order_items at all — if not, the
-  // product-specific checkbox has nothing to offer, so it's hidden entirely
+  // product-specific toggle has nothing to offer, so it's hidden entirely
   // in favor of a soft alert (per Axel, 2026-09-01).
-  const selectedOrderHasItems = !draft.orderId || orderItemOptions.length > 0;
+  const selectedOrderHasItems = !draft.orderId || orderItemRows.length > 0;
 
   const categoryActiveField = categoriesTable?.getFieldIfExists(CATEGORY_FIELD_IDS.ACTIVE);
 
@@ -1349,27 +1474,27 @@ function NewRefundCaseModal({
           </div>
           {selectedOrderHasItems ? (
             <>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isProductSpecific"
+              <div className="flex items-center gap-3">
+                <ProductSpecificToggle
                   checked={draft.isProductSpecific}
-                  onChange={(e) => setDraft((d) => ({ ...d, isProductSpecific: e.target.checked, orderItemIds: e.target.checked ? d.orderItemIds : [] }))}
-                  className="w-4 h-4 rounded"
-                  style={{ accentColor: tok.accent }}
+                  onChange={(checked) => setDraft((d) => ({ ...d, isProductSpecific: checked, orderItemIds: checked ? d.orderItemIds : [] }))}
+                  tok={tok}
                 />
-                <label htmlFor="isProductSpecific" className="text-sm" style={{ color: tok.text_primary }}>
-                  This refund is product-specific
-                </label>
+                {draft.isProductSpecific && (
+                  <div className="flex-1">
+                    <OrderItemSelectDropdown
+                      options={orderItemDropdownOptions}
+                      onAdd={(id) => setDraft((d) => ({ ...d, orderItemIds: [...d.orderItemIds, id] }))}
+                      disabled={!draft.orderId}
+                      tok={tok}
+                    />
+                  </div>
+                )}
               </div>
               {draft.isProductSpecific && (
-                <MultiSelectPicker
-                  label="Order Items"
-                  placeholder="Select order items..."
-                  options={orderItemOptions}
-                  value={draft.orderItemIds}
-                  onChange={(ids) => setDraft((d) => ({ ...d, orderItemIds: ids }))}
-                  disabled={!draft.orderId}
+                <OrderItemsTable
+                  items={selectedOrderItemRows}
+                  onRemove={(id) => setDraft((d) => ({ ...d, orderItemIds: d.orderItemIds.filter((x) => x !== id) }))}
                   tok={tok}
                 />
               )}
@@ -1389,7 +1514,7 @@ function NewRefundCaseModal({
               tok={tok}
             />
             <SimplePicker
-              label="Resolution Type (Proposed)"
+              label="Proposed Resolution"
               placeholder="Select resolution type..."
               options={resolutionOptions}
               value={draft.resolutionTypeProposed}
@@ -1568,19 +1693,16 @@ function DetailPage({
   const orderLinkedTop = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
   const ordersItemsFieldTop = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
-  const orderItemsOrderFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
+  const ordersOrderItemsStyleFieldTop = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ORDER_ITEMS_STYLE) ?? null;
   const orderItemsStyleFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.STYLE) ?? null;
   const orderItemsNameIfNoStyleFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE) ?? null;
-  const orderItemLabelsByOrderIdTop = useMemo(
-    () => groupOrderItemLabelsByOrder(orderItemsRecords, orderItemsOrderFieldTop, orderItemsStyleFieldTop, orderItemsNameIfNoStyleFieldTop),
-    [orderItemsRecords, orderItemsOrderFieldTop, orderItemsStyleFieldTop, orderItemsNameIfNoStyleFieldTop]
-  );
+  const orderItemsAmountFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.AMOUNT) ?? null;
   const orderLabel = useMemo(() => {
     if (!orderLinkedTop || orderLinkedTop.length === 0) return '—';
     const orderRecord = ordersRecords.find((o) => o.id === orderLinkedTop[0]?.id);
     if (!orderRecord) return '—';
-    return buildOrderLabel(orderRecord, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop);
-  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop]);
+    return buildOrderLabel(orderRecord, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop);
+  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop]);
 
   const categoryActiveFieldTop = categoriesTable?.getFieldIfExists(CATEGORY_FIELD_IDS.ACTIVE);
   const orderedCategoryIds = useMemo(() => {
@@ -1761,13 +1883,42 @@ function DetailPage({
   }, [categoriesRecords, categoryActiveField]);
 
   const clientFullNameFieldClients = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.FULL_NAME);
+  const ordersClientField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.CLIENT);
+
+  // Only clients with at least one Shopify order, whose own pipeline stage
+  // hasn't wrapped up, can be picked here — same rule as the New Refund Case
+  // modal (per Axel, 2026-09-01).
+  const clientIdsWithOrders = useMemo(() => {
+    const set = new Set<string>();
+    if (!ordersClientField) return set;
+    for (const o of ordersRecords) {
+      const linked = o.getCellValue(ordersClientField) as Array<{ id: string }> | null;
+      linked?.forEach((l) => set.add(l.id));
+    }
+    return set;
+  }, [ordersRecords, ordersClientField]);
+
+  const clientStageField = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.STAGE) ?? null;
+
+  const currentClientId = clientLinked?.[0]?.id ?? null;
+
+  // Same "has an order, stage not wrapped up" gate as the New Refund Case
+  // modal (per Axel, 2026-09-01) — but the request's own already-linked
+  // client is always kept in the list even if it no longer qualifies (e.g.
+  // its stage moved to Fulfilled after this request was filed), so the
+  // picker still shows the real name instead of silently blanking it out.
   const clientOptions = useMemo(() => {
     if (!clientFullNameFieldClients) return [];
-    return clientsRecords.map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameFieldClients) as string) ?? r.id }));
-  }, [clientsRecords, clientFullNameFieldClients]);
-
-  const ordersClientField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.CLIENT);
-  const currentClientId = clientLinked?.[0]?.id ?? null;
+    return clientsRecords
+      .filter((r) => {
+        if (r.id === currentClientId) return true;
+        if (!clientIdsWithOrders.has(r.id)) return false;
+        if (!clientStageField) return true;
+        const stage = (r.getCellValue(clientStageField) as { name: string } | null)?.name ?? null;
+        return stage !== 'Fulfilled' && stage !== 'Did Not Convert';
+      })
+      .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameFieldClients) as string) ?? r.id }));
+  }, [clientsRecords, clientFullNameFieldClients, clientIdsWithOrders, clientStageField, currentClientId]);
 
   const orderOptions = useMemo(() => {
     if (!currentClientId || !ordersClientField) return [];
@@ -1776,29 +1927,38 @@ function DetailPage({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === currentClientId);
       })
-      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop) }));
-  }, [ordersRecords, currentClientId, ordersClientField, ordersShopifyNumberField, ordersItemsFieldTop, orderItemLabelsByOrderIdTop]);
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop) }));
+  }, [ordersRecords, currentClientId, ordersClientField, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop]);
 
   const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
   const currentOrderId = orderLinked?.[0]?.id ?? null;
 
-  const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER);
-  const orderItemOptions = useMemo(() => {
+  const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
+  const orderItemRows = useMemo(() => {
     if (!currentOrderId || !orderItemsOrderField) return [];
     return orderItemsRecords
       .filter((r) => {
         const linked = r.getCellValue(orderItemsOrderField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === currentOrderId);
       })
-      .map((r) => ({ id: r.id, label: r.name ?? r.id }));
-  }, [orderItemsRecords, currentOrderId, orderItemsOrderField]);
+      .map((r) => buildOrderItemRow(r, orderItemsStyleFieldTop, orderItemsNameIfNoStyleFieldTop, orderItemsAmountFieldTop));
+  }, [orderItemsRecords, currentOrderId, orderItemsOrderField, orderItemsStyleFieldTop, orderItemsNameIfNoStyleFieldTop, orderItemsAmountFieldTop]);
 
   // Same gate as the New Refund Case modal — no items on this order means
-  // nothing for the product-specific checkbox to offer.
-  const currentOrderHasItems = !currentOrderId || orderItemOptions.length > 0;
+  // nothing for the product-specific toggle to offer.
+  const currentOrderHasItems = !currentOrderId || orderItemRows.length > 0;
 
   const currentOrderItemsLinked = orderItemsField ? (record.getCellValue(orderItemsField) as Array<{ id: string }> | null) : null;
   const currentOrderItemIds = currentOrderItemsLinked?.map((l) => l.id) ?? [];
+
+  const currentOrderItemDropdownOptions = useMemo(
+    () => orderItemRows.filter((r) => !currentOrderItemIds.includes(r.id)),
+    [orderItemRows, currentOrderItemIds]
+  );
+  const currentOrderItemTableRows = useMemo(
+    () => currentOrderItemIds.map((id) => orderItemRows.find((r) => r.id === id)).filter((r): r is NonNullable<typeof r> => !!r),
+    [currentOrderItemIds, orderItemRows]
+  );
   const currentCategoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
   const currentCategoryId = currentCategoryLinked?.[0]?.id ?? null;
   const isProductSpecificValue = isProductSpecificField ? !!record.getCellValue(isProductSpecificField) : false;
@@ -2046,27 +2206,27 @@ function DetailPage({
                 </div>
                 {currentOrderHasItems ? (
                   <>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="isProductSpecificDetail"
+                    <div className="flex items-center gap-3">
+                      <ProductSpecificToggle
                         checked={isProductSpecificValue}
-                        onChange={(e) => handleProductSpecificChange(e.target.checked)}
-                        className="w-4 h-4 rounded"
-                        style={{ accentColor: tok.accent }}
+                        onChange={handleProductSpecificChange}
+                        tok={tok}
                       />
-                      <label htmlFor="isProductSpecificDetail" className="text-sm" style={{ color: tok.text_primary }}>
-                        This refund is product-specific
-                      </label>
+                      {isProductSpecificValue && (
+                        <div className="flex-1">
+                          <OrderItemSelectDropdown
+                            options={currentOrderItemDropdownOptions}
+                            onAdd={(id) => handleOrderItemsChange([...currentOrderItemIds, id])}
+                            disabled={!currentOrderId}
+                            tok={tok}
+                          />
+                        </div>
+                      )}
                     </div>
                     {isProductSpecificValue && (
-                      <MultiSelectPicker
-                        label="Order Items"
-                        placeholder="Select order items..."
-                        options={orderItemOptions}
-                        value={currentOrderItemIds}
-                        onChange={handleOrderItemsChange}
-                        disabled={!currentOrderId}
+                      <OrderItemsTable
+                        items={currentOrderItemTableRows}
+                        onRemove={(id) => handleOrderItemsChange(currentOrderItemIds.filter((x) => x !== id))}
                         tok={tok}
                       />
                     )}
@@ -2086,7 +2246,7 @@ function DetailPage({
                     tok={tok}
                   />
                   <SimplePicker
-                    label="Resolution Type (Proposed)"
+                    label="Proposed Resolution"
                     placeholder="Select resolution type..."
                     options={resolutionTypeProposedChoices.map((c) => ({ value: c.name, label: c.name }))}
                     value={resolutionProposedValue}
@@ -2134,9 +2294,7 @@ function DetailPage({
                     <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
                       Order Items
                     </label>
-                    <div className="p-2 rounded-lg" style={{ backgroundColor: tok.hover_bg }}>
-                      {orderItemsField && <CellRenderer record={record} field={orderItemsField} />}
-                    </div>
+                    <OrderItemsTable items={currentOrderItemTableRows} disabled tok={tok} />
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
@@ -2150,7 +2308,7 @@ function DetailPage({
                   </div>
                   <div>
                     <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                      Resolution Type (Proposed)
+                      Proposed Resolution
                     </label>
                     <div className="p-2 rounded-lg">
                       <StagePill value={resolutionProposedValue} choices={resolutionTypeProposedChoices} />
@@ -2170,7 +2328,7 @@ function DetailPage({
           </div>
 
           <div className="col-span-2">
-            <div className="sticky top-4 rounded-lg p-4 space-y-4" style={{ backgroundColor: tok.hover_bg, border: `1px solid ${tok.border}` }}>
+            <div className="sticky top-4 rounded-lg p-4 space-y-4" style={{ backgroundColor: tok.panel_bg, border: `1px solid ${tok.border}` }}>
               <div>
                 <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
                   Refund Category
@@ -2186,7 +2344,7 @@ function DetailPage({
               {resolutionApprovedValue && (
                 <div>
                   <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Resolution Type (Approved)
+                    Approved Resolution
                   </label>
                   <StagePill value={resolutionApprovedValue} choices={resolutionTypeApprovedChoices} />
                 </div>
@@ -2398,24 +2556,20 @@ function RefundRequestsApp(): React.ReactElement {
 
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
   const ordersItemsField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
-  const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
-  const orderItemsStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.STYLE) ?? null;
-  const orderItemsNameIfNoStyleField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.NAME_IF_NO_STYLE) ?? null;
-  // Grouped once (O(items)) rather than filtering all ~7.7k order_items per
-  // each of ~5k orders — that O(orders × items) scan was what hung the page
-  // on every click that re-rendered this table (per Axel, 2026-09-01).
-  const orderItemLabelsByOrderId = useMemo(
-    () => groupOrderItemLabelsByOrder(orderItemsRecords ?? [], orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField),
-    [orderItemsRecords, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField]
-  );
+  // order_items_style rollup already lives on the order itself (unique style
+  // values, no child-table scan needed) — reading it directly here is what
+  // fixed the O(orders × items) scan (~39M getCellValue calls through the
+  // SDK) that hung the page on every click that re-rendered this table
+  // (per Axel, 2026-09-01).
+  const ordersOrderItemsStyleField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ORDER_ITEMS_STYLE) ?? null;
   const orderLabelById = useMemo(() => {
     const m = new Map<string, string>();
     if (!ordersShopifyNumberField) return m;
     for (const r of ordersRecords ?? []) {
-      m.set(r.id, buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId));
+      m.set(r.id, buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField));
     }
     return m;
-  }, [ordersRecords, ordersShopifyNumberField, ordersItemsField, orderItemLabelsByOrderId]);
+  }, [ordersRecords, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField]);
 
   const filteredRecords = useMemo(() => {
     if (!refundRequestsRecords) return [];
@@ -2660,7 +2814,7 @@ function RefundRequestsApp(): React.ReactElement {
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search by client..."
-            className="pl-9 pr-3 py-2 w-72 rounded-lg text-sm outline-none transition-colors"
+            className="pl-9 pr-3 py-1.5 w-72 rounded-lg text-sm outline-none transition-colors"
             style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
           />
         </div>
@@ -2694,7 +2848,7 @@ function RefundRequestsApp(): React.ReactElement {
           <button
             type="button"
             onClick={() => setShowNewCaseModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-colors"
             style={{ backgroundColor: tok.accent }}
           >
             <PlusIcon size={16} />
@@ -2709,7 +2863,7 @@ function RefundRequestsApp(): React.ReactElement {
             <table className="w-full">
               <thead style={{ backgroundColor: tok.app_bg }}>
                 <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
-                  {['Client', 'Order', 'Category', 'Request Stage', 'Resolution Type (Proposed)', 'Resolution Type (Approved)', 'Settlement Stage'].map((h) => (
+                  {['Client', 'Order', 'Category', 'Request Stage', 'Proposed Resolution', 'Approved Resolution', 'Settlement Stage'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
                       {h}
                     </th>
