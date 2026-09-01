@@ -190,14 +190,20 @@ const ORDER_ITEMS_FIELD_IDS = {
 
 const CLIENTS_FIELD_IDS = {
   FULL_NAME: 'fldB3Wyam01D3wR5Q',
-  // Client pipeline stage (Pre-Appointment...Fulfilled, plus a separate
-  // "Did Not Convert" not counted as "in the pipeline" — see pipeline.tsx's
-  // STAGE_ORDER). No literal "Closed" choice exists on this field; per
-  // Axel's 2026-09-01 ask to exclude "Fulfilled or Closed" clients from the
-  // New Refund Case picker, "Did Not Convert" (the other terminal/closed-out
-  // stage) is treated as the "Closed" he meant — flagged to him to confirm.
+  // Client pipeline stage (Pre-Appointment...Fulfilled). Per Axel,
+  // 2026-09-01: exclude clients whose stage is the terminal "Fulfilled"
+  // choice from the New Refund Case / client-edit pickers — Axel confirmed
+  // "Did Not Convert" should stay selectable. He also expects to rename this
+  // choice's label from "Fulfilled" to "Closed" next week; matched by
+  // CLIENT_STAGE_FULFILLED_CHOICE_ID (the choice's stable id) rather than its
+  // display name so that rename doesn't silently break this filter.
   STAGE: 'fldLcxVZvI1rigBlh',
 } as const;
+
+// The "Fulfilled" choice on Clients' `stage` field — Axel plans to rename its
+// label to "Closed" next week, but its id survives a label rename (see
+// CLIENTS_FIELD_IDS.STAGE comment above).
+const CLIENT_STAGE_FULFILLED_CHOICE_ID = 'sel9gJfBcN2v0VLTc';
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) — same subsystem as draft_orders.tsx,
 // minus Attachments (no attachment field/UI in this instance, per scope). ────
@@ -1371,8 +1377,8 @@ function NewRefundCaseModal({
       .filter((r) => clientIdsWithOrders.has(r.id))
       .filter((r) => {
         if (!clientStageField) return true;
-        const stage = (r.getCellValue(clientStageField) as { name: string } | null)?.name ?? null;
-        return stage !== 'Fulfilled' && stage !== 'Did Not Convert';
+        const stageId = (r.getCellValue(clientStageField) as { id: string } | null)?.id ?? null;
+        return stageId !== CLIENT_STAGE_FULFILLED_CHOICE_ID;
       })
       .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameField) as string) ?? r.id }));
   }, [clientsRecords, clientFullNameField, clientIdsWithOrders, clientStageField]);
@@ -1914,8 +1920,8 @@ function DetailPage({
         if (r.id === currentClientId) return true;
         if (!clientIdsWithOrders.has(r.id)) return false;
         if (!clientStageField) return true;
-        const stage = (r.getCellValue(clientStageField) as { name: string } | null)?.name ?? null;
-        return stage !== 'Fulfilled' && stage !== 'Did Not Convert';
+        const stageId = (r.getCellValue(clientStageField) as { id: string } | null)?.id ?? null;
+        return stageId !== CLIENT_STAGE_FULFILLED_CHOICE_ID;
       })
       .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameFieldClients) as string) ?? r.id }));
   }, [clientsRecords, clientFullNameFieldClients, clientIdsWithOrders, clientStageField, currentClientId]);
