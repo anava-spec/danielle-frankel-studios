@@ -12,7 +12,7 @@ import {
   CaretDown as CaretDownIcon,
   X as XIcon,
   CheckCircle as CheckCircleIcon,
-  ArrowLeft as ArrowLeftIcon,
+  CaretLeft as CaretLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   Trash as TrashIcon,
   Warning as WarningIcon,
@@ -2581,9 +2581,14 @@ function RecordDetailPage({
     <div className="h-screen flex flex-col font-sans antialiased bg-[#F8F5EE] dark:bg-[#1B1813]">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 px-6 py-4 border-b border-[#E9E0CE] dark:border-[#38322A] bg-white dark:bg-[#25211A]">
+        {/* "Go back" button style (Axel, 2026-09-02): standardized across
+            every daily_ops page to match pipeline.tsx's reference treatment
+            — white card, 1px border, §4's "resting card" shadow (previously
+            had no background/shadow of its own here). */}
         <button type="button" onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-[#38322A] rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors flex-shrink-0">
-          <ArrowLeftIcon size={16} />
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-[#38322A] rounded-lg bg-white dark:bg-[#242220] hover:bg-gray-50 dark:hover:bg-white/5 transition-colors flex-shrink-0"
+          style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <CaretLeftIcon size={16} />
           Go back
         </button>
         <span className="text-xl font-bold text-gray-900 dark:text-[#F5F3EF] truncate">{clientName}</span>

@@ -10,8 +10,8 @@ import {
 import type { Table, Record as AirtableRecord, Field } from '@airtable/blocks/interface/models';
 import {
   CaretDown as CaretDownIcon,
+  CaretLeft as CaretLeftIcon,
   X as XIcon,
-  ArrowLeft as ArrowLeftIcon,
   MagnifyingGlass as MagnifyingGlassIcon,
   Plus as PlusIcon,
   Warning as WarningIcon,
@@ -32,10 +32,21 @@ const LIGHT = {
   accent_soft: '#FEF3C7',
   hover_bg: '#F8F5EE',
   // A visibly different tone from app_bg (which hover_bg matches exactly in
-  // light mode) for the Detail Page's stage/summary side panel — same sandy
-  // "neutralBg" tone draft_orders.tsx uses for its own summary panels, per
-  // Axel's 2026-09-01 ask (the panel was blending into the page background).
+  // light mode) — kept for any future sandy-toned panel need, but per Axel's
+  // 2026-09-02 follow-up the Detail Page's stage/info panel no longer uses
+  // this: it now matches draft_orders.tsx's actual Summary/Refund Case panel
+  // treatment (a `surface`/white card with a border), not this flat sandy
+  // tone. See `surface` usage in DetailPage below.
   panel_bg: '#F5F0EB',
+  // Table header/zebra-row tint (Axel, 2026-09-02): reuses
+  // customization_requests.tsx's own header tone family (Tailwind
+  // gray-50/gray-100 range) one notch darker (gray-100) so a zebra stripe at
+  // customization's original gray-50 value has visible room to sit strictly
+  // between the header and a plain white row — header > zebra > white.
+  // Applied to refund_requests.tsx only for now; other files get this in a
+  // later bulk pass per Axel.
+  table_header: '#F3F4F6',
+  table_zebra: '#F9FAFB',
 };
 
 const DARK = {
@@ -50,6 +61,12 @@ const DARK = {
   accent_soft: '#3A2E12',
   hover_bg: '#2E2A22',
   panel_bg: '#302D28',
+  // Same header>zebra>white ordering as LIGHT, expressed as alpha-over-dark
+  // (matches customization_requests.tsx's `dark:bg-white/5` header idiom) —
+  // header at white/8, zebra at half that, white rows fall through to
+  // `surface` underneath with no overlay.
+  table_header: 'rgba(255,255,255,0.08)',
+  table_zebra: 'rgba(255,255,255,0.04)',
 };
 
 type Tokens = typeof LIGHT;
@@ -866,13 +883,18 @@ function LayoutDropdown({ value, onChange, tok }: { value: 'requests' | 'review'
 
 // StagePill — BRANDING §9 (revised 2026-09-01): solid bg = source field's own
 // choice color, white text.
-function StagePill({ value, choices }: { value: string | null; choices: Array<{ name: string; color?: string }> }) {
-  if (!value) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
+// `size` (Axel, 2026-09-02): the Detail Page's stage/info panel needs its
+// chips one Tailwind tier larger than every other usage (table cells, the
+// non-editable content column) — default stays `sm` (text-sm) everywhere
+// that already existed; only the panel passes `size="lg"` (text-base).
+function StagePill({ value, choices, size = 'sm' }: { value: string | null; choices: Array<{ name: string; color?: string }>; size?: 'sm' | 'lg' }) {
+  const sizeCls = size === 'lg' ? 'text-base' : 'text-sm';
+  if (!value) return <span className={sizeCls} style={{ color: '#9CA3AF' }}>—</span>;
   const choice = choices.find((c) => c.name === value);
   const hex = getChoiceColorHex(choice?.color);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
+      className={`inline-block px-2.5 py-0.5 rounded-full ${sizeCls} font-medium text-[#1D1F25]`}
       style={{ backgroundColor: hex }}
     >
       {value}
@@ -887,17 +909,20 @@ function CategoryChip({
   label,
   categoryId,
   orderedCategoryIds,
+  size = 'sm',
 }: {
   label: string | null;
   categoryId: string | null;
   orderedCategoryIds: string[];
+  size?: 'sm' | 'lg';
 }) {
-  if (!label) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
+  const sizeCls = size === 'lg' ? 'text-base' : 'text-sm';
+  if (!label) return <span className={sizeCls} style={{ color: '#9CA3AF' }}>—</span>;
   const index = categoryId ? Math.max(0, orderedCategoryIds.indexOf(categoryId)) : 0;
   const hex = getRainbowHex(index);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
+      className={`inline-block px-2.5 py-0.5 rounded-full ${sizeCls} font-medium text-[#1D1F25]`}
       style={{ backgroundColor: hex }}
     >
       {label}
@@ -1225,7 +1250,8 @@ function OrderItemSelectDropdown({
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = tok.hover_bg; }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
-                {opt.style || opt.itemId}
+                {/* "# ID - style" format per Axel, 2026-09-02 */}
+                {`#${opt.itemId}${opt.style ? ` - ${opt.style}` : ''}`}
               </button>
             ))}
           </div>
@@ -1255,7 +1281,7 @@ function OrderItemsTable({
   return (
     <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${tok.border}` }}>
       <table className="w-full">
-        <thead style={{ backgroundColor: tok.app_bg }}>
+        <thead style={{ backgroundColor: tok.table_header }}>
           <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
             <th className="px-3 py-2 text-[11px] font-medium capitalize tracking-wide text-left" style={{ color: tok.text_secondary }}>ID</th>
             <th className="px-3 py-2 text-[11px] font-medium capitalize tracking-wide text-left" style={{ color: tok.text_secondary }}>Style</th>
@@ -1264,8 +1290,16 @@ function OrderItemsTable({
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <tr key={item.id} className="last:border-0" style={{ borderBottom: `1px solid ${tok.border_light}` }}>
+          {/* Zebra striping (Axel, 2026-09-02): odd rows get `table_zebra`,
+              even rows fall through to the container's white `surface` —
+              header stays the darkest of the three tones (see tok.table_header
+              above this row's background). */}
+          {items.map((item, idx) => (
+            <tr
+              key={item.id}
+              className="last:border-0"
+              style={{ borderBottom: `1px solid ${tok.border_light}`, backgroundColor: idx % 2 === 1 ? tok.table_zebra : tok.surface }}
+            >
               <td className="px-3 py-2.5 text-sm" style={{ color: tok.text_primary }}>{item.itemId}</td>
               <td className="px-3 py-2.5 text-sm" style={{ color: tok.text_primary }}>{item.style || '—'}</td>
               <td className="px-3 py-2.5 text-sm text-right" style={{ color: tok.text_secondary }}>{formatCurrency(item.amount)}</td>
@@ -2100,10 +2134,25 @@ function DetailPage({
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: tok.app_bg }}>
-      <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${tok.border}`, backgroundColor: tok.surface }}>
+      {/* Header row wrapped in the same max-w-4xl the content grid below uses
+          (Axel, 2026-09-02) so the "Go back" button's left edge lines up
+          with the content's left edge, per pipeline.tsx's reference layout —
+          previously this row spanned the full width via bare px-6, so it sat
+          further left than the centered content underneath it. */}
+      <div className="px-6 py-4" style={{ borderBottom: `1px solid ${tok.border}`, backgroundColor: tok.surface }}>
+      <div className="max-w-4xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onGoBack} className="flex items-center gap-1 text-sm transition-colors" style={{ color: tok.text_secondary }}>
-            <ArrowLeftIcon size={16} />
+          {/* "Go back" button style (Axel, 2026-09-02): matches
+              pipeline.tsx's reference treatment exactly — surface/white
+              card, 1px border, §4's "resting card" shadow — standardized
+              across every daily_ops page's page-level back button. */}
+          <button
+            type="button"
+            onClick={onGoBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex-shrink-0"
+            style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}`, color: tok.text_secondary, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+          >
+            <CaretLeftIcon size={16} />
             Go back
           </button>
           <h1 className="text-lg font-bold truncate" style={{ color: tok.text_primary }}>
@@ -2170,6 +2219,7 @@ function DetailPage({
             </button>
           )}
         </div>
+      </div>
       </div>
 
       {concurrentEditWarning && (
@@ -2334,33 +2384,43 @@ function DetailPage({
           </div>
 
           <div className="col-span-2">
-            <div className="sticky top-4 rounded-lg p-4 space-y-4" style={{ backgroundColor: tok.panel_bg, border: `1px solid ${tok.border}` }}>
-              <div>
-                <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+            {/* Stage/info panel (Axel, 2026-09-02): now a `surface`/white card
+                with a border — matching draft_orders.tsx's actual Summary /
+                Refund Case panel treatment (screenshot 1) — instead of the
+                flat sandy `panel_bg` tone this used before. Each label+chip
+                pair is inline on one row (draft_orders.tsx's
+                `flex justify-between items-center` pattern) rather than
+                stacked, and both are bumped one Tailwind tier from before:
+                label was text-[11px] -> now text-lg; chip was text-sm -> now
+                text-base (via StagePill/CategoryChip's `size="lg"`) — label
+                still ends up exactly one tier above the chip, per Axel's ask. */}
+            <div className="sticky top-4 rounded-lg p-4 space-y-3" style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}` }}>
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
                   Refund Category
-                </label>
-                <CategoryChip label={categoryLabelTop} categoryId={categoryLinkedTop?.[0]?.id ?? null} orderedCategoryIds={orderedCategoryIds} />
+                </span>
+                <CategoryChip label={categoryLabelTop} categoryId={categoryLinkedTop?.[0]?.id ?? null} orderedCategoryIds={orderedCategoryIds} size="lg" />
               </div>
-              <div>
-                <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
                   Request Stage
-                </label>
-                <StagePill value={requestStageValue} choices={requestStageChoices} />
+                </span>
+                <StagePill value={requestStageValue} choices={requestStageChoices} size="lg" />
               </div>
               {resolutionApprovedValue && (
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
                     Approved Resolution
-                  </label>
-                  <StagePill value={resolutionApprovedValue} choices={resolutionTypeApprovedChoices} />
+                  </span>
+                  <StagePill value={resolutionApprovedValue} choices={resolutionTypeApprovedChoices} size="lg" />
                 </div>
               )}
               {settlementStageValue && (
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
                     Settlement Stage
-                  </label>
-                  <StagePill value={settlementStageValue} choices={settlementStageChoices} />
+                  </span>
+                  <StagePill value={settlementStageValue} choices={settlementStageChoices} size="lg" />
                 </div>
               )}
               {hasAppliedDraftOrder && appliedToDraftOrderField && (
@@ -2867,7 +2927,7 @@ function RefundRequestsApp(): React.ReactElement {
         {currentLayout === 'requests' ? (
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}` }}>
             <table className="w-full">
-              <thead style={{ backgroundColor: tok.app_bg }}>
+              <thead style={{ backgroundColor: tok.table_header }}>
                 <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
                   {['Client', 'Order', 'Category', 'Request Stage', 'Proposed Resolution', 'Approved Resolution', 'Settlement Stage'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
@@ -2884,7 +2944,7 @@ function RefundRequestsApp(): React.ReactElement {
                     </td>
                   </tr>
                 ) : (
-                  filteredRecords.map((record) => {
+                  filteredRecords.map((record, idx) => {
                     const reqStage = requestStageField ? (record.getCellValue(requestStageField) as { name: string } | null)?.name ?? null : null;
                     const settStage = settlementStageField ? (record.getCellValue(settlementStageField) as { name: string } | null)?.name ?? null : null;
                     const resApproved = resolutionApprovedField ? (record.getCellValue(resolutionApprovedField) as { name: string } | null)?.name ?? null : null;
@@ -2893,15 +2953,19 @@ function RefundRequestsApp(): React.ReactElement {
                     const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
                     const categoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
                     const categoryId = categoryLinked?.[0]?.id ?? null;
+                    // Zebra base (Axel, 2026-09-02) — hover still overrides via
+                    // tok.hover_bg on enter, then restores this row's own zebra
+                    // tone (not 'transparent') on leave.
+                    const rowBg = idx % 2 === 1 ? tok.table_zebra : tok.surface;
 
                     return (
                       <tr
                         key={record.id}
                         onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'requests' })}
                         className="cursor-pointer transition-colors"
-                        style={{ borderBottom: `1px solid ${tok.border_light}` }}
+                        style={{ borderBottom: `1px solid ${tok.border_light}`, backgroundColor: rowBg }}
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = tok.hover_bg)}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = rowBg)}
                       >
                         <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
                           {clientLinked?.[0] ? clientNameById.get(clientLinked[0].id) ?? '—' : '—'}
@@ -2954,7 +3018,7 @@ function RefundRequestsApp(): React.ReactElement {
                   }}
                 >
                   <table className="w-full">
-                    <thead style={{ backgroundColor: tok.app_bg }}>
+                    <thead style={{ backgroundColor: tok.table_header }}>
                       <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
                         {['Client', 'Category'].map((h) => (
                           <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
@@ -2971,10 +3035,13 @@ function RefundRequestsApp(): React.ReactElement {
                           </td>
                         </tr>
                       ) : (
-                        col.records.map((record) => {
+                        col.records.map((record, idx) => {
                           const clientLinked = clientField ? (record.getCellValue(clientField) as Array<{ id: string }> | null) : null;
                           const categoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
                           const categoryId = categoryLinked?.[0]?.id ?? null;
+                          // Zebra base (Axel, 2026-09-02) — see the main
+                          // "requests" table above for the same pattern.
+                          const rowBg = idx % 2 === 1 ? tok.table_zebra : tok.surface;
                           return (
                             <tr
                               key={record.id}
@@ -2983,9 +3050,9 @@ function RefundRequestsApp(): React.ReactElement {
                               onDragEnd={col.draggable ? () => setDraggedRecordId(null) : undefined}
                               onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'review' })}
                               className={`transition-colors ${col.draggable ? 'cursor-move' : 'cursor-pointer'}`}
-                              style={{ borderBottom: `1px solid ${tok.border_light}` }}
+                              style={{ borderBottom: `1px solid ${tok.border_light}`, backgroundColor: rowBg }}
                               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = tok.hover_bg)}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = rowBg)}
                             >
                               <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
                                 {clientLinked?.[0] ? clientNameById.get(clientLinked[0].id) ?? '—' : '—'}

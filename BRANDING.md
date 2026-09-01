@@ -192,13 +192,35 @@ One shared `MissingDataPill` component per interface file (not ad hoc red `<span
 - Root shell: `h-screen flex flex-col overflow-hidden` — always include `overflow-hidden` on the root (pipeline.tsx's omission was a bug, not a variant).
 - Page structure: header bar (title + primary filters + primary action) → scrollable main content → optional footer/summary bar.
 - Modals: `fixed inset-0` wrapper, overlay per §4, centered panel with header / scrollable body / footer (footer holds actions, right-aligned, primary button rightmost).
-- Table headers: `app_bg`-tinted background, `capitalize` (not `uppercase`) `11px` labels (per §2) — this convention was already shared between two files; keep it as the standard for every table.
+- Table headers: `app_bg`-tinted background, `capitalize` (not `uppercase`) `11px` labels (per §2) — this convention was already shared between two files; keep it as the standard for every table. **Superseded 2026-09-02 for the header/zebra color relationship specifically — see §10c below**, which now governs header + row background colors; the `11px`/`capitalize` label styling here still applies.
 - z-index scale — fix one scale and use only these values everywhere (replaces the current ad hoc `z-50/60/65/70/100/1000`):
   - `10`: sticky headers
   - `20`: dropdown/calendar panels
   - `50`: modal overlay + panel
   - `60`: toast/notification (above modals, rare)
 - No responsive breakpoints — these are fixed-desktop-width internal tools; don't add mobile layouts unless a task explicitly asks for one.
+
+---
+
+## 10c. Info / Summary / Chip Panels
+
+The right-column "sticky" panel(s) on a Detail Page that show a record's own status/stage chips or a cost summary (e.g. draft_orders.tsx's Summary panel and its Refund Case panel, refund_requests.tsx's stage panel) — **standardized 2026-09-02, per Axel**:
+
+- **Background**: `surface` (the plain white/dark-card token), `1px` `border`, `8px`–`12px` radius, same as any other card in the interface. **Do not** use a separate sandy/tinted "panel" tone for these (a `panel_bg`-style flat sandy tone was tried in refund_requests.tsx and superseded same-day — it read as a single undifferentiated block instead of a distinct white card sitting on the page's own background). `panel_bg` (where a file still defines it) is not deleted and may still be used for a different, non-chip context if one comes up — but it is not the standard for info/summary/chip panels.
+- **Structure**: one panel per logical grouping (e.g. "Summary" cost breakdown as one card, "Refund Case" stage info as a second card below it) when a page genuinely has more than one grouping — draft_orders.tsx's two-card layout (screenshot reference) is the model. A page with only one grouping (e.g. refund_requests.tsx, which has no separate cost summary) just needs the one card — don't invent a second panel with nothing to put in it.
+- **Field rows are inline, not stacked**: each label + its chip/value sit on one row (`flex justify-between items-center`), not label-above-chip in a stacked block. This replaces any per-field `<label>...</label><Chip/>` stacked pattern in these specific panels.
+- **Font size tiers**: within this panel specifically, the label runs **one Tailwind tier above** its chip's size, and both are one tier larger than this panel used before 2026-09-02 (label `text-[11px]` → `text-lg`, chip `text-sm` → `text-base`) — ladder is `text-[11px]`/`text-xs` → `text-sm` → `text-base` → `text-lg` → `text-xl`. This is a deliberate exception scoped to this panel only — table cells and any other inline chip usage elsewhere on the same page keep their existing (smaller) size; implement it as an opt-in `size="lg"` prop on the shared chip component (e.g. `StagePill`, `CategoryChip`), not a global size change.
+
+---
+
+## 10d. "Go back" Button
+
+The full-page-navigation back button at the top of any Detail Page (a "layer 2"-style view that replaces the whole screen, per §12's animation note — not a modal's icon-only close button, which is a different, already-established pattern). **Standardized 2026-09-02, per Axel, from pipeline.tsx's reference implementation** — applied so far to `pipeline.tsx` (unchanged, it's the reference), `refund_requests.tsx`, `draft_orders.tsx`, and `customization_requests.tsx`:
+
+- Icon: `CaretLeftIcon` (`@phosphor-icons/react`, `16px`) — not `ArrowLeftIcon`.
+- Label: always exactly **"Go back"** (not "Back").
+- Style: `surface`/white card background, `1px` `border`, `8px` radius, `px-3 py-1.5`, `text-sm font-medium`, plus §4's "resting card" shadow (`0 1px 3px rgba(0,0,0,0.05)`) — the shadow is what makes it read as a raised card rather than a flat bordered box, even on a page whose header bar is already the same white as the button.
+- **Alignment**: the button's left edge must line up with the page's own content column, not the outer viewport/header-bar edge — wrap the header row's contents in the same `max-w-*`/`mx-auto` container the page body uses (pipeline.tsx wraps its whole sticky header in `max-w-[1200px] mx-auto`; match whatever max-width the specific page's content already uses).
 
 ---
 
@@ -219,6 +241,16 @@ Structure:
 - **Editable vs. non-editable cells**: an editable cell (e.g. a Shipping amount input) renders **borderless** — no box, no background, just text that happens to be an `<input>` — so it reads as part of the row. A **non-editable** cell/row (e.g. Rush Fee, which is always computed) instead gets a `neutral_bg`-tinted background across its cells to signal "this one is fixed," rather than the other way around (never box the editable ones to mark them as special — that inverts the visual hierarchy).
 - **Footer/summary row** (`<tfoot>`): bold label + bold amount, separated from the body by the container's stronger `border` (not the lighter `border_light` used between body rows), same padding as body rows. Every Line-Item Table ends in exactly one summary row (`Subtotal` for a list of records, `Total` for a list of charges) — never omit it, even if it duplicates a number shown elsewhere in a side panel.
 - **Empty state**: when there's nothing to show, render a plain `text_secondary` sentence ("No styles selected.") in place of the whole table — never render an empty table shell with just a header row.
+
+---
+
+## 10e. Data Table Zebra Striping
+
+**New standard, 2026-09-02, per Axel** — applies to full data-grid tables (the main record-list tables, not the Line-Item Tables of §10b, though it also covers refund_requests.tsx's `OrderItemsTable`, which is small enough to read as either): header stays the dark tone customization_requests.tsx already established (`bg-gray-50 dark:bg-white/5` family), body rows are white/`surface`, **and** alternating rows get a zebra tint — with one hard rule: **the header must be darker than the zebra tint**, which must itself be darker than a plain white row. Three distinct tones, strictly ordered: header > zebra > white.
+
+- Reusing customization_requests.tsx's exact header value (`gray-50`/`white-5`) as the header leaves no room below it for a visibly distinct zebra tone in light mode, so the *header* is nudged one notch darker (`gray-100` equivalent) and the *zebra* tint takes the slot customization's original header value occupied (`gray-50` equivalent) — implemented as file-local tokens, e.g. refund_requests.tsx's `tok.table_header` (`#F3F4F6` light / `rgba(255,255,255,0.08)` dark) and `tok.table_zebra` (`#F9FAFB` light / `rgba(255,255,255,0.04)` dark). This is a judgment call to make the three tones visually distinguishable, not a literal reuse of customization's header hex — flag it for Axel's sign-off if the intensity needs adjusting.
+- Odd/even rows alternate between `table_zebra` and plain `surface` (white); a row's hover state still applies on top and must restore to the row's *own* zebra/white tone on mouse-leave (not `'transparent'`), so the stripe doesn't visually disappear after a hover.
+- **Applied to `refund_requests.tsx` only for now** (its `OrderItemsTable` plus its two record-list tables) — this is a deliberate scoping decision by Axel, not an oversight; `customization_requests.tsx`, `draft_orders.tsx`, and `sold_orders.tsx` keep their existing flat (non-zebra) table body for now, pending a later bulk-update pass across those files.
 
 ---
 

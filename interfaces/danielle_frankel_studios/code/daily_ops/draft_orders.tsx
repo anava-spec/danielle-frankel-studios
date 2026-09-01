@@ -15,7 +15,7 @@ import {
   MagnifyingGlass as MagnifyingGlassIcon,
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
-  ArrowLeft as ArrowLeftIcon,
+  CaretLeft as CaretLeftIcon,
   CaretDown as CaretDownIcon,
   CurrencyDollar as CurrencyDollarIcon,
   Percent as PercentIcon,
@@ -3454,13 +3454,16 @@ function Layer4({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-4 px-[15%] py-4 border-b" style={{ borderColor: theme.border }}>
+        {/* "Go back" button style (Axel, 2026-09-02): standardized across
+            every daily_ops page to match pipeline.tsx's reference treatment
+            — surface/white card, 1px border, §4's "resting card" shadow. */}
         <button
           onClick={onBack}
-          className="flex items-center gap-1 text-sm hover:cursor-pointer"
-          style={{ color: theme.textSecondary }}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg hover:cursor-pointer transition-colors flex-shrink-0"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.textSecondary, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
         >
-          <ArrowLeftIcon size={16} />
-          Back
+          <CaretLeftIcon size={16} />
+          Go back
         </button>
         <h1 className="text-lg font-bold">{getClientName(clientId)}</h1>
         <button
