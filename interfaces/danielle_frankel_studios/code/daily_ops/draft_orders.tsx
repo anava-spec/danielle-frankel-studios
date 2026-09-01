@@ -174,7 +174,7 @@ function RefundStagePill({ value, choices }: { value: string | null | undefined;
   if (!value) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
   const hex = getRefundChoiceColorHex(choices.find(c => c.name === value)?.color);
   return (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white" style={{ backgroundColor: hex }}>
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]" style={{ backgroundColor: hex }}>
       {value}
     </span>
   );
@@ -192,7 +192,7 @@ function RefundCategoryChip({ label, categoryId, orderedCategoryIds }: { label: 
   const hsl = getRefundRainbowHsl(index, orderedCategoryIds.length || 1);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white"
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
       style={{ backgroundColor: hsl }}
     >
       {label}

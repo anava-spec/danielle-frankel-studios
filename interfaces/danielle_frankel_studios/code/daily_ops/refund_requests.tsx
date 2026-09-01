@@ -105,7 +105,35 @@ const DRAFT_ORDERS_TABLE_ID = 'tblp7foUmlN9823WW';
 const ORDERS_FIELD_IDS = {
   CLIENT: 'fldeVnAInz9d1jpY5',
   SHOPIFY_ORDER_NUMBER: 'fldWiKEXjId411DQc',
+  // Direct "Items" link on Orders - Shopify itself — distinct from the
+  // order_items child table. Only used as a fallback label when an order has
+  // no order_items records at all (per Axel, 2026-09-01).
+  ITEMS: 'fldZHRtwkWdIWCrpF',
 } as const;
+
+// Order display label: "#<Shopify Order Number> — <item names>", falling
+// back to the order's own "Items" link when it has no order_items records at
+// all (per Axel, 2026-09-01). Used everywhere an order is shown — the plain
+// table/detail-page display and every Order picker.
+function buildOrderLabel(
+  order: AirtableRecord,
+  shopifyNumberField: Field | null,
+  itemsField: Field | null,
+  orderItemsRecords: readonly AirtableRecord[],
+  orderItemsOrderField: Field | null
+): string {
+  const num = shopifyNumberField ? (order.getCellValue(shopifyNumberField) as number | null) : null;
+  if (!num) return '—';
+  const matchingItems = orderItemsOrderField
+    ? orderItemsRecords.filter((oi) => {
+        const linked = oi.getCellValue(orderItemsOrderField) as Array<{ id: string }> | null;
+        return linked?.some((l) => l.id === order.id);
+      })
+    : [];
+  const itemNames = matchingItems.map((oi) => oi.name ?? '').filter(Boolean).join(', ');
+  const itemsText = itemNames || (itemsField ? order.getCellValueAsString(itemsField) : '');
+  return itemsText ? `#${num} — ${itemsText}` : `#${num}`;
+}
 
 // Rainbow chip palette for the `refund_category` linked-record field — there's
 // no live Airtable choice color to read (it's a link, not a select), so per
@@ -670,7 +698,7 @@ function FilterGroupButton({ filters, hasActive, tok }: { filters: FilterSpec[];
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="More filters"
-        className="flex items-center justify-center w-9 h-8 rounded-lg transition-colors"
+        className="flex items-center justify-center w-9 py-2 rounded-lg transition-colors"
         style={
           hasActive
             ? { backgroundColor: tok.accent, border: 'none' }
@@ -710,8 +738,11 @@ function ResponsiveFilterRow({ filters, tok }: { filters: FilterSpec[]; tok: Tok
   const visible = sorted.slice(0, visibleCount);
   const grouped = sorted.slice(visibleCount);
 
+  // No overflow-hidden here — visibleCount already guarantees rendered
+  // content fits horizontally, and clipping would also cut off every
+  // dropdown's popup (it renders as a child of this row).
   return (
-    <div ref={containerRef} className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+    <div ref={containerRef} className="flex items-center gap-2 flex-1 min-w-0">
       {visible.map((f) => (
         <React.Fragment key={f.key}>{f.node}</React.Fragment>
       ))}
@@ -778,7 +809,7 @@ function StagePill({ value, choices }: { value: string | null; choices: Array<{ 
   const hex = getChoiceColorHex(choice?.color);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white"
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
       style={{ backgroundColor: hex }}
     >
       {value}
@@ -803,7 +834,7 @@ function CategoryChip({
   const hsl = getRainbowHsl(index, orderedCategoryIds.length || 1);
   return (
     <span
-      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white"
+      className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]"
       style={{ backgroundColor: hsl }}
     >
       {label}
@@ -1166,6 +1197,9 @@ function NewRefundCaseModal({
   }, [clientsRecords, clientFullNameField]);
 
   const ordersClientField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.CLIENT);
+  const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
+  const ordersItemsField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
+  const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
 
   const orderOptions = useMemo(() => {
     if (!draft.clientId || !ordersClientField) return [];
@@ -1174,10 +1208,8 @@ function NewRefundCaseModal({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === draft.clientId);
       })
-      .map((r) => ({ id: r.id, label: r.name ?? r.id }));
-  }, [ordersRecords, draft.clientId, ordersClientField]);
-
-  const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER);
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemsRecords, orderItemsOrderField) }));
+  }, [ordersRecords, draft.clientId, ordersClientField, ordersShopifyNumberField, ordersItemsField, orderItemsRecords, orderItemsOrderField]);
 
   const orderItemOptions = useMemo(() => {
     if (!draft.orderId || !orderItemsOrderField) return [];
@@ -1188,6 +1220,11 @@ function NewRefundCaseModal({
       })
       .map((r) => ({ id: r.id, label: r.name ?? r.id }));
   }, [orderItemsRecords, draft.orderId, orderItemsOrderField]);
+
+  // Whether the selected order has any order_items at all — if not, the
+  // product-specific checkbox has nothing to offer, so it's hidden entirely
+  // in favor of a soft alert (per Axel, 2026-09-01).
+  const selectedOrderHasItems = !draft.orderId || orderItemOptions.length > 0;
 
   const categoryActiveField = categoriesTable?.getFieldIfExists(CATEGORY_FIELD_IDS.ACTIVE);
 
@@ -1237,7 +1274,7 @@ function NewRefundCaseModal({
               placeholder="Select a client..."
               options={clientOptions}
               value={draft.clientId}
-              onChange={(id) => setDraft((d) => ({ ...d, clientId: id, orderId: null, orderItemIds: [] }))}
+              onChange={(id) => setDraft((d) => ({ ...d, clientId: id, orderId: null, orderItemIds: [], isProductSpecific: false }))}
               tok={tok}
             />
             <SearchablePicker
@@ -1245,34 +1282,42 @@ function NewRefundCaseModal({
               placeholder="Select an order..."
               options={orderOptions}
               value={draft.orderId}
-              onChange={(id) => setDraft((d) => ({ ...d, orderId: id, orderItemIds: [] }))}
+              onChange={(id) => setDraft((d) => ({ ...d, orderId: id, orderItemIds: [], isProductSpecific: false }))}
               disabled={!draft.clientId}
               tok={tok}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="isProductSpecific"
-              checked={draft.isProductSpecific}
-              onChange={(e) => setDraft((d) => ({ ...d, isProductSpecific: e.target.checked, orderItemIds: e.target.checked ? d.orderItemIds : [] }))}
-              className="w-4 h-4 rounded"
-              style={{ accentColor: tok.accent }}
-            />
-            <label htmlFor="isProductSpecific" className="text-sm" style={{ color: tok.text_primary }}>
-              This refund is product-specific
-            </label>
-          </div>
-          {draft.isProductSpecific && (
-            <MultiSelectPicker
-              label="Order Items"
-              placeholder="Select order items..."
-              options={orderItemOptions}
-              value={draft.orderItemIds}
-              onChange={(ids) => setDraft((d) => ({ ...d, orderItemIds: ids }))}
-              disabled={!draft.orderId}
-              tok={tok}
-            />
+          {selectedOrderHasItems ? (
+            <>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isProductSpecific"
+                  checked={draft.isProductSpecific}
+                  onChange={(e) => setDraft((d) => ({ ...d, isProductSpecific: e.target.checked, orderItemIds: e.target.checked ? d.orderItemIds : [] }))}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: tok.accent }}
+                />
+                <label htmlFor="isProductSpecific" className="text-sm" style={{ color: tok.text_primary }}>
+                  This refund is product-specific
+                </label>
+              </div>
+              {draft.isProductSpecific && (
+                <MultiSelectPicker
+                  label="Order Items"
+                  placeholder="Select order items..."
+                  options={orderItemOptions}
+                  value={draft.orderItemIds}
+                  onChange={(ids) => setDraft((d) => ({ ...d, orderItemIds: ids }))}
+                  disabled={!draft.orderId}
+                  tok={tok}
+                />
+              )}
+            </>
+          ) : (
+            <div className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: tok.hover_bg, color: tok.text_secondary }}>
+              This order has no item-level data on file — this refund will be treated as an order-level charge.
+            </div>
           )}
           <div className="grid grid-cols-2 gap-3">
             <SearchablePicker
@@ -1461,13 +1506,15 @@ function DetailPage({
   }, [clientLinked, clientsRecords, clientFullNameField]);
 
   const orderLinkedTop = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
-  const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+  const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
+  const ordersItemsFieldTop = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
+  const orderItemsOrderFieldTop = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
   const orderLabel = useMemo(() => {
-    if (!orderLinkedTop || orderLinkedTop.length === 0 || !ordersShopifyNumberField) return '—';
+    if (!orderLinkedTop || orderLinkedTop.length === 0) return '—';
     const orderRecord = ordersRecords.find((o) => o.id === orderLinkedTop[0]?.id);
-    const num = orderRecord ? (orderRecord.getCellValue(ordersShopifyNumberField) as number | null) : null;
-    return num ? `#${num}` : '—';
-  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField]);
+    if (!orderRecord) return '—';
+    return buildOrderLabel(orderRecord, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop);
+  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop]);
 
   const categoryActiveFieldTop = categoriesTable?.getFieldIfExists(CATEGORY_FIELD_IDS.ACTIVE);
   const orderedCategoryIds = useMemo(() => {
@@ -1663,8 +1710,8 @@ function DetailPage({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === currentClientId);
       })
-      .map((r) => ({ id: r.id, label: r.name ?? r.id }));
-  }, [ordersRecords, currentClientId, ordersClientField]);
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop) }));
+  }, [ordersRecords, currentClientId, ordersClientField, ordersShopifyNumberField, ordersItemsFieldTop, orderItemsRecords, orderItemsOrderFieldTop]);
 
   const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
   const currentOrderId = orderLinked?.[0]?.id ?? null;
@@ -1679,6 +1726,10 @@ function DetailPage({
       })
       .map((r) => ({ id: r.id, label: r.name ?? r.id }));
   }, [orderItemsRecords, currentOrderId, orderItemsOrderField]);
+
+  // Same gate as the New Refund Case modal — no items on this order means
+  // nothing for the product-specific checkbox to offer.
+  const currentOrderHasItems = !currentOrderId || orderItemOptions.length > 0;
 
   const currentOrderItemsLinked = orderItemsField ? (record.getCellValue(orderItemsField) as Array<{ id: string }> | null) : null;
   const currentOrderItemIds = currentOrderItemsLinked?.map((l) => l.id) ?? [];
@@ -1715,7 +1766,11 @@ function DetailPage({
       queueWrite(async () => {
         setSaving(true);
         try {
-          await refundRequestsTable.updateRecordAsync(record.id, { [FIELD_IDS.ORDER]: newOrderId ? [{ id: newOrderId }] : [], [FIELD_IDS.ORDER_ITEMS]: [] });
+          await refundRequestsTable.updateRecordAsync(record.id, {
+            [FIELD_IDS.ORDER]: newOrderId ? [{ id: newOrderId }] : [],
+            [FIELD_IDS.ORDER_ITEMS]: [],
+            [FIELD_IDS.IS_PRODUCT_SPECIFIC]: false,
+          });
           initialHashRef.current = null;
         } catch (err) {
           console.error('Order change failed:', err);
@@ -1923,29 +1978,37 @@ function DetailPage({
                     tok={tok}
                   />
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="isProductSpecificDetail"
-                    checked={isProductSpecificValue}
-                    onChange={(e) => handleProductSpecificChange(e.target.checked)}
-                    className="w-4 h-4 rounded"
-                    style={{ accentColor: tok.accent }}
-                  />
-                  <label htmlFor="isProductSpecificDetail" className="text-sm" style={{ color: tok.text_primary }}>
-                    This refund is product-specific
-                  </label>
-                </div>
-                {isProductSpecificValue && (
-                  <MultiSelectPicker
-                    label="Order Items"
-                    placeholder="Select order items..."
-                    options={orderItemOptions}
-                    value={currentOrderItemIds}
-                    onChange={handleOrderItemsChange}
-                    disabled={!currentOrderId}
-                    tok={tok}
-                  />
+                {currentOrderHasItems ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="isProductSpecificDetail"
+                        checked={isProductSpecificValue}
+                        onChange={(e) => handleProductSpecificChange(e.target.checked)}
+                        className="w-4 h-4 rounded"
+                        style={{ accentColor: tok.accent }}
+                      />
+                      <label htmlFor="isProductSpecificDetail" className="text-sm" style={{ color: tok.text_primary }}>
+                        This refund is product-specific
+                      </label>
+                    </div>
+                    {isProductSpecificValue && (
+                      <MultiSelectPicker
+                        label="Order Items"
+                        placeholder="Select order items..."
+                        options={orderItemOptions}
+                        value={currentOrderItemIds}
+                        onChange={handleOrderItemsChange}
+                        disabled={!currentOrderId}
+                        tok={tok}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: tok.hover_bg, color: tok.text_secondary }}>
+                    This order has no item-level data on file — this refund will be treated as an order-level charge.
+                  </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <SearchablePicker
@@ -2268,15 +2331,16 @@ function RefundRequestsApp(): React.ReactElement {
   }, [clientsRecords, clientFullNameField]);
 
   const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
+  const ordersItemsField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.ITEMS) ?? null;
+  const orderItemsOrderField = orderItemsTable?.getFieldIfExists(ORDER_ITEMS_FIELD_IDS.ORDER) ?? null;
   const orderLabelById = useMemo(() => {
     const m = new Map<string, string>();
     if (!ordersShopifyNumberField) return m;
     for (const r of ordersRecords ?? []) {
-      const num = r.getCellValue(ordersShopifyNumberField) as number | null;
-      m.set(r.id, num ? `#${num}` : '—');
+      m.set(r.id, buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, orderItemsRecords ?? [], orderItemsOrderField));
     }
     return m;
-  }, [ordersRecords, ordersShopifyNumberField]);
+  }, [ordersRecords, ordersShopifyNumberField, ordersItemsField, orderItemsRecords, orderItemsOrderField]);
 
   const filteredRecords = useMemo(() => {
     if (!refundRequestsRecords) return [];

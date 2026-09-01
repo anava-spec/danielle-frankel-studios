@@ -113,7 +113,7 @@ function getSoldRainbowHsl(index: number, total: number): string {
 function RefundChip({ label, hex }: { label: string; hex: string }) {
   if (!label) return <span className="text-sm text-gray-400 dark:text-gray-500">—</span>;
   return (
-    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-white" style={{ backgroundColor: hex }}>
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-sm font-medium text-[#1D1F25]" style={{ backgroundColor: hex }}>
       {label}
     </span>
   );

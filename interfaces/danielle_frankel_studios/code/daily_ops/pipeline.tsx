@@ -2029,7 +2029,7 @@ function FilterGroupButton({ filters, hasActive }: { filters: FilterSpec[]; hasA
         type="button"
         onClick={() => setOpen(o => !o)}
         title="More filters"
-        className={`flex items-center justify-center w-9 h-8 rounded-lg transition-colors ${
+        className={`flex items-center justify-center w-9 py-2 rounded-lg transition-colors ${
           hasActive
             ? 'bg-[#D97706] dark:bg-[#FBBF24] text-white dark:text-[#1B1813]'
             : 'bg-white dark:bg-[#242220] border border-gray-300 dark:border-[#34312C] text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
@@ -2061,8 +2061,11 @@ function ResponsiveFilterRow({ filters }: { filters: FilterSpec[] }) {
   const visible = sorted.slice(0, visibleCount);
   const grouped = sorted.slice(visibleCount);
 
+  // No overflow-hidden here — visibleCount already guarantees rendered
+  // content fits horizontally, and clipping would also cut off every
+  // dropdown's popup (it renders as a child of this row).
   return (
-    <div ref={containerRef} className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+    <div ref={containerRef} className="flex items-center gap-2 flex-1 min-w-0">
       {visible.map(f => <React.Fragment key={f.key}>{f.node}</React.Fragment>)}
       {grouped.length > 0 && <FilterGroupButton filters={grouped} hasActive={grouped.some(f => f.isActive)} />}
     </div>
