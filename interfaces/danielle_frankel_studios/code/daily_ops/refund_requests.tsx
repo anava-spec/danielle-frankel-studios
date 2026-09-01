@@ -88,6 +88,7 @@ const FIELD_IDS = {
   SETTLEMENT_STAGE: 'fldkTiBPnBEygcwJ2',
   APPLIED_TO_DRAFT_ORDER: 'fldFZZQn2GYi1KQPb',
   CLIENT_EMAIL_SENT: 'fldSabMjiRSpNzufy',
+  IS_PRODUCT_SPECIFIC: 'fldd0ROfwMvB1YIyq',
 } as const;
 
 const CATEGORY_FIELD_IDS = {
@@ -102,7 +103,16 @@ const DRAFT_ORDERS_TABLE_ID = 'tblp7foUmlN9823WW';
 
 const ORDERS_FIELD_IDS = {
   CLIENT: 'fldeVnAInz9d1jpY5',
+  SHOPIFY_ORDER_NUMBER: 'fldWiKEXjId411DQc',
 } as const;
+
+// Rainbow chip palette for the `refund_category` linked-record field — there's
+// no live Airtable choice color to read (it's a link, not a select), so per
+// Axel's ask each active category gets a hardcoded, evenly-spread hue.
+function getRainbowHsl(index: number, total: number): string {
+  const hue = total > 0 ? Math.round((360 * index) / total) : 0;
+  return `hsl(${hue}, 65%, 45%)`;
+}
 
 const ORDER_ITEMS_FIELD_IDS = {
   ORDER: 'fldXrdBFm5SeGCTvq',
@@ -536,11 +546,11 @@ function Dropdown({
   const isActive = !!value;
 
   return (
-    <div ref={ref} className="relative" style={triggerWidth ? { width: triggerWidth } : undefined}>
+    <div ref={ref} className="relative" style={{ width: triggerWidth ?? '160px' }}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors"
+        className="w-full flex items-center justify-between gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
         style={{
           border: `1px solid ${isActive ? tok.accent : tok.border}`,
           backgroundColor: tok.surface,
@@ -565,7 +575,7 @@ function Dropdown({
       </button>
       {open && (
         <div
-          className="absolute z-20 mt-1 min-w-[10rem] rounded-lg overflow-hidden"
+          className="absolute z-20 mt-1 w-[240px] max-h-[260px] overflow-y-auto rounded-lg"
           style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
         >
           {options.map((opt) => (
@@ -651,6 +661,31 @@ function StagePill({ value, choices }: { value: string | null; choices: Array<{ 
       style={{ backgroundColor: hex + '20', color: hex }}
     >
       {value}
+    </span>
+  );
+}
+
+// CategoryChip — refund_category is a linked record, not a select, so there's
+// no live Airtable choice color to read. Per Axel's ask: hardcoded rainbow,
+// spread evenly across however many active categories exist.
+function CategoryChip({
+  label,
+  categoryId,
+  orderedCategoryIds,
+}: {
+  label: string | null;
+  categoryId: string | null;
+  orderedCategoryIds: string[];
+}) {
+  if (!label) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
+  const index = categoryId ? Math.max(0, orderedCategoryIds.indexOf(categoryId)) : 0;
+  const hsl = getRainbowHsl(index, orderedCategoryIds.length || 1);
+  return (
+    <span
+      className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
+      style={{ backgroundColor: hsl.replace('hsl(', 'hsla(').replace(')', ', 0.16)'), color: hsl }}
+    >
+      {label}
     </span>
   );
 }
@@ -1073,32 +1108,31 @@ function NewRefundCaseModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: `1px solid ${tok.border}` }}>
+        <div className="px-6 py-4" style={{ borderBottom: `1px solid ${tok.border}` }}>
           <h2 className="text-lg font-bold" style={{ color: tok.text_primary }}>
             New Refund Case
           </h2>
-          <button type="button" onClick={requestClose} className="p-1 rounded transition-colors" style={{ color: tok.text_muted }}>
-            <XIcon size={20} />
-          </button>
         </div>
         <div className="px-6 py-4 space-y-4">
-          <SearchablePicker
-            label="Client"
-            placeholder="Select a client..."
-            options={clientOptions}
-            value={draft.clientId}
-            onChange={(id) => setDraft((d) => ({ ...d, clientId: id, orderId: null, orderItemIds: [] }))}
-            tok={tok}
-          />
-          <SearchablePicker
-            label="Order"
-            placeholder="Select an order..."
-            options={orderOptions}
-            value={draft.orderId}
-            onChange={(id) => setDraft((d) => ({ ...d, orderId: id, orderItemIds: [] }))}
-            disabled={!draft.clientId}
-            tok={tok}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <SearchablePicker
+              label="Client"
+              placeholder="Select a client..."
+              options={clientOptions}
+              value={draft.clientId}
+              onChange={(id) => setDraft((d) => ({ ...d, clientId: id, orderId: null, orderItemIds: [] }))}
+              tok={tok}
+            />
+            <SearchablePicker
+              label="Order"
+              placeholder="Select an order..."
+              options={orderOptions}
+              value={draft.orderId}
+              onChange={(id) => setDraft((d) => ({ ...d, orderId: id, orderItemIds: [] }))}
+              disabled={!draft.clientId}
+              tok={tok}
+            />
+          </div>
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -1123,41 +1157,40 @@ function NewRefundCaseModal({
               tok={tok}
             />
           )}
+          <div className="grid grid-cols-2 gap-3">
+            <SearchablePicker
+              label="Refund Category"
+              placeholder="Select a category..."
+              options={categoryOptions}
+              value={draft.categoryId}
+              onChange={(id) => setDraft((d) => ({ ...d, categoryId: id }))}
+              tok={tok}
+            />
+            <SimplePicker
+              label="Resolution Type (Proposed)"
+              placeholder="Select resolution type..."
+              options={resolutionOptions}
+              value={draft.resolutionTypeProposed}
+              onChange={(val) => setDraft((d) => ({ ...d, resolutionTypeProposed: val }))}
+              tok={tok}
+            />
+          </div>
           <div>
             <label className="text-[11px] capitalize tracking-wide font-medium mb-1.5 block" style={{ color: tok.text_secondary }}>
-              Refund Reason
+              Refund Details
             </label>
             <textarea
               value={draft.refundReason}
               onChange={(e) => setDraft((d) => ({ ...d, refundReason: e.target.value }))}
-              placeholder="Enter refund reason..."
+              placeholder="Enter refund details..."
               rows={3}
               className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none transition-colors"
               style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
             />
           </div>
-          <SearchablePicker
-            label="Refund Category"
-            placeholder="Select a category..."
-            options={categoryOptions}
-            value={draft.categoryId}
-            onChange={(id) => setDraft((d) => ({ ...d, categoryId: id }))}
-            tok={tok}
-          />
-          <SimplePicker
-            label="Resolution Type (Proposed)"
-            placeholder="Select resolution type..."
-            options={resolutionOptions}
-            value={draft.resolutionTypeProposed}
-            onChange={(val) => setDraft((d) => ({ ...d, resolutionTypeProposed: val }))}
-            tok={tok}
-          />
           {submitError && <div className="text-sm text-red-500">{submitError}</div>}
         </div>
         <div className="flex items-center justify-end gap-3 px-6 py-4" style={{ borderTop: `1px solid ${tok.border}` }}>
-          <button type="button" onClick={requestClose} className="px-3 py-1.5 rounded-lg text-sm transition-colors" style={{ color: tok.text_secondary }}>
-            Cancel
-          </button>
           <button
             type="button"
             onClick={onSubmit}
@@ -1293,6 +1326,7 @@ function DetailPage({
   const requestStageField = refundRequestsTable.getFieldIfExists(FIELD_IDS.REQUEST_STAGE);
   const settlementStageField = refundRequestsTable.getFieldIfExists(FIELD_IDS.SETTLEMENT_STAGE);
   const appliedToDraftOrderField = refundRequestsTable.getFieldIfExists(FIELD_IDS.APPLIED_TO_DRAFT_ORDER);
+  const isProductSpecificField = refundRequestsTable.getFieldIfExists(FIELD_IDS.IS_PRODUCT_SPECIFIC);
 
   const requestStageValue = requestStageField ? (record.getCellValue(requestStageField) as { name: string } | null)?.name ?? null : null;
   const settlementStageValue = settlementStageField ? (record.getCellValue(settlementStageField) as { name: string } | null)?.name ?? null : null;
@@ -1306,6 +1340,29 @@ function DetailPage({
     const clientRecord = clientsRecords.find((c) => c.id === clientLinked[0]?.id);
     return clientRecord ? (clientRecord.getCellValue(clientFullNameField) as string) ?? 'Unknown' : 'Unknown';
   }, [clientLinked, clientsRecords, clientFullNameField]);
+
+  const orderLinkedTop = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
+  const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER);
+  const orderLabel = useMemo(() => {
+    if (!orderLinkedTop || orderLinkedTop.length === 0 || !ordersShopifyNumberField) return '—';
+    const orderRecord = ordersRecords.find((o) => o.id === orderLinkedTop[0]?.id);
+    const num = orderRecord ? (orderRecord.getCellValue(ordersShopifyNumberField) as number | null) : null;
+    return num ? `#${num}` : '—';
+  }, [orderLinkedTop, ordersRecords, ordersShopifyNumberField]);
+
+  const categoryActiveFieldTop = categoriesTable?.getFieldIfExists(CATEGORY_FIELD_IDS.ACTIVE);
+  const orderedCategoryIds = useMemo(() => {
+    return categoriesRecords
+      .filter((r) => (categoryActiveFieldTop ? r.getCellValue(categoryActiveFieldTop) === true : true))
+      .map((r) => r.id)
+      .sort((a, b) => {
+        const an = categoriesRecords.find((r) => r.id === a)?.name ?? '';
+        const bn = categoriesRecords.find((r) => r.id === b)?.name ?? '';
+        return an.localeCompare(bn);
+      });
+  }, [categoriesRecords, categoryActiveFieldTop]);
+  const categoryLinkedTop = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
+  const categoryLabelTop = categoryLinkedTop?.[0] ? categoriesRecords.find((c) => c.id === categoryLinkedTop[0]?.id)?.name ?? null : null;
 
   const isEditable = requestStageValue === 'Requested' || requestStageValue === 'Under Review';
   const isApproved = requestStageValue === 'Approved';
@@ -1508,6 +1565,7 @@ function DetailPage({
   const currentOrderItemIds = currentOrderItemsLinked?.map((l) => l.id) ?? [];
   const currentCategoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
   const currentCategoryId = currentCategoryLinked?.[0]?.id ?? null;
+  const isProductSpecificValue = isProductSpecificField ? !!record.getCellValue(isProductSpecificField) : false;
 
   const handleClientChange = useCallback(
     (newClientId: string | null) => {
@@ -1568,6 +1626,27 @@ function DetailPage({
       });
     },
     [canUpdate, orderItemsField, queueWrite, refundRequestsTable, record.id]
+  );
+
+  const handleProductSpecificChange = useCallback(
+    (checked: boolean) => {
+      if (!canUpdate || !isProductSpecificField) return;
+      queueWrite(async () => {
+        setSaving(true);
+        try {
+          const patch: Record<string, unknown> = { [FIELD_IDS.IS_PRODUCT_SPECIFIC]: checked };
+          if (!checked) patch[FIELD_IDS.ORDER_ITEMS] = [];
+          await refundRequestsTable.updateRecordAsync(record.id, patch);
+          initialHashRef.current = null;
+        } catch (err) {
+          console.error('Product-specific change failed:', err);
+          setError('Failed to update.');
+        } finally {
+          setSaving(false);
+        }
+      });
+    },
+    [canUpdate, isProductSpecificField, queueWrite, refundRequestsTable, record.id]
   );
 
   const handleCategoryChange = useCallback(
@@ -1709,104 +1788,129 @@ function DetailPage({
           <div className="col-span-3 space-y-4">
             {isEditable && canUpdate ? (
               <>
-                <SearchablePicker label="Client" placeholder="Select a client..." options={clientOptions} value={currentClientId} onChange={handleClientChange} tok={tok} />
-                <SearchablePicker
-                  label="Order"
-                  placeholder="Select an order..."
-                  options={orderOptions}
-                  value={currentOrderId}
-                  onChange={handleOrderChange}
-                  disabled={!currentClientId}
-                  tok={tok}
-                />
-                <MultiSelectPicker
-                  label="Order Items"
-                  placeholder="Select order items..."
-                  options={orderItemOptions}
-                  value={currentOrderItemIds}
-                  onChange={handleOrderItemsChange}
-                  disabled={!currentOrderId}
-                  tok={tok}
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <SearchablePicker label="Client" placeholder="Select a client..." options={clientOptions} value={currentClientId} onChange={handleClientChange} tok={tok} />
+                  <SearchablePicker
+                    label="Order"
+                    placeholder="Select an order..."
+                    options={orderOptions}
+                    value={currentOrderId}
+                    onChange={handleOrderChange}
+                    disabled={!currentClientId}
+                    tok={tok}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isProductSpecificDetail"
+                    checked={isProductSpecificValue}
+                    onChange={(e) => handleProductSpecificChange(e.target.checked)}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: tok.accent }}
+                  />
+                  <label htmlFor="isProductSpecificDetail" className="text-sm" style={{ color: tok.text_primary }}>
+                    This refund is product-specific
+                  </label>
+                </div>
+                {isProductSpecificValue && (
+                  <MultiSelectPicker
+                    label="Order Items"
+                    placeholder="Select order items..."
+                    options={orderItemOptions}
+                    value={currentOrderItemIds}
+                    onChange={handleOrderItemsChange}
+                    disabled={!currentOrderId}
+                    tok={tok}
+                  />
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <SearchablePicker
+                    label="Refund Category"
+                    placeholder="Select a category..."
+                    options={categoryOptions}
+                    value={currentCategoryId}
+                    onChange={handleCategoryChange}
+                    tok={tok}
+                  />
+                  <SimplePicker
+                    label="Resolution Type (Proposed)"
+                    placeholder="Select resolution type..."
+                    options={resolutionTypeProposedChoices.map((c) => ({ value: c.name, label: c.name }))}
+                    value={resolutionProposedValue}
+                    onChange={handleResolutionProposedChange}
+                    tok={tok}
+                  />
+                </div>
                 <div>
                   <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Refund Reason
+                    Refund Details
                   </label>
                   <textarea
                     value={localReason}
                     onChange={(e) => setLocalReason(e.target.value)}
                     onBlur={saveReason}
-                    placeholder="Enter refund reason..."
+                    placeholder="Enter refund details..."
                     rows={3}
                     className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none transition-colors"
                     style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
                   />
                 </div>
-                <SearchablePicker
-                  label="Refund Category"
-                  placeholder="Select a category..."
-                  options={categoryOptions}
-                  value={currentCategoryId}
-                  onChange={handleCategoryChange}
-                  tok={tok}
-                />
-                <SimplePicker
-                  label="Resolution Type (Proposed)"
-                  placeholder="Select resolution type..."
-                  options={resolutionTypeProposedChoices.map((c) => ({ value: c.name, label: c.name }))}
-                  value={resolutionProposedValue}
-                  onChange={handleResolutionProposedChange}
-                  tok={tok}
-                />
               </>
             ) : (
               <>
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Client
-                  </label>
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: tok.hover_bg }}>
-                    {clientField && <CellRenderer record={record} field={clientField} />}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                      Client
+                    </label>
+                    <div className="p-2 rounded-lg text-sm" style={{ backgroundColor: tok.hover_bg, color: tok.text_primary }}>
+                      {clientName}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                      Order
+                    </label>
+                    <div className="p-2 rounded-lg text-sm" style={{ backgroundColor: tok.hover_bg, color: tok.text_primary }}>
+                      {orderLabel}
+                    </div>
+                  </div>
+                </div>
+                {isProductSpecificValue && (
+                  <div>
+                    <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                      Order Items
+                    </label>
+                    <div className="p-2 rounded-lg" style={{ backgroundColor: tok.hover_bg }}>
+                      {orderItemsField && <CellRenderer record={record} field={orderItemsField} />}
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                      Refund Category
+                    </label>
+                    <div className="p-2 rounded-lg">
+                      <CategoryChip label={categoryLabelTop} categoryId={categoryLinkedTop?.[0]?.id ?? null} orderedCategoryIds={orderedCategoryIds} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                      Resolution Type (Proposed)
+                    </label>
+                    <div className="p-2 rounded-lg">
+                      <StagePill value={resolutionProposedValue} choices={resolutionTypeProposedChoices} />
+                    </div>
                   </div>
                 </div>
                 <div>
                   <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Order
-                  </label>
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: tok.hover_bg }}>
-                    {orderField && <CellRenderer record={record} field={orderField} />}
-                  </div>
-                </div>
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Order Items
-                  </label>
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: tok.hover_bg }}>
-                    {orderItemsField && <CellRenderer record={record} field={orderItemsField} />}
-                  </div>
-                </div>
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Refund Reason
+                    Refund Details
                   </label>
                   <div className="p-2 rounded-lg text-sm whitespace-pre-wrap" style={{ backgroundColor: tok.hover_bg, color: tok.text_primary }}>
                     {refundReasonField ? (record.getCellValue(refundReasonField) as string) ?? '—' : '—'}
-                  </div>
-                </div>
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Refund Category
-                  </label>
-                  <div className="p-2 rounded-lg" style={{ backgroundColor: tok.hover_bg }}>
-                    {categoryField && <CellRenderer record={record} field={categoryField} />}
-                  </div>
-                </div>
-                <div>
-                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                    Resolution Type (Proposed)
-                  </label>
-                  <div className="p-2 rounded-lg text-sm" style={{ backgroundColor: tok.hover_bg, color: tok.text_primary }}>
-                    {resolutionProposedValue ?? '—'}
                   </div>
                 </div>
               </>
@@ -1819,17 +1923,7 @@ function DetailPage({
                 <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
                   Refund Category
                 </label>
-                <div className="text-sm" style={{ color: tok.text_primary }}>
-                  {categoryField && <CellRenderer record={record} field={categoryField} />}
-                </div>
-              </div>
-              <div>
-                <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                  Resolution Type (Approved)
-                </label>
-                <div className="text-sm" style={{ color: tok.text_primary }}>
-                  {resolutionApprovedValue ?? '—'}
-                </div>
+                <CategoryChip label={categoryLabelTop} categoryId={categoryLinkedTop?.[0]?.id ?? null} orderedCategoryIds={orderedCategoryIds} />
               </div>
               <div>
                 <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
@@ -1837,12 +1931,22 @@ function DetailPage({
                 </label>
                 <StagePill value={requestStageValue} choices={requestStageChoices} />
               </div>
-              <div>
-                <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
-                  Settlement Stage
-                </label>
-                <StagePill value={settlementStageValue} choices={settlementStageChoices} />
-              </div>
+              {resolutionApprovedValue && (
+                <div>
+                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                    Resolution Type (Approved)
+                  </label>
+                  <StagePill value={resolutionApprovedValue} choices={resolutionTypeApprovedChoices} />
+                </div>
+              )}
+              {settlementStageValue && (
+                <div>
+                  <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
+                    Settlement Stage
+                  </label>
+                  <StagePill value={settlementStageValue} choices={settlementStageChoices} />
+                </div>
+              )}
               {hasAppliedDraftOrder && appliedToDraftOrderField && (
                 <div>
                   <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
@@ -2004,7 +2108,36 @@ function RefundRequestsApp(): React.ReactElement {
   const stageFilterOptions = useMemo(() => requestStageChoices.map((c) => ({ value: c.name, label: c.name })), [requestStageChoices]);
   const resolutionFilterOptions = useMemo(() => resolutionApprovedChoices.map((c) => ({ value: c.name, label: c.name })), [resolutionApprovedChoices]);
 
+  // Stable rainbow ordering for CategoryChip — sorted by name so a category's
+  // hue doesn't shift around as unrelated records load/unload.
+  const orderedCategoryIds = useMemo(
+    () => [...activeCategoriesRecords].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')).map((r) => r.id),
+    [activeCategoriesRecords]
+  );
+  const categoryNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of categoriesRecords ?? []) m.set(r.id, r.name ?? r.id);
+    return m;
+  }, [categoriesRecords]);
+
   const clientFullNameField = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.FULL_NAME) ?? null;
+  const clientNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!clientFullNameField) return m;
+    for (const r of clientsRecords ?? []) m.set(r.id, (r.getCellValue(clientFullNameField) as string) ?? r.id);
+    return m;
+  }, [clientsRecords, clientFullNameField]);
+
+  const ordersShopifyNumberField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.SHOPIFY_ORDER_NUMBER) ?? null;
+  const orderLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!ordersShopifyNumberField) return m;
+    for (const r of ordersRecords ?? []) {
+      const num = r.getCellValue(ordersShopifyNumberField) as number | null;
+      m.set(r.id, num ? `#${num}` : '—');
+    }
+    return m;
+  }, [ordersRecords, ordersShopifyNumberField]);
 
   const filteredRecords = useMemo(() => {
     if (!refundRequestsRecords) return [];
@@ -2112,6 +2245,7 @@ function RefundRequestsApp(): React.ReactElement {
         [FIELD_IDS.RESOLUTION_TYPE_PROPOSED]: { name: newCaseDraft.resolutionTypeProposed },
         [FIELD_IDS.REQUEST_STAGE]: { name: 'Requested' },
         [FIELD_IDS.CLIENT_EMAIL_SENT]: false,
+        [FIELD_IDS.IS_PRODUCT_SPECIFIC]: newCaseDraft.isProductSpecific,
       };
 
       if (newCaseDraft.isProductSpecific && newCaseDraft.orderItemIds.length > 0) {
@@ -2218,7 +2352,7 @@ function RefundRequestsApp(): React.ReactElement {
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search by client..."
-            className="pl-9 pr-3 py-2 w-48 rounded-lg text-sm outline-none transition-colors"
+            className="pl-9 pr-3 py-2 w-72 rounded-lg text-sm outline-none transition-colors"
             style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
           />
         </div>
@@ -2269,6 +2403,10 @@ function RefundRequestsApp(): React.ReactElement {
                     const settStage = settlementStageField ? (record.getCellValue(settlementStageField) as { name: string } | null)?.name ?? null : null;
                     const resApproved = resolutionApprovedField ? (record.getCellValue(resolutionApprovedField) as { name: string } | null)?.name ?? null : null;
                     const resProposed = resolutionProposedField ? (record.getCellValue(resolutionProposedField) as { name: string } | null)?.name ?? null : null;
+                    const clientLinked = clientField ? (record.getCellValue(clientField) as Array<{ id: string }> | null) : null;
+                    const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
+                    const categoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
+                    const categoryId = categoryLinked?.[0]?.id ?? null;
 
                     return (
                       <tr
@@ -2280,19 +2418,22 @@ function RefundRequestsApp(): React.ReactElement {
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                       >
                         <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
-                          {clientField && <CellRenderer record={record} field={clientField} />}
+                          {clientLinked?.[0] ? clientNameById.get(clientLinked[0].id) ?? '—' : '—'}
                         </td>
                         <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
-                          {orderField && <CellRenderer record={record} field={orderField} />}
+                          {orderLinked?.[0] ? orderLabelById.get(orderLinked[0].id) ?? '—' : '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
-                          {categoryField && <CellRenderer record={record} field={categoryField} />}
+                        <td className="px-4 py-3 text-sm">
+                          <CategoryChip label={categoryId ? categoryNameById.get(categoryId) ?? null : null} categoryId={categoryId} orderedCategoryIds={orderedCategoryIds} />
                         </td>
                         <td className="px-4 py-3 text-sm">
                           {resApproved ? (
-                            <span style={{ color: tok.text_primary }}>{resApproved}</span>
+                            <StagePill value={resApproved} choices={resolutionApprovedChoices} />
                           ) : resProposed ? (
-                            <span style={{ color: tok.text_secondary }}>Proposed: {resProposed}</span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="text-xs" style={{ color: tok.text_muted }}>Proposed:</span>
+                              <StagePill value={resProposed} choices={resolutionProposedChoices} />
+                            </span>
                           ) : (
                             <span style={{ color: tok.text_muted }}>—</span>
                           )}
@@ -2350,26 +2491,31 @@ function RefundRequestsApp(): React.ReactElement {
                           </td>
                         </tr>
                       ) : (
-                        col.records.map((record) => (
-                          <tr
-                            key={record.id}
-                            draggable={col.draggable}
-                            onDragStart={col.draggable ? () => setDraggedRecordId(record.id) : undefined}
-                            onDragEnd={col.draggable ? () => setDraggedRecordId(null) : undefined}
-                            onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'review' })}
-                            className={`transition-colors ${col.draggable ? 'cursor-move' : 'cursor-pointer'}`}
-                            style={{ borderBottom: `1px solid ${tok.border_light}` }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = tok.hover_bg)}
-                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                          >
-                            <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
-                              {clientField && <CellRenderer record={record} field={clientField} />}
-                            </td>
-                            <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
-                              {categoryField && <CellRenderer record={record} field={categoryField} />}
-                            </td>
-                          </tr>
-                        ))
+                        col.records.map((record) => {
+                          const clientLinked = clientField ? (record.getCellValue(clientField) as Array<{ id: string }> | null) : null;
+                          const categoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
+                          const categoryId = categoryLinked?.[0]?.id ?? null;
+                          return (
+                            <tr
+                              key={record.id}
+                              draggable={col.draggable}
+                              onDragStart={col.draggable ? () => setDraggedRecordId(record.id) : undefined}
+                              onDragEnd={col.draggable ? () => setDraggedRecordId(null) : undefined}
+                              onClick={() => setViewState({ layer: 2, recordId: record.id, sourceLayout: 'review' })}
+                              className={`transition-colors ${col.draggable ? 'cursor-move' : 'cursor-pointer'}`}
+                              style={{ borderBottom: `1px solid ${tok.border_light}` }}
+                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = tok.hover_bg)}
+                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                            >
+                              <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
+                                {clientLinked?.[0] ? clientNameById.get(clientLinked[0].id) ?? '—' : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-sm">
+                                <CategoryChip label={categoryId ? categoryNameById.get(categoryId) ?? null : null} categoryId={categoryId} orderedCategoryIds={orderedCategoryIds} />
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

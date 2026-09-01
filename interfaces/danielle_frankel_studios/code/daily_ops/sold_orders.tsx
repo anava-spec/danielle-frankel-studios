@@ -453,7 +453,7 @@ function MultiSelectDropdown({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center justify-between gap-2 min-w-[150px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
+        className={`inline-flex items-center justify-between gap-2 w-[160px] bg-white dark:bg-[#25211A] border rounded-lg px-3 py-1.5 text-sm outline-none transition-colors ${
           hasSelection
             ? 'border-[#D97706] dark:border-[#FBBF24] text-[#D97706] dark:text-[#FBBF24] font-medium'
             : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 hover:dark:border-gray-500 focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]'
@@ -472,7 +472,7 @@ function MultiSelectDropdown({
         </span>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg py-1 min-w-[150px]">
+        <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-[#25211A] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg py-1 w-[240px] max-h-[260px] overflow-y-auto">
           {options.map(opt => (
             <button
               key={opt}

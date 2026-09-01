@@ -765,11 +765,11 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
   const selectedOption = options.find(o => o.id === value);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" style={{ width: minWidth }}>
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:cursor-pointer"
+        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-sm hover:cursor-pointer"
         style={{
           backgroundColor: theme.bg,
           border: `1px solid ${isActive ? theme.accent : theme.border}`,
@@ -786,8 +786,8 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
       </button>
       {open && (
         <div
-          className="absolute z-20 mt-1 rounded-md shadow-lg overflow-y-auto"
-          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, minWidth, maxHeight: 252 }}
+          className="absolute z-20 mt-1 rounded-lg shadow-lg overflow-y-auto"
+          style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}`, minWidth: Math.max(minWidth, 240), maxHeight: 260 }}
         >
           {options.map(opt => {
             const checked = value === opt.id;
@@ -795,7 +795,7 @@ function FilterDropdown({ label, value, options, onChange, theme, minWidth = 160
               <button
                 key={opt.id}
                 onClick={() => { onChange(opt.id); setOpen(false); }}
-                className="w-full text-left px-3 py-2 text-sm hover:cursor-pointer whitespace-nowrap"
+                className="w-full text-left px-3 py-1.5 text-sm hover:cursor-pointer whitespace-nowrap"
                 style={{
                   backgroundColor: checked ? theme.accentSoft : 'transparent',
                   color: checked ? theme.accent : theme.text,

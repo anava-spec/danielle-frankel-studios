@@ -121,6 +121,7 @@ Custom component, never a native `<select>`. One shared `Dropdown` pattern:
 - **Deciding single- vs. multi-select is a required question, not a default.** When building a new filter, always ask whether it should accept one selection or several before implementing it — don't assume single-select as a default.
 - **Never add an "All" option to a filter's option list.** Having nothing selected already means "no filter applied" (i.e. every record shows) — an explicit "All" entry duplicates that default state and adds a redundant click.
 - **Filter names are always spelled out in full** — no abbreviations (`Sales Associate`, not `SA`) — since the name is user-facing placeholder text now (per above), not an internal label a developer might be tempted to shorten.
+- **Fixed trigger/panel dimensions** (established from `appointments.tsx`'s `FilterDropdown`, the reference implementation — applied to `refund_requests.tsx`, `draft_orders.tsx`, and `sold_orders.tsx` 2026-09-01): trigger is a **fixed `160px` width** (not `min-width`, not content-sized), `px-3 py-1.5`, `8px` radius. Panel is a **fixed `240px` width**, `max-height: 260px` with internal scroll. Don't let a filter's trigger or panel grow/shrink with its option-label lengths — this is what makes a filter bar read as one consistent row instead of a ragged one.
 
 ---
 
@@ -128,7 +129,7 @@ Custom component, never a native `<select>`. One shared `Dropdown` pattern:
 
 - Layout: `flex items-center gap-2`; each filter is a single dropdown trigger only — **no external label** (per §5, the filter's name lives inside the trigger itself as a placeholder, replaced by the value once applied).
 - **No global "Clear all" text link at the filter-bar level either** — each filter clears itself via its own inline `X` (§5). Only add a bar-level "Clear all" control if a screen has enough simultaneous filters that clearing them one by one would be genuinely tedious (4+), and even then style it as a small icon-button, not a text link.
-- Search bar: text input with a `MagnifyingGlassIcon` absolutely positioned inside on the left, `~32px` left padding to clear the icon. Placeholder text always follows the pattern **"Search by `<field>`, `<field>`, …"** — enumerate the actual fields it searches (e.g. `Search by name, phone, email, AM order…`), never a bare "Search…" or "Search clients".
+- Search bar: text input with a `MagnifyingGlassIcon` absolutely positioned inside on the left, `~32px` left padding to clear the icon. Placeholder text always follows the pattern **"Search by `<field>`, `<field>`, …"** — enumerate the actual fields it searches (e.g. `Search by name, phone, email, AM order…`), never a bare "Search…" or "Search clients". **Fixed width: `w-72`** (established from `pipeline.tsx`'s search bar, the standard — matched in `refund_requests.tsx` 2026-09-01). Don't size a search bar to its container or pick a one-off width per file.
 - Active filter chips (if used to summarize applied filters, separately from the dropdown triggers themselves): `accent_soft` background, `accent` text, `999px` radius, small `x` to remove.
 
 ---
