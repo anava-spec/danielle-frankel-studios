@@ -52,6 +52,12 @@ const FIELD_IDS = {
   // address, or a freehand new one) — created 2026-07-30, singleLineText.
   DRAFT_ADDRESS: 'fldZY2glO0rB19Eho',
 
+  // Reverse link to refund_requests (Refund Requests story, 2026-08-31) —
+  // multipleRecordLinks, auto-created as the inverse of that table's
+  // applied_to_draft_order field. Read-only here (written from the Refund
+  // Requests interface's Draft Order line-item flow, a separate story).
+  DRAFT_REFUND_REQUESTS: 'fldaHWvcr3zLAd4BG',
+
   // Shopify Draft Order Creation story (2026-08-11) — singleSelect:
   // Not Started / Endpoint Call Ongoing / Completed / Failed.
   DRAFT_SHOPIFY_STATUS: 'fldsQlDqjhvTodXgR',
@@ -114,6 +120,17 @@ const FIELD_IDS = {
 
   RUSH_RULE_WEEKS: 'fldQXdvm2BiegkSeM',
   RUSH_RULE_NON_CUSTOMIZED_PCT: 'flds560NGzla4hbfu',
+} as const;
+
+// refund_requests (tbl1A5lbdJxUREOPO) — read-only reference for the
+// Refund Case(s) mini-panel on this file's detail view (Layer4).
+const REFUND_REQUESTS_TABLE_ID = 'tbl1A5lbdJxUREOPO';
+const REFUND_REQUEST_FIELD_IDS = {
+  REFUND_CATEGORY: 'fldjtOVzR8t0imXfy',
+  RESOLUTION_TYPE_PROPOSED: 'fldVSbEmBpvZ1SEUE',
+  RESOLUTION_TYPE_APPROVED: 'fldUnYp7Kv8vjYnk3',
+  REQUEST_STAGE: 'fldtRq5M9XstW1FC1',
+  SETTLEMENT_STAGE: 'fldkTiBPnBEygcwJ2',
 } as const;
 
 // TODO: populate once Julia confirms terminal stage values
@@ -945,6 +962,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
     { key: 'stateCostsTable', label: 'State costs', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblMnPV8Z00QePma9') },
     { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') },
     { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') },
+    { key: 'refundRequestsTable', label: 'Refund requests', type: 'table' as const, defaultValue: base.getTableByIdIfExists(REFUND_REQUESTS_TABLE_ID) ?? undefined },
 
     // Shopify Draft Order Creation story (2026-08-11) — fields must be
     // explicitly declared as 'field' custom properties (not just their
@@ -956,7 +974,18 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
       { key: 'draftShopifyStatusField', label: 'Draft: Shopify status', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_SHOPIFY_STATUS) ?? undefined },
       { key: 'draftSyncErrorMessageField', label: 'Draft: sync error message', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_SYNC_ERROR_MESSAGE) ?? undefined },
       { key: 'draftInitiatedByEmailField', label: 'Draft: initiated by email', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_INITIATED_BY_EMAIL) ?? undefined },
+      { key: 'draftRefundRequestsField', label: 'Draft: Refund Requests', type: 'field' as const, table: draftOrdersTable, defaultValue: draftOrdersTable.getFieldByIdIfExists(FIELD_IDS.DRAFT_REFUND_REQUESTS) ?? undefined },
     ] : []),
+    ...(() => {
+      const refundRequestsTable = base.getTableByIdIfExists(REFUND_REQUESTS_TABLE_ID);
+      return refundRequestsTable ? [
+        { key: 'refundCategoryField', label: 'Refund request: Category', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.REFUND_CATEGORY) ?? undefined },
+        { key: 'refundResolutionProposedField', label: 'Refund request: Resolution Type (Proposed)', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_PROPOSED) ?? undefined },
+        { key: 'refundResolutionApprovedField', label: 'Refund request: Resolution Type (Approved)', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED) ?? undefined },
+        { key: 'refundRequestStageField', label: 'Refund request: Request Stage', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE) ?? undefined },
+        { key: 'refundSettlementStageField', label: 'Refund request: Settlement Stage', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE) ?? undefined },
+      ] : [];
+    })(),
     ...(clientsTable ? [
       { key: 'clientReadyToWearSizeField', label: 'Client: Ready to Wear size', type: 'field' as const, table: clientsTable, defaultValue: clientsTable.getFieldByIdIfExists(FIELD_IDS.CLIENT_READY_TO_WEAR_SIZE) ?? undefined },
       { key: 'clientEmailField', label: 'Client: Email', type: 'field' as const, table: clientsTable, defaultValue: clientsTable.getFieldByIdIfExists(FIELD_IDS.CLIENT_EMAIL) ?? undefined },
@@ -981,6 +1010,7 @@ function DraftOrdersApp() {
   const stateCostsTable = customPropertyValueByKey.stateCostsTable as Table | undefined;
   const rushFeeRulesTable = customPropertyValueByKey.rushFeeRulesTable as Table | undefined;
   const staffTable = customPropertyValueByKey.staffTable as Table | undefined;
+  const refundRequestsTable = customPropertyValueByKey.refundRequestsTable as Table | undefined;
 
   const draftRecords = useRecords(draftOrdersTable ?? null);
   const clientRecords = useRecords(clientsTable ?? null);
@@ -989,6 +1019,7 @@ function DraftOrdersApp() {
   const stateCostRecords = useRecords(stateCostsTable ?? null);
   const rushFeeRuleRecords = useRecords(rushFeeRulesTable ?? null);
   const staffRecords = useRecords(staffTable ?? null);
+  const refundRequestsRecords = useRecords(refundRequestsTable ?? null);
 
   const [viewState, setViewState] = useState<ViewState>({ layer: 1 });
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -1084,6 +1115,8 @@ function DraftOrdersApp() {
           stateCostsTable={stateCostsTable}
           rushFeeRulesTable={rushFeeRulesTable}
           clientsTable={clientsTable}
+          refundRequestsTable={refundRequestsTable}
+          refundRequestsRecords={refundRequestsRecords ?? []}
           getField={getField}
           getLinkedRecordIds={getLinkedRecordIds}
           getMostRecentDraft={getMostRecentDraft}
@@ -2670,6 +2703,8 @@ interface Layer4Props {
   stateCostsTable: Table;
   rushFeeRulesTable: Table;
   clientsTable: Table;
+  refundRequestsTable: Table | undefined;
+  refundRequestsRecords: AirtableRecord[];
   getField: (table: Table, fieldId: string) => Field | null;
   getLinkedRecordIds: (record: AirtableRecord, field: Field | null) => string[];
   getMostRecentDraft: (clientId: string) => AirtableRecord | null;
@@ -2693,6 +2728,8 @@ function Layer4({
   stateCostsTable,
   rushFeeRulesTable,
   clientsTable,
+  refundRequestsTable,
+  refundRequestsRecords,
   getField,
   getLinkedRecordIds,
   getMostRecentDraft,
@@ -2701,6 +2738,19 @@ function Layer4({
 }: Layer4Props) {
   const draft = draftRecords.find(d => d.id === draftId);
   const canUpdate = draftOrdersTable.hasPermissionToUpdateRecords();
+
+  const refundRequestsField = getField(draftOrdersTable, FIELD_IDS.DRAFT_REFUND_REQUESTS);
+  const linkedRefundCases = useMemo(() => {
+    if (!draft || !refundRequestsField || !refundRequestsTable) return [];
+    const ids = getLinkedRecordIds(draft, refundRequestsField);
+    if (ids.length === 0) return [];
+    return refundRequestsRecords.filter(r => ids.includes(r.id));
+  }, [draft, refundRequestsField, refundRequestsTable, refundRequestsRecords, getLinkedRecordIds]);
+  const refundCategoryField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.REFUND_CATEGORY) : null;
+  const refundResolutionProposedField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_PROPOSED) : null;
+  const refundResolutionApprovedField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED) : null;
+  const refundRequestStageField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE) : null;
+  const refundSettlementStageField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE) : null;
 
   const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
@@ -3819,6 +3869,42 @@ function Layer4({
                 </div>
               )}
             </div>
+
+            {linkedRefundCases.length > 0 && (
+              <div className="p-4 rounded-lg space-y-3 text-sm mt-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+                <h2 className="text-base font-semibold mb-1">Refund Case{linkedRefundCases.length > 1 ? 's' : ''}</h2>
+                {linkedRefundCases.map((refundRecord, idx) => {
+                  const resolutionApproved = refundResolutionApprovedField
+                    ? (refundRecord.getCellValue(refundResolutionApprovedField) as { name: string } | null)?.name
+                    : null;
+                  const resolutionProposed = refundResolutionProposedField
+                    ? (refundRecord.getCellValue(refundResolutionProposedField) as { name: string } | null)?.name
+                    : null;
+                  return (
+                    <div key={refundRecord.id} className={idx > 0 ? 'pt-3 border-t' : ''} style={idx > 0 ? { borderColor: theme.borderLight } : undefined}>
+                      <div className="flex justify-between items-center">
+                        <span style={{ color: theme.textSecondary }}>Category</span>
+                        <span>{refundCategoryField ? <CellRenderer record={refundRecord} field={refundCategoryField} /> : '—'}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span style={{ color: theme.textSecondary }}>Resolution Type</span>
+                        <span>{resolutionApproved ?? (resolutionProposed ? `Proposed: ${resolutionProposed}` : '—')}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span style={{ color: theme.textSecondary }}>Request Stage</span>
+                        <span>{refundRequestStageField ? <CellRenderer record={refundRecord} field={refundRequestStageField} /> : '—'}</span>
+                      </div>
+                      {refundSettlementStageField && !!refundRecord.getCellValue(refundSettlementStageField) && (
+                        <div className="flex justify-between items-center mt-1.5">
+                          <span style={{ color: theme.textSecondary }}>Settlement Stage</span>
+                          <span><CellRenderer record={refundRecord} field={refundSettlementStageField} /></span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

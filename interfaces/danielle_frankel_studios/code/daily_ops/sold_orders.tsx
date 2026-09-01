@@ -51,6 +51,29 @@ const FIELD_IDS = {
   STYLE_NAME:           'fldEs3chQAeplPc1w',
 } as const;
 
+// refund_requests (tbl1A5lbdJxUREOPO) — read-only reference for the Refund
+// Case(s) mini-panel in OrderModal. Its `order` link's auto-created reverse
+// on Orders - Shopify (fldxewavZiLBa13zw) isn't needed here — we go the
+// other direction, filtering refund_requests by its own `order` field.
+const REFUND_REQUESTS_TABLE_ID = 'tbl1A5lbdJxUREOPO';
+const REFUND_CATEGORIES_TABLE_ID = 'tblhbjY8Jh8KjqRf6';
+const REFUND_REQUEST_FIELD_IDS = {
+  ORDER:                     'fldPJ9JwERMtCG0zq',
+  REFUND_CATEGORY:           'fldjtOVzR8t0imXfy',
+  RESOLUTION_TYPE_PROPOSED:  'fldVSbEmBpvZ1SEUE',
+  RESOLUTION_TYPE_APPROVED:  'fldUnYp7Kv8vjYnk3',
+  REQUEST_STAGE:             'fldtRq5M9XstW1FC1',
+  SETTLEMENT_STAGE:          'fldkTiBPnBEygcwJ2',
+} as const;
+const REFUND_CATEGORY_NAME_FIELD_ID = 'fldmp5TGQkMTMWHcN';
+
+type RefundCaseSummary = {
+  category:         string;
+  resolutionLabel:  string; // e.g. "Direct Refund" or "Proposed: Direct Refund"
+  requestStage:     string;
+  settlementStage:  string; // '' when not yet applicable
+};
+
 // ─── Feedback (table tbluy7JS31NwCoeIi) ──────────────────────────────────────
 const FEEDBACK_TABLE_ID = 'tbluy7JS31NwCoeIi';
 const FEEDBACK_FIELD_IDS = {
@@ -517,6 +540,7 @@ type ModalData = {
   rushFee:     number | null;
   refunded:    number | null;
   total:       number | null;
+  refundCases: RefundCaseSummary[];
 };
 
 function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void }) {
@@ -657,6 +681,24 @@ function OrderModal({ data, onClose }: { data: ModalData; onClose: () => void })
                   <span className="text-base font-semibold text-[#D97706] dark:text-[#FBBF24]">{fmt$(data.total)}</span>
                 </div>
               </div>
+
+              {data.refundCases.length > 0 && (
+                <div className="mt-5">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-2 block">
+                    Refund Case{data.refundCases.length > 1 ? 's' : ''}
+                  </span>
+                  <div className="bg-gray-50 dark:bg-white/5 rounded-xl overflow-hidden">
+                    {data.refundCases.map((rc, i) => (
+                      <div key={i} className={`p-4 ${i > 0 ? 'border-t border-gray-200 dark:border-white/10' : ''}`}>
+                        <FinRow label="Category" value={rc.category} />
+                        <FinRow label="Resolution Type" value={rc.resolutionLabel} />
+                        <FinRow label="Request Stage" value={rc.requestStage} />
+                        {rc.settlementStage && <FinRow label="Settlement Stage" value={rc.settlementStage} />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -676,6 +718,8 @@ function SoldApp(): React.ReactElement {
   const clientsTable = base.getTableByIdIfExists('tblLLUlDgJ4ktzF7c');
   const stylesTable  = base.getTableByIdIfExists('tbl0hWIRBbcB4UkVC');
   const studiosTable = base.getTableByIdIfExists('tblYM02GzeYdYk23v');
+  const refundRequestsTable  = base.getTableByIdIfExists(REFUND_REQUESTS_TABLE_ID);
+  const refundCategoriesTable = base.getTableByIdIfExists(REFUND_CATEGORIES_TABLE_ID);
 
   const [modalData, setModalData]         = useState<ModalData | null>(null);
   const [selectedSA, setSelectedSA]       = useState<Set<string>>(new Set());
@@ -692,6 +736,8 @@ function SoldApp(): React.ReactElement {
   const clientRecords = useRecords(clientsTable);
   const styleRecords  = useRecords(stylesTable);
   const studioRecords = useRecords(studiosTable);
+  const refundRequestRecords   = useRecords(refundRequestsTable);
+  const refundCategoryRecords  = useRecords(refundCategoriesTable);
 
   const clientNameMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -710,6 +756,45 @@ function SoldApp(): React.ReactElement {
     for (const s of styleRecords) m.set(s.id, s.getCellValueAsString(f));
     return m;
   }, [styleRecords, stylesTable]);
+
+  const refundCategoryNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!refundCategoryRecords || !refundCategoriesTable) return m;
+    const f = refundCategoriesTable.getFieldIfExists(REFUND_CATEGORY_NAME_FIELD_ID);
+    if (!f) return m;
+    for (const c of refundCategoryRecords) m.set(c.id, c.getCellValueAsString(f));
+    return m;
+  }, [refundCategoryRecords, refundCategoriesTable]);
+
+  // Groups refund cases by the Orders - Shopify record they're filed against,
+  // read-only — this file never writes to refund_requests.
+  const refundCasesByOrderId = useMemo(() => {
+    const m = new Map<string, RefundCaseSummary[]>();
+    if (!refundRequestRecords || !refundRequestsTable) return m;
+    const fOrder = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.ORDER);
+    const fCategory = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.REFUND_CATEGORY);
+    const fResProposed = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_PROPOSED);
+    const fResApproved = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED);
+    const fRequestStage = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE);
+    const fSettlementStage = refundRequestsTable.getFieldIfExists(REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE);
+    if (!fOrder) return m;
+    for (const r of refundRequestRecords) {
+      const orderLinks = r.getCellValue(fOrder) as Array<{ id: string }> | null;
+      const orderId = orderLinks?.[0]?.id;
+      if (!orderId) continue;
+      const categoryLinks = fCategory ? (r.getCellValue(fCategory) as Array<{ id: string }> | null) : null;
+      const category = categoryLinks?.[0] ? (refundCategoryNameMap.get(categoryLinks[0].id) ?? '—') : '—';
+      const resApproved = fResApproved ? (r.getCellValue(fResApproved) as { name: string } | null)?.name : null;
+      const resProposed = fResProposed ? (r.getCellValue(fResProposed) as { name: string } | null)?.name : null;
+      const resolutionLabel = resApproved ?? (resProposed ? `Proposed: ${resProposed}` : '—');
+      const requestStage = fRequestStage ? (r.getCellValue(fRequestStage) as { name: string } | null)?.name ?? '—' : '—';
+      const settlementStage = fSettlementStage ? (r.getCellValue(fSettlementStage) as { name: string } | null)?.name ?? '' : '';
+      const entry: RefundCaseSummary = { category, resolutionLabel, requestStage, settlementStage };
+      const existing = m.get(orderId);
+      if (existing) existing.push(entry); else m.set(orderId, [entry]);
+    }
+    return m;
+  }, [refundRequestRecords, refundRequestsTable, refundCategoryNameMap]);
 
   const activeStudios = useMemo(() => {
     if (!studioRecords || !studiosTable) return [];
@@ -746,6 +831,7 @@ function SoldApp(): React.ReactElement {
     m2m:          number | null;
     rushFee:      number | null;
     refunded:     number | null;
+    refundCases:  RefundCaseSummary[];
   };
 
   const orderRows = useMemo((): OrderRowData[] => {
@@ -846,9 +932,10 @@ function SoldApp(): React.ReactElement {
         m2m:         getNum(fM2M),
         rushFee:     getNum(fRush),
         refunded:    getNum(fRefunded),
+        refundCases: refundCasesByOrderId.get(order.id) ?? [],
       };
     });
-  }, [orderRecords, ordersTable, clientNameMap, styleNameMap, activeStudios]);
+  }, [orderRecords, ordersTable, clientNameMap, styleNameMap, activeStudios, refundCasesByOrderId]);
 
   const saOptions = useMemo(() => {
     const s = new Set<string>();
@@ -930,6 +1017,7 @@ function SoldApp(): React.ReactElement {
       rushFee:      row.rushFee,
       refunded:     row.refunded,
       total:        row.total,
+      refundCases:  row.refundCases,
     });
   }, []);
 
