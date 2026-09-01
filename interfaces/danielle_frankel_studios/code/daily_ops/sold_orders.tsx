@@ -168,7 +168,8 @@ function FeedbackModal({ base, onClose }: { base: ReturnType<typeof useBase>; on
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const interfaceInventoryTable = base.getTableByIdIfExists(INTERFACE_INVENTORY_TABLE_ID);
-  const interfaceInventoryRecords = useRecords(interfaceInventoryTable ?? undefined);
+  const interfaceInventoryRecordsRaw = useRecords(interfaceInventoryTable ?? base.tables[0]);
+  const interfaceInventoryRecords = interfaceInventoryTable ? interfaceInventoryRecordsRaw : [];
   const inventoryNameField  = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.NAME) ?? null;
   const inventoryLevelField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.LEVEL) ?? null;
   const inventoryInterfaceLinkField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.INTERFACE_LINK) ?? null;
@@ -732,12 +733,25 @@ function SoldApp(): React.ReactElement {
   const [sortDir, setSortDir]             = useState<'asc' | 'desc' | null>('desc');
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
-  const orderRecords  = useRecords(ordersTable);
-  const clientRecords = useRecords(clientsTable);
-  const styleRecords  = useRecords(stylesTable);
-  const studioRecords = useRecords(studiosTable);
-  const refundRequestRecords   = useRecords(refundRequestsTable);
-  const refundCategoryRecords  = useRecords(refundCategoriesTable);
+  // useRecords() dereferences `table.id` with no null-check internally — it
+  // throws immediately if called with a null table. refund_requests/
+  // refund_categories in particular only exist in the sandbox base so far
+  // (not yet in production) — calling this page against a base that lacks
+  // them must not crash the whole Sold Orders page. base.tables[0] is always
+  // present, so it's a safe unconditional fallback for every hook call below;
+  // the real records are only used once the intended table is confirmed present.
+  const orderRecordsRaw  = useRecords(ordersTable ?? base.tables[0]);
+  const clientRecordsRaw = useRecords(clientsTable ?? base.tables[0]);
+  const styleRecordsRaw  = useRecords(stylesTable ?? base.tables[0]);
+  const studioRecordsRaw = useRecords(studiosTable ?? base.tables[0]);
+  const refundRequestRecordsRaw   = useRecords(refundRequestsTable ?? base.tables[0]);
+  const refundCategoryRecordsRaw  = useRecords(refundCategoriesTable ?? base.tables[0]);
+  const orderRecords  = ordersTable ? orderRecordsRaw : [];
+  const clientRecords = clientsTable ? clientRecordsRaw : [];
+  const styleRecords  = stylesTable ? styleRecordsRaw : [];
+  const studioRecords = studiosTable ? studioRecordsRaw : [];
+  const refundRequestRecords   = refundRequestsTable ? refundRequestRecordsRaw : [];
+  const refundCategoryRecords  = refundCategoriesTable ? refundCategoryRecordsRaw : [];
 
   const clientNameMap = useMemo(() => {
     const m = new Map<string, string>();

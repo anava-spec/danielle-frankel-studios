@@ -250,7 +250,8 @@ function FeedbackModal({ base, onClose, tok }: { base: ReturnType<typeof useBase
   }, [onClose]);
 
   const interfaceInventoryTable = base.getTableByIdIfExists(INTERFACE_INVENTORY_TABLE_ID);
-  const interfaceInventoryRecords = useRecords(interfaceInventoryTable ?? null);
+  const interfaceInventoryRecordsRaw = useRecords(interfaceInventoryTable ?? base.tables[0]);
+  const interfaceInventoryRecords = interfaceInventoryTable ? interfaceInventoryRecordsRaw : [];
   const inventoryNameField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.NAME) ?? null;
   const inventoryLevelField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.LEVEL) ?? null;
   const inventoryInterfaceLinkField = interfaceInventoryTable?.getFieldIfExists(INTERFACE_INVENTORY_FIELD_IDS.INTERFACE_LINK) ?? null;
@@ -2043,11 +2044,23 @@ function RefundRequestsApp(): React.ReactElement {
   const orderItemsTable = base.getTableByIdIfExists(ORDER_ITEMS_TABLE_ID);
   const clientsTable = base.getTableByIdIfExists(CLIENTS_TABLE_ID);
 
-  const refundRequestsRecords = useRecords(refundRequestsTable ?? null);
-  const categoriesRecords = useRecords(refundCategoriesTable ?? null);
-  const ordersRecords = useRecords(ordersTable);
-  const orderItemsRecords = useRecords(orderItemsTable);
-  const clientsRecords = useRecords(clientsTable);
+  // useRecords() dereferences `table.id` with no null-check internally — it
+  // throws immediately if called with null/undefined. refundRequestsTable and
+  // refundCategoriesTable come from custom properties, which can genuinely
+  // resolve to undefined until Airtable's Interface Designer has picked them
+  // up for this page. Falling back to base.tables[0] (always present) keeps
+  // every hook call itself safe; the real records are discarded below
+  // whenever the intended table isn't actually available yet.
+  const refundRequestsRecordsRaw = useRecords(refundRequestsTable ?? base.tables[0]);
+  const categoriesRecordsRaw = useRecords(refundCategoriesTable ?? base.tables[0]);
+  const ordersRecordsRaw = useRecords(ordersTable ?? base.tables[0]);
+  const orderItemsRecordsRaw = useRecords(orderItemsTable ?? base.tables[0]);
+  const refundRequestsRecords = refundRequestsTable ? refundRequestsRecordsRaw : undefined;
+  const categoriesRecords = refundCategoriesTable ? categoriesRecordsRaw : undefined;
+  const ordersRecords = ordersTable ? ordersRecordsRaw : [];
+  const orderItemsRecords = orderItemsTable ? orderItemsRecordsRaw : [];
+  const clientsRecordsRaw = useRecords(clientsTable ?? base.tables[0]);
+  const clientsRecords = clientsTable ? clientsRecordsRaw : [];
 
   const [viewState, setViewState] = useState<ViewState>({ layer: 1, layout: 'requests' });
   const [searchText, setSearchText] = useState('');
