@@ -133,6 +133,67 @@ const REFUND_REQUEST_FIELD_IDS = {
   SETTLEMENT_STAGE: 'fldkTiBPnBEygcwJ2',
 } as const;
 
+// refund_categories (tblhbjY8Jh8KjqRf6) — read-only reference, resolves
+// refund_requests' Category link to a name/rainbow-chip index (see below).
+const REFUND_CATEGORIES_TABLE_ID = 'tblhbjY8Jh8KjqRf6';
+const REFUND_CATEGORY_FIELD_IDS = {
+  CATEGORY_NAME: 'fldmp5TGQkMTMWHcN',
+  ACTIVE: 'fldwB5zkVXjdS65VL',
+} as const;
+
+// Airtable single-select choice-color name -> hex, resolved dynamically from
+// the live field's own choices (BRANDING §9) — same lookup as refund_requests.tsx.
+function getRefundChoiceColorHex(color: string | undefined): string {
+  const colorMap: Record<string, string> = {
+    blueLight2: '#2D7FF9', cyanLight2: '#18BFFF', tealLight2: '#00D2C4', greenLight2: '#20C933',
+    yellowLight2: '#F6BE00', orangeLight2: '#FF9D00', redLight2: '#F94343', pinkLight2: '#FF08C2',
+    purpleLight2: '#8B46FF', grayLight2: '#6B7280', blueDark1: '#0D52AC', cyanDark1: '#0F68A2',
+    tealDark1: '#17726E', greenDark1: '#036A19', yellowDark1: '#AF6002', orangeDark1: '#AA2D00',
+    redDark1: '#B10F41', pinkDark1: '#AB0A83', purpleDark1: '#6231AE', grayDark1: '#41454D',
+  };
+  return colorMap[color ?? ''] ?? '#9CA3AF';
+}
+
+function getRefundFieldChoices(field: Field | null): Array<{ name: string; color?: string }> {
+  if (!field) return [];
+  const config = (field as unknown as { config: { type: string; options?: { choices?: Array<{ name: string; color?: string }> } } }).config;
+  if (config?.type === 'singleSelect' && config.options?.choices) return config.options.choices;
+  return [];
+}
+
+// Same 20%-alpha-bg / solid-text pill as refund_requests.tsx's StagePill —
+// used here for Resolution Type / Request Stage / Settlement Stage so the
+// Refund Case panel reads identically wherever it appears (Axel, 2026-09-01).
+function RefundStagePill({ value, choices }: { value: string | null | undefined; choices: Array<{ name: string; color?: string }> }) {
+  if (!value) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
+  const hex = getRefundChoiceColorHex(choices.find(c => c.name === value)?.color);
+  return (
+    <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: hex + '20', color: hex }}>
+      {value}
+    </span>
+  );
+}
+
+// Same rainbow-hue formula as refund_requests.tsx's CategoryChip.
+function getRefundRainbowHsl(index: number, total: number): string {
+  const hue = total > 0 ? Math.round((360 * index) / total) : 0;
+  return `hsl(${hue}, 65%, 45%)`;
+}
+
+function RefundCategoryChip({ label, categoryId, orderedCategoryIds }: { label: string | null; categoryId: string | null; orderedCategoryIds: string[] }) {
+  if (!label) return <span className="text-sm" style={{ color: '#9CA3AF' }}>—</span>;
+  const index = categoryId ? Math.max(0, orderedCategoryIds.indexOf(categoryId)) : 0;
+  const hsl = getRefundRainbowHsl(index, orderedCategoryIds.length || 1);
+  return (
+    <span
+      className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
+      style={{ backgroundColor: hsl.replace('hsl(', 'hsla(').replace(')', ', 0.16)'), color: hsl }}
+    >
+      {label}
+    </span>
+  );
+}
+
 // TODO: populate once Julia confirms terminal stage values
 const TERMINAL_STAGES: string[] = [];
 
@@ -963,6 +1024,7 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
     { key: 'rushFeeRulesTable', label: 'Rush fee rules', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tbldXhthsHZJhMfDm') },
     { key: 'staffTable', label: 'Staff', type: 'table' as const, defaultValue: base.getTableByIdIfExists('tblbYk88xJ8FQrLS4') },
     { key: 'refundRequestsTable', label: 'Refund requests', type: 'table' as const, defaultValue: base.getTableByIdIfExists(REFUND_REQUESTS_TABLE_ID) ?? undefined },
+    { key: 'refundCategoriesTable', label: 'Refund categories', type: 'table' as const, defaultValue: base.getTableByIdIfExists(REFUND_CATEGORIES_TABLE_ID) ?? undefined },
 
     // Shopify Draft Order Creation story (2026-08-11) — fields must be
     // explicitly declared as 'field' custom properties (not just their
@@ -984,6 +1046,13 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
         { key: 'refundResolutionApprovedField', label: 'Refund request: Resolution Type (Approved)', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED) ?? undefined },
         { key: 'refundRequestStageField', label: 'Refund request: Request Stage', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE) ?? undefined },
         { key: 'refundSettlementStageField', label: 'Refund request: Settlement Stage', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE) ?? undefined },
+      ] : [];
+    })(),
+    ...(() => {
+      const refundCategoriesTable = base.getTableByIdIfExists(REFUND_CATEGORIES_TABLE_ID);
+      return refundCategoriesTable ? [
+        { key: 'refundCategoryNameField', label: 'Refund category: Name', type: 'field' as const, table: refundCategoriesTable, defaultValue: refundCategoriesTable.getFieldByIdIfExists(REFUND_CATEGORY_FIELD_IDS.CATEGORY_NAME) ?? undefined },
+        { key: 'refundCategoryActiveField', label: 'Refund category: Active', type: 'field' as const, table: refundCategoriesTable, defaultValue: refundCategoriesTable.getFieldByIdIfExists(REFUND_CATEGORY_FIELD_IDS.ACTIVE) ?? undefined },
       ] : [];
     })(),
     ...(clientsTable ? [
@@ -1011,6 +1080,7 @@ function DraftOrdersApp() {
   const rushFeeRulesTable = customPropertyValueByKey.rushFeeRulesTable as Table | undefined;
   const staffTable = customPropertyValueByKey.staffTable as Table | undefined;
   const refundRequestsTable = customPropertyValueByKey.refundRequestsTable as Table | undefined;
+  const refundCategoriesTable = customPropertyValueByKey.refundCategoriesTable as Table | undefined;
 
   const draftRecords = useRecords(draftOrdersTable ?? null);
   const clientRecords = useRecords(clientsTable ?? null);
@@ -1020,6 +1090,7 @@ function DraftOrdersApp() {
   const rushFeeRuleRecords = useRecords(rushFeeRulesTable ?? null);
   const staffRecords = useRecords(staffTable ?? null);
   const refundRequestsRecords = useRecords(refundRequestsTable ?? null);
+  const refundCategoriesRecords = useRecords(refundCategoriesTable ?? null);
 
   const [viewState, setViewState] = useState<ViewState>({ layer: 1 });
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -1117,6 +1188,8 @@ function DraftOrdersApp() {
           clientsTable={clientsTable}
           refundRequestsTable={refundRequestsTable}
           refundRequestsRecords={refundRequestsRecords ?? []}
+          refundCategoriesTable={refundCategoriesTable}
+          refundCategoriesRecords={refundCategoriesRecords ?? []}
           getField={getField}
           getLinkedRecordIds={getLinkedRecordIds}
           getMostRecentDraft={getMostRecentDraft}
@@ -2705,6 +2778,8 @@ interface Layer4Props {
   clientsTable: Table;
   refundRequestsTable: Table | undefined;
   refundRequestsRecords: AirtableRecord[];
+  refundCategoriesTable: Table | undefined;
+  refundCategoriesRecords: AirtableRecord[];
   getField: (table: Table, fieldId: string) => Field | null;
   getLinkedRecordIds: (record: AirtableRecord, field: Field | null) => string[];
   getMostRecentDraft: (clientId: string) => AirtableRecord | null;
@@ -2730,6 +2805,8 @@ function Layer4({
   clientsTable,
   refundRequestsTable,
   refundRequestsRecords,
+  refundCategoriesTable,
+  refundCategoriesRecords,
   getField,
   getLinkedRecordIds,
   getMostRecentDraft,
@@ -2751,6 +2828,23 @@ function Layer4({
   const refundResolutionApprovedField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED) : null;
   const refundRequestStageField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE) : null;
   const refundSettlementStageField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE) : null;
+  const refundResolutionProposedChoices = useMemo(() => getRefundFieldChoices(refundResolutionProposedField), [refundResolutionProposedField]);
+  const refundResolutionApprovedChoices = useMemo(() => getRefundFieldChoices(refundResolutionApprovedField), [refundResolutionApprovedField]);
+  const refundRequestStageChoices = useMemo(() => getRefundFieldChoices(refundRequestStageField), [refundRequestStageField]);
+  const refundSettlementStageChoices = useMemo(() => getRefundFieldChoices(refundSettlementStageField), [refundSettlementStageField]);
+
+  const refundCategoryActiveField = refundCategoriesTable ? getField(refundCategoriesTable, REFUND_CATEGORY_FIELD_IDS.ACTIVE) : null;
+  const orderedRefundCategoryIds = useMemo(() => {
+    return refundCategoriesRecords
+      .filter(r => (refundCategoryActiveField ? r.getCellValue(refundCategoryActiveField) === true : true))
+      .map(r => r.id)
+      .sort((a, b) => (refundCategoriesRecords.find(r => r.id === a)?.name ?? '').localeCompare(refundCategoriesRecords.find(r => r.id === b)?.name ?? ''));
+  }, [refundCategoriesRecords, refundCategoryActiveField]);
+  const refundCategoryNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of refundCategoriesRecords) m.set(r.id, r.name ?? r.id);
+    return m;
+  }, [refundCategoriesRecords]);
 
   const createdAtField = getField(draftOrdersTable, FIELD_IDS.DRAFT_CREATED_AT);
   const lockedField = getField(draftOrdersTable, FIELD_IDS.DRAFT_LOCKED);
@@ -3871,33 +3965,50 @@ function Layer4({
             </div>
 
             {linkedRefundCases.length > 0 && (
-              <div className="p-4 rounded-lg space-y-3 text-sm mt-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
+              <div className="p-4 rounded-lg space-y-3 text-base mt-4" style={{ backgroundColor: theme.bgCard, border: `1px solid ${theme.border}` }}>
                 <h2 className="text-base font-semibold mb-1">Refund Case{linkedRefundCases.length > 1 ? 's' : ''}</h2>
                 {linkedRefundCases.map((refundRecord, idx) => {
                   const resolutionApproved = refundResolutionApprovedField
-                    ? (refundRecord.getCellValue(refundResolutionApprovedField) as { name: string } | null)?.name
+                    ? (refundRecord.getCellValue(refundResolutionApprovedField) as { name: string } | null)?.name ?? null
                     : null;
                   const resolutionProposed = refundResolutionProposedField
-                    ? (refundRecord.getCellValue(refundResolutionProposedField) as { name: string } | null)?.name
+                    ? (refundRecord.getCellValue(refundResolutionProposedField) as { name: string } | null)?.name ?? null
                     : null;
+                  const requestStageValue = refundRequestStageField
+                    ? (refundRecord.getCellValue(refundRequestStageField) as { name: string } | null)?.name ?? null
+                    : null;
+                  const settlementStageValue = refundSettlementStageField
+                    ? (refundRecord.getCellValue(refundSettlementStageField) as { name: string } | null)?.name ?? null
+                    : null;
+                  const categoryLinked = refundCategoryField ? (refundRecord.getCellValue(refundCategoryField) as Array<{ id: string }> | null) : null;
+                  const categoryId = categoryLinked?.[0]?.id ?? null;
                   return (
                     <div key={refundRecord.id} className={idx > 0 ? 'pt-3 border-t' : ''} style={idx > 0 ? { borderColor: theme.borderLight } : undefined}>
                       <div className="flex justify-between items-center">
                         <span style={{ color: theme.textSecondary }}>Category</span>
-                        <span>{refundCategoryField ? <CellRenderer record={refundRecord} field={refundCategoryField} /> : '—'}</span>
+                        <RefundCategoryChip label={categoryId ? refundCategoryNameById.get(categoryId) ?? null : null} categoryId={categoryId} orderedCategoryIds={orderedRefundCategoryIds} />
                       </div>
                       <div className="flex justify-between items-center mt-1.5">
                         <span style={{ color: theme.textSecondary }}>Resolution Type</span>
-                        <span>{resolutionApproved ?? (resolutionProposed ? `Proposed: ${resolutionProposed}` : '—')}</span>
+                        {resolutionApproved ? (
+                          <RefundStagePill value={resolutionApproved} choices={refundResolutionApprovedChoices} />
+                        ) : resolutionProposed ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-xs" style={{ color: theme.textMuted }}>Proposed:</span>
+                            <RefundStagePill value={resolutionProposed} choices={refundResolutionProposedChoices} />
+                          </span>
+                        ) : (
+                          <span style={{ color: theme.textMuted }}>—</span>
+                        )}
                       </div>
                       <div className="flex justify-between items-center mt-1.5">
                         <span style={{ color: theme.textSecondary }}>Request Stage</span>
-                        <span>{refundRequestStageField ? <CellRenderer record={refundRecord} field={refundRequestStageField} /> : '—'}</span>
+                        <RefundStagePill value={requestStageValue} choices={refundRequestStageChoices} />
                       </div>
-                      {refundSettlementStageField && !!refundRecord.getCellValue(refundSettlementStageField) && (
+                      {settlementStageValue && (
                         <div className="flex justify-between items-center mt-1.5">
                           <span style={{ color: theme.textSecondary }}>Settlement Stage</span>
-                          <span><CellRenderer record={refundRecord} field={refundSettlementStageField} /></span>
+                          <RefundStagePill value={settlementStageValue} choices={refundSettlementStageChoices} />
                         </div>
                       )}
                     </div>
