@@ -566,7 +566,7 @@ const ATTACHMENT_FORM_URL_FALLBACK = 'https://airtable.com/appUC2NFAlURayLx9/pag
 
 // Used for both the unsigned copy (right after "Generate Proposal") and the
 // signed copy (from the Proposals list) — same form, different `type` value.
-// The automations/danielle_frankel_studios/attachment_router.js automation
+// The automations/attachment_router.js automation
 // reads customization_proposal (a direct link to this exact Proposal
 // record) + type to route the attachment onto the right field. `hide_*`
 // (paired with `prefill_*`) makes Airtable
@@ -2912,7 +2912,7 @@ function ProposalPreviewModal({
   // to the record itself, hand off to the same attachments form already used
   // for Measurements/Appointment Photos — prefilled so the only thing left
   // visible/actionable is the file picker. A sandbox-side automation (see
-  // automations/danielle_frankel_studios/proposal_attachment_router.js)
+  // automations/proposal_attachment_router.js)
   // copies the uploaded file onto this Proposal's unsigned_document.
   const openAttachmentForm = () => {
     if (!createdRecordId) return;

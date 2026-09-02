@@ -3,7 +3,7 @@ title: Phase Logic Rulebook — Danielle Frankel Studio
 type: rulebook
 tags: [rulebook, danielle-frankel, airtable, phase-logic, pipeline, source-of-truth]
 priority: critical
-related: [CROSS_CUTTING.md, ../interfaces/danielle_frankel_studios/readmes/pipeline.README.md, ../interfaces/danielle_frankel_studios/readmes/fulfillment.README.md, ../interfaces/danielle_frankel_studios/readmes/alterations.README.md, ../interfaces/danielle_frankel_studios/readmes/appointments.README.md]
+related: [CROSS_CUTTING.md, ../interfaces/interface_readmes/pipeline.README.md, ../interfaces/interface_readmes/fulfillment.README.md, ../interfaces/interface_readmes/alterations.README.md, ../interfaces/interface_readmes/appointments.README.md]
 last_updated: 2026-08-25 (rev. 2)
 owner: Miguel Pérez
 status: active — supersedes slack-files/recovered/AIRTABLE PHASE LOGIC.docx (2026-06-26, outdated)
@@ -86,7 +86,7 @@ Field IDs, automations, and fix history — organized by phase, kept out of the 
 ### Waitlist
 - Lives in its own `Waitlist` table (`tblbm3hKDShEPNpoq`), not `DF Clients.stage` — matching is what connects a Waitlist record to a `DF Clients` record via `resolved_by_df_clients_record`.
 - `resolution_status` (`fldiEQbjks80y5xTi`): Active / Resolved / Exception — one field drives Pipeline exclusion, both alert automations, and the native Follow-Up page filter (an earlier separate `is_exception` checkbox was superseded by this and marked deprecated for manual deletion).
-- Automations: `Waitlist - Match New DF Client` (`wflPC6fOUORtGMzUT`), `Waitlist - Alert Julia: Unresolved Within 5 Days` (`wflYo3IaYJFq1Rn12`), `Waitlist - Notify Julia: Overdue & Unmatched` (`wflpbJ5gcsx8rV7Qx`) — see `waitlist_matching.js`, `waitlist_alert_readiness.js`, `waitlist_overdue_alert.js` in `automations/danielle_frankel_studios/`.
+- Automations: `Waitlist - Match New DF Client` (`wflPC6fOUORtGMzUT`), `Waitlist - Alert Julia: Unresolved Within 5 Days` (`wflYo3IaYJFq1Rn12`), `Waitlist - Notify Julia: Overdue & Unmatched` (`wflpbJ5gcsx8rV7Qx`) — see `waitlist_matching.js`, `waitlist_alert_readiness.js`, `waitlist_overdue_alert.js` in `automations/`.
 - Surfaced in `pipeline.tsx`: leftmost Kanban pseudo-column (`WaitlistCard`, Active + unmatched only, oldest `earliest_date_requested` first), a separate List View `<tbody>`, and a read-only section in `FullProfileModal`'s All-Stages view, positioned before Pre-Appointment.
 - 95 records migrated sandbox → production 2026-08-11; 47 auto-matched to existing DF Clients, 6 flagged ambiguous (unresolved as of that session), 41 with no plausible match. Full detail: `session_summaries/2026-08-11_waitlist-pipeline-overdue-automation-production-migration.md`.
 
@@ -127,10 +127,10 @@ Field IDs, automations, and fix history — organized by phase, kept out of the 
 ## Cross-References
 
 - [`CROSS_CUTTING.md`](CROSS_CUTTING.md) — shared rules across all DFS interfaces (Cobalt boundary, dark mode, sandboxing).
-- [`../interfaces/danielle_frankel_studios/readmes/pipeline.README.md`](../interfaces/danielle_frankel_studios/readmes/pipeline.README.md) — `pipeline.tsx` implementation detail, field IDs, fix history, Waitlist UI.
-- [`../interfaces/danielle_frankel_studios/readmes/fulfillment.README.md`](../interfaces/danielle_frankel_studios/readmes/fulfillment.README.md) — Fulfillment/close-out implementation detail, field IDs, fix history.
-- [`../interfaces/danielle_frankel_studios/readmes/alterations.README.md`](../interfaces/danielle_frankel_studios/readmes/alterations.README.md) — Alterations list implementation detail.
-- [`../interfaces/danielle_frankel_studios/readmes/appointments.README.md`](../interfaces/danielle_frankel_studios/readmes/appointments.README.md) — Appointments/Slack automation implementation detail, incl. Deliberating-phase transition script.
+- [`../interfaces/interface_readmes/pipeline.README.md`](../interfaces/interface_readmes/pipeline.README.md) — `pipeline.tsx` implementation detail, field IDs, fix history, Waitlist UI.
+- [`../interfaces/interface_readmes/fulfillment.README.md`](../interfaces/interface_readmes/fulfillment.README.md) — Fulfillment/close-out implementation detail, field IDs, fix history.
+- [`../interfaces/interface_readmes/alterations.README.md`](../interfaces/interface_readmes/alterations.README.md) — Alterations list implementation detail.
+- [`../interfaces/interface_readmes/appointments.README.md`](../interfaces/interface_readmes/appointments.README.md) — Appointments/Slack automation implementation detail, incl. Deliberating-phase transition script.
 - [`../session_summaries/2026-08-11_waitlist-pipeline-overdue-automation-production-migration.md`](../session_summaries/2026-08-11_waitlist-pipeline-overdue-automation-production-migration.md) — full Waitlist build session, key IDs.
 - [`../../04-playbooks/interfaces.md`](../../04-playbooks/interfaces.md) — broader interface functional specs beyond just phase logic (columns, sidebars, per-interface scope).
 - [`../../slack-files/recovered/AIRTABLE PHASE LOGIC.docx`](../../slack-files/recovered/AIRTABLE%20PHASE%20LOGIC.docx) — original source doc (Jun 26, 2026), now superseded by this rulebook.
