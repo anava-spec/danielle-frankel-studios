@@ -955,6 +955,8 @@ function SearchablePicker({
   onChange,
   disabled,
   tok,
+  searchPlaceholder,
+  onCreateNew,
 }: {
   label: string;
   placeholder: string;
@@ -963,9 +965,23 @@ function SearchablePicker({
   onChange: (id: string | null) => void;
   disabled?: boolean;
   tok: Tokens;
+  // Search-input placeholder override — only the Refund Category picker
+  // passes this today (Axel, 2026-09-02: "Search or create a new category
+  // by typing"); every other SearchablePicker usage keeps the default
+  // "Search..." below untouched.
+  searchPlaceholder?: string;
+  // Optional inline "search or create" affordance (Axel, 2026-09-02): when
+  // provided, an empty-results state also offers a clickable row that
+  // creates a new record via this callback (returning the new record's id,
+  // or null/throwing on failure) and immediately selects it. Left
+  // undefined everywhere except the Refund Category call sites, so every
+  // other picker (client, order, etc.) is completely unaffected.
+  onCreateNew?: (name: string) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -973,6 +989,7 @@ function SearchablePicker({
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
         setSearch('');
+        setCreateError(null);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -983,6 +1000,30 @@ function SearchablePicker({
     const s = search.toLowerCase();
     return options.filter((o) => o.label.toLowerCase().includes(s));
   }, [options, search]);
+
+  const trimmedSearch = search.trim();
+  const canOfferCreate = !!onCreateNew && filtered.length === 0 && trimmedSearch.length > 0;
+
+  const handleCreateNew = async () => {
+    if (!onCreateNew || !trimmedSearch || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const newId = await onCreateNew(trimmedSearch);
+      if (newId) {
+        onChange(newId);
+        setOpen(false);
+        setSearch('');
+      } else {
+        setCreateError('Failed to create — please try again.');
+      }
+    } catch (err) {
+      console.error('Failed to create new option:', err);
+      setCreateError(err instanceof Error ? err.message : 'Failed to create — please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const selectedLabel = options.find((o) => o.id === value)?.label ?? null;
   const isActive = !!value;
@@ -1026,8 +1067,11 @@ function SearchablePicker({
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCreateError(null);
+            }}
+            placeholder={searchPlaceholder ?? 'Search...'}
             className="w-full px-3 py-2 text-sm outline-none bg-transparent"
             style={{ borderBottom: `1px solid ${tok.border}`, color: tok.text_primary }}
           />
@@ -1035,6 +1079,29 @@ function SearchablePicker({
             {filtered.length === 0 && (
               <div className="px-3 py-2 text-sm" style={{ color: tok.text_muted }}>
                 No results
+              </div>
+            )}
+            {/* Inline "search or create" (Axel, 2026-09-02): clicking this row
+                creates the typed name as a new record via onCreateNew and
+                immediately selects it — only rendered when the picker was
+                given onCreateNew (Refund Category today) and the typed text
+                matched nothing. */}
+            {canOfferCreate && (
+              <button
+                type="button"
+                onClick={handleCreateNew}
+                disabled={creating}
+                className="w-full text-left px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed"
+                style={{ color: tok.accent, fontWeight: 500 }}
+                onMouseEnter={(e) => { if (!creating) e.currentTarget.style.backgroundColor = tok.hover_bg; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              >
+                {creating ? 'Creating…' : `Click here to create "${trimmedSearch}" as a new category`}
+              </button>
+            )}
+            {createError && (
+              <div className="px-3 py-2 text-sm" style={{ color: '#DC2626' }}>
+                {createError}
               </div>
             )}
             {filtered.map((opt) => (
@@ -1045,6 +1112,7 @@ function SearchablePicker({
                   onChange(opt.id);
                   setOpen(false);
                   setSearch('');
+                  setCreateError(null);
                 }}
                 className="w-full text-left px-3 py-2 text-sm transition-colors"
                 style={value === opt.id ? { color: tok.accent, backgroundColor: tok.accent_soft, fontWeight: 500 } : { color: tok.text_primary }}
@@ -1505,6 +1573,25 @@ function NewRefundCaseModal({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [categoriesRecords, categoryActiveField]);
 
+  // Inline "search or create" for Refund Category (Axel, 2026-09-02): the
+  // category picker was read-only (select only from existing active
+  // categories) — this creates a new refund_categories record set Active so
+  // it's immediately usable/visible everywhere Active-only filtering
+  // applies, then returns its id so SearchablePicker can select it right
+  // away. Reuses the same `categoriesTable` reference already passed into
+  // this modal for reading categoryOptions above — no new prop-drilling path.
+  const handleCreateCategory = useCallback(
+    async (name: string): Promise<string | null> => {
+      if (!categoriesTable) return null;
+      const newId = await categoriesTable.createRecordAsync({
+        [CATEGORY_FIELD_IDS.CATEGORY_NAME]: name,
+        [CATEGORY_FIELD_IDS.ACTIVE]: true,
+      });
+      return newId;
+    },
+    [categoriesTable]
+  );
+
   const resolutionOptions = resolutionTypeChoices.map((c) => ({ value: c.name, label: c.name }));
 
   // Live Airtable field names — read from the field object rather than
@@ -1576,6 +1663,8 @@ function NewRefundCaseModal({
               value={draft.categoryId}
               onChange={(id) => setDraft((d) => ({ ...d, categoryId: id }))}
               tok={tok}
+              searchPlaceholder="Search or create a new category by typing"
+              onCreateNew={handleCreateCategory}
             />
             <SimplePicker
               label="Proposed Resolution"
@@ -1981,6 +2070,22 @@ function DetailPage({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [categoriesRecords, categoryActiveField]);
 
+  // Inline "search or create" for Refund Category (Axel, 2026-09-02): same
+  // create-and-select behavior as the New Refund Case modal — reuses this
+  // page's own `categoriesTable` reference (already passed in as a prop for
+  // reading categoryOptions above), no new prop-drilling path needed.
+  const handleCreateCategory = useCallback(
+    async (name: string): Promise<string | null> => {
+      if (!categoriesTable) return null;
+      const newId = await categoriesTable.createRecordAsync({
+        [CATEGORY_FIELD_IDS.CATEGORY_NAME]: name,
+        [CATEGORY_FIELD_IDS.ACTIVE]: true,
+      });
+      return newId;
+    },
+    [categoriesTable]
+  );
+
   const clientFullNameFieldClients = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.FULL_NAME);
   const ordersClientField = ordersTable?.getFieldIfExists(ORDERS_FIELD_IDS.CLIENT);
 
@@ -2337,6 +2442,8 @@ function DetailPage({
                     value={currentCategoryId}
                     onChange={handleCategoryChange}
                     tok={tok}
+                    searchPlaceholder="Search or create a new category by typing"
+                    onCreateNew={handleCreateCategory}
                   />
                   <SimplePicker
                     label="Proposed Resolution"
