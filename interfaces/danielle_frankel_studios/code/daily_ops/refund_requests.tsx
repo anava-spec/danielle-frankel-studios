@@ -856,16 +856,22 @@ function LayoutDropdown({ value, onChange, tok }: { value: 'requests' | 'review'
 
   const labels: Record<'requests' | 'review', string> = { requests: 'Requests', review: 'Review' };
 
+  // Fixed width + no chevron (Axel, 2026-09-02): this toggle previously
+  // resized between "Requests" and "Review" (different label lengths) and
+  // showed a CaretDown chevron like every other dropdown trigger in this
+  // file. Axel asked for a plain, non-resizing toggle instead — width is
+  // pinned wide enough to fit "Requests" comfortably with its padding, text
+  // is centered, and the chevron icon is removed entirely (no CaretDownIcon
+  // import usage here — other Dropdown/Select components still use it).
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
-        style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary }}
+        className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm transition-colors"
+        style={{ border: `1px solid ${tok.border}`, backgroundColor: tok.surface, color: tok.text_primary, width: '104px' }}
       >
         <span>{labels[value]}</span>
-        <CaretDownIcon size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: tok.text_muted }} />
       </button>
       {open && (
         <div
@@ -2941,9 +2947,17 @@ function RefundRequestsApp(): React.ReactElement {
 
   const currentLayout = viewState.layout;
 
+  // Page-level scroll containment (Axel, 2026-09-02): previously the root
+  // was `min-h-screen` (a floor, not a ceiling), so once records overflowed
+  // the viewport the *document itself* scrolled — toolbar/filters included.
+  // Root is now pinned to `h-screen` with `overflow-hidden`, and only the
+  // table/board region below the (non-scrolling) toolbar carries its own
+  // `overflow-y-auto` — verified with the 55 "TEST — Scroll Sample" records
+  // in the sandbox base for both the "requests" table and the "review"
+  // board, which had the exact same whole-page-scroll bug.
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: tok.app_bg }}>
-      <div className="px-6 py-3 flex items-center gap-4" style={{ borderBottom: `1px solid ${tok.border}`, backgroundColor: tok.surface }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ backgroundColor: tok.app_bg }}>
+      <div className="flex-shrink-0 px-6 py-3 flex items-center gap-4" style={{ borderBottom: `1px solid ${tok.border}`, backgroundColor: tok.surface }}>
         <div className="relative flex-shrink-0">
           <MagnifyingGlassIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: tok.text_muted }} />
           <input
@@ -2994,9 +3008,14 @@ function RefundRequestsApp(): React.ReactElement {
         </div>
       </div>
 
-      <div className="flex-1 p-6 overflow-auto">
+      {/* Bounded-height scroll region (Axel, 2026-09-02): `flex-1 min-h-0`
+          lets this area fill exactly the space left under the toolbar (no
+          more, no less) instead of growing with its content, so the inner
+          `overflow-y-auto` containers below are the only things that ever
+          scroll — the document/root never does. */}
+      <div className="flex-1 min-h-0 p-6 flex flex-col">
         {currentLayout === 'requests' ? (
-          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}` }}>
+          <div className="rounded-xl overflow-y-auto flex-1 min-h-0" style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}` }}>
             <table className="w-full">
               <thead style={{ backgroundColor: tok.table_header }}>
                 <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
@@ -3067,21 +3086,29 @@ function RefundRequestsApp(): React.ReactElement {
             </table>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-6 h-full">
+          <div className="grid grid-cols-2 gap-6 h-full min-h-0">
             {(
               [
                 { title: 'New Requests', records: requestedRecords, draggable: true, empty: 'No new requests.' },
                 { title: 'Under Review', records: underReviewRecords, draggable: false, empty: 'No cases under review.' },
               ] as const
             ).map((col) => (
-              <div className="flex flex-col" key={col.title}>
-                <h2 className="text-base font-semibold mb-3" style={{ color: tok.text_primary }}>
+              <div className="flex flex-col min-h-0" key={col.title}>
+                <h2 className="text-base font-semibold mb-3 flex-shrink-0" style={{ color: tok.text_primary }}>
                   {col.title} <span style={{ color: tok.text_muted, fontWeight: 400 }}>({col.records.length})</span>
                 </h2>
+                {/* Same bounded-height + overflow-y-auto pattern as the
+                    "requests" table (Axel, 2026-09-02) — `min-h-0` here is
+                    required in addition to `flex-1` because this div sits
+                    inside a `flex flex-col` column, and without it the
+                    column would grow to fit its content instead of
+                    scrolling internally, reproducing the same whole-page-
+                    scroll bug Axel flagged for the "requests" layout.
+                    `overflow-x-auto` covers the wider 5-column table below. */}
                 <div
                   onDragOver={col.draggable ? undefined : (e) => e.preventDefault()}
                   onDrop={col.draggable ? undefined : handleDropToUnderReview}
-                  className="rounded-xl overflow-hidden flex-1 overflow-y-auto transition-colors"
+                  className="rounded-xl flex-1 min-h-0 overflow-auto transition-colors"
                   style={{
                     backgroundColor: tok.surface,
                     border: `1px solid ${!col.draggable && draggedRecordId ? tok.accent : tok.border}`,
@@ -3091,8 +3118,15 @@ function RefundRequestsApp(): React.ReactElement {
                   <table className="w-full">
                     <thead style={{ backgroundColor: tok.table_header }}>
                       <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
-                        {['Client', 'Category'].map((h) => (
-                          <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
+                        {/* Column set + order per Axel, 2026-09-02: Client,
+                            Order, Category, Request Stage, Proposed
+                            Resolution (Approved Resolution / Settlement
+                            Stage dropped from this board — they stay on the
+                            "requests" table). `whitespace-nowrap` keeps
+                            "Request Stage" / "Proposed Resolution" from
+                            wrapping to a second line. */}
+                        {['Client', 'Order', 'Category', 'Request Stage', 'Proposed Resolution'].map((h) => (
+                          <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide whitespace-nowrap" style={{ color: tok.text_secondary }}>
                             {h}
                           </th>
                         ))}
@@ -3101,15 +3135,18 @@ function RefundRequestsApp(): React.ReactElement {
                     <tbody>
                       {col.records.length === 0 ? (
                         <tr>
-                          <td colSpan={2} className="px-4 py-8 text-center text-sm" style={{ color: tok.text_secondary }}>
+                          <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: tok.text_secondary }}>
                             {col.empty}
                           </td>
                         </tr>
                       ) : (
                         col.records.map((record, idx) => {
                           const clientLinked = clientField ? (record.getCellValue(clientField) as Array<{ id: string }> | null) : null;
+                          const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
                           const categoryLinked = categoryField ? (record.getCellValue(categoryField) as Array<{ id: string }> | null) : null;
                           const categoryId = categoryLinked?.[0]?.id ?? null;
+                          const reqStage = requestStageField ? (record.getCellValue(requestStageField) as { name: string } | null)?.name ?? null : null;
+                          const resProposed = resolutionProposedField ? (record.getCellValue(resolutionProposedField) as { name: string } | null)?.name ?? null : null;
                           // Zebra base (Axel, 2026-09-02) — see the main
                           // "requests" table above for the same pattern.
                           const rowBg = idx % 2 === 1 ? tok.table_zebra : tok.surface;
@@ -3128,8 +3165,17 @@ function RefundRequestsApp(): React.ReactElement {
                               <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
                                 {clientLinked?.[0] ? clientNameById.get(clientLinked[0].id) ?? '—' : '—'}
                               </td>
+                              <td className="px-4 py-3 text-sm" style={{ color: tok.text_primary }}>
+                                {orderLinked?.[0] ? orderLabelById.get(orderLinked[0].id) ?? '—' : '—'}
+                              </td>
                               <td className="px-4 py-3 text-sm">
                                 <CategoryChip label={categoryId ? categoryNameById.get(categoryId) ?? null : null} categoryId={categoryId} orderedCategoryIds={orderedCategoryIds} />
+                              </td>
+                              <td className="px-4 py-3">
+                                <StagePill value={reqStage} choices={requestStageChoices} />
+                              </td>
+                              <td className="px-4 py-3">
+                                <StagePill value={resProposed} choices={resolutionProposedChoices} />
                               </td>
                             </tr>
                           );
