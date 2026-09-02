@@ -214,6 +214,10 @@ const CLIENTS_FIELD_IDS = {
   // choice's label from "Fulfilled" to "Closed" next week; matched by
   // CLIENT_STAGE_FULFILLED_CHOICE_ID (the choice's stable id) rather than its
   // display name so that rename doesn't silently break this filter.
+  // Per Axel, 2026-09-02: reversed course — "Did Not Convert" clients must
+  // ALSO be excluded from the client picker now. Matched by
+  // CLIENT_STAGE_DID_NOT_CONVERT_CHOICE_ID (the choice's stable id) for the
+  // same rename-proofing reason.
   STAGE: 'fldLcxVZvI1rigBlh',
 } as const;
 
@@ -221,6 +225,13 @@ const CLIENTS_FIELD_IDS = {
 // label to "Closed" next week, but its id survives a label rename (see
 // CLIENTS_FIELD_IDS.STAGE comment above).
 const CLIENT_STAGE_FULFILLED_CHOICE_ID = 'sel9gJfBcN2v0VLTc';
+
+// The "Did Not Convert" choice on Clients' `stage` field — per Axel,
+// 2026-09-02, clients in this stage must also be excluded from the client
+// picker (previously only "Fulfilled" was excluded). Matched by stable id
+// rather than display name so a future label rename doesn't silently break
+// this filter (see CLIENTS_FIELD_IDS.STAGE comment above).
+const CLIENT_STAGE_DID_NOT_CONVERT_CHOICE_ID = 'seljgOGavG7lL15Sl';
 
 // ─── Feedback (table tbluy7JS31NwCoeIi) — same subsystem as draft_orders.tsx,
 // minus Attachments (no attachment field/UI in this instance, per scope). ────
@@ -1412,9 +1423,10 @@ function NewRefundCaseModal({
       .filter((r) => {
         if (!clientStageField) return true;
         const stageId = (r.getCellValue(clientStageField) as { id: string } | null)?.id ?? null;
-        return stageId !== CLIENT_STAGE_FULFILLED_CHOICE_ID;
+        return stageId !== CLIENT_STAGE_FULFILLED_CHOICE_ID && stageId !== CLIENT_STAGE_DID_NOT_CONVERT_CHOICE_ID;
       })
-      .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameField) as string) ?? r.id }));
+      .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameField) as string) ?? r.id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [clientsRecords, clientFullNameField, clientIdsWithOrders, clientStageField]);
 
   const orderOptions = useMemo(() => {
@@ -1424,7 +1436,8 @@ function NewRefundCaseModal({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === draft.clientId);
       })
-      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField) }));
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [ordersRecords, draft.clientId, ordersClientField, ordersShopifyNumberField, ordersItemsField, ordersOrderItemsStyleField]);
 
   const orderItemRows = useMemo(() => {
@@ -1438,7 +1451,10 @@ function NewRefundCaseModal({
   }, [orderItemsRecords, draft.orderId, orderItemsOrderField, orderItemsStyleField, orderItemsNameIfNoStyleField, orderItemsAmountField]);
 
   const orderItemDropdownOptions = useMemo(
-    () => orderItemRows.filter((r) => !draft.orderItemIds.includes(r.id)),
+    () =>
+      orderItemRows
+        .filter((r) => !draft.orderItemIds.includes(r.id))
+        .sort((a, b) => a.style.localeCompare(b.style)),
     [orderItemRows, draft.orderItemIds]
   );
   const selectedOrderItemRows = useMemo(
@@ -1456,7 +1472,8 @@ function NewRefundCaseModal({
   const categoryOptions = useMemo(() => {
     return categoriesRecords
       .filter((r) => (categoryActiveField ? r.getCellValue(categoryActiveField) === true : true))
-      .map((r) => ({ id: r.id, label: r.name ?? r.id }));
+      .map((r) => ({ id: r.id, label: r.name ?? r.id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [categoriesRecords, categoryActiveField]);
 
   const resolutionOptions = resolutionTypeChoices.map((c) => ({ value: c.name, label: c.name }));
@@ -1919,7 +1936,8 @@ function DetailPage({
   const categoryOptions = useMemo(() => {
     return categoriesRecords
       .filter((r) => (categoryActiveField ? r.getCellValue(categoryActiveField) === true : true))
-      .map((r) => ({ id: r.id, label: r.name ?? r.id }));
+      .map((r) => ({ id: r.id, label: r.name ?? r.id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [categoriesRecords, categoryActiveField]);
 
   const clientFullNameFieldClients = clientsTable?.getFieldIfExists(CLIENTS_FIELD_IDS.FULL_NAME);
@@ -1955,9 +1973,10 @@ function DetailPage({
         if (!clientIdsWithOrders.has(r.id)) return false;
         if (!clientStageField) return true;
         const stageId = (r.getCellValue(clientStageField) as { id: string } | null)?.id ?? null;
-        return stageId !== CLIENT_STAGE_FULFILLED_CHOICE_ID;
+        return stageId !== CLIENT_STAGE_FULFILLED_CHOICE_ID && stageId !== CLIENT_STAGE_DID_NOT_CONVERT_CHOICE_ID;
       })
-      .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameFieldClients) as string) ?? r.id }));
+      .map((r) => ({ id: r.id, label: (r.getCellValue(clientFullNameFieldClients) as string) ?? r.id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [clientsRecords, clientFullNameFieldClients, clientIdsWithOrders, clientStageField, currentClientId]);
 
   const orderOptions = useMemo(() => {
@@ -1967,7 +1986,8 @@ function DetailPage({
         const linked = r.getCellValue(ordersClientField) as Array<{ id: string }> | null;
         return linked?.some((l) => l.id === currentClientId);
       })
-      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop) }));
+      .map((r) => ({ id: r.id, label: buildOrderLabel(r, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [ordersRecords, currentClientId, ordersClientField, ordersShopifyNumberField, ordersItemsFieldTop, ordersOrderItemsStyleFieldTop]);
 
   const orderLinked = orderField ? (record.getCellValue(orderField) as Array<{ id: string }> | null) : null;
@@ -1992,7 +2012,10 @@ function DetailPage({
   const currentOrderItemIds = currentOrderItemsLinked?.map((l) => l.id) ?? [];
 
   const currentOrderItemDropdownOptions = useMemo(
-    () => orderItemRows.filter((r) => !currentOrderItemIds.includes(r.id)),
+    () =>
+      orderItemRows
+        .filter((r) => !currentOrderItemIds.includes(r.id))
+        .sort((a, b) => a.style.localeCompare(b.style)),
     [orderItemRows, currentOrderItemIds]
   );
   const currentOrderItemTableRows = useMemo(
@@ -2595,7 +2618,13 @@ function RefundRequestsApp(): React.ReactElement {
     return (categoriesRecords ?? []).filter((r) => r.getCellValue(categoryActiveField) === true);
   }, [categoriesRecords, categoryActiveField]);
 
-  const categoryFilterOptions = useMemo(() => activeCategoriesRecords.map((r) => ({ value: r.id, label: r.name ?? r.id })), [activeCategoriesRecords]);
+  const categoryFilterOptions = useMemo(
+    () =>
+      activeCategoriesRecords
+        .map((r) => ({ value: r.id, label: r.name ?? r.id }))
+        .sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label)),
+    [activeCategoriesRecords]
+  );
   const stageFilterOptions = useMemo(() => requestStageChoices.map((c) => ({ value: c.name, label: c.name })), [requestStageChoices]);
   const resolutionFilterOptions = useMemo(() => resolutionApprovedChoices.map((c) => ({ value: c.name, label: c.name })), [resolutionApprovedChoices]);
   const settlementStageFilterOptions = useMemo(() => settlementStageChoices.map((c) => ({ value: c.name, label: c.name })), [settlementStageChoices]);
