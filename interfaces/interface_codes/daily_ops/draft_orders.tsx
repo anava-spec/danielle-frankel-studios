@@ -131,6 +131,16 @@ const REFUND_REQUEST_FIELD_IDS = {
   RESOLUTION_TYPE_APPROVED: 'fldUnYp7Kv8vjYnk3',
   REQUEST_STAGE: 'fldtRq5M9XstW1FC1',
   SETTLEMENT_STAGE: 'fldkTiBPnBEygcwJ2',
+  // Added for the New Draft Order "apply an eligible refund" selector (Axel,
+  // 2026-09-02) — client link, the inverse of draft_orders' own
+  // DRAFT_REFUND_REQUESTS (used both to find this client's refunds and, once
+  // one is applied, to exclude it from future eligibility), and the
+  // refund_amount formula (already resolves is_product_specific ?
+  // refund_amount_items : refund_amount_order on refund_requests — read
+  // directly here, never recomputed).
+  CLIENT: 'fldH0VFOEMWk7ly6l',
+  APPLIED_TO_DRAFT_ORDER: 'fldFZZQn2GYi1KQPb',
+  REFUND_AMOUNT: 'fldE8VY2hltueZq45',
 } as const;
 
 // refund_categories (tblhbjY8Jh8KjqRf6) — read-only reference, resolves
@@ -1059,6 +1069,10 @@ function getCustomProperties(base: ReturnType<typeof useBase>) {
         { key: 'refundResolutionApprovedField', label: 'Refund request: Resolution Type (Approved)', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED) ?? undefined },
         { key: 'refundRequestStageField', label: 'Refund request: Request Stage', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE) ?? undefined },
         { key: 'refundSettlementStageField', label: 'Refund request: Settlement Stage', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.SETTLEMENT_STAGE) ?? undefined },
+        // New Draft Order refund selector (Axel, 2026-09-02):
+        { key: 'refundClientField', label: 'Refund request: Client', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.CLIENT) ?? undefined },
+        { key: 'refundAppliedToDraftOrderField', label: 'Refund request: Applied to Draft Order', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.APPLIED_TO_DRAFT_ORDER) ?? undefined },
+        { key: 'refundAmountField', label: 'Refund request: Refund Amount', type: 'field' as const, table: refundRequestsTable, defaultValue: refundRequestsTable.getFieldByIdIfExists(REFUND_REQUEST_FIELD_IDS.REFUND_AMOUNT) ?? undefined },
       ] : [];
     })(),
     ...(() => {
@@ -1254,6 +1268,10 @@ function DraftOrdersApp() {
               customizationsTable={customizationsTable}
               stateCostsTable={stateCostsTable}
               rushFeeRulesTable={rushFeeRulesTable}
+              refundRequestsTable={refundRequestsTable}
+              refundRequestsRecords={refundRequestsRecords ?? []}
+              refundCategoriesTable={refundCategoriesTable}
+              refundCategoriesRecords={refundCategoriesRecords ?? []}
               getField={getField}
               getLinkedRecordIds={getLinkedRecordIds}
               getClientName={getClientName}
@@ -1720,6 +1738,13 @@ interface Layer2Props {
   customizationsTable: Table;
   stateCostsTable: Table;
   rushFeeRulesTable: Table;
+  // Refund selector (Axel, 2026-09-02) — same read-only refund_requests
+  // access as Layer4's Refund Case panel, reused here to find/apply
+  // not-yet-applied refunds for the client this new draft is for.
+  refundRequestsTable: Table | undefined;
+  refundRequestsRecords: AirtableRecord[];
+  refundCategoriesTable: Table | undefined;
+  refundCategoriesRecords: AirtableRecord[];
   getField: (table: Table, fieldId: string) => Field | null;
   getLinkedRecordIds: (record: AirtableRecord, field: Field | null) => string[];
   getClientName: (clientId: string) => string;
@@ -1742,6 +1767,10 @@ function Layer2({
   customizationsTable,
   stateCostsTable,
   rushFeeRulesTable,
+  refundRequestsTable,
+  refundRequestsRecords,
+  refundCategoriesTable,
+  refundCategoriesRecords,
   getField,
   getLinkedRecordIds,
   getClientName,
@@ -1754,6 +1783,9 @@ function Layer2({
 
   const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
   const [selectedCustomizationIds, setSelectedCustomizationIds] = useState<string[]>([]);
+  // Refund selector (Axel, 2026-09-02) — refund_requests records the SA has
+  // chosen to apply to this brand-new draft as an Additional Charges line.
+  const [selectedRefundRequestIds, setSelectedRefundRequestIds] = useState<string[]>([]);
   const [discount, setDiscount] = useState('');
   const [discountPercent, setDiscountPercent] = useState('');
   const [discountMode, setDiscountMode] = useState<'currency' | 'percentage'>('currency');
@@ -1836,8 +1868,79 @@ function Layer2({
   const clientFavoriteStylesAcuityField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_ACUITY);
   const clientFavoriteStylesAppointmentField = getField(clientsTable, FIELD_IDS.CLIENT_FAVORITE_STYLES_APPOINTMENT);
 
+  // Refund selector (Axel, 2026-09-02) — same field-reading pattern Layer4's
+  // read-only Refund Case panel already uses for this table.
+  const refundClientField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.CLIENT) : null;
+  const refundRequestStageField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.REQUEST_STAGE) : null;
+  const refundAppliedToDraftOrderField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.APPLIED_TO_DRAFT_ORDER) : null;
+  const refundAmountField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.REFUND_AMOUNT) : null;
+  const refundCategoryField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.REFUND_CATEGORY) : null;
+  const refundResolutionProposedField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_PROPOSED) : null;
+  const refundResolutionApprovedField = refundRequestsTable ? getField(refundRequestsTable, REFUND_REQUEST_FIELD_IDS.RESOLUTION_TYPE_APPROVED) : null;
+  const refundCategoryNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of refundCategoriesRecords) m.set(r.id, r.name ?? r.id);
+    return m;
+  }, [refundCategoriesRecords]);
+
+  // Eligibility (Axel, 2026-09-02): a refund_requests record is offered for
+  // this new draft only when it's (1) linked to the selected client, (2) not
+  // Rejected/Cancelled — Requested/Under Review/Approved all count, Axel
+  // wants flexibility rather than an Approved-only gate — and (3) not yet
+  // linked to ANY draft order (applied_to_draft_order is empty). Once a
+  // refund is applied it drops out of this list for every future draft for
+  // this same client.
+  const eligibleRefundRequests = useMemo(() => {
+    if (!clientId || !refundRequestsTable) return [];
+    return refundRequestsRecords.filter(r => {
+      const linkedClients = getLinkedRecordIds(r, refundClientField);
+      if (!linkedClients.includes(clientId)) return false;
+      const stage = refundRequestStageField ? (r.getCellValue(refundRequestStageField) as { name: string } | null)?.name ?? null : null;
+      if (stage === 'Rejected' || stage === 'Cancelled') return false;
+      const alreadyApplied = getLinkedRecordIds(r, refundAppliedToDraftOrderField);
+      if (alreadyApplied.length > 0) return false;
+      return true;
+    });
+  }, [clientId, refundRequestsTable, refundRequestsRecords, refundClientField, refundRequestStageField, refundAppliedToDraftOrderField, getLinkedRecordIds]);
+
+  // Drop a selected refund from state if it stops being eligible (e.g. the
+  // client changed) rather than silently carrying a stale selection forward.
+  useEffect(() => {
+    setSelectedRefundRequestIds(prev => prev.filter(id => eligibleRefundRequests.some(r => r.id === id)));
+  }, [eligibleRefundRequests]);
+
+  const getRefundAmount = useCallback((refundRecord: AirtableRecord): number => {
+    return refundAmountField ? (refundRecord.getCellValue(refundAmountField) as number | null) ?? 0 : 0;
+  }, [refundAmountField]);
+
+  // "<Category Name> — <Resolution Type> — <formatted amount>" — Resolution
+  // Type prefers the Approved value, falling back to Proposed, same
+  // precedence as Layer4's Refund Case panel.
+  const getRefundLabel = useCallback((refundRecord: AirtableRecord): string => {
+    const categoryLinked = refundCategoryField ? (refundRecord.getCellValue(refundCategoryField) as Array<{ id: string }> | null) : null;
+    const categoryId = categoryLinked?.[0]?.id ?? null;
+    const categoryName = categoryId ? refundCategoryNameById.get(categoryId) ?? 'Uncategorized' : 'Uncategorized';
+    const resolutionApproved = refundResolutionApprovedField ? (refundRecord.getCellValue(refundResolutionApprovedField) as { name: string } | null)?.name ?? null : null;
+    const resolutionProposed = refundResolutionProposedField ? (refundRecord.getCellValue(refundResolutionProposedField) as { name: string } | null)?.name ?? null : null;
+    const resolutionLabel = resolutionApproved ?? resolutionProposed ?? 'No Resolution Type';
+    return `${categoryName} — ${resolutionLabel} — ${formatCurrency(getRefundAmount(refundRecord))}`;
+  }, [refundCategoryField, refundCategoryNameById, refundResolutionApprovedField, refundResolutionProposedField, getRefundAmount]);
+
+  const selectedRefundRequests = useMemo(() => {
+    return eligibleRefundRequests.filter(r => selectedRefundRequestIds.includes(r.id));
+  }, [eligibleRefundRequests, selectedRefundRequestIds]);
+
+  // Each applied refund becomes its own negative Additional Charges row —
+  // this is the combined total of those rows (a positive number; applied as
+  // a subtraction everywhere it feeds into totals, matching how Discount
+  // already works below).
+  const refundAppliedTotal = useMemo(() => {
+    return selectedRefundRequests.reduce((sum, r) => sum + getRefundAmount(r), 0);
+  }, [selectedRefundRequests, getRefundAmount]);
+
   const hasUnsavedChanges = selectedStyleIds.length > 0
     || selectedCustomizationIds.length > 0
+    || selectedRefundRequestIds.length > 0
     || address.trim() !== ''
     || discount.trim() !== ''
     || discountPercent.trim() !== '';
@@ -2110,9 +2213,11 @@ function Layer2({
     }
   };
 
+  // Refund Applied rows (Axel, 2026-09-02) subtract out of Total the same
+  // way Discount does — they're both negative Additional Charges entries.
   const total = useMemo(() => {
-    return rushFee - discountAmount;
-  }, [rushFee, discountAmount]);
+    return rushFee - discountAmount - refundAppliedTotal;
+  }, [rushFee, discountAmount, refundAppliedTotal]);
 
   const grandTotal = useMemo(() => {
     return styleSubtotal + customizationSubtotal + total;
@@ -2135,6 +2240,17 @@ function Layer2({
       const discountPercentageFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_PERCENTAGE);
       const discountNotesFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_DISCOUNT_NOTES);
       const addressFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_ADDRESS);
+      // Refund selector (Axel, 2026-09-02) — write from the draft_orders side
+      // of the paired inverse link: DRAFT_REFUND_REQUESTS
+      // (fldaHWvcr3zLAd4BG) auto-populates refund_requests' own
+      // applied_to_draft_order (fldFZZQn2GYi1KQPb) since Airtable keeps both
+      // sides of a linked-record pair in sync — confirmed via
+      // get_table_schema (each field's config names the other as its
+      // inverseLinkFieldId). Writing here, at create time, is what makes an
+      // applied refund disappear from eligibility on any future draft for
+      // this client (see eligibleRefundRequests' applied_to_draft_order check
+      // above).
+      const draftRefundRequestsFieldObj = getField(draftOrdersTable, FIELD_IDS.DRAFT_REFUND_REQUESTS);
 
       const fields: Record<string, unknown> = {};
 
@@ -2142,6 +2258,9 @@ function Layer2({
       if (styleFieldObj) fields[styleFieldObj.id] = selectedStyleIds.map(id => ({ id }));
       if (customizationsFieldObj) fields[customizationsFieldObj.id] = selectedCustomizationIds.map(id => ({ id }));
       if (rushFeeFieldObj) fields[rushFeeFieldObj.id] = rushFee;
+      if (draftRefundRequestsFieldObj && selectedRefundRequestIds.length > 0) {
+        fields[draftRefundRequestsFieldObj.id] = selectedRefundRequestIds.map(id => ({ id }));
+      }
       // Discount is entered as either a dollar amount or a percentage — only
       // write to whichever field matches the selected mode.
       if (discountMode === 'percentage') {
@@ -2585,6 +2704,39 @@ function Layer2({
                 </div>
               )}
 
+              {clientId && eligibleRefundRequests.length > 0 && (
+                <div>
+                  <h2 className="text-base font-semibold mb-3">Eligible Refunds</h2>
+                  <p className="text-xs mb-2" style={{ color: theme.textSecondary }}>
+                    This client has {eligibleRefundRequests.length} refund{eligibleRefundRequests.length === 1 ? '' : 's'} not yet applied to a draft order. Select any to add as a negative Additional Charges line — once applied, a refund can't be selected again.
+                  </p>
+                  <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${theme.border}` }}>
+                    {eligibleRefundRequests.map((refundRecord, idx) => {
+                      const isSelected = selectedRefundRequestIds.includes(refundRecord.id);
+                      return (
+                        <button
+                          key={refundRecord.id}
+                          type="button"
+                          onClick={() => setSelectedRefundRequestIds(
+                            isSelected
+                              ? selectedRefundRequestIds.filter(id => id !== refundRecord.id)
+                              : [...selectedRefundRequestIds, refundRecord.id]
+                          )}
+                          className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2.5 hover:cursor-pointer"
+                          style={{
+                            borderTop: idx > 0 ? `1px solid ${theme.borderLight}` : undefined,
+                            backgroundColor: isSelected ? theme.accentSoft : 'transparent',
+                          }}
+                        >
+                          <input type="checkbox" checked={isSelected} onChange={() => {}} className="pointer-events-none" />
+                          <span className={isSelected ? 'font-medium' : ''}>{getRefundLabel(refundRecord)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div>
                   <h2 className="text-base font-semibold mb-3">Additional Charges</h2>
                   {!clientDueDate && clientId && (
@@ -2645,6 +2797,31 @@ function Layer2({
                           />
                         </td>
                       </tr>
+                      {selectedRefundRequests.map(refundRecord => {
+                        const categoryLinked = refundCategoryField ? (refundRecord.getCellValue(refundCategoryField) as Array<{ id: string }> | null) : null;
+                        const categoryId = categoryLinked?.[0]?.id ?? null;
+                        const categoryName = categoryId ? refundCategoryNameById.get(categoryId) ?? 'Uncategorized' : 'Uncategorized';
+                        return (
+                          <tr key={refundRecord.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
+                            <td className="py-3 pl-4">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setSelectedRefundRequestIds(selectedRefundRequestIds.filter(id => id !== refundRecord.id))}
+                                  className="hover:cursor-pointer"
+                                  style={{ color: theme.textMuted }}
+                                >
+                                  <XIcon size={14} />
+                                </button>
+                                <span>{`Refund Applied — ${categoryName}`}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 pr-2 text-right whitespace-nowrap">-{formatCurrency(getRefundAmount(refundRecord))}</td>
+                            <td className="py-3 pl-3 pr-4 text-xs" style={{ color: theme.textMuted }}>
+                              {getRefundLabel(refundRecord)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: `1px solid ${theme.border}` }}>
@@ -2684,6 +2861,12 @@ function Layer2({
                   <div className="flex justify-between">
                     <span style={{ color: theme.textSecondary }}>Discount</span>
                     <span>-{formatCurrency(discountAmount)}</span>
+                  </div>
+                )}
+                {refundAppliedTotal !== 0 && (
+                  <div className="flex justify-between">
+                    <span style={{ color: theme.textSecondary }}>Refund{selectedRefundRequests.length > 1 ? 's' : ''} Applied</span>
+                    <span>-{formatCurrency(refundAppliedTotal)}</span>
                   </div>
                 )}
                 {total !== 0 && (
