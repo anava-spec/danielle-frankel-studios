@@ -12,9 +12,19 @@ VERSION    : 2.0.0 — Switched from a per-run `dryRun` text input to the
                      resolve_draft_order_config.js already use), so
                      sandbox-vs-real behavior is a checkbox edit on a
                      `resources` record, not a per-trigger text input anyone
-                     could forget to set correctly. Also now drives the
-                     PAGE_URLS choice (previously a separate `isProduction`
-                     input) — one flag, one meaning.
+                     could forget to set correctly.
+            2.1.0 — Removed the "Click here to review" record deep link
+                     entirely (per Axel, 2026-09-02): Interfaces has no way
+                     to construct a URL that opens a specific record's
+                     Detail Page directly — a plain record URL always lands
+                     the recipient in Data, not the Interface. The
+                     `?record=recXXXX` pattern this script (and
+                     new_request_notification.js / decision_notification.js)
+                     borrowed only works if someone is ALREADY on the
+                     Interface page and it reads that param on load — it was
+                     never a real deep link from an external email/Slack
+                     message. PAGE_URLS/pageUrl removed along with it, since
+                     building the link was their only purpose here.
 
 OBJECTIVE
   Whenever a new refund_requests record is created (a new refund/discount
@@ -49,8 +59,6 @@ INPUTS (input.config())
   (production-safe — same default resolve_draft_order_config.js uses), so a
   deleted/renamed resource fails toward real notifications going out, not
   toward silently swallowing them into a test inbox.
-  isProd also picks which PAGE_URLS entry the deep link uses (sandbox vs.
-  production base) — one flag now answers both questions.
 
 GUARD CLAUSE
   1. recordId must be present in input.config() — the trigger must pass it.
@@ -125,16 +133,6 @@ const FIELDS_RESOURCES = {
 };
 const RESOURCE_NAME_IS_PROD = 'isProd';
 const IS_PROD_DEFAULT = true; // production-safe fallback if the resources record is missing — same default resolve_draft_order_config.js uses
-
-// Refund Requests interface page (Daily Ops -> Refund Requests), page
-// pag8gr7A7fHJ86QAq — sandbox base id in the URL only; swap once mirrored to
-// Production (page id itself is expected to stay the same, same as the
-// customization_requests automations' PAGE_URLS convention — verify the
-// Production page id once that mirror exists).
-const PAGE_URLS = {
-  sandbox    : 'https://airtable.com/appMmEE4zyHMGhkkd/pag8gr7A7fHJ86QAq',
-  production : 'https://airtable.com/appMmEE4zyHMGhkkd/pag8gr7A7fHJ86QAq', // TODO: update to the Production base/page id once this automation is mirrored
-};
 
 const CONFIG = {
   LOG_LEVEL : 'B', // A=minimal | B=audit (default) | C=debug
@@ -322,21 +320,18 @@ class MessageBuilder {
     return lines.join('\n');
   }
 
-  // The Interface page's own deep-link URL — the interface itself reads
-  // ?record=recXXXX on load and jumps straight to that record's Detail Page,
-  // same convention as new_request_notification.js / decision_notification.js.
-  static _recordUrl(pageUrl, recordId) { return `${pageUrl}?record=${recordId}`; }
-  static _slackLink(pageUrl, recordId) { return `<${MessageBuilder._recordUrl(pageUrl, recordId)}|Click here to review>`; }
-  static _gmailLink(pageUrl, recordId) { return `[Click here to review](${MessageBuilder._recordUrl(pageUrl, recordId)})`; }
-
-  static build(data, pageUrl, recordId) {
+  // No record deep link — per Axel, 2026-09-02, Interfaces has no way to
+  // build a URL that opens a specific record's Detail Page directly; a
+  // plain record URL only ever opens Data, not the Interface, so there's no
+  // link worth including here (see VERSION 2.1.0 note above).
+  static build(data) {
     const details = MessageBuilder._details(data);
     const subject = `New refund request needs your review — ${data.clientName}`;
     const intro   = `A new refund request for ${data.clientName} was just opened${data.orderText !== '—' ? ` on order ${data.orderText}` : ''}. It's waiting in Refund Requests for your review.`;
     return {
       subject,
-      slackMessage: `${intro}\n\n${details}\n\n${MessageBuilder._slackLink(pageUrl, recordId)}`,
-      gmailMessage: `${intro}\n\n${details}\n\n${MessageBuilder._gmailLink(pageUrl, recordId)}`,
+      slackMessage: `${intro}\n\n${details}`,
+      gmailMessage: `${intro}\n\n${details}`,
     };
   }
   static error(errMsg) {
@@ -349,13 +344,12 @@ class MessageBuilder {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class RefundRequestNotificationService {
-  constructor(requestRepo, staffRepo, resourcesRepo, mapper, logger, pageUrls) {
+  constructor(requestRepo, staffRepo, resourcesRepo, mapper, logger) {
     this.requestRepo   = requestRepo;
     this.staffRepo     = staffRepo;
     this.resourcesRepo = resourcesRepo;
     this.mapper        = mapper;
     this.logger        = logger;
-    this.pageUrls       = pageUrls;
   }
 
   async run(recordId, recipient) {
@@ -367,10 +361,9 @@ class RefundRequestNotificationService {
     // Step 2 — Extract plain data
     const data = this.mapper.extract(record);
 
-    // Step 3 — Resolve isProd from the resources table — one flag decides
-    // both who gets notified AND which base's deep link to build.
+    // Step 3 — Resolve isProd from the resources table — decides who gets
+    // notified (no deep link to build anymore, see MessageBuilder.build).
     const isProd = await this.resourcesRepo.getIsProd();
-    const pageUrl = isProd ? this.pageUrls.production : this.pageUrls.sandbox;
 
     // Step 3b — Resolve who actually gets notified. isProd=false always
     // wins — Axel's own contact info, no staff lookup at all — so a test
@@ -392,8 +385,8 @@ class RefundRequestNotificationService {
       slackId        = staff ? (staff.getCellValueAsString(FIELDS_STAFF.slack_id) || '') : '';
     }
 
-    // Step 4 — Build messages (one per channel, same content, different link markdown)
-    const { subject, slackMessage, gmailMessage } = MessageBuilder.build(data, pageUrl, recordId);
+    // Step 4 — Build messages (one per channel, same content, no record link)
+    const { subject, slackMessage, gmailMessage } = MessageBuilder.build(data);
 
     this.logger.minimal(`SUCCESS → notify ${recipientName} for ${data.clientName} (${data.orderText})`);
 
@@ -444,8 +437,7 @@ try {
     new StaffRepository(logger),
     new ResourcesRepository(logger),
     new RequestDataMapper(logger),
-    logger,
-    PAGE_URLS
+    logger
   );
 
   result = await service.run(recordId, recipient);
