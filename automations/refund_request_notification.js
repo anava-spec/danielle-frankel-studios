@@ -3,11 +3,18 @@
 AUTOMATION : Refund Request Notification — Record Created
 BASE       : appMmEE4zyHMGhkkd (sandbox — mirror to Production when ready)
 TABLE SRC  : refund_requests (tbl1A5lbdJxUREOPO)
-TABLE REF  : staff (tblbYk88xJ8FQrLS4)
+TABLE REF  : staff (tblbYk88xJ8FQrLS4), resources (tblFa56lQwVacMXto)
 TRIGGER    : When record created — refund_requests
-VERSION    : 1.0.0 — Initial version. All field IDs verified against the live
-                     Sandbox base (appMmEE4zyHMGhkkd) via the schema tool
-                     before writing this script — see field comments below.
+VERSION    : 2.0.0 — Switched from a per-run `dryRun` text input to the
+                     project's existing `resources` isProd flag (per Axel,
+                     2026-09-02 — "había olvidado que teníamos el resource de
+                     isProd", same mechanism draft_order_shopify_creation.js /
+                     resolve_draft_order_config.js already use), so
+                     sandbox-vs-real behavior is a checkbox edit on a
+                     `resources` record, not a per-trigger text input anyone
+                     could forget to set correctly. Also now drives the
+                     PAGE_URLS choice (previously a separate `isProduction`
+                     input) — one flag, one meaning.
 
 OBJECTIVE
   Whenever a new refund_requests record is created (a new refund/discount
@@ -24,29 +31,33 @@ OBJECTIVE
 INPUTS (input.config())
   recordId  : the created refund_requests record's id — required.
   recipient : full_name of the staff member to notify (matched against
-              staff.full_name, e.g. "Margo Lafontaine") — required when
-              dryRun is not "true". Passed as an input (not hardcoded) per
-              Axel, 2026-09-02, so the trigger config is the single place
-              that decides who gets notified, not the script body.
-  dryRun    : STRING "true" | "false" (not a native boolean — Axel,
-              2026-09-02, wanted this mapped as text in the trigger step,
-              so it's compared as a string below, not on truthiness).
-              When "true": skips the staff lookup entirely and uses Axel's
-              own contact info (see DRY_RUN_CONTACT) so test runs never
-              page a real staff member. When "false": looks up `recipient`
-              in the staff table for real name/email/Slack ID.
-  isProduction : boolean, unrelated to dryRun — only picks which
-              PAGE_URLS entry the deep link uses (sandbox vs. production
-              base). Kept separate since it answers a different question
-              (which base's link to build) than dryRun (who actually
-              receives it).
+              staff.full_name, e.g. "Margo Lafontaine") — required whenever
+              the resources `isProd` record resolves to true. Passed as an
+              input (not hardcoded) per Axel, 2026-09-02, so the trigger
+              config is the single place that decides who gets notified,
+              not the script body.
+
+  The script itself reads a single `resources` record (source_name =
+  "isProd", same record draft_order_shopify_creation.js already reads via
+  resolve_draft_order_config.js) to decide which of these applies:
+    isProd = false → use Axel's own contact info (see AXEL_CONTACT), skip
+                      the staff lookup entirely — a real end-to-end test
+                      never pages a real staff member.
+    isProd = true  → look up `recipient` in the staff table for their real
+                      name/email/Slack ID.
+  If that resources record is missing entirely, isProd defaults to true
+  (production-safe — same default resolve_draft_order_config.js uses), so a
+  deleted/renamed resource fails toward real notifications going out, not
+  toward silently swallowing them into a test inbox.
+  isProd also picks which PAGE_URLS entry the deep link uses (sandbox vs.
+  production base) — one flag now answers both questions.
 
 GUARD CLAUSE
   1. recordId must be present in input.config() — the trigger must pass it.
   2. The record must actually exist when read back (defends against a
      delete-immediately-after-create race).
-  3. recipient must be present when dryRun is not "true" — otherwise there's
-     nothing to look up in the staff table.
+  3. recipient must be present when isProd resolves to true — otherwise
+     there's nothing to look up in the staff table.
 
   Client/Order/Refund Category are all plain multipleRecordLinks fields set
   directly by the interface at record-creation time (not formulas/rollups
@@ -61,7 +72,7 @@ ERROR HANDLING
 
 OUTPUTS (output.set)
   status         : "SUCCESS" | "ERROR"
-  recipientName  : who was notified — "Axel Nava" when dryRun="true",
+  recipientName  : who was notified — "Axel Nava" when isProd=false,
                    otherwise the resolved staff.full_name (falls back to the
                    raw `recipient` input if no staff record matched)
   recipientEmail : recipient's email (may be blank if unset in staff table)
@@ -81,6 +92,7 @@ OUTPUTS (output.set)
 const TABLE_IDS = {
   REFUND_REQUESTS : 'tbl1A5lbdJxUREOPO', // refund_requests
   STAFF           : 'tblbYk88xJ8FQrLS4', // staff
+  RESOURCES       : 'tblFa56lQwVacMXto', // resources — same table resolve_draft_order_config.js reads
 };
 
 // Fields — refund_requests (tbl1A5lbdJxUREOPO). Verified live against
@@ -103,6 +115,17 @@ const FIELDS_STAFF = {
   slack_id  : 'fldPBy4cPpVm8n1wp',
 };
 
+// Fields — resources (tblFa56lQwVacMXto) — same fields
+// resolve_draft_order_config.js already reads; `isProd` must already exist
+// as a source_name choice there (singleSelect choices aren't addable via
+// API, so this assumes that record/choice is already in place).
+const FIELDS_RESOURCES = {
+  source_name : 'fldwH1ILW8D2ihxxk',
+  checkbox    : 'fld1OFamO1dYgDD0Z',
+};
+const RESOURCE_NAME_IS_PROD = 'isProd';
+const IS_PROD_DEFAULT = true; // production-safe fallback if the resources record is missing — same default resolve_draft_order_config.js uses
+
 // Refund Requests interface page (Daily Ops -> Refund Requests), page
 // pag8gr7A7fHJ86QAq — sandbox base id in the URL only; swap once mirrored to
 // Production (page id itself is expected to stay the same, same as the
@@ -117,13 +140,13 @@ const CONFIG = {
   LOG_LEVEL : 'B', // A=minimal | B=audit (default) | C=debug
 };
 
-// dryRun="true" (see MAIN EXECUTION BLOCK — arrives as a string input, not a
-// native boolean, per Axel, 2026-09-02) skips the staff lookup entirely and
-// uses Axel's own contact info instead — prevents test runs from paging a
-// real staff member. Only the delivery address/name changes; the message
-// content still reflects the real resolved case, so a dry run reads exactly
-// like the real notification would.
-const DRY_RUN_CONTACT = {
+// isProd=false (resolved from the `resources` table — see MAIN EXECUTION
+// BLOCK) skips the staff lookup entirely and uses Axel's own contact info
+// instead — prevents test runs from paging a real staff member. Only the
+// delivery address/name changes; the message content still reflects the
+// real resolved case, so a test run reads exactly like the real
+// notification would.
+const AXEL_CONTACT = {
   name     : 'Axel Nava',
   email    : 'anava@singularagency.co',
   slack_id : 'U0AR34NA6UV',
@@ -248,6 +271,36 @@ class StaffRepository {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RESOURCES REPOSITORY CLASS
+// Same pattern as resolve_draft_order_config.js's ResourcesRepository —
+// resolves a named `resources` record's checkbox value, defaulting when the
+// record itself isn't found.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ResourcesRepository {
+  constructor(logger) {
+    this.table  = base.getTable(TABLE_IDS.RESOURCES);
+    this.logger = logger;
+  }
+  async getIsProd() {
+    this.logger.step(3, `Loading resources record → "${RESOURCE_NAME_IS_PROD}"`);
+    const result = await this.table.selectRecordsAsync({
+      fields: [FIELDS_RESOURCES.source_name, FIELDS_RESOURCES.checkbox],
+    });
+    const record = result.records.find(
+      r => r.getCellValueAsString(FIELDS_RESOURCES.source_name) === RESOURCE_NAME_IS_PROD
+    );
+    if (!record) {
+      this.logger.error(`resources record "${RESOURCE_NAME_IS_PROD}" not found — falling back to default: ${IS_PROD_DEFAULT}`);
+      return IS_PROD_DEFAULT;
+    }
+    const isProd = !!record.getCellValue(FIELDS_RESOURCES.checkbox);
+    this.logger.audit(`isProd → ${isProd} (from resources)`);
+    return isProd;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MESSAGE BUILDER CLASS
 // Composes human-readable notification text. No logic — strings only.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,16 +349,17 @@ class MessageBuilder {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class RefundRequestNotificationService {
-  constructor(requestRepo, staffRepo, mapper, logger, pageUrl) {
-    this.requestRepo = requestRepo;
-    this.staffRepo   = staffRepo;
-    this.mapper      = mapper;
-    this.logger      = logger;
-    this.pageUrl     = pageUrl;
+  constructor(requestRepo, staffRepo, resourcesRepo, mapper, logger, pageUrls) {
+    this.requestRepo   = requestRepo;
+    this.staffRepo     = staffRepo;
+    this.resourcesRepo = resourcesRepo;
+    this.mapper        = mapper;
+    this.logger        = logger;
+    this.pageUrls       = pageUrls;
   }
 
-  async run(recordId, recipient, dryRun) {
-    this.logger.audit(`Service started → record: ${recordId} | recipient: ${recipient} | dryRun: ${dryRun}`);
+  async run(recordId, recipient) {
+    this.logger.audit(`Service started → record: ${recordId} | recipient: ${recipient}`);
 
     // Step 1 — Load record
     const record = await this.requestRepo.getById(recordId);
@@ -313,19 +367,24 @@ class RefundRequestNotificationService {
     // Step 2 — Extract plain data
     const data = this.mapper.extract(record);
 
-    // Step 3 — Resolve who actually gets notified. dryRun="true" always
+    // Step 3 — Resolve isProd from the resources table — one flag decides
+    // both who gets notified AND which base's deep link to build.
+    const isProd = await this.resourcesRepo.getIsProd();
+    const pageUrl = isProd ? this.pageUrls.production : this.pageUrls.sandbox;
+
+    // Step 3b — Resolve who actually gets notified. isProd=false always
     // wins — Axel's own contact info, no staff lookup at all — so a test
     // run can never accidentally page a real staff member even if
     // `recipient` is also filled in during testing.
     let recipientName, recipientEmail, slackId;
-    if (dryRun) {
-      this.logger.step(3, `dryRun=true — using Axel's own contact info instead of looking up "${recipient}"`);
-      recipientName  = DRY_RUN_CONTACT.name;
-      recipientEmail = DRY_RUN_CONTACT.email;
-      slackId        = DRY_RUN_CONTACT.slack_id;
+    if (!isProd) {
+      this.logger.step(3, `isProd=false — using Axel's own contact info instead of looking up "${recipient}"`);
+      recipientName  = AXEL_CONTACT.name;
+      recipientEmail = AXEL_CONTACT.email;
+      slackId        = AXEL_CONTACT.slack_id;
     } else {
       if (!recipient) throw new Error(
-        'Guard clause: missing required input "recipient" (and dryRun is not "true"). Map the intended staff member\'s full_name in the trigger config.'
+        'Guard clause: missing required input "recipient" (and isProd resolved to true). Map the intended staff member\'s full_name in the trigger config.'
       );
       const staff = await this.staffRepo.findByFullName(recipient);
       recipientName  = staff ? (staff.getCellValueAsString(FIELDS_STAFF.full_name) || recipient) : recipient;
@@ -334,7 +393,7 @@ class RefundRequestNotificationService {
     }
 
     // Step 4 — Build messages (one per channel, same content, different link markdown)
-    const { subject, slackMessage, gmailMessage } = MessageBuilder.build(data, this.pageUrl, recordId);
+    const { subject, slackMessage, gmailMessage } = MessageBuilder.build(data, pageUrl, recordId);
 
     this.logger.minimal(`SUCCESS → notify ${recipientName} for ${data.clientName} (${data.orderText})`);
 
@@ -356,18 +415,9 @@ class RefundRequestNotificationService {
 // input.config() called ONCE — Airtable only allows one call per script.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const cfg      = input.config();
-const recordId = cfg.recordId;
+const cfg       = input.config();
+const recordId  = cfg.recordId;
 const recipient = cfg.recipient; // staff.full_name to notify, e.g. "Margo Lafontaine" — see INPUTS above
-// Arrives as a STRING ("true"/"false"), not a native boolean — per Axel,
-// 2026-09-02, the trigger step maps this as text. Compare as a string, not
-// on truthiness (a non-empty string like "false" is still truthy in JS).
-const dryRun = String(cfg.dryRun).trim().toLowerCase() === 'true';
-// Unrelated to dryRun — false while testing against Sandbox, true once this
-// automation is mirrored to run for real in Production — flip this input
-// value, not the code.
-const isProduction = cfg.isProduction === true;
-const pageUrl       = isProduction ? PAGE_URLS.production : PAGE_URLS.sandbox;
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
@@ -387,17 +437,18 @@ try {
     'Guard clause: missing required input "recordId". Ensure the trigger step maps the created record\'s ID.'
   );
 
-  logger.audit(`Automation started → recordId: ${recordId} | recipient: ${recipient} | dryRun: ${dryRun} | isProduction: ${isProduction}`);
+  logger.audit(`Automation started → recordId: ${recordId} | recipient: ${recipient}`);
 
   const service = new RefundRequestNotificationService(
     new RequestRepository(logger),
     new StaffRepository(logger),
+    new ResourcesRepository(logger),
     new RequestDataMapper(logger),
     logger,
-    pageUrl
+    PAGE_URLS
   );
 
-  result = await service.run(recordId, recipient, dryRun);
+  result = await service.run(recordId, recipient);
 
 } catch (err) {
   logger.error(`Automation failed → ${err.message}`);
