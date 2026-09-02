@@ -1155,27 +1155,39 @@ function ProductSpecificToggle({
   checked,
   onChange,
   disabled,
+  fieldLabel,
   tok,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  // Live Airtable field name (IS_PRODUCT_SPECIFIC) — Axel wants the actual
+  // field name kept visible above this control, same as every other field's
+  // label in this form (Axel, 2026-09-02).
+  fieldLabel?: string | null;
   tok: Tokens;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => !disabled && onChange(!checked)}
-      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-      style={
-        checked
-          ? { backgroundColor: tok.accent, color: '#FFFFFF', border: 'none' }
-          : { backgroundColor: tok.surface, color: tok.text_secondary, border: `1px solid ${tok.border}` }
-      }
-    >
-      {checked ? 'Yes, product-specific' : 'No, order-level'}
-    </button>
+    <div>
+      {fieldLabel && (
+        <label className="text-[11px] capitalize tracking-wide font-medium mb-1.5 block" style={{ color: tok.text_secondary }}>
+          {fieldLabel}
+        </label>
+      )}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && onChange(!checked)}
+        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        style={
+          checked
+            ? { backgroundColor: tok.accent, color: '#FFFFFF', border: 'none' }
+            : { backgroundColor: tok.surface, color: tok.text_secondary, border: `1px solid ${tok.border}` }
+        }
+      >
+        {checked ? 'Yes, product-specific' : 'No, order-level'}
+      </button>
+    </div>
   );
 }
 
@@ -1187,11 +1199,15 @@ function OrderItemSelectDropdown({
   options,
   onAdd,
   disabled,
+  fieldLabel,
   tok,
 }: {
   options: Array<{ id: string; itemId: string; style: string }>;
   onAdd: (id: string) => void;
   disabled?: boolean;
+  // Live Airtable field name (ORDER_ITEMS) — kept visible above this control,
+  // same as every other field's label in this form (Axel, 2026-09-02).
+  fieldLabel?: string | null;
   tok: Tokens;
 }) {
   const [open, setOpen] = useState(false);
@@ -1216,6 +1232,11 @@ function OrderItemSelectDropdown({
 
   return (
     <div ref={ref} className="relative">
+      {fieldLabel && (
+        <label className="text-[11px] capitalize tracking-wide font-medium mb-1.5 block" style={{ color: tok.text_secondary }}>
+          {fieldLabel}
+        </label>
+      )}
       <button
         type="button"
         disabled={disabled}
@@ -1351,6 +1372,7 @@ function NewRefundCaseModal({
   ordersTable,
   orderItemsTable,
   categoriesTable,
+  refundRequestsTable,
   resolutionTypeChoices,
   submitting,
   submitError,
@@ -1368,6 +1390,7 @@ function NewRefundCaseModal({
   ordersTable: Table | null;
   orderItemsTable: Table | null;
   categoriesTable: Table | null;
+  refundRequestsTable: Table | null;
   resolutionTypeChoices: Array<{ name: string }>;
   submitting: boolean;
   submitError: string | null;
@@ -1478,13 +1501,17 @@ function NewRefundCaseModal({
 
   const resolutionOptions = resolutionTypeChoices.map((c) => ({ value: c.name, label: c.name }));
 
-  const canSubmit =
-    draft.clientId &&
-    draft.orderId &&
-    draft.refundReason.trim() &&
-    draft.categoryId &&
-    draft.resolutionTypeProposed &&
-    (!draft.isProductSpecific || draft.orderItemIds.length > 0);
+  // Live Airtable field names — read from the field object rather than
+  // hardcoded, so the toggle/dropdown labels stay in sync if the field is
+  // ever renamed in Airtable (Axel, 2026-09-02: "mantener los field names
+  // para el checkbox y el dropdown de items").
+  const isProductSpecificFieldName = refundRequestsTable?.getFieldIfExists(FIELD_IDS.IS_PRODUCT_SPECIFIC)?.name ?? null;
+  const orderItemsFieldName = refundRequestsTable?.getFieldIfExists(FIELD_IDS.ORDER_ITEMS)?.name ?? null;
+
+  // Only Client, Order, Refund Category and Proposed Resolution are required
+  // to create a refund request — everything else (Refund Details, the
+  // product-specific toggle/order-items) is optional (Axel, 2026-09-02).
+  const canSubmit = !!(draft.clientId && draft.orderId && draft.categoryId && draft.resolutionTypeProposed);
 
   return (
     <div
@@ -1506,7 +1533,8 @@ function NewRefundCaseModal({
       >
         <div className="px-6 py-4" style={{ borderBottom: `1px solid ${tok.border}` }}>
           <h2 className="text-lg font-bold" style={{ color: tok.text_primary }}>
-            New Refund Case
+            {/* Renamed from "New Refund Case" (Axel, 2026-09-02). */}
+            New Refund Request
           </h2>
         </div>
         <div className="px-6 py-4 space-y-4">
@@ -1529,38 +1557,11 @@ function NewRefundCaseModal({
               tok={tok}
             />
           </div>
-          {selectedOrderHasItems ? (
-            <>
-              <div className="flex items-center gap-3">
-                <ProductSpecificToggle
-                  checked={draft.isProductSpecific}
-                  onChange={(checked) => setDraft((d) => ({ ...d, isProductSpecific: checked, orderItemIds: checked ? d.orderItemIds : [] }))}
-                  tok={tok}
-                />
-                {draft.isProductSpecific && (
-                  <div className="flex-1">
-                    <OrderItemSelectDropdown
-                      options={orderItemDropdownOptions}
-                      onAdd={(id) => setDraft((d) => ({ ...d, orderItemIds: [...d.orderItemIds, id] }))}
-                      disabled={!draft.orderId}
-                      tok={tok}
-                    />
-                  </div>
-                )}
-              </div>
-              {draft.isProductSpecific && (
-                <OrderItemsTable
-                  items={selectedOrderItemRows}
-                  onRemove={(id) => setDraft((d) => ({ ...d, orderItemIds: d.orderItemIds.filter((x) => x !== id) }))}
-                  tok={tok}
-                />
-              )}
-            </>
-          ) : (
-            <div className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: tok.hover_bg, color: tok.text_secondary }}>
-              This order has no item-level data on file — this refund will be treated as an order-level charge.
-            </div>
-          )}
+          {/* Refund Category + Proposed Resolution moved up to row 2, right
+              after Client/Order, ahead of the (conditional) product-specific
+              toggle/order-items block — so they always land on row 2 instead
+              of shifting to row 3 whenever the order has items (Axel,
+              2026-09-02). */}
           <div className="grid grid-cols-2 gap-3">
             <SearchablePicker
               label="Refund Category"
@@ -1579,6 +1580,40 @@ function NewRefundCaseModal({
               tok={tok}
             />
           </div>
+          {selectedOrderHasItems ? (
+            <>
+              <div className="flex items-end gap-3">
+                <ProductSpecificToggle
+                  checked={draft.isProductSpecific}
+                  onChange={(checked) => setDraft((d) => ({ ...d, isProductSpecific: checked, orderItemIds: checked ? d.orderItemIds : [] }))}
+                  fieldLabel={isProductSpecificFieldName}
+                  tok={tok}
+                />
+                {draft.isProductSpecific && (
+                  <div className="flex-1">
+                    <OrderItemSelectDropdown
+                      options={orderItemDropdownOptions}
+                      onAdd={(id) => setDraft((d) => ({ ...d, orderItemIds: [...d.orderItemIds, id] }))}
+                      disabled={!draft.orderId}
+                      fieldLabel={orderItemsFieldName}
+                      tok={tok}
+                    />
+                  </div>
+                )}
+              </div>
+              {draft.isProductSpecific && (
+                <OrderItemsTable
+                  items={selectedOrderItemRows}
+                  onRemove={(id) => setDraft((d) => ({ ...d, orderItemIds: d.orderItemIds.filter((x) => x !== id) }))}
+                  tok={tok}
+                />
+              )}
+            </>
+          ) : (
+            <div className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: tok.hover_bg, color: tok.text_secondary }}>
+              This order has no item-level data on file — this refund will be treated as an order-level charge.
+            </div>
+          )}
           <div>
             <label className="text-[11px] capitalize tracking-wide font-medium mb-1.5 block" style={{ color: tok.text_secondary }}>
               Refund Details
@@ -1602,7 +1637,7 @@ function NewRefundCaseModal({
             className="px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-colors disabled:cursor-not-allowed"
             style={{ backgroundColor: canSubmit && !submitting ? tok.accent : tok.text_muted }}
           >
-            {submitting ? 'Creating...' : 'Create Refund Case'}
+            {submitting ? 'Creating...' : 'Create Refund Request'}
           </button>
         </div>
       </div>
@@ -2249,7 +2284,7 @@ function DetailPage({
         <div className={`mx-6 mt-4 p-3 rounded-lg flex items-center justify-between ${SEMANTIC.danger.bg} ${SEMANTIC.danger.border} border`}>
           <div className={`flex items-center gap-2 text-sm ${SEMANTIC.danger.text}`}>
             <WarningIcon size={16} />
-            This refund case was updated by another user while you had it open.
+            This refund request was updated by another user while you had it open.
           </div>
           <button type="button" onClick={handleReload} className={`text-sm underline hover:no-underline ${SEMANTIC.danger.text}`}>
             Reload
@@ -2283,38 +2318,11 @@ function DetailPage({
                     tok={tok}
                   />
                 </div>
-                {currentOrderHasItems ? (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <ProductSpecificToggle
-                        checked={isProductSpecificValue}
-                        onChange={handleProductSpecificChange}
-                        tok={tok}
-                      />
-                      {isProductSpecificValue && (
-                        <div className="flex-1">
-                          <OrderItemSelectDropdown
-                            options={currentOrderItemDropdownOptions}
-                            onAdd={(id) => handleOrderItemsChange([...currentOrderItemIds, id])}
-                            disabled={!currentOrderId}
-                            tok={tok}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    {isProductSpecificValue && (
-                      <OrderItemsTable
-                        items={currentOrderItemTableRows}
-                        onRemove={(id) => handleOrderItemsChange(currentOrderItemIds.filter((x) => x !== id))}
-                        tok={tok}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <div className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: tok.hover_bg, color: tok.text_secondary }}>
-                    This order has no item-level data on file — this refund will be treated as an order-level charge.
-                  </div>
-                )}
+                {/* Refund Category + Proposed Resolution moved up to row 2,
+                    right after Client/Order, ahead of the (conditional)
+                    product-specific toggle/order-items block — so they
+                    always land on row 2 instead of shifting down whenever the
+                    order has items (Axel, 2026-09-02). */}
                 <div className="grid grid-cols-2 gap-3">
                   <SearchablePicker
                     label="Refund Category"
@@ -2333,6 +2341,40 @@ function DetailPage({
                     tok={tok}
                   />
                 </div>
+                {currentOrderHasItems ? (
+                  <>
+                    <div className="flex items-end gap-3">
+                      <ProductSpecificToggle
+                        checked={isProductSpecificValue}
+                        onChange={handleProductSpecificChange}
+                        fieldLabel={isProductSpecificField?.name}
+                        tok={tok}
+                      />
+                      {isProductSpecificValue && (
+                        <div className="flex-1">
+                          <OrderItemSelectDropdown
+                            options={currentOrderItemDropdownOptions}
+                            onAdd={(id) => handleOrderItemsChange([...currentOrderItemIds, id])}
+                            disabled={!currentOrderId}
+                            fieldLabel={orderItemsField?.name}
+                            tok={tok}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {isProductSpecificValue && (
+                      <OrderItemsTable
+                        items={currentOrderItemTableRows}
+                        onRemove={(id) => handleOrderItemsChange(currentOrderItemIds.filter((x) => x !== id))}
+                        tok={tok}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className="text-sm px-3 py-2 rounded-lg" style={{ backgroundColor: tok.hover_bg, color: tok.text_secondary }}>
+                    This order has no item-level data on file — this refund will be treated as an order-level charge.
+                  </div>
+                )}
                 <div>
                   <label className={fieldLabelCls} style={{ color: tok.text_secondary }}>
                     Refund Details
@@ -2463,7 +2505,7 @@ function DetailPage({
 
       {showApproveConfirm && (
         <ConfirmDialog
-          title="Approve Refund Case"
+          title="Approve Refund Request"
           onClose={() => setShowApproveConfirm(false)}
           onConfirm={handleApprove}
           confirmLabel={saving ? 'Approving...' : 'Confirm Approve'}
@@ -2484,7 +2526,7 @@ function DetailPage({
 
       {showRejectConfirm && (
         <ConfirmDialog
-          title="Reject Refund Case"
+          title="Reject Refund Request"
           onClose={() => setShowRejectConfirm(false)}
           onConfirm={handleReject}
           confirmLabel={saving ? 'Rejecting...' : 'Confirm Reject'}
@@ -2493,14 +2535,14 @@ function DetailPage({
           tok={tok}
         >
           <p className="text-sm" style={{ color: tok.text_secondary }}>
-            Are you sure you want to reject this refund case? This action cannot be undone.
+            Are you sure you want to reject this refund request? This action cannot be undone.
           </p>
         </ConfirmDialog>
       )}
 
       {showCancelConfirm && (
         <ConfirmDialog
-          title="Cancel Refund Case"
+          title="Cancel Refund Request"
           onClose={() => setShowCancelConfirm(false)}
           onConfirm={handleCancel}
           confirmLabel={saving ? 'Cancelling...' : 'Confirm Cancel'}
@@ -2509,7 +2551,7 @@ function DetailPage({
           tok={tok}
         >
           <p className="text-sm" style={{ color: tok.text_secondary }}>
-            Are you sure you want to cancel this refund case?
+            Are you sure you want to cancel this refund request?
           </p>
         </ConfirmDialog>
       )}
@@ -2525,7 +2567,7 @@ function DetailPage({
           tok={tok}
         >
           <p className="text-sm" style={{ color: tok.text_secondary }}>
-            Are you sure you want to mark this refund case as closed?
+            Are you sure you want to mark this refund request as closed?
           </p>
         </ConfirmDialog>
       )}
@@ -2814,7 +2856,7 @@ function RefundRequestsApp(): React.ReactElement {
       setViewState({ layer: 2, recordId: newRecordId, sourceLayout: 'requests' });
     } catch (err) {
       console.error('Create new case failed:', err);
-      setNewCaseError('Failed to create refund case. Please try again.');
+      setNewCaseError('Failed to create refund request. Please try again.');
     } finally {
       setSubmittingNewCase(false);
     }
@@ -2860,7 +2902,7 @@ function RefundRequestsApp(): React.ReactElement {
       return (
         <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: tok.app_bg }}>
           <div className="text-center" style={{ color: tok.text_secondary }}>
-            <p className="text-lg font-medium">Refund case not found</p>
+            <p className="text-lg font-medium">Refund request not found</p>
             <button
               type="button"
               onClick={() => setViewState({ layer: 1, layout: viewState.sourceLayout })}
@@ -2947,7 +2989,7 @@ function RefundRequestsApp(): React.ReactElement {
             style={{ backgroundColor: tok.accent }}
           >
             <PlusIcon size={16} />
-            New Refund Case
+            New Refund Request
           </button>
         </div>
       </div>
@@ -2969,7 +3011,7 @@ function RefundRequestsApp(): React.ReactElement {
                 {filteredRecords.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-sm" style={{ color: tok.text_secondary }}>
-                      No refund cases found.
+                      No refund requests found.
                     </td>
                   </tr>
                 ) : (
@@ -3116,6 +3158,7 @@ function RefundRequestsApp(): React.ReactElement {
           ordersTable={ordersTable}
           orderItemsTable={orderItemsTable}
           categoriesTable={refundCategoriesTable}
+          refundRequestsTable={refundRequestsTable ?? null}
           resolutionTypeChoices={resolutionProposedChoices}
           submitting={submittingNewCase}
           submitError={newCaseError}
