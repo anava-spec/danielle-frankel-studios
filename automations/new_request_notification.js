@@ -5,7 +5,20 @@ BASE       : app6Q4xMZ1ngJxiV8 (sandbox — mirror to Production when ready)
 TABLE SRC  : customization_requests (tbl7HUWDI7IRjWY92)
 TABLE REF  : staff (tblbYk88xJ8FQrLS4)
 TRIGGER    : When record created — customization_requests
-VERSION    : 1.8.0 — Sandbox test runs (isProduction === false) now route the
+VERSION    : 1.9.0 — Removed the "Click here to review" record deep link
+                     entirely (per Axel, 2026-09-02): Interfaces has no way
+                     to construct a URL that opens a specific record's
+                     Detail Page directly — a plain record URL always lands
+                     the recipient in Data, not the Interface. The
+                     `?record=recXXXX` pattern this script borrowed only
+                     works if someone is ALREADY on the Interface page and
+                     it reads that param on load — it was never a real deep
+                     link from an external email/Slack message. PAGE_URLS/
+                     pageUrl removed along with it (isProduction/
+                     TEST_CONTACT stay — unrelated, they route test-run
+                     notifications to Axel's own contact info).
+                     ---
+                     v1.8.0 — Sandbox test runs (isProduction === false) now route the
                      notification to Axel's own email/Slack instead of the
                      resolved staff member's real contact info — content is
                      unchanged, only the delivery address.
@@ -151,15 +164,6 @@ const FIELDS_PRICING = {
   pre_approval : 'fldBoCjCrHzWWkcL1', // singleSelect — "Approved" | "Not Approved"
 };
 const PRE_APPROVED_VALUE = 'Approved';
-
-// Same Interface page in both bases (pagFJG1URt93CIOm1) — only the base ID
-// in the URL differs. isProduction comes from input.config() (see MAIN
-// EXECUTION BLOCK below): false while this automation is still being tested
-// against Sandbox, true once mirrored to run for real in Production.
-const PAGE_URLS = {
-  sandbox    : 'https://airtable.com/app6Q4xMZ1ngJxiV8/pagFJG1URt93CIOm1',
-  production : 'https://airtable.com/appUC2NFAlURayLx9/pagFJG1URt93CIOm1',
-};
 
 const CONFIG = {
   LOG_LEVEL       : 'B', // A=minimal | B=audit (default) | C=debug
@@ -456,15 +460,11 @@ class MessageBuilder {
     );
   }
 
-  // The Interface page's own deep-link URL — the interface itself reads
-  // ?record=recXXXX on load and jumps straight to that record's Detail Page
-  // (see the interface code's deepLinkConsumedRef effect). Same link,
-  // formatted per platform's own link markdown just below.
-  static _recordUrl(pageUrl, recordId) { return `${pageUrl}?record=${recordId}`; }
-  static _slackLink(pageUrl, recordId) { return `<${MessageBuilder._recordUrl(pageUrl, recordId)}|Click here to review>`; }
-  static _gmailLink(pageUrl, recordId) { return `[Click here to review](${MessageBuilder._recordUrl(pageUrl, recordId)})`; }
-
-  static forScenario(scenario, data, pageUrl, recordId) {
+  // No record deep link — per Axel, 2026-09-02, Interfaces has no way to
+  // build a URL that opens a specific record's Detail Page directly; a
+  // plain record URL only ever opens Data, not the Interface, so there's no
+  // link worth including here (see VERSION 1.9.0 note above).
+  static forScenario(scenario, data) {
     const details = MessageBuilder._details(data);
     const entries = {
       counterProposed: {
@@ -487,8 +487,8 @@ class MessageBuilder {
     const entry = entries[scenario] ?? entries.newRequest;
     return {
       subject: entry.subject,
-      slackMessage: `${entry.intro}\n\n${details}\n\n${MessageBuilder._slackLink(pageUrl, recordId)}`,
-      gmailMessage: `${entry.intro}\n\n${details}\n\n${MessageBuilder._gmailLink(pageUrl, recordId)}`,
+      slackMessage: `${entry.intro}\n\n${details}`,
+      gmailMessage: `${entry.intro}\n\n${details}`,
     };
   }
   static error(errMsg) {
@@ -507,14 +507,13 @@ class MessageBuilder {
 const MARGO_APPROVAL_SCENARIOS = new Set(['newRequest', 'clientCounterProposed', 'saCounterProposed']);
 
 class NewRequestNotificationService {
-  constructor(requestRepo, staffRepo, pricingRepo, mapper, resolver, logger, pageUrl) {
+  constructor(requestRepo, staffRepo, pricingRepo, mapper, resolver, logger) {
     this.requestRepo = requestRepo;
     this.staffRepo   = staffRepo;
     this.pricingRepo = pricingRepo;
     this.mapper      = mapper;
     this.resolver     = resolver;
     this.logger      = logger;
-    this.pageUrl     = pageUrl;
   }
 
   async run(recordId) {
@@ -588,7 +587,7 @@ class NewRequestNotificationService {
     const slackId         = staff ? (staff.getCellValueAsString(FIELDS_STAFF.slack_id) || '') : '';
 
     // Step 5 — Build messages (one per channel, same content, different link markdown)
-    const { subject, slackMessage, gmailMessage } = MessageBuilder.forScenario(scenario, data, this.pageUrl, recordId);
+    const { subject, slackMessage, gmailMessage } = MessageBuilder.forScenario(scenario, data);
 
     this.logger.minimal(`SUCCESS → notify ${recipientQuery} (${scenario}) for ${data.clientName}`);
 
@@ -616,8 +615,9 @@ const cfg          = input.config();
 const recordId     = cfg.recordId;
 // false while testing against Sandbox, true once this automation is mirrored
 // to run for real in Production — flip this input value, not the code.
+// (Only decides the TEST_CONTACT override below now — no longer picks a
+// PAGE_URLS entry, since there's no record link to build.)
 const isProduction = cfg.isProduction === true;
-const pageUrl       = isProduction ? PAGE_URLS.production : PAGE_URLS.sandbox;
 
 const logger = new Logger(CONFIG.LOG_LEVEL);
 
@@ -647,8 +647,7 @@ try {
     new PricingRepository(logger),
     new RequestDataMapper(logger),
     new ScenarioResolver(logger),
-    logger,
-    pageUrl
+    logger
   );
 
   result = await service.run(recordId);
