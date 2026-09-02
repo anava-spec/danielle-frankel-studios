@@ -3017,7 +3017,16 @@ function RefundRequestsApp(): React.ReactElement {
         {currentLayout === 'requests' ? (
           <div className="rounded-xl overflow-y-auto flex-1 min-h-0" style={{ backgroundColor: tok.surface, border: `1px solid ${tok.border}` }}>
             <table className="w-full">
-              <thead style={{ backgroundColor: tok.table_header }}>
+              {/* Sticky header (Axel, 2026-09-02): "los headers deben quedar
+                  fijos y no hacerse scroll junto con la tabla" — the header
+                  row must stay pinned at the top of this table's own
+                  `overflow-y-auto` container (added in the prior scroll-
+                  containment fix) instead of scrolling away with the body
+                  rows. `position: sticky; top: 0` positions relative to that
+                  scrolling ancestor; `zIndex` + the existing `tok.table_header`
+                  background keep scrolled-under rows from showing through,
+                  and the border below doubles as the separation line. */}
+              <thead style={{ backgroundColor: tok.table_header, position: 'sticky', top: 0, zIndex: 10 }}>
                 <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
                   {['Client', 'Order', 'Category', 'Request Stage', 'Proposed Resolution', 'Approved Resolution', 'Settlement Stage'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-medium capitalize tracking-wide" style={{ color: tok.text_secondary }}>
@@ -3116,7 +3125,11 @@ function RefundRequestsApp(): React.ReactElement {
                   }}
                 >
                   <table className="w-full">
-                    <thead style={{ backgroundColor: tok.table_header }}>
+                    {/* Sticky header (Axel, 2026-09-02): same fix as the
+                        "requests" table above — pins this column's header
+                        row to the top of its own `overflow-auto` container
+                        instead of letting it scroll away with the rows. */}
+                    <thead style={{ backgroundColor: tok.table_header, position: 'sticky', top: 0, zIndex: 10 }}>
                       <tr style={{ borderBottom: `1px solid ${tok.border}` }}>
                         {/* Column set + order per Axel, 2026-09-02: Client,
                             Order, Category, Request Stage, Proposed
