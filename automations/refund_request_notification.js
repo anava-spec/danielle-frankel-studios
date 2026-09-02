@@ -11,19 +11,42 @@ VERSION    : 1.0.0 — Initial version. All field IDs verified against the live
 
 OBJECTIVE
   Whenever a new refund_requests record is created (a new refund/discount
-  case opened against an order), notify Margo with enough context to action
-  it — Client, Order (Shopify order #), Refund Category, Refund Reason (if
-  present), and Proposed Resolution. Unlike the customization_requests
-  automations this project already has (new_request_notification.js,
-  decision_notification.js), there is no scenario branching here — every
-  refund_requests record creation notifies Margo, full stop. Kept the same
+  case opened against an order), notify a staff member (currently Margo, via
+  the `recipient` input below) with enough context to action it — Client,
+  Order (Shopify order #), Refund Category, Refund Reason (if present), and
+  Proposed Resolution. Unlike the customization_requests automations this
+  project already has (new_request_notification.js, decision_notification.js),
+  there is no scenario branching here — every refund_requests record
+  creation notifies the configured recipient, full stop. Kept the same
   class-separation shape as those two scripts for consistency even though a
   ScenarioResolver isn't needed.
+
+INPUTS (input.config())
+  recordId  : the created refund_requests record's id — required.
+  recipient : full_name of the staff member to notify (matched against
+              staff.full_name, e.g. "Margo Lafontaine") — required when
+              dryRun is not "true". Passed as an input (not hardcoded) per
+              Axel, 2026-09-02, so the trigger config is the single place
+              that decides who gets notified, not the script body.
+  dryRun    : STRING "true" | "false" (not a native boolean — Axel,
+              2026-09-02, wanted this mapped as text in the trigger step,
+              so it's compared as a string below, not on truthiness).
+              When "true": skips the staff lookup entirely and uses Axel's
+              own contact info (see DRY_RUN_CONTACT) so test runs never
+              page a real staff member. When "false": looks up `recipient`
+              in the staff table for real name/email/Slack ID.
+  isProduction : boolean, unrelated to dryRun — only picks which
+              PAGE_URLS entry the deep link uses (sandbox vs. production
+              base). Kept separate since it answers a different question
+              (which base's link to build) than dryRun (who actually
+              receives it).
 
 GUARD CLAUSE
   1. recordId must be present in input.config() — the trigger must pass it.
   2. The record must actually exist when read back (defends against a
      delete-immediately-after-create race).
+  3. recipient must be present when dryRun is not "true" — otherwise there's
+     nothing to look up in the staff table.
 
   Client/Order/Refund Category are all plain multipleRecordLinks fields set
   directly by the interface at record-creation time (not formulas/rollups
@@ -38,9 +61,11 @@ ERROR HANDLING
 
 OUTPUTS (output.set)
   status         : "SUCCESS" | "ERROR"
-  recipientName  : staff full_name notified (always Margo Lafontaine on success)
-  recipientEmail : staff Email (may be blank if unset in staff table)
-  slackId        : staff slack_id (may be blank if unset in staff table)
+  recipientName  : who was notified — "Axel Nava" when dryRun="true",
+                   otherwise the resolved staff.full_name (falls back to the
+                   raw `recipient` input if no staff record matched)
+  recipientEmail : recipient's email (may be blank if unset in staff table)
+  slackId        : recipient's Slack ID (may be blank if unset in staff table)
   subject        : notification subject line
   slackMessage   : notification body, Slack mrkdwn link syntax (<url|text>)
   gmailMessage   : notification body, standard markdown link syntax ([text](url))
@@ -89,16 +114,17 @@ const PAGE_URLS = {
 };
 
 const CONFIG = {
-  LOG_LEVEL       : 'B', // A=minimal | B=audit (default) | C=debug
-  MARGO_FULL_NAME : 'Margo Lafontaine', // must match staff.full_name exactly — verified live against tblbYk88xJ8FQrLS4
+  LOG_LEVEL : 'B', // A=minimal | B=audit (default) | C=debug
 };
 
-// While testing against Sandbox (isProduction === false), every notification
-// routes to Axel instead of Margo's real contact info — prevents test runs
-// from actually paging her. Only the delivery address changes; recipientName/
-// subject/message content still reflect the real resolved case, so the test
-// notification reads exactly like the real one would.
-const TEST_CONTACT = {
+// dryRun="true" (see MAIN EXECUTION BLOCK — arrives as a string input, not a
+// native boolean, per Axel, 2026-09-02) skips the staff lookup entirely and
+// uses Axel's own contact info instead — prevents test runs from paging a
+// real staff member. Only the delivery address/name changes; the message
+// content still reflects the real resolved case, so a dry run reads exactly
+// like the real notification would.
+const DRY_RUN_CONTACT = {
+  name     : 'Axel Nava',
   email    : 'anava@singularagency.co',
   slack_id : 'U0AR34NA6UV',
 };
@@ -278,8 +304,8 @@ class RefundRequestNotificationService {
     this.pageUrl     = pageUrl;
   }
 
-  async run(recordId) {
-    this.logger.audit(`Service started → record: ${recordId}`);
+  async run(recordId, recipient, dryRun) {
+    this.logger.audit(`Service started → record: ${recordId} | recipient: ${recipient} | dryRun: ${dryRun}`);
 
     // Step 1 — Load record
     const record = await this.requestRepo.getById(recordId);
@@ -287,20 +313,34 @@ class RefundRequestNotificationService {
     // Step 2 — Extract plain data
     const data = this.mapper.extract(record);
 
-    // Step 3 — Look up Margo's contact info. Every refund_requests record
-    // creation notifies Margo, full stop — no scenario branching needed.
-    const staff = await this.staffRepo.findByFullName(CONFIG.MARGO_FULL_NAME);
-    const recipientEmail = staff ? (staff.getCellValueAsString(FIELDS_STAFF.email) || '') : '';
-    const slackId         = staff ? (staff.getCellValueAsString(FIELDS_STAFF.slack_id) || '') : '';
+    // Step 3 — Resolve who actually gets notified. dryRun="true" always
+    // wins — Axel's own contact info, no staff lookup at all — so a test
+    // run can never accidentally page a real staff member even if
+    // `recipient` is also filled in during testing.
+    let recipientName, recipientEmail, slackId;
+    if (dryRun) {
+      this.logger.step(3, `dryRun=true — using Axel's own contact info instead of looking up "${recipient}"`);
+      recipientName  = DRY_RUN_CONTACT.name;
+      recipientEmail = DRY_RUN_CONTACT.email;
+      slackId        = DRY_RUN_CONTACT.slack_id;
+    } else {
+      if (!recipient) throw new Error(
+        'Guard clause: missing required input "recipient" (and dryRun is not "true"). Map the intended staff member\'s full_name in the trigger config.'
+      );
+      const staff = await this.staffRepo.findByFullName(recipient);
+      recipientName  = staff ? (staff.getCellValueAsString(FIELDS_STAFF.full_name) || recipient) : recipient;
+      recipientEmail = staff ? (staff.getCellValueAsString(FIELDS_STAFF.email) || '') : '';
+      slackId        = staff ? (staff.getCellValueAsString(FIELDS_STAFF.slack_id) || '') : '';
+    }
 
     // Step 4 — Build messages (one per channel, same content, different link markdown)
     const { subject, slackMessage, gmailMessage } = MessageBuilder.build(data, this.pageUrl, recordId);
 
-    this.logger.minimal(`SUCCESS → notify ${CONFIG.MARGO_FULL_NAME} for ${data.clientName} (${data.orderText})`);
+    this.logger.minimal(`SUCCESS → notify ${recipientName} for ${data.clientName} (${data.orderText})`);
 
     return {
       status         : 'SUCCESS',
-      recipientName  : CONFIG.MARGO_FULL_NAME,
+      recipientName,
       recipientEmail,
       slackId,
       subject,
@@ -316,10 +356,16 @@ class RefundRequestNotificationService {
 // input.config() called ONCE — Airtable only allows one call per script.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const cfg          = input.config();
-const recordId     = cfg.recordId;
-// false while testing against Sandbox, true once this automation is mirrored
-// to run for real in Production — flip this input value, not the code.
+const cfg      = input.config();
+const recordId = cfg.recordId;
+const recipient = cfg.recipient; // staff.full_name to notify, e.g. "Margo Lafontaine" — see INPUTS above
+// Arrives as a STRING ("true"/"false"), not a native boolean — per Axel,
+// 2026-09-02, the trigger step maps this as text. Compare as a string, not
+// on truthiness (a non-empty string like "false" is still truthy in JS).
+const dryRun = String(cfg.dryRun).trim().toLowerCase() === 'true';
+// Unrelated to dryRun — false while testing against Sandbox, true once this
+// automation is mirrored to run for real in Production — flip this input
+// value, not the code.
 const isProduction = cfg.isProduction === true;
 const pageUrl       = isProduction ? PAGE_URLS.production : PAGE_URLS.sandbox;
 
@@ -341,7 +387,7 @@ try {
     'Guard clause: missing required input "recordId". Ensure the trigger step maps the created record\'s ID.'
   );
 
-  logger.audit(`Automation started → recordId: ${recordId} | isProduction: ${isProduction}`);
+  logger.audit(`Automation started → recordId: ${recordId} | recipient: ${recipient} | dryRun: ${dryRun} | isProduction: ${isProduction}`);
 
   const service = new RefundRequestNotificationService(
     new RequestRepository(logger),
@@ -351,16 +397,7 @@ try {
     pageUrl
   );
 
-  result = await service.run(recordId);
-
-  // Sandbox override — real recipient/message content is preserved above;
-  // only the delivery address changes, so a test run reads exactly like the
-  // real notification would, just sent to Axel instead.
-  if (!isProduction) {
-    logger.audit(`Sandbox override → routing to test contact instead of ${result.recipientName}`);
-    result.recipientEmail = TEST_CONTACT.email;
-    result.slackId        = TEST_CONTACT.slack_id;
-  }
+  result = await service.run(recordId, recipient, dryRun);
 
 } catch (err) {
   logger.error(`Automation failed → ${err.message}`);
