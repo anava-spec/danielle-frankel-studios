@@ -19,7 +19,7 @@ import {
   Funnel as FunnelIcon,
 } from '@phosphor-icons/react';
 
-// ─── Champagne color system (BRANDING.md §1) ─────────────────────────────────
+// ─── Champagne color system (branding.md §1) ─────────────────────────────────
 const LIGHT = {
   app_bg: '#F8F5EE',
   surface: '#FFFFFF',

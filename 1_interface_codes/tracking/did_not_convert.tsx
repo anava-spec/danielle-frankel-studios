@@ -16,7 +16,7 @@ import {
 } from '@phosphor-icons/react';
 
 // ─── Dark mode ────────────────────────────────────────────────────────────────
-// Champagne color system (BRANDING.md §1): matches pipeline.tsx/fulfillment.tsx —
+// Champagne color system (branding.md §1): matches pipeline.tsx/fulfillment.tsx —
 // Tailwind arbitrary-value classes with dark: variants, theme read from
 // Airtable's own light/dark preference (not the OS/browser setting).
 function useTheme(): 'light' | 'dark' {
@@ -366,7 +366,7 @@ type AnyRecord = { id: string; getCellValue: (f: string) => unknown; getCellValu
 
 // LAST_APPOINTMENT is a lookup field. This interface's runtime returns lookup
 // cell values as an array of one entry per linked record — either a plain
-// string, or (per BRANDING.md §9's lookup-color note, same underlying
+// string, or (per branding.md §9's lookup-color note, same underlying
 // runtime quirk) an object of the shape { linkedRecordId, value }. The
 // previous version of this file only checked for a plain string first
 // element, so it silently rendered "—" for every lookup-shaped value.

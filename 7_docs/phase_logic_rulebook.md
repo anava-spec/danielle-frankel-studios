@@ -3,7 +3,7 @@ title: Phase Logic Rulebook — Danielle Frankel Studio
 type: rulebook
 tags: [rulebook, danielle-frankel, airtable, phase-logic, pipeline, source-of-truth]
 priority: critical
-related: [CROSS_CUTTING.md, ../interfaces/interface_readmes/pipeline.README.md, ../interfaces/interface_readmes/fulfillment.README.md, ../interfaces/interface_readmes/alterations.README.md, ../interfaces/interface_readmes/appointments.README.md]
+related: [CROSS_CUTTING.md, ../2_interface_readmes/pipeline.README.md, ../2_interface_readmes/fulfillment.README.md, ../2_interface_readmes/alterations.README.md, ../2_interface_readmes/appointments.README.md]
 last_updated: 2026-08-25 (rev. 2)
 owner: Miguel Pérez
 status: active — supersedes slack-files/recovered/AIRTABLE PHASE LOGIC.docx (2026-06-26, outdated)
@@ -127,10 +127,10 @@ Field IDs, automations, and fix history — organized by phase, kept out of the 
 ## Cross-References
 
 - [`CROSS_CUTTING.md`](CROSS_CUTTING.md) — shared rules across all DFS interfaces (Cobalt boundary, dark mode, sandboxing).
-- [`../interfaces/interface_readmes/pipeline.README.md`](../interfaces/interface_readmes/pipeline.README.md) — `pipeline.tsx` implementation detail, field IDs, fix history, Waitlist UI.
-- [`../interfaces/interface_readmes/fulfillment.README.md`](../interfaces/interface_readmes/fulfillment.README.md) — Fulfillment/close-out implementation detail, field IDs, fix history.
-- [`../interfaces/interface_readmes/alterations.README.md`](../interfaces/interface_readmes/alterations.README.md) — Alterations list implementation detail.
-- [`../interfaces/interface_readmes/appointments.README.md`](../interfaces/interface_readmes/appointments.README.md) — Appointments/Slack automation implementation detail, incl. Deliberating-phase transition script.
+- [`../2_interface_readmes/pipeline.README.md`](../2_interface_readmes/pipeline.README.md) — `pipeline.tsx` implementation detail, field IDs, fix history, Waitlist UI.
+- [`../2_interface_readmes/fulfillment.README.md`](../2_interface_readmes/fulfillment.README.md) — Fulfillment/close-out implementation detail, field IDs, fix history.
+- [`../2_interface_readmes/alterations.README.md`](../2_interface_readmes/alterations.README.md) — Alterations list implementation detail.
+- [`../2_interface_readmes/appointments.README.md`](../2_interface_readmes/appointments.README.md) — Appointments/Slack automation implementation detail, incl. Deliberating-phase transition script.
 - [`../session_summaries/2026-08-11_waitlist-pipeline-overdue-automation-production-migration.md`](../session_summaries/2026-08-11_waitlist-pipeline-overdue-automation-production-migration.md) — full Waitlist build session, key IDs.
 - [`../../04-playbooks/interfaces.md`](../../04-playbooks/interfaces.md) — broader interface functional specs beyond just phase logic (columns, sidebars, per-interface scope).
 - [`../../slack-files/recovered/AIRTABLE PHASE LOGIC.docx`](../../slack-files/recovered/AIRTABLE%20PHASE%20LOGIC.docx) — original source doc (Jun 26, 2026), now superseded by this rulebook.

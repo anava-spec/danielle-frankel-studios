@@ -64,7 +64,7 @@ const STAGE_ORDER = [
 
 const ALTERATIONS_STAGE: (typeof STAGE_ORDER)[number] = 'In Alterations';
 
-// ─── Status pill — semantic red/green pair (BRANDING.md §1/§9), not the
+// ─── Status pill — semantic red/green pair (branding.md §1/§9), not the
 // champagne accent, since "Unpaid" is a needs-attention state and "Paid" is
 // a satisfied one. ──────────────────────────────────────────────────────────
 function StatusPill({ label, tone }: { label: string; tone: 'green' | 'red' }): React.ReactElement {
@@ -247,7 +247,7 @@ function DatePicker({ label, value, onChange }: DatePickerProps) {
 }
 
 // ─── SingleSelectDropdown (one option or cleared — label acts as its own
-// placeholder when nothing is selected, matching BRANDING.md §5) ──────────────
+// placeholder when nothing is selected, matching branding.md §5) ──────────────
 interface ToggleOption { value: string; label: string; }
 interface SingleSelectDropdownProps { label: string; value: string | null; options: ToggleOption[]; onChange: (v: string | null) => void; align?: 'left' | 'right'; }
 function SingleSelectDropdown({ label, value, options, onChange, align = 'left' }: SingleSelectDropdownProps) {

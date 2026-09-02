@@ -2994,7 +2994,7 @@ const ALTERATIONS_PAYMENT_OPTIONS = [
 // OVERRIDE DUE DATE CONFIRM MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 // Standard centered confirm dialog (backdrop + rounded-2xl container, fade+scale
-// per BRANDING.md §12) — same structural shape as customization_requests.tsx's
+// per branding.md §12) — same structural shape as customization_requests.tsx's
 // DeleteConfirmModal, but non-destructive: accent-colored confirm button (§8),
 // no countdown lock, no red danger box.
 function OverrideDueDateConfirmModal({ action, onConfirm, onClose }: {

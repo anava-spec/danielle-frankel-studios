@@ -2321,7 +2321,7 @@ function CustomizationModal({
     }).sort((a,b)=>a.label.localeCompare(b.label));
   },[stylesRecords, stylesBasePriceField, styleId]);
 
-  // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
+  // branding.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
 
@@ -2352,7 +2352,7 @@ function CustomizationModal({
           container resize at the same moment its content swaps entirely
           (chooser -> form) reads as a glitch, not a smooth transition. The
           width change snaps instantly; only the modal's own open/close
-          (opacity + scale) animates, per BRANDING.md's modal spec. */}
+          (opacity + scale) animates, per branding.md's modal spec. */}
       <div className={`bg-white dark:bg-[#25211A] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out`}
         style={{ opacity: isVisible?1:0, transform: isVisible?'scale(1)':'scale(0.96)', maxWidth: showHybridChooser ? '480px' : '960px' }}
         onClick={e=>e.stopPropagation()}>
@@ -4444,7 +4444,7 @@ function PostAppointmentModal({
   },[requestClose]);
 
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1B1813] text-gray-900 dark:text-[#F3EFE6] outline-none focus:border-[#D97706] dark:focus:border-[#FBBF24] focus:ring-1 focus:ring-[#D97706] dark:focus:ring-[#FBBF24]';
-  // BRANDING.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
+  // branding.md §2: section/field labels are 14px (text-sm), not 12px (text-xs).
   const labelCls = 'text-sm text-gray-400 dark:text-gray-500 capitalize tracking-wide font-medium mb-1.5 block';
 
   const clientStage        = cStr(CLIENT.STAGE);

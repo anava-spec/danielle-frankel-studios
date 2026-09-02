@@ -42,7 +42,7 @@ function useTheme(): 'light' | 'dark' {
 // every modal in this file already uses (mount immediately, flip to "visible"
 // a tick later so the browser paints the 0-state first; on close, flip
 // "visible" off immediately but delay the actual unmount so the fade-out has
-// time to play). ~150ms, matching BRANDING.md §12's non-modal transition durations.
+// time to play). ~150ms, matching branding.md §12's non-modal transition durations.
 function useSmoothToggle(open: boolean, durationMs = 150) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
@@ -1465,7 +1465,7 @@ function NewRequestModal({
           container resize at the same moment its content swaps entirely
           (chooser -> form) reads as a glitch, not a smooth transition. The
           width change snaps instantly; only the modal's own open/close
-          (opacity + scale) animates, per BRANDING.md's modal spec. */}
+          (opacity + scale) animates, per branding.md's modal spec. */}
       <div className="bg-white dark:bg-[#242220] rounded-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl transition-[opacity,transform] duration-200 ease-out"
         style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? 'scale(1)' : 'scale(0.96)', maxWidth: stage === 'select' ? '480px' : '960px' }}
         onClick={e => e.stopPropagation()}>

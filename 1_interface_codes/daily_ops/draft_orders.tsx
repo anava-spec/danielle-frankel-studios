@@ -570,7 +570,7 @@ function formatWeddingDateDisplay(val: string | null | undefined): string {
 
 // Shipping is a multipleLookupValues field — its cell value is an array (one
 // entry per linked record), even though the state_costs link only ever holds
-// one. This interface's runtime has previously (see BRANDING.md §9's
+// one. This interface's runtime has previously (see branding.md §9's
 // lookup-color note) returned lookup entries as `{ linkedRecordId, value }`
 // rather than the raw primitive, so unwrap recursively instead of assuming
 // either shape.

@@ -391,7 +391,7 @@ function qualifiesNotOnlyShoesOrVeil(categoryNames: string[]): boolean {
 // string, or an object shaped like { linkedRecordId, value } whose `value` is
 // the resolved linked-record name(s) (or another nested array/object, for a
 // lookup chain more than one hop deep). getCellValueAsString does not reliably
-// flatten this in this runtime (same underlying quirk BRANDING.md §9 and
+// flatten this in this runtime (same underlying quirk branding.md §9 and
 // did_not_convert.tsx's unwrapLookupString document) — recurse and collect
 // every `name`/string found instead of assuming a fixed shape.
 function unwrapLinkedNames(value: unknown): string[] {
@@ -503,7 +503,7 @@ function DatePicker({ label, value, onChange }: DatePickerProps) {
 }
 
 // ─── SingleSelectDropdown (one option or cleared — label acts as its own
-// placeholder when nothing is selected, matching BRANDING.md §5) ──────────────
+// placeholder when nothing is selected, matching branding.md §5) ──────────────
 interface ToggleOption { value: string; label: string; }
 interface SingleSelectDropdownProps { label: string; value: string | null; options: ToggleOption[]; onChange: (v: string | null) => void; align?: 'left' | 'right'; }
 function SingleSelectDropdown({ label, value, options, onChange, align = 'left' }: SingleSelectDropdownProps) {
@@ -592,7 +592,7 @@ const DEFAULT_STATUS_PILL_CLASSES = 'bg-gray-100 dark:bg-white/10 text-gray-500 
 // Resolves a singleSelect field's real Airtable choices (name + color, in the
 // field's own schema order) so both the available options AND their colors
 // stay in sync with whatever is configured on the field in Airtable — never
-// hardcode a status list or a status→color map (per BRANDING.md §9). Schema
+// hardcode a status list or a status→color map (per branding.md §9). Schema
 // order matters here specifically because the Calligraphy Status flow is
 // sequential (Pending → Production Approved → Sent to Calligrapher →
 // Received from Calligrapher) and the "advance to next step" button below
@@ -607,7 +607,7 @@ function getFieldChoiceColorMap(field: Field | null | undefined): Map<string, st
 }
 
 // ─── StatusPillDropdown ─────────────────────────────────────────────────────────
-// Clicking the pill opens a small options panel (BRANDING.md §5 dropdown
+// Clicking the pill opens a small options panel (branding.md §5 dropdown
 // pattern — surface/border/shadow, click-outside-to-close) instead of
 // toggling the value directly, so the user picks the next status explicitly
 // rather than the click silently flipping it to whatever the "other" value
@@ -666,7 +666,7 @@ function StatusPillDropdown({ value, colorMap, options, onSelect, disabled = fal
 // calligraphy card (e.g. nicknames, hyphenation, "goes by middle name"). Local
 // state so typing doesn't fight the record's live value on every keystroke;
 // only writes on blur, matching the borderless-editable-cell convention
-// (BRANDING.md §10b) rather than a boxed input that reads as a separate control.
+// (branding.md §10b) rather than a boxed input that reads as a separate control.
 interface CommentsCellProps {
   value: string;
   disabled: boolean;
@@ -721,7 +721,7 @@ function CommentsCell({ value, disabled, hasError, onSave }: CommentsCellProps) 
 // AIRTABLE_COLOR_MAP above gives Tailwind classes for flat pills; the stepper
 // needs actual hex values so the connecting line between two steps can
 // gradient from one step's color into the next's. Light1/Light2/Bright tiers
-// escalate to the same color family's Dark1 (same convention BRANDING.md §9
+// escalate to the same color family's Dark1 (same convention branding.md §9
 // and pipeline.tsx's StagePipeline already use, for contrast on a cream bg).
 const AIRTABLE_HEX: Record<string, string> = {
   blue: '#2D7FF9', blueDark1: '#2750AE', blueLight1: '#9CC7FF', blueLight2: '#CBDEFF', blueBright: '#2D7FF9',
@@ -812,7 +812,7 @@ function AdvanceConfirmPopover({ nextStatus, onContinue }: AdvanceConfirmPopover
   );
 }
 
-// ─── Detail page building blocks (BRANDING.md-style FieldRow/DetailRow) ────────
+// ─── Detail page building blocks (branding.md-style FieldRow/DetailRow) ────────
 // No section wrapper/header (2026-08-03 — the whole body is one box, only the
 // title bar is separate). Field titles (not section headers) carry the
 // larger font size per that same request.
@@ -835,7 +835,7 @@ function DetailRow({ label, value, tooltip }: { label: string; value: React.Reac
 
 // ─── ClientDetailModal ──────────────────────────────────────────────────────────
 // A popup, not a full page (2026-07-30 correction) — fade+scale in/out per
-// BRANDING.md §12, 720px-class modal width, no "Go back" (there's nowhere to
+// branding.md §12, 720px-class modal width, no "Go back" (there's nowhere to
 // navigate back to). Closes via backdrop click or Escape only — no X (removed
 // 2026-08-03). The client name and the "Move to next step" action both live
 // in the title bar; its own advance-confirmation is a small popover anchored
